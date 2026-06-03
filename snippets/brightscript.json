@@ -1,0 +1,74 @@
+{
+  "Sub": {
+    "prefix": "sub",
+    "body": ["sub ${1:name}(${2:params})", "\t$0", "end sub"],
+    "description": "Define a subroutine"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": ["function ${1:name}(${2:params}) as ${3:Dynamic}", "\t$0", "end function"],
+    "description": "Define a function with return type"
+  },
+  "If": {
+    "prefix": "if",
+    "body": ["if ${1:condition} then", "\t$0", "end if"],
+    "description": "If block"
+  },
+  "If-Else": {
+    "prefix": "ife",
+    "body": ["if ${1:condition} then", "\t$2", "else", "\t$0", "end if"],
+    "description": "If-else block"
+  },
+  "For Each": {
+    "prefix": "foreach",
+    "body": ["for each ${1:item} in ${2:collection}", "\t$0", "next ${1:item}"],
+    "description": "For-each loop"
+  },
+  "For": {
+    "prefix": "for",
+    "body": ["for ${1:i} = ${2:0} to ${3:10}", "\t$0", "next ${1:i}"],
+    "description": "For loop"
+  },
+  "While": {
+    "prefix": "while",
+    "body": ["while ${1:condition}", "\t$0", "end while"],
+    "description": "While loop"
+  },
+  "Try-Catch": {
+    "prefix": "try",
+    "body": ["try", "\t$1", "catch ${2:e}", "\t$0", "end try"],
+    "description": "Try-catch block"
+  },
+  "Kopytko Import Internal": {
+    "prefix": "import",
+    "body": ["' @import /${1:path/to/file.brs}"],
+    "description": "Kopytko @import annotation for internal dependency"
+  },
+  "Kopytko Import External": {
+    "prefix": "importfrom",
+    "body": ["' @import /${1:path/to/file.brs} from ${2:@kopytko/package}"],
+    "description": "Kopytko @import annotation for external Kopytko module"
+  },
+  "Kopytko Init": {
+    "prefix": "kopytko-init",
+    "body": [
+      "' @import /components/KopytkoFramework.brs from @dazn/kopytko-framework",
+      "",
+      "sub init()",
+      "\tm.top.observeField(\"focusedChild\", \"_onFocusedChildChange\")",
+      "\t$0",
+      "end sub"
+    ],
+    "description": "Kopytko component init boilerplate"
+  },
+  "CreateObject AssociativeArray": {
+    "prefix": "aa",
+    "body": ["${1:myAA} = {}"],
+    "description": "Create an AssociativeArray"
+  },
+  "Print": {
+    "prefix": "print",
+    "body": ["print ${0}"],
+    "description": "Print statement"
+  }
+}

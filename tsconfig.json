@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./out",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": ["src/client/**/*", "src/extension.ts"],
+  "exclude": ["src/server/**/*", "test/**/*", "node_modules"]
+}

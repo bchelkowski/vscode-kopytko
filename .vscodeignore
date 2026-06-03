@@ -1,0 +1,12 @@
+src/**
+test/**
+.eslintrc.json
+.mocharc.json
+tsconfig*.json
+.nyc_output
+coverage/
+node_modules/**
+!node_modules/vscode-languageclient/**
+!node_modules/vscode-languageserver/**
+!node_modules/vscode-languageserver-textdocument/**
+!node_modules/vscode-uri/**

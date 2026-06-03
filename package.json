@@ -1,0 +1,117 @@
+{
+  "name": "vscode-kopytko",
+  "displayName": "Kopytko BrightScript",
+  "description": "BrightScript & Kopytko language support for Visual Studio Code — syntax, IntelliSense, diagnostics, and Kopytko import resolution.",
+  "version": "0.1.0",
+  "publisher": "bchelkowski",
+  "license": "MIT",
+  "icon": "images/logo.png",
+  "keywords": ["brightscript", "kopytko", "roku", "scenograph", "brs"],
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bchelkowski/vscode-kopytko"
+  },
+  "bugs": {
+    "url": "https://github.com/bchelkowski/vscode-kopytko/issues"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "activationEvents": [
+    "onLanguage:brightscript",
+    "onLanguage:xml",
+    "workspaceContains:**/*.brs",
+    "workspaceContains:**/.kopytkorc"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "languages": [
+      {
+        "id": "brightscript",
+        "aliases": ["BrightScript", "brightscript", "brs"],
+        "extensions": [".brs", ".bs"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "brightscript",
+        "scopeName": "source.brightscript",
+        "path": "./syntaxes/brightscript.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Kopytko BrightScript",
+      "properties": {
+        "kopytko.languageServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Kopytko language server."
+        },
+        "kopytko.languageServer.trace": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace LSP communication for debugging."
+        },
+        "kopytko.imports.resolveModules": {
+          "type": "boolean",
+          "default": true,
+          "description": "Resolve @import annotations from installed Kopytko NPM modules."
+        },
+        "kopytko.imports.sourceDir": {
+          "type": "string",
+          "default": "app",
+          "description": "Root source directory for resolving internal @import paths (matches .kopytkorc sourceDir)."
+        }
+      }
+    },
+    "snippets": [
+      {
+        "language": "brightscript",
+        "path": "./snippets/brightscript.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
+    "watch": "tsc -w -p ./tsconfig.json",
+    "watch:server": "tsc -w -p ./tsconfig.server.json",
+    "lint": "eslint \"./src/**/*.ts\" --ext .ts",
+    "test": "mocha",
+    "test:coverage": "nyc mocha",
+    "clean": "node -e \"require('fs').rmSync('out', {recursive: true, force: true})\"",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.12",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "^20.14.10",
+    "@types/sinon": "^17.0.3",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.16.0",
+    "@typescript-eslint/parser": "^7.16.0",
+    "@vscode/vsce": "^3.0.0",
+    "chai": "^4.4.1",
+    "eslint": "^8.57.0",
+    "mocha": "^10.7.0",
+    "nyc": "^17.0.0",
+    "sinon": "^18.0.0",
+    "source-map-support": "^0.5.21",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

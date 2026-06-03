@@ -1,0 +1,102 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "BrightScript",
+  "scopeName": "source.brightscript",
+  "fileTypes": ["brs", "bs"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#kopytko-import" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#keyword" },
+    { "include": "#storage-type" },
+    { "include": "#boolean-literal" },
+    { "include": "#builtin-function" },
+    { "include": "#function-declaration" },
+    { "include": "#operator" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.apostrophe.brightscript",
+          "match": "'[^@].*$"
+        },
+        {
+          "name": "comment.line.rem.brightscript",
+          "match": "(?i)\\brem\\b.*$"
+        }
+      ]
+    },
+    "kopytko-import": {
+      "name": "meta.annotation.kopytko.import",
+      "match": "('\\s*@import\\s+)(\\S+)(\\s+from\\s+)?(\\S+)?",
+      "captures": {
+        "1": { "name": "keyword.other.kopytko.import" },
+        "2": { "name": "string.unquoted.kopytko.import.path" },
+        "3": { "name": "keyword.other.kopytko.from" },
+        "4": { "name": "string.unquoted.kopytko.import.module" }
+      }
+    },
+    "string": {
+      "name": "string.quoted.double.brightscript",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.brightscript",
+          "match": "\"\""
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.brightscript",
+          "match": "\\b0x[0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.brightscript",
+          "match": "\\b[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?[!#]?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.brightscript",
+          "match": "\\b[0-9]+[%&!#]?\\b"
+        }
+      ]
+    },
+    "keyword": {
+      "name": "keyword.control.brightscript",
+      "match": "(?i)\\b(and|as|catch|dim|each|else|elseif|end|endif|endfor|endsub|endfunction|endtry|endwhile|exit|exitwhile|exitfor|false|for|function|goto|if|in|invalid|let|mod|next|not|objfun|or|return|rnd|run|step|stop|sub|then|throw|to|true|try|type|while)\\b"
+    },
+    "storage-type": {
+      "name": "storage.type.brightscript",
+      "match": "(?i)\\b(boolean|double|dynamic|float|function|integer|longinteger|object|string|void)\\b"
+    },
+    "boolean-literal": {
+      "name": "constant.language.brightscript",
+      "match": "(?i)\\b(true|false|invalid)\\b"
+    },
+    "builtin-function": {
+      "name": "support.function.brightscript",
+      "match": "(?i)\\b(Abs|Asc|Atn|Box|Chr|Cos|CreateObject|CInt|CDbl|CFloat|CLng|CSng|CStr|CType|FindMemberFunction|FormatJson|GetGlobalAA|GetInterface|GetLastRunCompileError|GetLastRunRuntimeError|Instr|InstrRev|Int|IsBoolean|IsDouble|IsDefined|IsFloat|IsFunction|IsInt|IsInvalid|IsLongInteger|IsList|IsObject|IsString|LCase|Left|Len|Log|Mid|Mktime|ParseJson|ParseXML|RebootSystem|Right|Rnd|RunGarbageCollector|SGN|SIN|Sleep|Sqr|Str|StrI|StrToI|String|StringI|Substitute|Tan|Type|UCase|Unbox|UpTime|Wait|WriteAsciiFile|val|print)\\b"
+    },
+    "function-declaration": {
+      "name": "meta.function.brightscript",
+      "match": "(?i)\\b(sub|function)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "storage.type.function.brightscript" },
+        "2": { "name": "entity.name.function.brightscript" }
+      }
+    },
+    "operator": {
+      "name": "keyword.operator.brightscript",
+      "match": "[+\\-*/<>=&@]|<>|<=|>="
+    },
+    "identifier": {
+      "name": "variable.other.brightscript",
+      "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+    }
+  }
+}
