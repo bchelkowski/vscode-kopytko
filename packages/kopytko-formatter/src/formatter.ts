@@ -497,8 +497,12 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
     r = r.replace(/([^\s<>])(<>|<=|>=|<<|>>)/g, '$1 $2');
     r = r.replace(/(<>|<=|>=|<<|>>)([^\s<>=])/g, '$1 $2');
 
-    r = r.replace(/(\S)\s*([+*/\\])(?!=)\s*(\S)/g, (_, pre, op, post) => {
+    r = r.replace(/(\S)\s*([*/\\])(?!=)\s*(\S)/g, (_, pre, op, post) => {
       return pre + ' ' + op + ' ' + post;
+    });
+    // Handle + separately to avoid splitting ++ (increment operator).
+    r = r.replace(/(\S)\s*\+(?!\+|=)\s*(\S)/g, (_, pre, post) => {
+      return pre + ' + ' + post;
     });
   }
 
@@ -739,6 +743,10 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
     const trimmed = line.trim();
     if (trimmed === '') return '';
 
+    // Comments are indented at the current level but never alter indentation state.
+    const isComment = trimmed.startsWith("'") || /^rem\b/i.test(trimmed);
+    if (isComment) return indentUnit.repeat(indentLevel) + trimmed;
+
     if (isDeindentLine(trimmed) && indentLevel > 0) indentLevel--;
     if (/^[}\]]/.test(trimmed) && !isDeindentLine(trimmed)) {
       let closers = 0;
@@ -761,7 +769,8 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
       }
       if (depth > 0) indentLevel += depth;
     }
-    if (/\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
+    // Anonymous function expressions: trailing comment after return type is allowed.
+    if (/\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
       indentLevel++;
     }
 
@@ -838,8 +847,12 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
         const isAlone = isReturnAloneInBlock(result, i);
         const shouldAdd = config.blankLineBeforeReturn === 'always' ||
           (config.blankLineBeforeReturn === 'not-alone' && !isAlone);
-        if (shouldAdd && out.length > 0 && out[out.length - 1].trim() !== '') {
-          out.push('');
+        if (shouldAdd && out.length > 0) {
+          const prevTrimmed = out[out.length - 1].trim();
+          // Skip when the preceding line is a comment — the blank line belongs before the comment.
+          if (prevTrimmed !== '' && !prevTrimmed.startsWith("'") && !/^rem\b/i.test(prevTrimmed)) {
+            out.push('');
+          }
         }
       }
       out.push(result[i]);
@@ -970,6 +983,12 @@ function isIndentLine(trimmed: string): boolean {
   if (/^try\b/i.test(lower)) return true;
   if (/^catch\b/i.test(lower)) return true;
 
+  // Conditional compilation
+  if (/^#if\b/i.test(lower)) return true;
+  if (/^#else\b/i.test(lower)) return true;
+  if (/^#elseif\b/i.test(lower)) return true;
+  if (/^#else\s+if\b/i.test(lower)) return true;
+
   return false;
 }
 
@@ -982,7 +1001,20 @@ function isDeindentLine(trimmed: string): boolean {
   if (/^(?:else|elseif)\b/i.test(lower)) return true;
   if (/^catch\b/i.test(lower)) return true;
 
+  // Conditional compilation
+  if (/^#end\s*if\b/i.test(lower)) return true;
+  if (/^#endif\b/i.test(lower)) return true;
+  if (/^#else\b/i.test(lower)) return true;
+  if (/^#elseif\b/i.test(lower)) return true;
+  if (/^#else\s+if\b/i.test(lower)) return true;
+
   return false;
+}
+
+function isAnonFunctionOpener(t: string): boolean {
+  return /\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(t)
+    && !/^(?:function|sub)\b/i.test(t)
+    && !t.startsWith("'");
 }
 
 function isReturnAloneInBlock(lines: string[], returnIdx: number): boolean {
@@ -990,7 +1022,7 @@ function isReturnAloneInBlock(lines: string[], returnIdx: number): boolean {
   while (openerIdx >= 0) {
     const t = lines[openerIdx].trim();
     if (t !== '' && !t.startsWith("'") && !/^rem\b/i.test(t)) {
-      if (isIndentLine(t)) break;
+      if (isIndentLine(t) || isAnonFunctionOpener(t)) break;
       return false;
     }
     openerIdx--;

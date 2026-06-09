@@ -511,4 +511,211 @@ describe('kopytko-formatter', () => {
       expect(result).to.not.include('context.ArrayUtils');
     });
   });
+
+  // ── blankLineBeforeReturn fixes ─────────────────────────────────────────
+
+  describe('blankLineBeforeReturn', () => {
+    it('not-alone: does not add blank line between a comment and the return below it', () => {
+      expect(format([
+        'SomeFunction(function () as Object',
+        '  someVariable = "hello"',
+        "  ' Some comment above return",
+        '  return { someVariable: someVariable }',
+        'end function)',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'SomeFunction(function () as Object',
+        '  someVariable = "hello"',
+        "  ' Some comment above return",
+        '  return { someVariable: someVariable }',
+        'end function)',
+      ].join('\n'));
+    });
+
+    it('not-alone: does not add blank line when return is the only statement in anonymous function body', () => {
+      expect(format([
+        'SomeFunction(function () as Boolean',
+        '  return true',
+        'end function)',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'SomeFunction(function () as Boolean',
+        '  return true',
+        'end function)',
+      ].join('\n'));
+    });
+
+    it('not-alone: adds blank line before return when not alone in anonymous function body', () => {
+      expect(format([
+        'SomeFunction(function () as Object',
+        '  someVariable = "hello"',
+        '  return { someVariable: someVariable }',
+        'end function)',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'SomeFunction(function () as Object',
+        '  someVariable = "hello"',
+        '',
+        '  return { someVariable: someVariable }',
+        'end function)',
+      ].join('\n'));
+    });
+  });
+
+  // ── Anonymous function indentation ────────────────────────────────────────
+
+  describe('anonymous function indentation', () => {
+    it('indents body when anonymous function opener has a trailing comment', () => {
+      expect(format([
+        "SomeFunction(function () as Object ' Some comment",
+        'someVariable = "hello"',
+        'return { someVariable: someVariable }',
+        'end function)',
+      ], { indentSize: 2 })).to.equal([
+        "SomeFunction(function () as Object ' Some comment",
+        '  someVariable = "hello"',
+        '  return { someVariable: someVariable }',
+        'end function)',
+      ].join('\n'));
+    });
+  });
+
+  // ── Conditional compilation indentation ──────────────────────────────────
+
+  describe('conditional compilation indentation', () => {
+    it('indents body of #if block', () => {
+      expect(format([
+        '#if someFlag',
+        "code = true",
+        '#end if',
+      ], { indentSize: 4 })).to.equal([
+        '#if someFlag',
+        '    code = true',
+        '#end if',
+      ].join('\n'));
+    });
+
+    it('handles #else if and #else at the same level as #if', () => {
+      expect(format([
+        '#if FeatureA',
+        "codeA = true",
+        '#else if FeatureB',
+        "codeB = true",
+        '#else',
+        "codeC = true",
+        '#end if',
+      ], { indentSize: 4 })).to.equal([
+        '#if FeatureA',
+        '    codeA = true',
+        '#else if FeatureB',
+        '    codeB = true',
+        '#else',
+        '    codeC = true',
+        '#end if',
+      ].join('\n'));
+    });
+
+    it('handles #elseif (compact form) at the same level as #if', () => {
+      expect(format([
+        '#if FeatureA',
+        "codeA = true",
+        '#elseif FeatureB',
+        "codeB = true",
+        '#end if',
+      ], { indentSize: 4 })).to.equal([
+        '#if FeatureA',
+        '    codeA = true',
+        '#elseif FeatureB',
+        '    codeB = true',
+        '#end if',
+      ].join('\n'));
+    });
+
+    it('handles #const outside and inside #if block', () => {
+      expect(format([
+        '#const FeatureA = true',
+        '#if FeatureA',
+        "code = true",
+        '#end if',
+      ], { indentSize: 4 })).to.equal([
+        '#const FeatureA = true',
+        '#if FeatureA',
+        '    code = true',
+        '#end if',
+      ].join('\n'));
+    });
+
+    it('handles #endif (compact form)', () => {
+      expect(format([
+        '#if someFlag',
+        "code = true",
+        '#endif',
+      ], { indentSize: 4 })).to.equal([
+        '#if someFlag',
+        '    code = true',
+        '#endif',
+      ].join('\n'));
+    });
+  });
+
+  // ── Increment / decrement operators ──────────────────────────────────────
+
+  describe('increment and decrement operators', () => {
+    it('does not split ++ into x + +', () => {
+      const result = format(
+        ['sub t()', '  x++', 'end sub'],
+        { indentSize: 2, spaceAroundOperators: true },
+      );
+      expect(result).to.include('x++');
+      expect(result).to.not.include('x + +');
+    });
+
+    it('does not split -- into x - -', () => {
+      const result = format(
+        ['sub t()', '  x--', 'end sub'],
+        { indentSize: 2, spaceAroundOperators: true },
+      );
+      expect(result).to.include('x--');
+      expect(result).to.not.include('x - -');
+    });
+
+    it('still spaces regular addition: a + b', () => {
+      const result = format(
+        ['sub t()', '  y = a+b', 'end sub'],
+        { indentSize: 2, spaceAroundOperators: true },
+      );
+      expect(result).to.include('a + b');
+    });
+  });
+
+  // ── Comments do not affect indentation ───────────────────────────────────
+
+  describe('commented-out code does not affect indentation', () => {
+    it('comment containing anonymous function pattern does not indent subsequent lines', () => {
+      expect(format([
+        'sub test()',
+        "  ' m.callback = function() as Object",
+        '  x = 1',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        "  ' m.callback = function() as Object",
+        '  x = 1',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('comment containing end function does not deindent subsequent lines', () => {
+      expect(format([
+        'sub test()',
+        '  x = 1',
+        "  ' end function",
+        '  y = 2',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  x = 1',
+        "  ' end function",
+        '  y = 2',
+        'end sub',
+      ].join('\n'));
+    });
+  });
 });

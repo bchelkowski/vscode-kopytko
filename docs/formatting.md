@@ -78,7 +78,14 @@ For stricter teams:
 |---|---|---|
 | `number` | Any positive integer | `4` |
 
-Spaces per indent level. Indent depth is tracked across `function`/`sub`, `if…then`, `for`, `while`, and `try…catch` blocks. `else`/`elseif`/`catch` deindent to the same level as their opening keyword. Single-line `if … then <statement>` does not increase indent.
+Spaces per indent level. Indent depth is tracked across:
+
+- `function`/`sub` — named and anonymous expressions (e.g. `callback = function() as Object`)
+- `if … then`, `else if`/`elseif`, `else` — `else`/`elseif` deindent to the same level as `if`; single-line `if … then <statement>` does not increase indent
+- `for`, `while`, `try…catch`
+- Conditional compilation — `#if`, `#else if`/`#elseif`, `#else` (same deindent-then-indent pattern), `#end if`/`#endif`
+
+Comment lines (starting with `'` or `rem`) are indented at the current depth but **never alter the indent depth** — commented-out `function`/`end function` bodies and `#if` blocks have no side-effects on indentation.
 
 ```brightscript
 ' indentSize: 2
@@ -94,6 +101,31 @@ function main()
         print "hello"
     end if
 end function
+```
+
+Conditional compilation example (`indentSize: 4`):
+
+```brightscript
+#const FeatureA = true
+#const FeatureB = false
+
+#if FeatureA
+    ' code for Feature A
+#else if FeatureB
+    ' code for Feature B
+#else
+    ' production code
+#end if
+```
+
+Anonymous function expression body is indented correctly even with a trailing inline comment on the opener:
+
+```brightscript
+SomeFunction(function () as Object ' Some comment
+    someVariable = "hello"
+
+    return { someVariable: someVariable }
+end function)
 ```
 
 ---
@@ -845,9 +877,11 @@ Maximum number of keys before forcing an associative array to multi-line. For ex
 |---|---|---|
 | `boolean` | `true`, `false` | `true` |
 
-Enforce spaces around binary operators. Applies to arithmetic (`+`, `-`, `*`, `/`, `\`), comparison (`<>`, `<=`, `>=`, `<<`, `>>`), and logical operators.
+Enforce spaces around binary operators. Applies to arithmetic (`+`, `*`, `/`, `\`), comparison (`<>`, `<=`, `>=`, `<<`, `>>`), and logical operators.
 
 Compound assignment operators (`+=`, `-=`, `*=`, `/=`, `\=`) are treated as single tokens — the operator and `=` are never split apart.
+
+Increment (`++`) and decrement (`--`) operators are also treated as atomic tokens and are never split.
 
 ```brightscript
 ' true:
@@ -856,12 +890,16 @@ result = a+b*c
 total = count<>0
 flags = bits<<2
 url+="/"
+x++
+x--
 
 ' After:
 result = a + b * c
 total = count <> 0
 flags = bits << 2
 url += "/"
+x++
+x--
 
 ' false — preserves existing spacing as-is.
 ```
@@ -1152,7 +1190,9 @@ Controls whether a blank line is inserted before `return` statements.
 
 - **`false`** — no blank line is inserted (default).
 - **`"always"`** — always insert a blank line before every `return`, regardless of context.
-- **`"not-alone"`** — insert a blank line only when the `return` is **not** the only statement in its block. When a block contains nothing but a `return`, no blank line is added.
+- **`"not-alone"`** — insert a blank line only when the `return` is **not** the only statement in its block. When a block contains nothing but a `return` (including anonymous function bodies), no blank line is added.
+
+In both `"always"` and `"not-alone"` modes, **no blank line is inserted between a comment and the `return` directly below it** — the comment is considered part of the return statement. Any separation should be placed before the comment (e.g. via `blankLineBeforeComment`).
 
 ```brightscript
 ' "always" — blank line before every return:
@@ -1178,6 +1218,19 @@ end function
 function getDefault() as string
     return "unknown"
 end function
+
+' return is alone in anonymous function body — no blank line:
+SomeFunction(function () as Boolean
+    return true
+end function)
+
+' comment above return — blank line goes before the comment, not before the return:
+SomeFunction(function () as Object
+    someVariable = "hello"
+
+    ' Some comment above return
+    return { someVariable: someVariable }
+end function)
 
 ' false — no blank line inserted:
 function getName() as string
