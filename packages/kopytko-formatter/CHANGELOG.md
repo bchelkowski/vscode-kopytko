@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.3] - 2026-06-09
+
+### Fixed
+- Fix indentation and spacing edge cases
+
 ## [0.1.2] - 2026-06-09
 
 - Release 0.1.2
