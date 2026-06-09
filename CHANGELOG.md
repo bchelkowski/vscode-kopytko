@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.3] - 2026-06-09
+
+### Fixed
+- Extension is not working in the VS Code
+
 ## [0.1.2] - 2026-06-09
 
 - Release 0.1.2
