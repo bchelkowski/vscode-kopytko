@@ -1,6 +1,10 @@
 # Changelog
 
 
+## [0.1.2] - 2026-06-09
+
+- Release 0.1.2
+
 ## [0.1.1] - 2026-06-09
 
 - 8d65859 chore: use published kopytko-formatter@0.1.2 from npm
