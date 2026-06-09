@@ -6,7 +6,7 @@
   "author": "bchelkowski",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bchelkowski/vscode-kopytko",
+    "url": "git+https://github.com/bchelkowski/vscode-kopytko.git",
     "directory": "packages/kopytko-formatter"
   },
   "keywords": [
@@ -23,7 +23,7 @@
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "bin": {
-    "kopytko-format": "./dist/bin/kopytko-format.js"
+    "kopytko-format": "dist/bin/kopytko-format.js"
   },
   "files": [
     "dist",
