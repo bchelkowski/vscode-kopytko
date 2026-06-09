@@ -1,5 +1,9 @@
 # Changelog
 
+
+## [0.1.1] - 2026-06-09
+
+- Release 0.1.1
 All notable changes to kopytko-formatter will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
