@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.4] - 2026-06-09
+
+### Fixed
+- Files not validated on initization
+
 ## [0.1.3] - 2026-06-09
 
 ### Fixed
