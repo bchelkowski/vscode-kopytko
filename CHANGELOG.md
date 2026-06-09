@@ -1,5 +1,11 @@
 # Changelog
 
+
+## [0.1.1] - 2026-06-09
+
+- 8d65859 chore: use published kopytko-formatter@0.1.2 from npm
+- d8e2443 feat: BrightScript language support for VS Code with standalone formatter
+- 9a66604 feat: initial release
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
