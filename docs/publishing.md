@@ -29,7 +29,7 @@ npm publishing uses **OIDC provenance** — no token needed. Just link your npm 
 4. The workflow will:
    - Run tests and build
    - Bump `packages/kopytko-formatter/package.json` version
-   - Generate and prepend a changelog entry
+   - Generate and prepend a changelog entry (from `feat(kopytko-formatter):` / `fix(kopytko-formatter):` commits)
    - Commit, tag as `kopytko-formatter-v{version}`, push
    - Publish to npm
    - Create a GitHub Release
@@ -40,9 +40,9 @@ npm publishing uses **OIDC provenance** — no token needed. Just link your npm 
 2. Click **Run workflow**
 3. Select bump type: `patch`, `minor`, or `major`
 4. The workflow will:
-   - Run tests and compile
+   - Bundle with esbuild and run tests
    - Bump root `package.json` version
-   - Generate and prepend a changelog entry
+   - Generate and prepend a changelog entry (from `feat(vscode-kopytko):` / `fix(vscode-kopytko):` commits)
    - Commit, tag as `v{version}`, push
    - Package and publish to VS Code Marketplace
    - Create a GitHub Release with the `.vsix` attached
@@ -79,19 +79,6 @@ npm publish --access public
 npm view kopytko-formatter
 ```
 
-### After first npm publish: update the extension dependency
-
-Once `kopytko-formatter` is on npm, switch the extension from `file:` to a versioned dependency:
-
-```jsonc
-// package.json (root)
-"dependencies": {
-  "kopytko-formatter": "^0.1.0",  // ← replace "file:packages/kopytko-formatter"
-}
-```
-
-This eliminates the Windows WSL junction workaround (`scripts/postinstall-windows-wsl.sh`).
-
 ---
 
 ## 2. Publish the VS Code extension (manual)
@@ -110,14 +97,13 @@ This eliminates the Windows WSL junction workaround (`scripts/postinstall-window
 ```bash
 # 1. Verify everything passes
 npm install
-npm run compile
 npm test
 
 # 2. Login to vsce (once — uses the PAT)
 npx vsce login bchelkowski
 # Paste your Personal Access Token when prompted
 
-# 3. Package (creates .vsix file)
+# 3. Package (creates .vsix — runs npm run bundle via vscode:prepublish automatically)
 npx vsce package
 
 # 4. Verify the VSIX locally (optional)

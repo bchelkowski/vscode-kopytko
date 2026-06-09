@@ -18,7 +18,10 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run bundle",
+    "bundle": "npm run bundle:extension && npm run bundle:server",
+    "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:@dazn/kopytko-packager --platform=node --format=cjs --sourcemap",
+    "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
@@ -43,6 +46,7 @@
     "@types/vscode": "^1.120.0",
     "@vscode/vsce": "^3.9.2",
     "chai": "^6.2.2",
+    "esbuild": "^0.28.0",
     "eslint": "^10.4.1",
     "mocha": "^11.3.0",
     "nyc": "^18.0.0",

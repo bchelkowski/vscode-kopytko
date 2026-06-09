@@ -50,8 +50,6 @@ src/
         ├── workspaceFunctionIndex.ts  Built at startup, updated incrementally
         ├── fsWrapper.ts            Thin fs wrapper (enables Sinon stubbing in tests)
         └── textUtils.ts            Shared helpers (getWord, escapeRegex, stripStringLiterals)
-scripts/
-└── postinstall-windows-wsl.sh      Fixes kopytko-formatter symlink on Windows + WSL
 test/                               Mirrors src/server/ structure; Mocha + Chai + Sinon
 docs/                               Feature docs (see Documentation section below)
 ```
@@ -62,10 +60,13 @@ docs/                               Feature docs (see Documentation section belo
 
 ```bash
 npm install              # install dependencies
-npm run compile          # compile extension + server
-npm test                 # run all tests (Mocha)
+npm run compile          # compile extension + server (tsc — for debug/dev mode)
+npm run bundle           # bundle for production (esbuild — used by vsce package)
+npm test                 # run all tests (Mocha + tsx, no compilation needed)
 npm run lint             # ESLint
 ```
+
+`compile` outputs individual JS files used by the Extension Development Host (F5 in VS Code). `bundle` produces two self-contained files (`out/extension.js`, `out/server/server.js`) used in the published VSIX. `vscode:prepublish` calls `bundle` automatically when running `vsce package` or `vsce publish`.
 
 ### kopytko-formatter package
 
@@ -89,7 +90,7 @@ Config resolution (priority order): `--config <file>` → `kopytko-formatter.jso
 
 ### Windows + WSL
 
-After `npm install`, run `bash scripts/postinstall-windows-wsl.sh` to fix the `kopytko-formatter` symlink for Windows-native Node.js (used by VS Code).
+No extra steps needed. `kopytko-formatter` is installed from npm as a regular package (no symlink).
 
 ---
 
@@ -145,6 +146,15 @@ All new features must follow these patterns:
 ## Commit conventions
 
 **No co-author lines (`Co-authored-by:`) in commit messages.** Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
+
+**Changelog scopes** — the release workflows generate changelogs by filtering commit subjects. Use the appropriate scope so your commit appears in the right changelog:
+
+| Scope | Appears in |
+|---|---|
+| `feat(vscode-kopytko):` / `fix(vscode-kopytko):` / `refactor(vscode-kopytko):` | Extension CHANGELOG |
+| `feat(kopytko-formatter):` / `fix(kopytko-formatter):` / `refactor(kopytko-formatter):` | Formatter CHANGELOG |
+| Breaking change: add `!` after the scope — e.g. `feat(vscode-kopytko)!:` | `### Breaking Changes` section |
+| `chore:`, `test:`, unscoped commits | Not included in any changelog |
 
 ---
 

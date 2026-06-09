@@ -33,11 +33,6 @@ npm install
 npm run compile
 ```
 
-> **Windows + WSL users:** After `npm install`, the `kopytko-formatter` symlink in `node_modules/` won't work for Windows-native Node.js (used by VS Code). Run the fix script:
-> ```bash
-> bash scripts/postinstall-windows-wsl.sh
-> ```
-
 ### 2. Open the project in VS Code
 
 ```bash
