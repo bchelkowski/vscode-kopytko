@@ -53,6 +53,16 @@ describe('typeInference', () => {
       expect(map.get('node')).to.equal('roSGNode');
     });
 
+    it('infers typed parameters that also carry a default value', () => {
+      const map = inferTypes(`function foo(arr = invalid as roArray) as Void\nend function`);
+      expect(map.get('arr')).to.equal('roArray');
+    });
+
+    it('infers typed parameters with a numeric default value', () => {
+      const map = inferTypes(`sub bar(count = 0 as Integer, node = invalid as roSGNode)\nend sub`);
+      expect(map.get('node')).to.equal('roSGNode');
+    });
+
     it('CreateObject binding wins over typed param binding for same name', () => {
       const src = [
         `sub doWork(arr as roList)`,

@@ -29,11 +29,11 @@ const CREATE_OBJECT_PATTERN =
   /(?:^[ \t]*|\bm\.)(\w+)\s*=\s*CreateObject\s*\(\s*["']([a-zA-Z]+)["']/gim;
 
 /**
- * Pattern: `sub|function name(param as roXxx, ...)` — typed parameters.
- * Only the first match per parameter is captured.
+ * Pattern: `param as roXxx` or `param = defaultValue as roXxx` — typed parameters.
+ * The optional `= defaultValue` group handles parameters that carry a default value.
  */
 const TYPED_PARAM_PATTERN =
-  /(\w+)\s+as\s+(ro[A-Za-z]+)/gi;
+  /(\w+)(?:\s*=[^,)]*?)?\s+as\s+(ro[A-Za-z]+)/gi;
 
 /**
  * Scans the entire document text and returns a TypeMap of all variable names
@@ -89,6 +89,24 @@ export function getReceiverName(line: string, charPos: number): string | null {
   if (!identMatch) return null;
 
   return identMatch[1];
+}
+
+/**
+ * Detects an inline `CreateObject("roXxx").` pattern and returns the component
+ * name directly. Returns undefined if the cursor is not after such a pattern.
+ */
+export function getInlineCreateObjectType(line: string, charPos: number): string | undefined {
+  // Walk back past any word characters (cursor may be inside a method name)
+  let pos = charPos;
+  while (pos > 0 && /\w/.test(line[pos - 1])) pos--;
+
+  // Must have a dot before the word
+  if (pos <= 0 || line[pos - 1] !== '.') return undefined;
+
+  // Check if the text before the dot ends with CreateObject("...")
+  const beforeDot = line.substring(0, pos - 1);
+  const match = /CreateObject\s*\(\s*"([a-zA-Z]+)"\s*(?:,[^)]*?)?\s*\)\s*$/i.exec(beforeDot);
+  return match ? match[1] : undefined;
 }
 
 /**

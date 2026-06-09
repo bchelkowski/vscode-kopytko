@@ -2,26 +2,39 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "BrightScript",
   "scopeName": "source.brightscript",
-  "fileTypes": ["brs", "bs"],
+  "fileTypes": ["brs"],
   "patterns": [
-    { "include": "#comment" },
+    { "include": "#conditional-compilation" },
     { "include": "#kopytko-import" },
+    { "include": "#kopytko-mock" },
+    { "include": "#comment" },
     { "include": "#string" },
     { "include": "#number" },
+    { "include": "#as-type" },
     { "include": "#keyword" },
+    { "include": "#print-shorthand" },
     { "include": "#storage-type" },
-    { "include": "#boolean-literal" },
+    { "include": "#language-constant" },
     { "include": "#builtin-function" },
     { "include": "#function-declaration" },
+    { "include": "#m-variable" },
+    { "include": "#function-call" },
+    { "include": "#statement-separator" },
     { "include": "#operator" },
     { "include": "#identifier" }
   ],
   "repository": {
+    "conditional-compilation": {
+      "match": "(?i)#\\s*(const|elseif|else(?:\\s+if)?|end(?:\\s+if)?|endif|if|error)\\b",
+      "captures": {
+        "0": { "name": "keyword.preprocessor.brightscript" }
+      }
+    },
     "comment": {
       "patterns": [
         {
           "name": "comment.line.apostrophe.brightscript",
-          "match": "'[^@].*$"
+          "match": "'(?!\\s*@(?:import|mock)\\b).*$"
         },
         {
           "name": "comment.line.rem.brightscript",
@@ -31,12 +44,24 @@
     },
     "kopytko-import": {
       "name": "meta.annotation.kopytko.import",
-      "match": "('\\s*@import\\s+)(\\S+)(\\s+from\\s+)?(\\S+)?",
+      "match": "'(\\s*)(@import)(\\s+)(\\S+?)(?:(\\s+)(from)(\\s+)(\\S+))?\\s*$",
       "captures": {
-        "1": { "name": "keyword.other.kopytko.import" },
-        "2": { "name": "string.unquoted.kopytko.import.path" },
-        "3": { "name": "keyword.other.kopytko.from" },
-        "4": { "name": "string.unquoted.kopytko.import.module" }
+        "1": { "name": "punctuation.definition.annotation.brightscript" },
+        "2": { "name": "keyword.control.import.brightscript" },
+        "4": { "name": "string.unquoted.kopytko.import.path" },
+        "6": { "name": "keyword.control.import.brightscript" },
+        "8": { "name": "entity.name.module.kopytko" }
+      }
+    },
+    "kopytko-mock": {
+      "name": "meta.annotation.kopytko.mock",
+      "match": "'(\\s*)(@mock)(\\s+)(\\S+?)(?:(\\s+)(from)(\\s+)(\\S+))?\\s*$",
+      "captures": {
+        "1": { "name": "punctuation.definition.annotation.brightscript" },
+        "2": { "name": "keyword.control.mock.brightscript" },
+        "4": { "name": "string.unquoted.kopytko.import.path" },
+        "6": { "name": "keyword.control.mock.brightscript" },
+        "8": { "name": "entity.name.module.kopytko" }
       }
     },
     "string": {
@@ -54,6 +79,10 @@
       "patterns": [
         {
           "name": "constant.numeric.hex.brightscript",
+          "match": "(?i)&h[0-9a-f]+&?"
+        },
+        {
+          "name": "constant.numeric.hex.brightscript",
           "match": "\\b0x[0-9A-Fa-f]+\\b"
         },
         {
@@ -68,19 +97,26 @@
     },
     "keyword": {
       "name": "keyword.control.brightscript",
-      "match": "(?i)\\b(and|as|catch|dim|each|else|elseif|end|endif|endfor|endsub|endfunction|endtry|endwhile|exit|exitwhile|exitfor|false|for|function|goto|if|in|invalid|let|mod|next|not|objfun|or|return|rnd|run|step|stop|sub|then|throw|to|true|try|type|while)\\b"
+      "match": "(?i)\\b(and|as|catch|dim|each|else|elseif|end|endif|endfor|endsub|endfunction|endtry|endwhile|eval|exit|exitwhile|exitfor|for|function|goto|if|in|let|mod|next|not|or|print|rem|return|run|step|stop|sub|tab|then|throw|to|try|type|while)\\b"
+    },
+    "as-type": {
+      "match": "(?i)\\b(as)\\s+(boolean|double|dynamic|float|function|integer|interface|longinteger|object|string|void)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.brightscript" },
+        "2": { "name": "storage.type.brightscript" }
+      }
     },
     "storage-type": {
       "name": "storage.type.brightscript",
-      "match": "(?i)\\b(boolean|double|dynamic|float|function|integer|longinteger|object|string|void)\\b"
+      "match": "(?i)\\b(boolean|double|dynamic|float|function|integer|interface|longinteger|object|string|void)\\b"
     },
-    "boolean-literal": {
+    "language-constant": {
       "name": "constant.language.brightscript",
-      "match": "(?i)\\b(true|false|invalid)\\b"
+      "match": "(?i)\\b(true|false|invalid|LINE_NUM)\\b"
     },
     "builtin-function": {
       "name": "support.function.brightscript",
-      "match": "(?i)\\b(Abs|Asc|Atn|Box|Chr|Cos|CreateObject|CInt|CDbl|CFloat|CLng|CSng|CStr|CType|FindMemberFunction|FormatJson|GetGlobalAA|GetInterface|GetLastRunCompileError|GetLastRunRuntimeError|Instr|InstrRev|Int|IsBoolean|IsDouble|IsDefined|IsFloat|IsFunction|IsInt|IsInvalid|IsLongInteger|IsList|IsObject|IsString|LCase|Left|Len|Log|Mid|Mktime|ParseJson|ParseXML|RebootSystem|Right|Rnd|RunGarbageCollector|SGN|SIN|Sleep|Sqr|Str|StrI|StrToI|String|StringI|Substitute|Tan|Type|UCase|Unbox|UpTime|Wait|WriteAsciiFile|val|print)\\b"
+      "match": "(?i)\\b(Abs|Asc|Atn|Box|CBool|CDbl|CFloat|CInt|CLng|CObj|CStr|CSng|Chr|CopyFile|CreateDirectory|CreateObject|DeleteDirectory|DeleteFile|Eval|Exp|FindMemberFunction|Fix|FormatDrive|FormatJson|GetGlobalAA|GetInterface|GetLastRunCompileError|GetLastRunRuntimeError|Instr|InstrRev|Int|IsArray|IsAssociativeArray|IsBoolean|IsDouble|IsDefined|IsFloat|IsFunction|IsInt|IsInvalid|IsLongInteger|IsList|IsNaN|IsNode|IsObject|IsString|LCase|Left|Len|ListDir|Log|MatchFiles|Mid|Mktime|MoveFile|ObjFun|ParseJson|ParseXML|Pos|ReadAsciiFile|RebootSystem|Right|Rnd|Run|RunGarbageCollector|Sgn|Sin|Sleep|Sqr|Str|StrI|StrToI|String|StringI|Substitute|Tab|Tan|Tr|Type|UCase|Unbox|UpTime|Val|Wait|WriteAsciiFile)\\b"
     },
     "function-declaration": {
       "name": "meta.function.brightscript",
@@ -90,9 +126,27 @@
         "2": { "name": "entity.name.function.brightscript" }
       }
     },
+    "m-variable": {
+      "name": "storage.type.brightscript",
+      "match": "(?<![.\\w])m(?=\\.|\\b)(?![a-zA-Z0-9_])"
+    },
+    "function-call": {
+      "match": "(?<![.])\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "captures": {
+        "1": { "name": "support.function.brightscript" }
+      }
+    },
+    "print-shorthand": {
+      "name": "keyword.control.brightscript",
+      "match": "\\?(?![.@\\[(])"
+    },
+    "statement-separator": {
+      "name": "punctuation.separator.statement.brightscript",
+      "match": ":"
+    },
     "operator": {
       "name": "keyword.operator.brightscript",
-      "match": "[+\\-*/<>=&@]|<>|<=|>="
+      "match": "<<=|>>=|\\?\\.|\\?@|\\?\\[|\\?\\(|\\+=|-=|\\*=|\\/=|\\\\=|\\+\\+|--|<<|>>|<>|<=|>=|[+\\-*\\/\\\\<>=^@]"
     },
     "identifier": {
       "name": "variable.other.brightscript",

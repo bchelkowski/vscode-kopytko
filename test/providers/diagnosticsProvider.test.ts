@@ -1,10 +1,11 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
-import * as fsWrapper from '../../src/server/utils/fsWrapper';
+import fsWrapper from '../../src/server/utils/fsWrapper';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import { BrightScriptDiagnosticsProvider } from '../../src/server/providers/diagnosticsProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
+import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 function makeDocument(content: string, uri = 'file:///workspace/app/components/Test.brs'): TextDocument {
   return TextDocument.create(uri, 'brightscript', 1, content);
@@ -27,6 +28,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
 
   afterEach(() => {
     sinon.restore();
+    invalidateAllCaches();
   });
 
   it('returns no diagnostics for a file with no @import annotations', async () => {
@@ -87,5 +89,1355 @@ describe('BrightScriptDiagnosticsProvider', () => {
     expect(importDiag).to.not.be.undefined;
     // @import is on line index 2 (0-based)
     expect(importDiag!.range.start.line).to.equal(2);
+  });
+
+  // ── Duplicate import diagnostics ─────────────────────────────────────────
+
+  describe('duplicate import diagnostics', () => {
+    it('produces no diagnostic when an import appears exactly once', async () => {
+      const doc = makeDocument("' @import /components/utils.brs\nsub init()\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/duplicate')).to.be.empty;
+    });
+
+    it('produces an error on the second occurrence of the same import', async () => {
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        "' @import /utils.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const dupes = diags.filter((d) => d.code === 'import/duplicate');
+      expect(dupes).to.have.length(1);
+      expect(dupes[0].severity).to.equal(DiagnosticSeverity.Error);
+    });
+
+    it('attaches the duplicate diagnostic to the second occurrence (line index 1)', async () => {
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        "' @import /utils.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const dupe = diags.find((d) => d.code === 'import/duplicate')!;
+      expect(dupe.range.start.line).to.equal(1);
+    });
+
+    it('includes the path in the duplicate diagnostic message', async () => {
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        "' @import /utils.brs",
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const dupe = diags.find((d) => d.code === 'import/duplicate')!;
+      expect(dupe.message).to.include('/utils.brs');
+    });
+
+    it('treats same path from different packages as separate imports (no duplicate)', async () => {
+      const doc = makeDocument([
+        "' @import /utils.brs from @dazn/pkg-a",
+        "' @import /utils.brs from @dazn/pkg-b",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/duplicate')).to.be.empty;
+    });
+
+    it('detects duplicate external imports (path + package both match)', async () => {
+      const doc = makeDocument([
+        "' @import /file.brs from @dazn/kopytko-framework",
+        "' @import /file.brs from @dazn/kopytko-framework",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const dupes = diags.filter((d) => d.code === 'import/duplicate');
+      expect(dupes).to.have.length(1);
+      expect(dupes[0].message).to.include('@dazn/kopytko-framework');
+    });
+
+    it('does not run further checks on the duplicate line', async () => {
+      // The duplicate is unresolved too — but we should only get import/duplicate, not both
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        "' @import /missing.brs",
+        "' @import /missing.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      // First line → import/unresolved; second line → import/duplicate only
+      const unresolvedLines = diags
+        .filter((d) => d.code === 'import/unresolved')
+        .map((d) => d.range.start.line);
+      expect(unresolvedLines).to.deep.equal([0]);
+      expect(diags.filter((d) => d.code === 'import/duplicate')).to.have.length(1);
+    });
+  });
+
+  // ── Unused import diagnostics ─────────────────────────────────────────────
+
+  describe('unused import diagnostics', () => {
+    let readFileStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readFileStub = sinon.stub(fsWrapper, 'readFileSync');
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('produces no diagnostic when all exported functions are used', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn(x as Integer) as Integer\n  return x\nend function');
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  result = helperFn(42)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('warns when import resolves but none of its functions are referenced', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn(x as Integer) as Integer\n  return x\nend function');
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  print "no helper call here"',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const unused = diags.filter((d) => d.code === 'import/unused');
+      expect(unused).to.have.length(1);
+      expect(unused[0].severity).to.equal(DiagnosticSeverity.Warning);
+    });
+
+    it('attaches the unused diagnostic to the import line', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+
+      const doc = makeDocument([
+        'sub init()',
+        'end sub',
+        "' @import /utils.brs",
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const unused = diags.find((d) => d.code === 'import/unused')!;
+      expect(unused.range.start.line).to.equal(2);
+    });
+
+    it('includes the import path in the unused diagnostic message', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+
+      const doc = makeDocument("' @import /utils.brs\nsub init()\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      const unused = diags.find((d) => d.code === 'import/unused')!;
+      expect(unused.message).to.include('/utils.brs');
+    });
+
+    it('function reference check is case-insensitive', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function HelperFn() as Void\nend function');
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  helperfn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('does not count a mention in a comment line as a reference', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        "' TODO: call helperFn someday",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('does not count a mention inside a string literal as a reference', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  name = "helperFn"',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('uses word boundaries — partial name match does not count as used', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function get() as Dynamic\nend function');
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  result = getProperty(m.data)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      // "get" appears as a prefix of "getProperty" — should NOT count as a reference
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('considers import used if ANY of the imported functions is referenced', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8').returns([
+        'function fnA() as Void',
+        'end function',
+        'function fnB() as Void',
+        'end function',
+      ].join('\n'));
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  fnB()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('produces no diagnostic when imported file has no function definitions', async () => {
+      fsExistsStub.withArgs('/workspace/app/constants.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/constants.brs', 'utf-8')
+        .returns("' just a constant file\nMAX_RETRIES = 3");
+
+      const doc = makeDocument("' @import /constants.brs\nsub init()\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('does not check for unused when import is unresolved', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /missing.brs\nsub init()\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+      expect(diags.some((d) => d.code === 'import/unresolved')).to.be.true;
+    });
+
+    it('silently skips unused check when the resolved file cannot be read', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8').throws(new Error('EACCES'));
+
+      const doc = makeDocument("' @import /utils.brs\nsub init()\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+  });
+
+  // ── Sibling pattern scope expansion ──────────────────────────────────────
+
+  describe('sibling pattern scope for unused import check', () => {
+    const COMPONENT_URI = 'file:///workspace/app/components/Foo.component.brs';
+    const SIBLING_PATTERNS = [['*.component.brs', '*.template.brs']];
+
+    function makeComponentDoc(content: string): TextDocument {
+      return TextDocument.create(COMPONENT_URI, 'brightscript', 1, content);
+    }
+
+    let readFileStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readFileStub = sinon.stub(fsWrapper, 'readFileSync');
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('suppresses import/unused when sibling file uses the imported function', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/components/Foo.template.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+      readFileStub.withArgs('/workspace/app/components/Foo.template.brs', 'utf-8')
+        .returns('sub init()\n  helperFn()\nend sub');
+
+      const doc = makeComponentDoc([
+        "' @import /utils.brs",
+        'sub init()',
+        '  print "component side"',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('still flags import/unused when neither current nor sibling file uses it', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/components/Foo.template.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+      readFileStub.withArgs('/workspace/app/components/Foo.template.brs', 'utf-8')
+        .returns('sub init()\n  print "nothing"\nend sub');
+
+      const doc = makeComponentDoc([
+        "' @import /utils.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('works when sibling file does not exist on disk', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/components/Foo.template.brs').returns(false);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+
+      const doc = makeComponentDoc([
+        "' @import /utils.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      // Sibling doesn't exist → only current file checked → unused
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('handles view.brs / template.brs pair', async () => {
+      const VIEW_URI = 'file:///workspace/app/components/Bar.view.brs';
+      const patterns = [['*.view.brs', '*.template.brs']];
+
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/components/Bar.template.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function renderHelper() as Void\nend function');
+      readFileStub.withArgs('/workspace/app/components/Bar.template.brs', 'utf-8')
+        .returns('sub init()\n  renderHelper()\nend sub');
+
+      const doc = TextDocument.create(VIEW_URI, 'brightscript', 1, [
+        "' @import /utils.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], patterns);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('does not suppress when file does not match any pattern group', async () => {
+      // Use a file that does not match *.component.brs or *.template.brs
+      const OTHER_URI = 'file:///workspace/app/components/Foo.helper.brs';
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+
+      const doc = TextDocument.create(OTHER_URI, 'brightscript', 1, [
+        "' @import /utils.brs",
+        'sub init()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('silently skips an unreadable sibling and still checks the current file', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/components/Foo.template.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+      readFileStub.withArgs('/workspace/app/components/Foo.template.brs', 'utf-8')
+        .throws(new Error('EACCES'));
+
+      const doc = makeComponentDoc("' @import /utils.brs\nsub init()\nend sub");
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      // Sibling unreadable, current file has no call → still flagged
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+
+    it('current file usage still suppresses even when sibling has no match', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/components/Foo.template.brs').returns(true);
+      readFileStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+      readFileStub.withArgs('/workspace/app/components/Foo.template.brs', 'utf-8')
+        .returns('sub init()\nend sub');
+
+      const doc = makeComponentDoc([
+        "' @import /utils.brs",
+        'sub init()',
+        '  helperFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+  });
+
+  // ── Test sibling scope: unused import check ───────────────────────────────
+
+  describe('test sibling scope for unused import check', () => {
+    const MAIN_TEST_URI = 'file:///workspace/app/components/_tests/Foo.test.brs';
+    const SPLIT_TEST_PATH = '/workspace/app/components/_tests/Foo_Bar.test.brs';
+
+    let readStub: sinon.SinonStub;
+    let readdirStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readStub = sinon.stub(fsWrapper, 'readFileSync');
+      readdirStub = sinon.stub(fsWrapper, 'readdirSync');
+    });
+
+    it('suppresses import/unused when sibling test file uses the imported function', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+      // Sibling test file calls helperFn
+      readdirStub.withArgs('/workspace/app/components/_tests').returns(['Foo.test.brs', 'Foo_Bar.test.brs']);
+      fsExistsStub.withArgs(SPLIT_TEST_PATH).returns(true);
+      readStub.withArgs(SPLIT_TEST_PATH, 'utf-8')
+        .returns('function TestSuite__Foo_Bar() as Object\n  helperFn()\nend function');
+
+      const doc = TextDocument.create(MAIN_TEST_URI, 'brightscript', 1, [
+        "' @import /utils.brs",
+        'function TestSuite__Foo() as Object',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], []);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('still flags import/unused when no sibling test file uses it', async () => {
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      readStub.withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function helperFn() as Void\nend function');
+      readdirStub.withArgs('/workspace/app/components/_tests').returns(['Foo.test.brs', 'Foo_Bar.test.brs']);
+      fsExistsStub.withArgs(SPLIT_TEST_PATH).returns(true);
+      readStub.withArgs(SPLIT_TEST_PATH, 'utf-8')
+        .returns('function TestSuite__Foo_Bar() as Object\nend function');
+
+      const doc = TextDocument.create(MAIN_TEST_URI, 'brightscript', 1, [
+        "' @import /utils.brs",
+        'function TestSuite__Foo() as Object',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], []);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
+  });
+
+  // ── Sibling scope: undefined function call check ─────────────────────────
+
+  describe('sibling pattern scope for undefined function check', () => {
+    const TEMPLATE_URI = 'file:///workspace/app/components/Foo.template.brs';
+    const SIBLING_PATTERNS = [['*.component.brs', '*.template.brs']];
+
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('does not flag a function defined in the sibling component file', async () => {
+      const componentText = 'function sharedHelper() as Void\nend function';
+      fsExistsStub.withArgs('/workspace/app/components/Foo.component.brs').returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs('/workspace/app/components/Foo.component.brs', 'utf-8').returns(componentText);
+
+      const doc = TextDocument.create(TEMPLATE_URI, 'brightscript', 1, [
+        'sub init()',
+        '  sharedHelper()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag a function imported by the sibling component file', async () => {
+      const componentText = "' @import /utils.brs\nsub componentInit()\nend sub";
+      const utilsText = 'function helperFn() as Void\nend function';
+      fsExistsStub.withArgs('/workspace/app/components/Foo.component.brs').returns(true);
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs('/workspace/app/components/Foo.component.brs', 'utf-8').returns(componentText)
+        .withArgs('/workspace/app/utils.brs', 'utf-8').returns(utilsText);
+
+      const doc = TextDocument.create(TEMPLATE_URI, 'brightscript', 1, [
+        'sub init()',
+        '  helperFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('flags the function when no sibling patterns are configured', async () => {
+      const doc = TextDocument.create(TEMPLATE_URI, 'brightscript', 1, [
+        'sub init()',
+        '  helperFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], []);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+      expect(undef[0].message).to.include('helperFn');
+    });
+
+    it('flags the function when the file does not match any sibling group', async () => {
+      const OTHER_URI = 'file:///workspace/app/components/Foo.helper.brs';
+      const doc = TextDocument.create(OTHER_URI, 'brightscript', 1, [
+        'sub init()',
+        '  helperFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+    });
+
+    it('skips an unreadable sibling gracefully', async () => {
+      fsExistsStub.withArgs('/workspace/app/components/Foo.component.brs').returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs('/workspace/app/components/Foo.component.brs', 'utf-8').throws(new Error('EACCES'));
+
+      const doc = TextDocument.create(TEMPLATE_URI, 'brightscript', 1, [
+        'sub init()',
+        '  helperFn()',
+        'end sub',
+      ].join('\n'));
+      // Sibling unreadable → falls back to current-file-only scope → flags as undefined
+      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+    });
+  });
+
+  // ── generatedPaths ────────────────────────────────────────────────────────
+
+  describe('generatedPaths configuration', () => {
+    it('shows Information (not Warning) for an unresolved import matching a generated pattern', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /generated/AutoComponent.brs");
+      const diags = await provider.provideDiagnostics(doc, ['/generated/**']);
+
+      expect(diags).to.have.length(1);
+      expect(diags[0].severity).to.equal(DiagnosticSeverity.Information);
+      expect(diags[0].code).to.equal('import/build-generated');
+    });
+
+    it('includes the matched pattern in the Information message', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /generated/AutoComponent.brs");
+      const diags = await provider.provideDiagnostics(doc, ['/generated/**']);
+
+      expect(diags[0].message).to.include('/generated/**');
+      expect(diags[0].message).to.include('/generated/AutoComponent.brs');
+    });
+
+    it('still shows Warning for unresolved imports that do not match any pattern', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /missing/RealFile.brs");
+      const diags = await provider.provideDiagnostics(doc, ['/generated/**']);
+
+      expect(diags[0].severity).to.equal(DiagnosticSeverity.Warning);
+      expect(diags[0].code).to.equal('import/unresolved');
+    });
+
+    it('shows no diagnostic when a generated import resolves (file was created by earlier build step)', async () => {
+      fsExistsStub.withArgs(sinon.match('/workspace/app/generated/AutoComponent.brs')).returns(true);
+      const doc = makeDocument("' @import /generated/AutoComponent.brs");
+      const diags = await provider.provideDiagnostics(doc, ['/generated/**']);
+
+      expect(diags.filter((d) => d.code === 'import/build-generated')).to.be.empty;
+      expect(diags.filter((d) => d.code === 'import/unresolved')).to.be.empty;
+    });
+
+    it('matches using ** wildcard spanning multiple path segments', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /deep/nested/auto/Foo.brs");
+      const diags = await provider.provideDiagnostics(doc, ['**/auto/**']);
+
+      expect(diags[0].code).to.equal('import/build-generated');
+    });
+
+    it('empty generatedPaths keeps existing Warning behaviour', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /missing.brs");
+      const diags = await provider.provideDiagnostics(doc, []);
+
+      expect(diags[0].severity).to.equal(DiagnosticSeverity.Warning);
+    });
+  });
+
+  // ── Undefined function call diagnostics ───────────────────────────────────
+
+  describe('undefined function call diagnostics', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('produces no warning for a known same-file function', async () => {
+      const doc = makeDocument([
+        'function greet(name as String) as String',
+        '  return "hello"',
+        'end function',
+        'sub init()',
+        '  msg = greet("world")',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('warns for a genuinely undefined function call', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  result = unknownFunc()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+      expect(undef[0].message).to.include('unknownFunc');
+    });
+
+    it('uses Error severity', async () => {
+      const doc = makeDocument('sub init()\n  ghost()\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef[0].severity).to.equal(DiagnosticSeverity.Error);
+    });
+
+    it('reports the correct line and character range', async () => {
+      const doc = makeDocument('sub init()\n  result = unknownFunc()\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef[0].range.start.line).to.equal(1);
+      expect(undef[0].range.start.character).to.equal(11); // after "  result = "
+      expect(undef[0].range.end.character).to.equal(11 + 'unknownFunc'.length);
+    });
+
+    it('produces no warning for a BrightScript built-in', async () => {
+      const doc = makeDocument('sub init()\n  x = Abs(-1)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('is case-insensitive for built-in names', async () => {
+      const doc = makeDocument('sub init()\n  x = abs(-1)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('produces no warning for a language keyword used as a function', async () => {
+      const doc = makeDocument('sub init()\n  print tab(3)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('flags a Kopytko function name when it is not imported', async () => {
+      // setState exists in kopytko-framework but is not @imported here — must be flagged
+      const doc = makeDocument('sub init()\n  setState({ loading: true })\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length.greaterThan(0);
+      expect(undef[0].message).to.include('setState');
+    });
+
+    it('does not warn for a Kopytko function that is reachable via an @import chain', async () => {
+      const helperText = 'sub setState(newState as Object)\nend sub';
+      fsExistsStub.withArgs('/workspace/app/Renderer.brs').returns(true);
+      sinon.stub(fsWrapper, 'readFileSync').withArgs('/workspace/app/Renderer.brs', 'utf-8').returns(helperText);
+
+      const doc = makeDocument([
+        "' @import /Renderer.brs",
+        'sub init()',
+        '  setState({ loading: true })',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag method calls (preceded by a dot)', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  arr = CreateObject("roArray")',
+        '  arr.Push("hello")',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag the function name on its own declaration line', async () => {
+      const doc = makeDocument('function myFunc(x as Integer) as Integer\n  return x\nend function');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag calls inside comment lines', async () => {
+      const doc = makeDocument("sub init()\n  ' ghost()\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag calls inside string literals', async () => {
+      const doc = makeDocument('sub init()\n  x = "ghost()"\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag dim array declarations', async () => {
+      const doc = makeDocument('sub init()\n  dim arr(10)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('finds multiple undefined calls in one file', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  ghostOne()',
+        '  ghostTwo()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(2);
+      const names = undef.map((d) => d.message as string);
+      expect(names.some((m) => m.includes('ghostOne'))).to.be.true;
+      expect(names.some((m) => m.includes('ghostTwo'))).to.be.true;
+    });
+
+    it('does not warn for a function defined in an @imported file', async () => {
+      const helperText = 'function helperFn(x as Integer) as Integer\n  return x\nend function';
+      fsExistsStub.withArgs('/workspace/app/utils.brs').returns(true);
+      sinon.stub(fsWrapper, 'readFileSync').withArgs('/workspace/app/utils.brs', 'utf-8').returns(helperText);
+
+      const doc = makeDocument([
+        "' @import /utils.brs",
+        'sub init()',
+        '  result = helperFn(42)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not warn when the call target is a local variable holding a function reference', async () => {
+      // handler = m._videoStateHandlers[videoState]  then  handler()
+      const doc = makeDocument([
+        'sub init()',
+        '  handler = m._videoStateHandlers["play"]',
+        '  handler()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not warn when the call target is a function assigned from another variable', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  fn = someKnownModule.getHandler()',
+        '  fn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      // fn is a local variable assigned on the line above — must not warn about fn()
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'fn'"))).to.be.false;
+    });
+
+    it('does not warn when the call target is a function parameter typed as Function', async () => {
+      const doc = makeDocument([
+        'sub doWithCallback(callback as Function)',
+        '  callback()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not warn for for-loop iteration variables used as calls', async () => {
+      // edge case: a variable from a for loop later used in a call position
+      const doc = makeDocument([
+        'sub init()',
+        '  for each handler in m.handlers',
+        '    handler()',
+        '  end for',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('still warns for a genuinely undefined name even when other locals exist', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  handler = m._handlers["key"]',
+        '  result = reallyUnknownFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+      expect(undef[0].message).to.include('reallyUnknownFn');
+    });
+
+    it('does not interfere with existing import diagnostics', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        "' @import /missing.brs",
+        'sub init()',
+        '  ghost()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.some((d) => d.code === 'import/unresolved')).to.be.true;
+      expect(diags.some((d) => d.code === 'identifier/undefined-function')).to.be.true;
+    });
+  });
+
+  // ── Builtin arity checking ────────────────────────────────────────────────
+
+  describe('builtin arity checking', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('flags LCase called with 2 arguments (expects 1)', async () => {
+      const doc = makeDocument('sub init()\n  x = LCase("hello", "extra")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity).to.have.length(1);
+      expect(arity[0].message).to.include('LCase');
+      expect(arity[0].message).to.include('1 argument');
+      expect(arity[0].message).to.include('2');
+    });
+
+    it('does not flag LCase called with 1 argument', async () => {
+      const doc = makeDocument('sub init()\n  x = LCase("hello")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('flags UCase called with 0 arguments', async () => {
+      const doc = makeDocument('sub init()\n  x = UCase()\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity).to.have.length(1);
+      expect(arity[0].message).to.include('UCase');
+    });
+
+    it('does not flag Substitute called with 2 required args and optional omitted', async () => {
+      const doc = makeDocument('sub init()\n  x = Substitute("{0}", "a")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('does not flag Substitute called with all 5 args', async () => {
+      const doc = makeDocument('sub init()\n  x = Substitute("{0}", "a", "b", "c", "d")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('flags Substitute called with 6 args (max is 5)', async () => {
+      const doc = makeDocument('sub init()\n  x = Substitute("{0}", "a", "b", "c", "d", "e")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity).to.have.length(1);
+      expect(arity[0].message).to.include('Substitute');
+    });
+
+    it('uses Error severity', async () => {
+      const doc = makeDocument('sub init()\n  x = LCase("a", "b")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity[0].severity).to.equal(DiagnosticSeverity.Error);
+    });
+
+    it('reports the correct range (the function name token)', async () => {
+      const doc = makeDocument('sub init()\n  x = LCase("a", "b")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity[0].range.start.line).to.equal(1);
+      expect(arity[0].range.start.character).to.equal(6); // "  x = " = 6
+      expect(arity[0].range.end.character).to.equal(6 + 'LCase'.length);
+    });
+
+    it('handles nested function calls correctly — counts only top-level args', async () => {
+      // Substitute(tmpl, LCase(a), UCase(b)) — LCase and UCase each get 1 arg = correct
+      // But LCase(a, b) inside would flag only LCase, not Substitute
+      const doc = makeDocument('sub init()\n  x = Substitute("{0}", LCase("a"), UCase("b"))\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('flags the inner call when it has wrong arity, not the outer', async () => {
+      // LCase("a", "b") has 2 args (wrong), is nested inside Substitute which is fine
+      const doc = makeDocument('sub init()\n  x = Substitute("{0}", LCase("a", "b"))\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity).to.have.length(1);
+      expect(arity[0].message).to.include('LCase');
+    });
+
+    it('does not flag method calls on objects (preceded by dot)', async () => {
+      // arr.Push() is a method call, not a builtin — not flagged for arity
+      const doc = makeDocument('sub init()\n  arr.Push("x", "y")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('does not flag CreateObject with 1 argument', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject("roAssociativeArray")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('does not flag CreateObject with 3 arguments', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject("roSGNode", "Component", true)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/wrong-arg-count')).to.be.empty;
+    });
+
+    it('flags CreateObject with 0 arguments', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject()\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const arity = diags.filter((d) => d.code === 'identifier/wrong-arg-count');
+      expect(arity).to.have.length(1);
+      expect(arity[0].message).to.include('CreateObject');
+    });
+  });
+
+  // ── Undefined variable diagnostics ───────────────────────────────────────
+
+  describe('undefined variable diagnostics', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('flags an argument that is never defined anywhere in the file', async () => {
+      const doc = makeDocument('sub init()\n  asd(s)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.have.length(1);
+      expect(undef[0].message).to.include("'s'");
+    });
+
+    it('does not flag a locally assigned variable', async () => {
+      const doc = makeDocument('sub init()\n  s = "hello"\n  print s\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'s'"))).to.be.false;
+    });
+
+    it('does not flag a function parameter', async () => {
+      const doc = makeDocument('function process(s as String) as Void\n  print s\nend function');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'s'"))).to.be.false;
+    });
+
+    it('does not flag m (BrightScript component self-reference)', async () => {
+      const doc = makeDocument('sub init()\n  m.state = {}\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'m'"))).to.be.false;
+    });
+
+    it('does not flag BrightScript keywords or type names', async () => {
+      const doc = makeDocument(
+        'function add(x as Integer, y as Integer) as Integer\n  return x + y\nend function'
+      );
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag associative array literal keys', async () => {
+      const doc = makeDocument(
+        'sub init()\n  state = { loading: false, count: 0 }\nend sub'
+      );
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag a known function name used as a value reference', async () => {
+      const doc = makeDocument(
+        'sub doWork()\nend sub\nsub init()\n  ref = doWork\nend sub'
+      );
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'doWork'"))).to.be.false;
+    });
+
+    it('does not flag for-loop iteration variables', async () => {
+      const doc = makeDocument(
+        'sub init()\n  for each item in m.items\n    print item\n  end for\nend sub'
+      );
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'item'"))).to.be.false;
+    });
+
+    it('uses Warning severity', async () => {
+      const doc = makeDocument('sub init()\n  print s\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.have.length(1);
+      expect(undef[0].severity).to.equal(DiagnosticSeverity.Error);
+    });
+
+    it('reports the correct line and character range', async () => {
+      const doc = makeDocument('sub init()\n  asd(s)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef[0].range.start.line).to.equal(1);
+      expect(undef[0].range.start.character).to.equal(6); // "  asd(" = 6 chars
+      expect(undef[0].range.end.character).to.equal(7);
+    });
+
+    it('does not interfere with undefined function diagnostics', async () => {
+      // asd() → identifier/undefined-function; s → identifier/undefined-variable
+      const doc = makeDocument('sub init()\n  asd(s)\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.some((d) => d.code === 'identifier/undefined-function')).to.be.true;
+      expect(diags.some((d) => d.code === 'identifier/undefined-variable')).to.be.true;
+    });
+
+    it('does not flag anonymous function parameters', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  m.handler = function(event as Object)',
+        '    print event',
+        '  end function',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'event'"))).to.be.false;
+    });
+
+    it('flags an undefined variable inside a call to a function whose name starts with "sub" (e.g. Substitute)', async () => {
+      // Regression: FUNC_PARAMS_RE with /i flag matched "Sub" in "Substitute", treating
+      // its argument list as function parameters and silently adding "dd" to fileScope.
+      const doc = makeDocument([
+        'function getUserLocale() as String',
+        '  LOCALE_FORMAT = "{0}_{1}"',
+        '  userLanguage = getUserLanguageCode()',
+        '  countryCode = "US"',
+        '  return Substitute(LOCALE_FORMAT, LCase(userLanguage, dd), UCase(countryCode))',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'dd'"))).to.be.true;
+    });
+  });
+
+  // ── SceneGraph extends inheritance ───────────────────────────────────────
+
+  describe('extends inheritance', () => {
+    let readdirStub: sinon.SinonStub;
+    let readdirTypedStub: sinon.SinonStub;
+    let readStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readdirStub = sinon.stub(fsWrapper, 'readdirSync');
+      readdirTypedStub = sinon.stub(fsWrapper, 'readdirTyped');
+      readStub = sinon.stub(fsWrapper, 'readFileSync');
+    });
+
+    it('does not flag a function inherited from a parent component', async () => {
+      // Child XML: extends KopytkoGroup, lists Test.brs
+      readdirStub.withArgs('/workspace/app/components').returns(['Test.xml']);
+      readdirStub.returns([]);
+      readStub.withArgs('/workspace/app/components/Test.xml', 'utf-8').returns(
+        `<component name="Test" extends="KopytkoGroup">
+           <script type="text/brightscript" uri="Test.brs" />
+         </component>`
+      );
+      fsExistsStub.withArgs('/workspace/app/components/Test.brs').returns(true);
+
+      // findComponentXml: search /workspace/app, then /workspace
+      readdirTypedStub.withArgs('/workspace/app').returns([
+        { name: 'KopytkoGroup.xml', isDirectory: false },
+      ]);
+      readdirTypedStub.returns([]);
+      readStub.withArgs('/workspace/app/KopytkoGroup.xml', 'utf-8').returns(
+        `<component name="KopytkoGroup">
+           <script type="text/brightscript" uri="KopytkoGroup.brs" />
+         </component>`
+      );
+      fsExistsStub.withArgs('/workspace/app/KopytkoGroup.brs').returns(true);
+      readStub.withArgs('/workspace/app/KopytkoGroup.brs', 'utf-8').returns(
+        'function setState(state as Object)\nend function\nfunction getState() as Object\nend function'
+      );
+
+      const doc = makeDocument('sub init()\n  setState({})\n  getState()\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(0);
+    });
+
+    it('still flags a function that is not inherited from any parent', async () => {
+      readdirStub.withArgs('/workspace/app/components').returns(['Test.xml']);
+      readdirStub.returns([]);
+      readStub.withArgs('/workspace/app/components/Test.xml', 'utf-8').returns(
+        `<component name="Test" extends="KopytkoGroup">
+           <script type="text/brightscript" uri="Test.brs" />
+         </component>`
+      );
+      fsExistsStub.withArgs('/workspace/app/components/Test.brs').returns(true);
+
+      readdirTypedStub.withArgs('/workspace/app').returns([
+        { name: 'KopytkoGroup.xml', isDirectory: false },
+      ]);
+      readdirTypedStub.returns([]);
+      readStub.withArgs('/workspace/app/KopytkoGroup.xml', 'utf-8').returns(
+        `<component name="KopytkoGroup">
+           <script type="text/brightscript" uri="KopytkoGroup.brs" />
+         </component>`
+      );
+      fsExistsStub.withArgs('/workspace/app/KopytkoGroup.brs').returns(true);
+      readStub.withArgs('/workspace/app/KopytkoGroup.brs', 'utf-8').returns(
+        'function setState(state as Object)\nend function'
+      );
+
+      const doc = makeDocument('sub init()\n  notDeclaredAnywhere()\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+      expect(undef[0].message).to.include('notDeclaredAnywhere');
+    });
+
+    it('does not flag undefined-variable for a name that is a parent-inherited function', async () => {
+      readdirStub.withArgs('/workspace/app/components').returns(['Test.xml']);
+      readdirStub.returns([]);
+      readStub.withArgs('/workspace/app/components/Test.xml', 'utf-8').returns(
+        `<component name="Test" extends="KopytkoGroup">
+           <script type="text/brightscript" uri="Test.brs" />
+         </component>`
+      );
+      fsExistsStub.withArgs('/workspace/app/components/Test.brs').returns(true);
+
+      readdirTypedStub.withArgs('/workspace/app').returns([
+        { name: 'KopytkoGroup.xml', isDirectory: false },
+      ]);
+      readdirTypedStub.returns([]);
+      readStub.withArgs('/workspace/app/KopytkoGroup.xml', 'utf-8').returns(
+        `<component name="KopytkoGroup">
+           <script type="text/brightscript" uri="KopytkoGroup.brs" />
+         </component>`
+      );
+      fsExistsStub.withArgs('/workspace/app/KopytkoGroup.brs').returns(true);
+      readStub.withArgs('/workspace/app/KopytkoGroup.brs', 'utf-8').returns(
+        'function setState(state as Object)\nend function'
+      );
+
+      // Use setState as a value reference (no parentheses) — should not be flagged as undefined var
+      const doc = makeDocument('sub init()\n  ref = setState\n  ref({})\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.have.length(0);
+    });
+  });
+
+  // ── XML sibling scope isolation ───────────────────────────────────────────
+
+  it('does NOT flag a function defined in an XML sibling BRS file (available at runtime)', async () => {
+    // XML sibling scripts share scope at runtime — flagging them would produce false positives.
+    const readdirStub = sinon.stub(fsWrapper, 'readdirSync');
+    const readStub = sinon.stub(fsWrapper, 'readFileSync');
+
+    readdirStub.withArgs('/workspace/app/components').returns(['Test.brs', 'Test.xml']);
+    readdirStub.returns([]);
+
+    fsExistsStub.withArgs('/workspace/app/components/Test.xml').returns(true);
+    readStub.withArgs('/workspace/app/components/Test.xml', 'utf-8').returns(
+      '<component name="Test">' +
+      '<script type="text/brightscript" uri="Sibling.brs"/>' +
+      '<script type="text/brightscript" uri="Test.brs"/>' +
+      '</component>'
+    );
+    fsExistsStub.withArgs('/workspace/app/components/Sibling.brs').returns(true);
+    readStub.withArgs('/workspace/app/components/Sibling.brs', 'utf-8').returns(
+      'function xmlSiblingFunc() as Void\nend function'
+    );
+
+    const doc = makeDocument('sub init()\n  xmlSiblingFunc()\nend sub');
+    const diags = await provider.provideDiagnostics(doc);
+    const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+    expect(undef).to.have.length(0);
+  });
+
+  // ── CreateObject argument validation ─────────────────────────────────────
+
+  describe('CreateObject argument validation', () => {
+    it('flags an unknown component name in CreateObject', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject("roNotARealComponent")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const co = diags.filter((d) => d.code === 'createobject/unknown-component');
+      expect(co).to.have.length(1);
+      expect(co[0].message).to.include('roNotARealComponent');
+      expect(co[0].severity).to.equal(DiagnosticSeverity.Warning);
+    });
+
+    it('does not flag a valid component name', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject("roArray")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'createobject/unknown-component')).to.be.empty;
+    });
+
+    it('does not flag roSGNode (second arg is custom)', async () => {
+      const doc = makeDocument('sub init()\n  node = CreateObject("roSGNode", "MyComponent")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'createobject/unknown-component')).to.be.empty;
+    });
+
+    it('is case-insensitive for component lookup', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject("roarray")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'createobject/unknown-component')).to.be.empty;
+    });
+
+    it('skips comment lines', async () => {
+      const doc = makeDocument("sub init()\n  ' CreateObject(\"roFakeComponent\")\nend sub");
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'createobject/unknown-component')).to.be.empty;
+    });
+
+    it('highlights the string literal including quotes', async () => {
+      const doc = makeDocument('sub init()\n  obj = CreateObject("roFake")\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const co = diags.filter((d) => d.code === 'createobject/unknown-component');
+      expect(co).to.have.length(1);
+      // "roFake" starts at the quote position
+      const line = 'sub init()\n  obj = CreateObject("roFake")\nend sub'.split('\n')[1];
+      const quotePos = line.indexOf('"roFake"');
+      expect(co[0].range.start.character).to.equal(quotePos);
+      expect(co[0].range.end.character).to.equal(quotePos + '"roFake"'.length);
+    });
+  });
+
+  // ── Loop flow control errors ──────────────────────────────────────────────
+
+  describe('loop flow control', () => {
+    it('flags "exit while" outside a while loop', async () => {
+      const doc = makeDocument('sub init()\n  exit while\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const flow = diags.filter((d) => d.code === 'syntax/flow-outside-loop');
+      expect(flow).to.have.length(1);
+      expect(flow[0].message).to.include('exit while');
+      expect(flow[0].severity).to.equal(DiagnosticSeverity.Error);
+    });
+
+    it('flags "continue for" outside a for loop', async () => {
+      const doc = makeDocument('sub init()\n  continue for\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const flow = diags.filter((d) => d.code === 'syntax/flow-outside-loop');
+      expect(flow).to.have.length(1);
+      expect(flow[0].message).to.include('continue for');
+    });
+
+    it('does not flag "exit while" inside a while loop', async () => {
+      const doc = makeDocument('sub init()\n  while true\n    exit while\n  end while\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'syntax/flow-outside-loop')).to.be.empty;
+    });
+
+    it('does not flag "exit for" inside a for loop', async () => {
+      const doc = makeDocument('sub init()\n  for i = 0 to 10\n    exit for\n  end for\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'syntax/flow-outside-loop')).to.be.empty;
+    });
+
+    it('flags "exit for" inside a while loop (wrong loop type)', async () => {
+      const doc = makeDocument('sub init()\n  while true\n    exit for\n  end while\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const flow = diags.filter((d) => d.code === 'syntax/flow-outside-loop');
+      expect(flow).to.have.length(1);
+      expect(flow[0].message).to.include('exit for');
+    });
+
+    it('does not flag "continue while" inside nested while', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  for i = 0 to 5',
+        '    while m.running',
+        '      continue while',
+        '    end while',
+        '  end for',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'syntax/flow-outside-loop')).to.be.empty;
+    });
+  });
+
+  // ── Unused parameter diagnostics ────────────────────────────────────────
+
+  describe('unused parameter diagnostics', () => {
+    it('flags an unused parameter', async () => {
+      const doc = makeDocument('function myFunc(unused as String)\n  return 1\nend function');
+      const diags = await provider.provideDiagnostics(doc);
+      const unused = diags.filter((d) => d.code === 'identifier/unused-parameter');
+      expect(unused).to.have.length(1);
+      expect(unused[0].message).to.include('unused');
+    });
+
+    it('does not flag a used parameter', async () => {
+      const doc = makeDocument('function myFunc(name as String)\n  print name\nend function');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/unused-parameter')).to.be.empty;
+    });
+
+    it('does not flag _prefixed parameters', async () => {
+      const doc = makeDocument('function myFunc(_unused as String)\n  return 1\nend function');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/unused-parameter')).to.be.empty;
+    });
+
+    it('uses Hint severity', async () => {
+      const doc = makeDocument('sub init(cb as Function)\n  return\nend sub');
+      const diags = await provider.provideDiagnostics(doc);
+      const unused = diags.filter((d) => d.code === 'identifier/unused-parameter');
+      expect(unused).to.have.length(1);
+      expect(unused[0].severity).to.equal(DiagnosticSeverity.Hint);
+    });
   });
 });

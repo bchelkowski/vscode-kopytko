@@ -2,13 +2,13 @@
 
 ## Project overview
 
-A Visual Studio Code extension that provides first-class language support for **BrightScript** (Roku's scripting language) and the **Kopytko Framework** ecosystem. It includes a Language Server Protocol (LSP) implementation with diagnostics, hover documentation, completion, and go-to-definition.
+A VS Code extension providing language support for **BrightScript** (Roku) and the **Kopytko Framework**. Includes an LSP server with diagnostics, completion, hover, go-to-definition, formatting, and a built-in debugger.
 
-Key repositories for context:
-- **This repo**: https://github.com/bchelkowski/vscode-kopytko
-- **Reference extension**: https://github.com/rokucommunity/vscode-brightscript-language
+Kopytko ecosystem repos:
 - **Kopytko Framework**: https://github.com/getndazn/kopytko-framework
 - **Kopytko Packager**: https://github.com/getndazn/kopytko-packager
+- **Kopytko Unit Testing Framework**: https://github.com/getndazn/kopytko-unit-testing-framework
+- **Kopytko Utils**: https://github.com/getndazn/kopytko-utils
 - **BrightScript reference**: https://developer.roku.com/docs/references/brightscript/language/brightscript-language-reference.md
 
 ---
@@ -16,153 +16,164 @@ Key repositories for context:
 ## Repository structure
 
 ```
-vscode-kopytko/
-├── src/
-│   ├── extension.ts               Extension entry point (activate/deactivate)
-│   ├── client/
-│   │   └── languageClient.ts      LSP client wrapper
-│   └── server/
-│       ├── server.ts              Language server entry point
-│       ├── brightscript/
-│       │   ├── builtins.ts        BrightScript built-in functions catalog
-│       │   ├── components.ts      ro* component + interface catalog (methods, deprecations, since versions)
-│       │   └── typeInference.ts   CreateObject / typed-param variable→type resolver
-│       ├── kopytko/
-│       │   ├── importResolver.ts  @import annotation parser and resolver
-│       │   └── modules.ts         Known Kopytko module API catalog
-│       └── providers/
-│           ├── completionProvider.ts
-│           ├── diagnosticsProvider.ts
-│           ├── definitionProvider.ts
-│           └── hoverProvider.ts
-├── test/
-│   ├── brightscript/              Unit tests for BrightScript support
-│   ├── kopytko/                   Unit tests for Kopytko import resolution
-│   └── providers/                 Unit tests for LSP providers
-├── docs/
-│   ├── features.md                Master feature list (update when adding features)
-│   ├── brightscript-support.md    BrightScript syntax & snippets docs
-│   ├── brightscript-components.md ro* component reference + catalog maintenance guide
-│   ├── kopytko-imports.md         @import annotation documentation
-│   └── language-server.md         LSP architecture and provider docs
-├── syntaxes/
-│   └── brightscript.tmLanguage.json   TextMate grammar
-├── snippets/
-│   └── brightscript.json          VS Code snippets
-├── language-configuration.json    Bracket/comment/indent rules
-└── package.json                   Extension manifest
+packages/
+└── kopytko-formatter/              Standalone BrightScript formatter (CLI + library)
+    ├── src/
+    │   ├── index.ts                Public API (formatText, checkFormatting)
+    │   ├── formatter.ts            Core 11-pass formatting engine
+    │   ├── config.ts               FormattingConfig interface + defaults
+    │   ├── casing.ts               CasingConfig + transforms
+    │   ├── builtins.ts             BrightScript built-in function catalog
+    │   └── types.ts                FunctionDefinition interface
+    ├── bin/kopytko-format.ts        CLI entry point
+    └── test/formatter.test.ts       38 formatter tests
+src/
+├── extension.ts                    Extension entry point
+├── client/                         VS Code client (debug adapter, device discovery, tree views)
+└── server/
+    ├── server.ts                   LSP entry point (all handlers, debounce, cache wiring)
+    ├── providers/                  12 LSP providers (one per capability)
+    │   └── formattingProvider.ts   Thin LSP adapter → calls kopytko-formatter
+    ├── brightscript/               BrightScript catalogs and parsers
+    │   ├── builtins.ts             86 built-in functions
+    │   ├── components.ts           60 ro* components, 78 interfaces
+    │   ├── sgNodes.ts              86 SceneGraph nodes
+    │   ├── functionIndex.ts        Function/sub parser + multi-scope collector
+    │   ├── typeInference.ts        CreateObject / typed-param type resolver
+    │   ├── casingUtils.ts          Identifier casing (6 options + exact overrides)
+    │   └── ...                     globMatcher, mtopResolver, patternSiblings, xmlScriptParser
+    ├── kopytko/
+    │   ├── importResolver.ts       @import parser and resolver (with package cache)
+    │   └── moduleCatalog.ts        Dynamic Kopytko module export scanner
+    └── utils/
+        ├── documentCache.ts        Per-document version-keyed results cache
+        ├── workspaceFunctionIndex.ts  Built at startup, updated incrementally
+        ├── fsWrapper.ts            Thin fs wrapper (enables Sinon stubbing in tests)
+        └── textUtils.ts            Shared helpers (getWord, escapeRegex, stripStringLiterals)
+scripts/
+└── postinstall-windows-wsl.sh      Fixes kopytko-formatter symlink on Windows + WSL
+test/                               Mirrors src/server/ structure; Mocha + Chai + Sinon
+docs/                               Feature docs (see Documentation section below)
 ```
 
 ---
 
 ## Development
 
-### Prerequisites
-
-- Node.js 18+
-- npm 9+
-
-### Install
-
 ```bash
-npm install
+npm install              # install dependencies
+npm run compile          # compile extension + server
+npm test                 # run all tests (Mocha)
+npm run lint             # ESLint
 ```
 
-### Build
+### kopytko-formatter package
+
+The formatting engine lives in `packages/kopytko-formatter/` — a standalone npm package usable as a CLI tool and library, independent of VS Code.
 
 ```bash
-npm run compile          # compiles both extension and server
+cd packages/kopytko-formatter
+npm install              # install package dependencies
+npm test                 # run 38 formatter tests
+npm run build            # compile to dist/
 ```
 
-### Watch
+**CLI usage:**
 
 ```bash
-npm run watch            # watches extension (client side)
-npm run watch:server     # watches server
+npx kopytko-format --check "src/**/*.brs"   # CI — exit 1 if unformatted
+npx kopytko-format --write "src/**/*.brs"   # fix files in place
 ```
 
-### Lint
+Config resolution (priority order): `--config <file>` → `kopytko-formatter.json` → `.vscode/settings.json` (`kopytko.format.*` keys).
 
-```bash
-npm run lint
-```
+### Windows + WSL
 
-### Test
-
-```bash
-npm test                 # runs all tests via Mocha
-npm run test:coverage    # with nyc coverage
-```
+After `npm install`, run `bash scripts/postinstall-windows-wsl.sh` to fix the `kopytko-formatter` symlink for Windows-native Node.js (used by VS Code).
 
 ---
 
-## Testing requirements
+## Definition of done
 
-Every new feature or bug fix **must** be accompanied by tests in the `test/` directory. Tests use **Mocha** + **Chai** + **Sinon**. Filesystem calls (`fs.existsSync`, `fs.readFileSync`) are stubbed with Sinon in all tests that involve file resolution — tests must not touch the real filesystem.
+A change is complete when:
 
-Test file naming convention: mirror the source path under `test/`. For example:
-- `src/server/kopytko/importResolver.ts` → `test/kopytko/importResolver.test.ts`
-
-Run tests before every commit.
+1. **Tests pass** — `npm test` exits 0. New behaviour has new tests. No test left broken.
+2. **Documentation updated** — affected doc files are current (see below).
 
 ---
 
-## Documentation requirements
+## Testing rules
 
-`docs/features.md` is the master feature list. **Update it whenever a feature is added, changed, or removed.** Each feature must also have a dedicated section in the relevant `docs/*.md` file.
+- **Mirror source path**: `src/server/kopytko/importResolver.ts` → `test/kopytko/importResolver.test.ts`
+- **Stub the filesystem** via `src/server/utils/fsWrapper.ts` — tests must never touch real disk.
+- **Clear the document cache** in `afterEach`: call `invalidateAllCaches()` from `utils/documentCache`.
+- **Cover happy path and error cases**. Run `npm test` before every commit.
+
+---
+
+## Documentation
+
+| File | Covers |
+|---|---|
+| [docs/features.md](docs/features.md) | **Master list** — every implemented and planned feature with status |
+| [docs/language-server.md](docs/language-server.md) | LSP architecture, all 12 providers, casing config, formatting |
+| [docs/kopytko-imports.md](docs/kopytko-imports.md) | @import resolution, document links, diagnostics, sibling patterns |
+| [docs/brightscript-components.md](docs/brightscript-components.md) | ro* component catalog, interface methods, maintenance guide |
+| [docs/brightscript-support.md](docs/brightscript-support.md) | Syntax highlighting, snippets, language config |
+| [docs/formatting.md](docs/formatting.md) | Document formatting rules, all `kopytko.format.*` settings |
+| [docs/roku-debug.md](docs/roku-debug.md) | Device discovery, debugger, launch config |
+| [packages/kopytko-formatter/README.md](packages/kopytko-formatter/README.md) | Standalone formatter: CLI usage, library API, CI integration |
+| [docs/publishing.md](docs/publishing.md) | Step-by-step npm and VS Code Marketplace publishing guide |
+
+**Every change that adds, modifies, or removes a feature must update `docs/features.md` and the relevant topic doc.**
+
+---
+
+## Performance guidelines
+
+All new features must follow these patterns:
+
+1. **Debounced diagnostics** — `onDidChangeContent` uses a 300ms stale-request-ID debounce. Use `scheduleValidation()`, not `validateDocument()`.
+2. **Document cache** — use `getCachedLines`, `getCachedTypeMap`, `getCachedAllFunctions` from `utils/documentCache.ts`. Never call `text.split()`, `inferTypes()`, or `collectAllFunctions()` directly in a provider.
+3. **Static data cached** — `getInstalledKopytkoPackages()` and `resolvePackageBaseDir()` are cached in the import resolver. `KopytkoModuleCatalog` scans once at startup. Both invalidate via `onDidChangeWatchedFiles`.
+4. **Workspace function index** — `WorkspaceFunctionIndex` provides the file list for Find References and Rename. Never walk the workspace with `collectBrsFiles` in a provider.
+5. **Map-backed catalog lookups** — `findComponent()`, `findBuiltin()`, `getComponentMethods()` are O(1) and cached.
+6. **File watcher invalidation** — `onDidChangeWatchedFiles` in `server.ts` clears caches on disk changes. Document caches auto-invalidate on version change.
 
 ---
 
 ## Commit conventions
 
-**All commits must be authored solely under the developer's own name and email. Do not add any co-author lines (`Co-authored-by:`) to commit messages, regardless of tooling suggestions.** This applies to every commit, including automated or AI-assisted work.
-
-Good commit message style:
-```
-feat: add hover documentation for BrightScript built-ins
-
-- Implemented BrightScriptHoverProvider
-- Added findBuiltin() lookup in builtins.ts
-- Tests in test/providers/hoverProvider.test.ts
-```
-
-Use the conventional commits prefix where sensible: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
+**No co-author lines (`Co-authored-by:`) in commit messages.** Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
 
 ---
 
 ## Adding a new LSP feature
 
-1. Create the provider in `src/server/providers/<name>Provider.ts`.
-2. Wire it up in `src/server/server.ts`.
-3. Add unit tests in `test/providers/<name>Provider.test.ts`.
-4. Update `docs/features.md` (mark as ✅ Implemented).
-5. Add a section to `docs/language-server.md`.
+1. Create `src/server/providers/<name>Provider.ts`.
+2. Wire in `server.ts` (instantiate, register handler, declare capability).
+3. **Use the document cache** — import from `utils/documentCache.ts`.
+4. Add tests in `test/providers/<name>Provider.test.ts`.
+5. Update `docs/features.md` (mark ✅) and `docs/language-server.md`.
 
 ## Expanding BrightScript built-ins
 
-Edit `src/server/brightscript/builtins.ts`. Each entry requires `name`, `signature`, `returnType`, `description`, and `category`. Add corresponding test assertions in `test/brightscript/builtins.test.ts`.
+Edit `src/server/brightscript/builtins.ts`. Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add test assertions in `test/brightscript/builtins.test.ts`.
 
-## Maintaining the BrightScript component catalog
+## Maintaining the component catalog
 
-The component catalog lives in `src/server/brightscript/components.ts`.
-
-**When to update:** When Roku releases a new firmware or publishes documentation changes at
-https://developer.roku.com/dev/docs/brightscript.
-
-**How to update:**
-1. Add new interface methods to the appropriate `BRIGHTSCRIPT_INTERFACES` entry.
-   - Set `since` to the minimum firmware version string (e.g. `"12.5"`).
-   - Set `deprecated: true` and `deprecationNote` for removed/superseded methods.
-2. Add entirely new interfaces as new entries in `BRIGHTSCRIPT_INTERFACES`.
-3. Add new components (or update existing `interfaces` arrays) in `BRIGHTSCRIPT_COMPONENTS`.
-4. **Update `CATALOG_LAST_VERIFIED`** to today's date in `YYYY-MM-DD` format — this date
-   appears in hover cards so developers know how fresh the data is.
-5. Update the change-log table in `docs/brightscript-components.md`.
-6. Add test assertions in `test/brightscript/components.test.ts`.
-
-**Do not** change `CATALOG_LAST_VERIFIED` without actually checking the live Roku docs —
-it is the project's honesty signal to developers about data freshness.
+Edit `src/server/brightscript/components.ts`. Set `since` for new methods, `deprecated: true` for removed ones. **Update `CATALOG_LAST_VERIFIED`** only after verifying against live Roku docs. Update `docs/brightscript-components.md` and `test/brightscript/components.test.ts`.
 
 ## Expanding Kopytko module catalog
 
-Edit `src/server/kopytko/modules.ts`. Each module entry includes `name`, `npmPackage`, `description`, and `exports[]`. Add assertions in `test/kopytko/modules.test.ts`.
+The dynamic `KopytkoModuleCatalog` in `src/server/kopytko/moduleCatalog.ts` scans installed packages at runtime. Tests in `test/kopytko/moduleCatalog.test.ts`.
+
+## Formatter architecture
+
+The formatting engine is extracted into the standalone `packages/kopytko-formatter/` package. The extension's `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package.
+
+**To modify formatting rules:** edit `packages/kopytko-formatter/src/formatter.ts`. Run tests with `cd packages/kopytko-formatter && npm test`.
+
+**To add a new formatting option:** add the field to `FormattingConfig` in `packages/kopytko-formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
+
+**Duplicate sources:** `builtins.ts`, `casingUtils.ts`, and `formattingConfig.ts` exist in both the extension (`src/server/brightscript/`) and the formatter package (`packages/kopytko-formatter/src/`). The extension copies are used by non-formatting providers (completion, hover, etc.). Keep them in sync when making changes.

@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Kopytko Configuration",
+  "description": "Root configuration file (.kopytkorc) for the Kopytko Framework build and tooling pipeline.",
+  "type": "object",
+  "properties": {
+    "baseManifest": {
+      "type": "string",
+      "description": "Path to the base manifest file. Required to run the application."
+    },
+    "sourceDir": {
+      "type": "string",
+      "description": "Root source directory relative to the workspace root. Internal @import paths are resolved relative to this directory. Should match the kopytko.imports.sourceDir VS Code setting.",
+      "default": "app",
+      "examples": ["app", "src"]
+    },
+    "archivePath": {
+      "type": "string",
+      "description": "Path to the generated application archive. Supports template variables ${manifest.field} and ${args.env}.",
+      "default": "/dist/kopytko_archive.zip"
+    },
+    "generatedPackagePath": {
+      "type": "string",
+      "description": "Path to the generated application package. Supports template variables ${manifest.field} and ${args.env}.",
+      "default": "/dist/kopytko_package.pkg"
+    },
+    "signedPackagePath": {
+      "type": "string",
+      "description": "Path to a previously signed package for rekeying."
+    },
+    "screenshotDir": {
+      "type": "string",
+      "description": "Directory for screenshots.",
+      "default": "/dist"
+    },
+    "tempDir": {
+      "type": "string",
+      "description": "Absolute path to the temporary directory used during the build process."
+    },
+    "localManifestOverride": {
+      "type": "string",
+      "description": "Path to a local configuration override file. Loaded last and typically git-ignored."
+    },
+    "pluginDefinitions": {
+      "type": "object",
+      "description": "Maps custom plugin names to their file paths.",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Absolute or relative path to the plugin implementation file."
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "description": "Global build plugins applied on every build. Each item may be a plugin name string, an array [name, options], or an object with at least a 'name' field.",
+      "items": { "$ref": "#/definitions/pluginEntry" },
+      "default": []
+    },
+    "environments": {
+      "type": "object",
+      "description": "Environment-specific configurations. Keys are environment names (e.g. \"staging\", \"production\").",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "type": "string",
+            "description": "Path to the manifest file for this environment. Optional when baseManifest is defined at the root level."
+          },
+          "plugins": {
+            "type": "array",
+            "description": "Plugins specific to this environment (merged with global plugins).",
+            "items": { "$ref": "#/definitions/pluginEntry" }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "definitions": {
+    "pluginEntry": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Plugin name (NPM package name or key from pluginDefinitions)."
+        },
+        {
+          "type": "array",
+          "description": "Plugin with options: [\"name\", { ...options }].",
+          "prefixItems": [
+            { "type": "string", "description": "Plugin name." },
+            { "type": "object", "description": "Plugin-specific options." }
+          ],
+          "minItems": 1,
+          "maxItems": 2
+        },
+        {
+          "type": "object",
+          "description": "Plugin as an object with execution-order flags.",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Plugin name (NPM package name or key from pluginDefinitions)."
+            },
+            "preEnvironmentPlugin": {
+              "type": "boolean",
+              "description": "When true, the plugin runs before environment plugins are applied.",
+              "default": false
+            },
+            "postGlobalPlugin": {
+              "type": "boolean",
+              "description": "When true, the plugin runs after all global plugins.",
+              "default": false
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

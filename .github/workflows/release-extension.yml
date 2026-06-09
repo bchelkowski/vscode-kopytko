@@ -1,0 +1,119 @@
+name: Release vscode-kopytko
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Run tests
+        run: npm test
+
+      - name: Bump version
+        id: version
+        run: |
+          npm version ${{ inputs.bump }} --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $VERSION"
+
+      - name: Generate changelog entry
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
+          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v 'kopytko-formatter' | head -1)
+
+          # Build changelog from commits since last tag
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log "$PREV_TAG"..HEAD --oneline --no-merges -- src/ test/ package.json | sed 's/^/- /')
+          else
+            COMMITS=$(git log --oneline --no-merges -- src/ test/ package.json | head -20 | sed 's/^/- /')
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            COMMITS="- Release $VERSION"
+          fi
+
+          ENTRY="## [$VERSION] - $DATE
+
+          $COMMITS"
+
+          echo "entry<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$ENTRY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Update CHANGELOG.md
+        run: |
+          ENTRY='${{ steps.changelog.outputs.entry }}'
+
+          if [ -f CHANGELOG.md ]; then
+            awk -v entry="$ENTRY" '
+              /^# Changelog/ { print; getline; print; print ""; print entry; next }
+              { print }
+            ' CHANGELOG.md > /tmp/changelog.tmp
+            mv /tmp/changelog.tmp CHANGELOG.md
+          else
+            echo -e "# Changelog\n\n$ENTRY\n" > CHANGELOG.md
+          fi
+
+      - name: Commit, tag, and push
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v${VERSION}"
+          git add package.json CHANGELOG.md
+          git commit -m "chore: release v${VERSION}"
+          git tag "$TAG" -m "vscode-kopytko v${VERSION}"
+          git push origin HEAD --tags
+
+      - name: Package VSIX
+        run: npx vsce package
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: vscode-kopytko v${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.entry }}
+          files: '*.vsix'
+          generate_release_notes: false
+
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish --no-git-tag-version
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

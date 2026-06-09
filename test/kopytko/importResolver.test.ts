@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as path from 'path';
-import * as fsWrapper from '../../src/server/utils/fsWrapper';
+import fsWrapper from '../../src/server/utils/fsWrapper';
 import { KopytkoImportResolver, KopytkoImport } from '../../src/server/kopytko/importResolver';
 
 describe('KopytkoImportResolver', () => {
@@ -85,6 +85,28 @@ describe('KopytkoImportResolver', () => {
       const imports = resolver.parseImports(text);
       expect(imports).to.be.empty;
     });
+
+    it('parses @mock annotations like @import', () => {
+      const text = `' @mock /components/MyService.brs\n' @mock /components/Router.brs from @dazn/kopytko-framework`;
+      const imports = resolver.parseImports(text);
+
+      expect(imports).to.have.length(2);
+      expect(imports[0].importPath).to.equal('/components/MyService.brs');
+      expect(imports[0].isMock).to.be.true;
+      expect(imports[0].fromModule).to.be.undefined;
+      expect(imports[1].importPath).to.equal('/components/Router.brs');
+      expect(imports[1].isMock).to.be.true;
+      expect(imports[1].fromModule).to.equal('@dazn/kopytko-framework');
+    });
+
+    it('distinguishes @import from @mock via isMock flag', () => {
+      const text = `' @import /components/utils.brs\n' @mock /components/service.brs`;
+      const imports = resolver.parseImports(text);
+
+      expect(imports).to.have.length(2);
+      expect(imports[0].isMock).to.not.be.true;
+      expect(imports[1].isMock).to.be.true;
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -121,6 +143,25 @@ describe('KopytkoImportResolver', () => {
       const imp: KopytkoImport = { raw: '', importPath: '/nonexistent/file.brs', line: 1 };
       const result = resolver.resolveImportPath(imp, DOCUMENT_PATH);
       expect(result).to.be.undefined;
+    });
+
+    it('resolves an internal @import inside a node_modules file using the package kopytkoModuleDir', () => {
+      // Document is inside a node_modules package
+      const nodeModulesDoc = path.join(
+        WORKSPACE, 'node_modules', '@dazn', 'kopytko-framework',
+        'src', 'components', 'eventBus', 'EventBus.facade.brs'
+      );
+      const pkgRoot = path.join(WORKSPACE, 'node_modules', '@dazn', 'kopytko-framework');
+      const pkgJson = path.join(pkgRoot, 'package.json');
+      const resolvedFile = path.join(pkgRoot, 'src', 'components', 'utils', 'Core.brs');
+
+      sinon.stub(fsWrapper, 'readFileSync').withArgs(pkgJson, 'utf-8').returns('{"kopytkoModuleDir":"src/"}');
+      fsExistsStub.returns(false);
+      fsExistsStub.withArgs(resolvedFile).returns(true);
+
+      const imp: KopytkoImport = { raw: '', importPath: '/components/utils/Core.brs', line: 1 };
+      const result = resolver.resolveImportPath(imp, nodeModulesDoc);
+      expect(result).to.equal(resolvedFile);
     });
   });
 
@@ -192,6 +233,97 @@ describe('KopytkoImportResolver', () => {
     it('returns false when file does not exist', () => {
       fsExistsStub.withArgs('/nonexistent.brs').returns(false);
       expect(resolver.importExists('/nonexistent.brs')).to.be.false;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // getInstalledKopytkoPackages
+  // ---------------------------------------------------------------------------
+
+  describe('getInstalledKopytkoPackages', () => {
+    let readdirStub: sinon.SinonStub;
+    let readFileStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readdirStub = sinon.stub(fsWrapper, 'readdirTyped').returns([]);
+      readFileStub = sinon.stub(fsWrapper, 'readFileSync');
+    });
+
+    it('returns empty array when resolveModules is false', () => {
+      const noModuleResolver = new KopytkoImportResolver({
+        workspaceFolders: [WORKSPACE],
+        sourceDir: 'app',
+        resolveModules: false,
+      });
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules')).returns([
+        { name: 'my-pkg', isDirectory: true },
+      ]);
+      readFileStub.returns(JSON.stringify({ kopytkoModuleDir: '' }));
+      expect(noModuleResolver.getInstalledKopytkoPackages(DOCUMENT_PATH)).to.be.empty;
+    });
+
+    it('returns a regular (non-scoped) package with kopytkoModuleDir', () => {
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules')).returns([
+        { name: 'kopytko-utils', isDirectory: true },
+      ]);
+      readFileStub
+        .withArgs(path.join(WORKSPACE, 'node_modules', 'kopytko-utils', 'package.json'), 'utf-8')
+        .returns(JSON.stringify({ kopytkoModuleDir: 'src' }));
+      expect(resolver.getInstalledKopytkoPackages(DOCUMENT_PATH)).to.deep.equal(['kopytko-utils']);
+    });
+
+    it('returns a scoped package with kopytkoModuleDir', () => {
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules')).returns([
+        { name: '@dazn', isDirectory: true },
+      ]);
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules', '@dazn')).returns([
+        { name: 'kopytko-framework', isDirectory: true },
+      ]);
+      readFileStub
+        .withArgs(path.join(WORKSPACE, 'node_modules', '@dazn', 'kopytko-framework', 'package.json'), 'utf-8')
+        .returns(JSON.stringify({ kopytkoModuleDir: '' }));
+      expect(resolver.getInstalledKopytkoPackages(DOCUMENT_PATH)).to.deep.equal(['@dazn/kopytko-framework']);
+    });
+
+    it('skips packages without kopytkoModuleDir', () => {
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules')).returns([
+        { name: 'lodash', isDirectory: true },
+        { name: 'kopytko-utils', isDirectory: true },
+      ]);
+      readFileStub
+        .withArgs(path.join(WORKSPACE, 'node_modules', 'lodash', 'package.json'), 'utf-8')
+        .returns(JSON.stringify({ version: '4.0.0' }));
+      readFileStub
+        .withArgs(path.join(WORKSPACE, 'node_modules', 'kopytko-utils', 'package.json'), 'utf-8')
+        .returns(JSON.stringify({ kopytkoModuleDir: 'dist' }));
+      expect(resolver.getInstalledKopytkoPackages(DOCUMENT_PATH)).to.deep.equal(['kopytko-utils']);
+    });
+
+    it('deduplicates when the same node_modules dir appears multiple times', () => {
+      // workspace root and a path-walk ancestor both point to the same node_modules
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules')).returns([
+        { name: 'kopytko-utils', isDirectory: true },
+      ]);
+      readFileStub
+        .withArgs(path.join(WORKSPACE, 'node_modules', 'kopytko-utils', 'package.json'), 'utf-8')
+        .returns(JSON.stringify({ kopytkoModuleDir: '' }));
+      const result = resolver.getInstalledKopytkoPackages(DOCUMENT_PATH);
+      expect(result.filter((p) => p === 'kopytko-utils')).to.have.length(1);
+    });
+
+    it('returns empty when node_modules directory does not exist', () => {
+      readdirStub.throws(new Error('ENOENT'));
+      expect(resolver.getInstalledKopytkoPackages(DOCUMENT_PATH)).to.be.empty;
+    });
+
+    it('returns results sorted alphabetically', () => {
+      readdirStub.withArgs(path.join(WORKSPACE, 'node_modules')).returns([
+        { name: 'zebra-pkg', isDirectory: true },
+        { name: 'alpha-pkg', isDirectory: true },
+      ]);
+      readFileStub.returns(JSON.stringify({ kopytkoModuleDir: '' }));
+      const result = resolver.getInstalledKopytkoPackages(DOCUMENT_PATH);
+      expect(result).to.deep.equal(['alpha-pkg', 'zebra-pkg']);
     });
   });
 });

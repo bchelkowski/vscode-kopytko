@@ -70,5 +70,130 @@
     "prefix": "print",
     "body": ["print ${0}"],
     "description": "Print statement"
+  },
+  "Test Suite (Kopytko)": {
+    "prefix": "testsuite",
+    "body": [
+      "' @import /components/KopytkoTestSuite.brs from @dazn/kopytko-unit-testing-framework",
+      "",
+      "function TestSuite__${1:Name}() as Object",
+      "  ts = KopytkoTestSuite()",
+      "  ts.name = \"${2:$1}\"",
+      "",
+      "  it(\"should ${3:do something}\", function () as ${4|String,Object|}",
+      "    $0",
+      "  end function)",
+      "",
+      "  return ts",
+      "end function"
+    ],
+    "description": "Kopytko test suite scaffold"
+  },
+  "Test Suite Framework (Kopytko)": {
+    "prefix": "testsuitefw",
+    "body": [
+      "' @import /components/KopytkoFrameworkTestSuite.brs from @dazn/kopytko-unit-testing-framework",
+      "",
+      "function TestSuite__${1:ComponentName}() as Object",
+      "  ts = KopytkoFrameworkTestSuite()",
+      "  ts.name = \"${2:$1}\"",
+      "",
+      "  beforeEach(sub ()",
+      "    m.__componentsMapping = {",
+      "      $0",
+      "    }",
+      "",
+      "    initKopytko({}, m.__componentsMapping)",
+      "  end sub)",
+      "",
+      "  it(\"should ${3:render correctly}\", function () as Object",
+      "    return expect(m.top).toBeValid()",
+      "  end function)",
+      "",
+      "  return ts",
+      "end function"
+    ],
+    "description": "Kopytko Framework test suite for SceneGraph components"
+  },
+  "Test Case (it)": {
+    "prefix": "it",
+    "body": [
+      "it(\"should ${1:description}\", function () as ${2|String,Object|}",
+      "  ${3:' Given}",
+      "",
+      "  ${4:' When}",
+      "",
+      "  ${5:' Then}",
+      "  return ${0:expect(result).toBe(expected)}",
+      "end function)"
+    ],
+    "description": "Test case using it()"
+  },
+  "Test Case (test)": {
+    "prefix": "test",
+    "body": [
+      "test(\"${1:description}\", function () as ${2|String,Object|}",
+      "  $0",
+      "end function)"
+    ],
+    "description": "Test case using test()"
+  },
+  "Parameterized Test (itEach)": {
+    "prefix": "iteach",
+    "body": [
+      "itEach([",
+      "  { ${1:input}: ${2:value1}, ${3:expected}: ${4:result1} },",
+      "  { ${1:input}: ${5:value2}, ${3:expected}: ${6:result2} },",
+      "], \"should ${7:return \\${$3} when \\${$1}}\", function (params as Object) as String",
+      "  return expect(${0:fn(params.$1)}).toBe(params.$3)",
+      "end function)"
+    ],
+    "description": "Parameterized test with itEach()"
+  },
+  "beforeEach": {
+    "prefix": "beforeeach",
+    "body": [
+      "beforeEach(sub ()",
+      "  ${0:m.__mocks = {}}",
+      "end sub)"
+    ],
+    "description": "beforeEach hook"
+  },
+  "afterEach": {
+    "prefix": "aftereach",
+    "body": [
+      "afterEach(sub ()",
+      "  $0",
+      "end sub)"
+    ],
+    "description": "afterEach hook"
+  },
+  "Mock Function": {
+    "prefix": "mockfn",
+    "body": [
+      "mockFunction(\"${1:FunctionName}\").${2|returnValue,resolvedValue,implementation|}(${0})"
+    ],
+    "description": "Set up a mock function return value"
+  },
+  "Expect Assertion": {
+    "prefix": "expect",
+    "body": [
+      "expect(${1:value}).${2|toBe,toEqual,toBeTrue,toBeFalse,toBeValid,toBeInvalid,toContain,toHaveKey,toHaveLength|}(${0})"
+    ],
+    "description": "Expect assertion with matcher"
+  },
+  "Expect Mock Called": {
+    "prefix": "expectmock",
+    "body": [
+      "expect(\"${1:MockName}\").${2|toHaveBeenCalled,toHaveBeenCalledTimes,toHaveBeenCalledWith|}(${0})"
+    ],
+    "description": "Assert mock function was called"
+  },
+  "Import Mock": {
+    "prefix": "mock",
+    "body": [
+      "' @mock /components/${0}"
+    ],
+    "description": "@mock annotation"
   }
 }

@@ -17,7 +17,7 @@
 // Data types
 // ---------------------------------------------------------------------------
 
-export interface BrightScriptMethod {
+interface BrightScriptMethod {
   name: string;
   /** Full BrightScript signature, e.g. `Push(a as Dynamic) as Void` */
   signature: string;
@@ -30,7 +30,7 @@ export interface BrightScriptMethod {
   deprecationNote?: string;
 }
 
-export interface BrightScriptInterface {
+interface BrightScriptInterface {
   /** Interface name, e.g. `ifArray` */
   name: string;
   description: string;
@@ -39,7 +39,7 @@ export interface BrightScriptInterface {
   methods: BrightScriptMethod[];
 }
 
-export interface BrightScriptComponent {
+interface BrightScriptComponent {
   /** Component name as passed to CreateObject(), e.g. `roArray` */
   name: string;
   description: string;
@@ -211,6 +211,15 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'EncodeUriComponent', signature: 'EncodeUriComponent() as String', returnType: 'String', description: 'Encodes the string as a URI component.' },
       { name: 'DecodeUriComponent', signature: 'DecodeUriComponent() as String', returnType: 'String', description: 'Decodes a URI component string.' },
       { name: 'IsEmpty', signature: 'IsEmpty() as Boolean', returnType: 'Boolean', description: 'Returns true if the string has zero length.' },
+      { name: 'SetString', signature: 'SetString(str as String) as Void', returnType: 'Void', description: 'Sets the string value.' },
+      { name: 'AppendString', signature: 'AppendString(str as String, length as Integer) as Void', returnType: 'Void', description: 'Appends the first length characters of str.' },
+      { name: 'ToInt', signature: 'ToInt() as Integer', returnType: 'Integer', description: 'Converts the string to an Integer.' },
+      { name: 'ToFloat', signature: 'ToFloat() as Float', returnType: 'Float', description: 'Converts the string to a Float.' },
+      { name: 'GetEntityEncode', signature: 'GetEntityEncode() as String', returnType: 'String', description: 'Returns the string with HTML entity encoding.' },
+      { name: 'Escape', signature: 'Escape() as String', returnType: 'String', description: 'URL-encodes the string.' },
+      { name: 'Unescape', signature: 'Unescape() as String', returnType: 'String', description: 'URL-decodes the string.' },
+      { name: 'Format', signature: 'Format(...args) as String', returnType: 'String', description: 'Returns a formatted string using % placeholders.' },
+      { name: 'Arg', signature: 'Arg(value as Dynamic) as String', returnType: 'String', description: 'Returns the string with the next positional placeholder replaced by value.' },
     ],
   },
 
@@ -320,6 +329,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'GetSignedLong', signature: 'GetSignedLong(index as Integer) as Integer', returnType: 'Integer', description: 'Returns 4 bytes starting at index as a signed 32-bit integer.' },
       { name: 'IsLittleEndianCPU', signature: 'IsLittleEndianCPU() as Boolean', returnType: 'Boolean', description: 'Returns true if the device CPU is little-endian.' },
       { name: 'GetCRC32', signature: 'GetCRC32(startIndex = 0 as Integer, length = -1 as Integer) as Integer', returnType: 'Integer', description: 'Computes and returns the CRC-32 checksum of the byte array.' },
+      { name: 'Slice', signature: 'Slice(start as Integer, length as Integer) as Object', returnType: 'Object', description: 'Returns a new roByteArray containing a portion of this array.' },
     ],
   },
 
@@ -349,6 +359,13 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'AddAttribute', signature: 'AddAttribute(key as String, value as String) as Void', returnType: 'Void', description: 'Adds or replaces an attribute on the element.' },
       { name: 'IsName', signature: 'IsName(name as String) as Boolean', returnType: 'Boolean', description: 'Returns true if the element tag name matches name (case-insensitive).' },
       { name: 'HasAttribute', signature: 'HasAttribute(name as String) as Boolean', returnType: 'Boolean', description: 'Returns true if the element has the given attribute.' },
+      { name: 'GetChildNodes', signature: 'GetChildNodes() as Object', returnType: 'Object', description: 'Returns all child nodes including text nodes.' },
+      { name: 'GetNamedElements', signature: 'GetNamedElements(name as String) as Object', returnType: 'Object', description: 'Returns child elements matching the given name.' },
+      { name: 'GetNamedElementsCi', signature: 'GetNamedElementsCi(name as String) as Object', returnType: 'Object', description: 'Case-insensitive version of GetNamedElements.' },
+      { name: 'AddBodyElement', signature: 'AddBodyElement() as Object', returnType: 'Object', description: 'Adds a new unnamed child element to the body.' },
+      { name: 'AddElement', signature: 'AddElement(name as String) as Object', returnType: 'Object', description: 'Adds a new named child element.' },
+      { name: 'AddElementWithBody', signature: 'AddElementWithBody(name as String, body as String) as Object', returnType: 'Object', description: 'Adds a new named child element with body text.' },
+      { name: 'AddText', signature: 'AddText(text as String) as Void', returnType: 'Void', description: 'Adds a text node to the element body.' },
     ],
   },
 
@@ -391,6 +408,15 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'ToLocalTime', signature: 'ToLocalTime() as Void', returnType: 'Void', description: 'Converts the date/time to local time.' },
       { name: 'GetISOString', signature: 'GetISOString() as String', returnType: 'String', description: 'Returns the date/time as an ISO 8601 string (e.g. "2024-01-15T10:30:00Z").' },
       { name: 'FromISO8601String', signature: 'FromISO8601String(dateTime as String) as Integer', returnType: 'Integer', description: 'Parses an ISO 8601 string. Returns 0 on success, non-zero on failure.' },
+      { name: 'AsLongSeconds', signature: 'AsLongSeconds() as LongInteger', returnType: 'LongInteger', description: 'Returns the date/time as seconds from Unix epoch as a LongInteger.' },
+      { name: 'FromLongSeconds', signature: 'FromLongSeconds(seconds as LongInteger) as Void', returnType: 'Void', description: 'Sets the date/time using seconds from Unix epoch as LongInteger.' },
+      { name: 'GetISOStringWithMilliseconds', signature: 'GetISOStringWithMilliseconds(format as String) as String', returnType: 'String', description: 'Returns ISO 8601 date/time with milliseconds precision.', since: '12.0' },
+      { name: 'GetLocalDateTime', signature: 'GetLocalDateTime(format as String) as String', returnType: 'String', description: 'Returns the localized date of the device.', since: '12.0' },
+      { name: 'GetLocalTime', signature: 'GetLocalTime(format as String) as String', returnType: 'String', description: 'Returns the localized time of the device.', since: '12.0' },
+      { name: 'AsDateStringNoParam', signature: 'AsDateStringNoParam() as String', returnType: 'String', description: 'Returns the date/time in long-date format.' },
+      { name: 'GetWeekday', signature: 'GetWeekday() as String', returnType: 'String', description: 'Returns the canonical English day of week name.' },
+      { name: 'GetLastDayOfMonth', signature: 'GetLastDayOfMonth() as Integer', returnType: 'Integer', description: 'Returns the last day of the month (28-31).' },
+      { name: 'AsLongMilliseconds', signature: 'AsLongMilliseconds() as LongInteger', returnType: 'LongInteger', description: 'Returns milliseconds from Unix epoch as LongInteger.', since: '15.0' },
     ],
   },
 
@@ -444,6 +470,17 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'AddCookies', signature: 'AddCookies(cookies as Object) as Boolean', returnType: 'Boolean', description: 'Adds cookies to the cookie jar.' },
       { name: 'ClearCookies', signature: 'ClearCookies() as Void', returnType: 'Void', description: 'Clears all cookies.' },
       { name: 'SetHttpAgent', signature: 'SetHttpAgent(agent as Object) as Boolean', returnType: 'Boolean', description: 'Associates a shared roHttpAgent with this transfer, so cookies and headers from the agent are applied to all requests.' },
+      { name: 'GetIdentity', signature: 'GetIdentity() as Integer', returnType: 'Integer', description: 'Returns a unique identifier for this transfer object.' },
+      { name: 'AsyncPostFromFileToFile', signature: 'AsyncPostFromFileToFile(fromFile as String, toFile as String) as Boolean', returnType: 'Boolean', description: 'Starts async POST from a file, writes response to a file.' },
+      { name: 'RetainBodyOnError', signature: 'RetainBodyOnError(retain as Boolean) as Boolean', returnType: 'Boolean', description: 'When true, retains response body even on HTTP error codes.' },
+      { name: 'SetUserAndPassword', signature: 'SetUserAndPassword(user as String, password as String) as Boolean', returnType: 'Boolean', description: 'Sets HTTP basic auth credentials.' },
+      { name: 'EnableEncodings', signature: 'EnableEncodings(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables gzip/deflate encoding for requests.' },
+      { name: 'Escape', signature: 'Escape(text as String) as String', returnType: 'String', description: 'URL-encodes a string.' },
+      { name: 'Unescape', signature: 'Unescape(text as String) as String', returnType: 'String', description: 'URL-decodes a string.' },
+      { name: 'UrlEncode', signature: 'UrlEncode(text as String) as String', returnType: 'String', description: 'URL-encodes a string.', deprecated: true, deprecationNote: 'Use Escape() instead.' },
+      { name: 'EnableResume', signature: 'EnableResume(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables automatic resume of interrupted downloads.' },
+      { name: 'SetHttpVersion', signature: 'SetHttpVersion(version as String) as Void', returnType: 'Void', description: 'Sets the HTTP version (http1.1 or http2).' },
+      { name: 'GetUserAgent', signature: 'GetUserAgent() as String', returnType: 'String', description: 'Returns the current User-Agent string.' },
     ],
   },
 
@@ -497,6 +534,8 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'MatchFiles', signature: 'MatchFiles(path as String, pattern as String) as Object', returnType: 'roArray', description: 'Returns files in path whose names match the glob pattern.' },
       { name: 'Find', signature: 'Find(rootDir as String, pattern as String) as Object', returnType: 'roArray', description: 'Finds files matching pattern directly under rootDir.' },
       { name: 'FindRecurse', signature: 'FindRecurse(rootDir as String, pattern as String) as Object', returnType: 'roArray', description: 'Recursively finds files matching pattern under rootDir.' },
+      { name: 'Match', signature: 'Match(path as String, pattern as String) as Object', returnType: 'Object', description: 'Returns files matching a glob pattern in the given path.' },
+      { name: 'GetVolumeInfo', signature: 'GetVolumeInfo(path as String) as Object', returnType: 'Object', description: 'Returns volume information for the given path.' },
     ],
   },
 
@@ -560,6 +599,40 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'EnableLinkStatusEvent', signature: 'EnableLinkStatusEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables roDeviceInfoEvent notifications when network link status changes.' },
       { name: 'EnableInternetStatusEvent', signature: 'EnableInternetStatusEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables roDeviceInfoEvent notifications when internet connectivity changes.' },
       { name: 'EnableAudioGuideChangedEvent', signature: 'EnableAudioGuideChangedEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables roDeviceInfoEvent notifications when audio guide status changes.' },
+      { name: 'GetModelType', signature: 'GetModelType() as String', returnType: 'String', description: 'Returns the model type (STB or TV).' },
+      { name: 'GetModelDetails', signature: 'GetModelDetails() as Object', returnType: 'Object', description: 'Returns an AA with model hardware details.' },
+      { name: 'GetFriendlyName', signature: 'GetFriendlyName() as String', returnType: 'String', description: 'Returns the user-assigned friendly device name.' },
+      { name: 'GetDeviceUniqueId', signature: 'GetDeviceUniqueId() as String', returnType: 'String', description: 'Returns a unique device identifier.', deprecated: true, deprecationNote: 'Use GetChannelClientId() instead.' },
+      { name: 'GetAdvertisingId', signature: 'GetAdvertisingId() as String', returnType: 'String', description: 'Returns the Roku advertising identifier.', deprecated: true, deprecationNote: 'Use GetRIDA() instead.' },
+      { name: 'IsAdIdTrackingDisabled', signature: 'IsAdIdTrackingDisabled() as Boolean', returnType: 'Boolean', description: 'Returns true if ad tracking is disabled by the user.', deprecated: true, deprecationNote: 'Use IsRIDADisabled() instead.' },
+      { name: 'GetClientTrackingId', signature: 'GetClientTrackingId() as String', returnType: 'String', description: 'Returns a channel-scoped tracking ID.', deprecated: true, deprecationNote: 'Use GetChannelClientId() instead.' },
+      { name: 'GetTimeZone', signature: 'GetTimeZone() as String', returnType: 'String', description: 'Returns the system time zone name.' },
+      { name: 'GetCountryCode', signature: 'GetCountryCode() as String', returnType: 'String', description: 'Returns the ISO 3166-1 country code for the Roku account.' },
+      { name: 'GetPreferredCaptionLanguage', signature: 'GetPreferredCaptionLanguage() as String', returnType: 'String', description: 'Returns the preferred caption language code.' },
+      { name: 'TimeSinceLastKeypress', signature: 'TimeSinceLastKeypress() as Integer', returnType: 'Integer', description: 'Returns seconds since the last remote keypress.' },
+      { name: 'GetDrmInfo', signature: 'GetDrmInfo() as Object', returnType: 'Object', description: 'Returns DRM system information.', deprecated: true, deprecationNote: 'Use GetDrmInfoEx() instead.' },
+      { name: 'GetDrmInfoEx', signature: 'GetDrmInfoEx() as Object', returnType: 'Object', description: 'Returns extended DRM system information.' },
+      { name: 'IsClockValid', signature: 'IsClockValid() as Boolean', returnType: 'Boolean', description: 'Returns true if the device clock has been set from a time server.' },
+      { name: 'EnableValidClockEvent', signature: 'EnableValidClockEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables/disables roDeviceInfoEvent for clock validation.' },
+      { name: 'EnableAppFocusEvent', signature: 'EnableAppFocusEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables/disables app focus/blur events.' },
+      { name: 'EnableScreensaverExitedEvent', signature: 'EnableScreensaverExitedEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables/disables screensaver-exited events.' },
+      { name: 'EnableLowGeneralMemoryEvent', signature: 'EnableLowGeneralMemoryEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables/disables low-memory warning events.' },
+      { name: 'GetGeneralMemoryLevel', signature: 'GetGeneralMemoryLevel() as String', returnType: 'String', description: 'Returns the general memory level (normal, low, critical).' },
+      { name: 'IsStoreDemoMode', signature: 'IsStoreDemoMode() as Boolean', returnType: 'Boolean', description: 'Returns true if the device is in retail demo mode.' },
+      { name: 'GetUptimeMillisecondsAsLong', signature: 'GetUptimeMillisecondsAsLong() as LongInteger', returnType: 'LongInteger', description: 'Returns device uptime in milliseconds.' },
+      { name: 'ForceInternetStatusCheck', signature: 'ForceInternetStatusCheck() as Boolean', returnType: 'Boolean', description: 'Forces an immediate internet connectivity check.' },
+      { name: 'GetExternalIp', signature: 'GetExternalIp() as String', returnType: 'String', description: 'Returns the device external IP address.' },
+      { name: 'GetDisplayProperties', signature: 'GetDisplayProperties() as Object', returnType: 'Object', description: 'Returns display properties including HDR support.' },
+      { name: 'GetSupportedGraphicsResolutions', signature: 'GetSupportedGraphicsResolutions() as Object', returnType: 'Object', description: 'Returns supported UI graphics resolutions.' },
+      { name: 'CanDecodeVideo', signature: 'CanDecodeVideo(options as Object) as Object', returnType: 'Object', description: 'Checks if the device can decode a video format.' },
+      { name: 'GetGraphicsPlatform', signature: 'GetGraphicsPlatform() as String', returnType: 'String', description: 'Returns the graphics platform (opengl or directfb).' },
+      { name: 'GetVideoDecodeInfo', signature: 'GetVideoDecodeInfo() as Object', returnType: 'Object', description: 'Returns video decoder information.', deprecated: true, deprecationNote: 'Use CanDecodeVideo() instead.' },
+      { name: 'EnableCodecCapChangedEvent', signature: 'EnableCodecCapChangedEvent(enable as Boolean) as Boolean', returnType: 'Boolean', description: 'Enables/disables codec capability change events.' },
+      { name: 'GetAudioDecodeInfo', signature: 'GetAudioDecodeInfo() as Object', returnType: 'Object', description: 'Returns audio decoder information.', deprecated: true, deprecationNote: 'Use CanDecodeAudio() instead.' },
+      { name: 'CanDecodeAudio', signature: 'CanDecodeAudio(options as Object) as Object', returnType: 'Object', description: 'Checks if the device can decode an audio format.' },
+      { name: 'IsPassthruCodecActive', signature: 'IsPassthruCodecActive() as Boolean', returnType: 'Boolean', description: 'Returns true if audio is being passed through to an external receiver.' },
+      { name: 'IsAutoplayEnabled', signature: 'IsAutoplayEnabled() as Boolean', returnType: 'Boolean', description: 'Returns true if the user has enabled autoplay.' },
+      { name: 'isAutoAdjustRefreshRateEnabled', signature: 'isAutoAdjustRefreshRateEnabled() as Boolean', returnType: 'Boolean', description: 'Returns true if auto-adjust display refresh rate is enabled.' },
     ],
   },
 
@@ -588,6 +661,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'GetSectionList', signature: 'GetSectionList() as Object', returnType: 'roArray', description: 'Returns an roArray of section name strings.' },
       { name: 'Delete', signature: 'Delete(section as String) as Boolean', returnType: 'Boolean', description: 'Deletes the entire section and all its keys.' },
       { name: 'Flush', signature: 'Flush() as Boolean', returnType: 'Boolean', description: 'Writes any pending changes to persistent storage.' },
+      { name: 'GetSpaceAvailable', signature: 'GetSpaceAvailable() as Integer', returnType: 'Integer', description: 'Returns the number of bytes available in the registry.' },
     ],
   },
 
@@ -697,6 +771,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'Update', signature: 'Update(data as Object) as Integer', returnType: 'Integer', description: 'Feeds data (roByteArray or String) into the digest. Returns 0 on success.' },
       { name: 'Final', signature: 'Final() as Object', returnType: 'roByteArray', description: 'Finalises and returns the digest as an roByteArray.' },
       { name: 'Process', signature: 'Process(algorithm as String, data as Object) as Object', returnType: 'roByteArray', description: 'Convenience: hash data in a single call. Returns the digest as an roByteArray.' },
+      { name: 'Reinit', signature: 'Reinit() as Integer', returnType: 'Integer', description: 'Reinitializes the digest context.' },
     ],
   },
 
@@ -710,6 +785,8 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'Process', signature: 'Process(data as Object) as Object', returnType: 'roByteArray', description: 'Processes data through the cipher and returns the result.' },
       { name: 'Final', signature: 'Final() as Object', returnType: 'roByteArray', description: 'Finalises the cipher operation and returns any remaining output.' },
       { name: 'SetPadding', signature: 'SetPadding(padding as Boolean) as Void', returnType: 'Void', description: 'Enables/disables PKCS#7 padding (enabled by default).' },
+      { name: 'Reinit', signature: 'Reinit() as Integer', returnType: 'Integer', description: 'Reinitializes the cipher context.' },
+      { name: 'Update', signature: 'Update(data as Object) as Object', returnType: 'Object', description: 'Processes a chunk of data; call multiple times before Final.' },
     ],
   },
 
@@ -723,6 +800,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'Update', signature: 'Update(data as Object) as Integer', returnType: 'Integer', description: 'Feeds data into the HMAC computation.' },
       { name: 'Final', signature: 'Final() as Object', returnType: 'roByteArray', description: 'Returns the finalised HMAC digest.' },
       { name: 'Process', signature: 'Process(algorithm as String, key as Object, data as Object) as Object', returnType: 'roByteArray', description: 'Convenience: compute HMAC in one call.' },
+      { name: 'Reinit', signature: 'Reinit() as Integer', returnType: 'Integer', description: 'Reinitializes the HMAC context.' },
     ],
   },
 
@@ -763,6 +841,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'SetTimedMetaDataForKeys', signature: 'SetTimedMetaDataForKeys(keys as Dynamic) as Void', returnType: 'Void', description: 'Specifies which timed metadata keys (e.g. ID3 tags) the app should receive as events.' },
       { name: 'GetCaptionRenderer', signature: 'GetCaptionRenderer() as Object', returnType: 'Object', description: 'Returns the roCaptionRenderer instance for custom closed-caption rendering.' },
       { name: 'SetCGMS', signature: 'SetCGMS(level as Integer) as Void', returnType: 'Void', description: 'Sets the Copy Generation Management System level (0–3) on analog outputs.' },
+      { name: 'SetMacrovisionLevel', signature: 'SetMacrovisionLevel(level as Integer) as Void', returnType: 'Void', description: 'Sets Macrovision copy protection level (no-op on current devices).', deprecated: true, deprecationNote: 'No longer functional.' },
     ],
   },
 
@@ -1112,6 +1191,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'GetDefaultFont', signature: 'GetDefaultFont(size as Integer, bold as Boolean, italic as Boolean) as Object', returnType: 'roFont', description: 'Returns the system default font at the given size and style.' },
       { name: 'GetDefaultFontSize', signature: 'GetDefaultFontSize() as Integer', returnType: 'Integer', description: 'Returns the system default font size in pixels.' },
       { name: 'Get', signature: 'Get(family as String, size as Integer, bold as Boolean, italic as Boolean) as String', returnType: 'String', description: 'Returns a font descriptor string for the given family and attributes.' },
+      { name: 'GetFontString', signature: 'GetFontString(family as String, size as Integer, bold as Boolean, italic as Boolean) as String', returnType: 'String', description: 'Returns a font descriptor string for the specified font parameters.' },
     ],
   },
 
@@ -1242,6 +1322,18 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
       { name: 'GetPartialUserData', signature: 'GetPartialUserData(fields as String) as Void', returnType: 'Void', description: 'Requests a subset of user account fields. fields is a space-separated list (e.g. "email name").' },
       { name: 'ConfirmOrder', signature: 'ConfirmOrder(order as Object) as Void', returnType: 'Void', description: 'Sends a server-side purchase confirmation after receiving an order event.' },
       { name: 'StoreChannelCredData', signature: 'StoreChannelCredData(data as String) as Boolean', returnType: 'Boolean', description: 'Stores an authentication token in the Roku device registry for this channel. Returns true on success.' },
+      { name: 'GetCatalog', signature: 'GetCatalog() as Void', returnType: 'Void', description: 'Requests the channel product catalog.' },
+      { name: 'GetPurchases', signature: 'GetPurchases() as Void', returnType: 'Void', description: 'Requests the list of user purchases.' },
+      { name: 'GetAllPurchases', signature: 'GetAllPurchases() as Void', returnType: 'Void', description: 'Requests all purchases including expired.' },
+      { name: 'SetOrder', signature: 'SetOrder(order as Object) as Void', returnType: 'Void', description: 'Sets the current order from a content list.' },
+      { name: 'ClearOrder', signature: 'ClearOrder() as Void', returnType: 'Void', description: 'Clears the current order.' },
+      { name: 'DeltaOrder', signature: 'DeltaOrder(delta as Object) as Void', returnType: 'Void', description: 'Adds or removes an item from the current order.' },
+      { name: 'GetOrder', signature: 'GetOrder() as Object', returnType: 'Object', description: 'Returns the current order items.' },
+      { name: 'GetUserRegionData', signature: 'GetUserRegionData() as Void', returnType: 'Void', description: 'Requests region-specific user data.' },
+      { name: 'GetChannelCred', signature: 'GetChannelCred() as Void', returnType: 'Void', description: 'Retrieves stored channel credentials.' },
+      { name: 'GetDeviceAttestation', signature: 'GetDeviceAttestation() as Void', returnType: 'Void', description: 'Requests a device attestation token.' },
+      { name: 'RequestPartnerOrder', signature: 'RequestPartnerOrder(orderInfo as Object) as Void', returnType: 'Void', description: 'Initiates a partner order (TVOD transaction).' },
+      { name: 'ConfirmPartnerOrder', signature: 'ConfirmPartnerOrder(confirmInfo as Object) as Void', returnType: 'Void', description: 'Confirms a partner order using the order ID.' },
     ],
   },
 
@@ -1743,11 +1835,18 @@ export function findInterface(name: string): BrightScriptInterface | undefined {
   return _interfaceMap.get(name.toLowerCase());
 }
 
+/** Cache for getComponentMethods — the catalog is static so results never change. */
+const _methodsCache = new Map<string, BrightScriptMethod[]>();
+
 /**
  * Returns the deduplicated list of BrightScriptMethod objects for all
  * interfaces implemented by the named component.
  */
 export function getComponentMethods(componentName: string): BrightScriptMethod[] {
+  const key = componentName.toLowerCase();
+  const cached = _methodsCache.get(key);
+  if (cached) return cached;
+
   const component = findComponent(componentName);
   if (!component) return [];
 
@@ -1765,24 +1864,32 @@ export function getComponentMethods(componentName: string): BrightScriptMethod[]
     }
   }
 
+  _methodsCache.set(key, methods);
   return methods;
 }
+
+/** Cache for findMethodInterface lookups. */
+const _methodIfaceCache = new Map<string, BrightScriptInterface | undefined>();
 
 /**
  * Returns the name of the interface that defines methodName on componentName,
  * or undefined if not found.
  */
 export function findMethodInterface(componentName: string, methodName: string): BrightScriptInterface | undefined {
+  const cacheKey = `${componentName.toLowerCase()}|${methodName.toLowerCase()}`;
+  if (_methodIfaceCache.has(cacheKey)) return _methodIfaceCache.get(cacheKey);
+
   const component = findComponent(componentName);
-  if (!component) return undefined;
+  if (!component) { _methodIfaceCache.set(cacheKey, undefined); return undefined; }
 
   const lowerMethod = methodName.toLowerCase();
   for (const ifName of component.interfaces) {
     const iface = findInterface(ifName);
     if (!iface) continue;
     const found = iface.methods.find((m) => m.name.toLowerCase() === lowerMethod);
-    if (found) return iface;
+    if (found) { _methodIfaceCache.set(cacheKey, iface); return iface; }
   }
+  _methodIfaceCache.set(cacheKey, undefined);
   return undefined;
 }
 

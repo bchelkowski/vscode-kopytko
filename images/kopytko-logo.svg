@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="kGrad" x1="0" y1="50" x2="0" y2="206" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C080FF"/>
+      <stop offset="100%" stop-color="#8B44BB"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Vertical stem -->
+  <rect x="42" y="50" width="34" height="156" rx="5" fill="url(#kGrad)"/>
+
+  <!-- Upper arm -->
+  <polygon points="76,50 168,50 168,80 76,128" fill="url(#kGrad)"/>
+
+  <!-- Lower arm -->
+  <polygon points="76,128 168,176 168,206 76,206" fill="url(#kGrad)"/>
+
+  <!-- Streaming signal arcs -->
+  <path d="M 178 98 A 34 34 0 0 1 178 158"
+        fill="none" stroke="#A855D8"
+        stroke-width="8" stroke-linecap="round"/>
+  <path d="M 187 79 A 53 53 0 0 1 187 177"
+        fill="none" stroke="#8B44BB"
+        stroke-width="8" stroke-linecap="round" opacity="0.7"/>
+  <path d="M 196 62 A 72 72 0 0 1 196 194"
+        fill="none" stroke="#6B2FA0"
+        stroke-width="8" stroke-linecap="round" opacity="0.4"/>
+</svg>

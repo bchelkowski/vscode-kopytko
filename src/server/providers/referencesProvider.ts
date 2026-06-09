@@ -1,0 +1,52 @@
+import { ReferenceParams, Location, Range, Position } from 'vscode-languageserver/node';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { URI } from 'vscode-uri';
+import fsWrapper from '../utils/fsWrapper';
+import { getWord, escapeRegex } from '../utils/textUtils';
+import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+
+const FUNC_DEF_RE = /^\s*(?:function|sub)\s+(\w+)\s*\(/i;
+
+export class BrightScriptReferencesProvider {
+  constructor(private readonly _index: WorkspaceFunctionIndex) {}
+
+  provideReferences(document: TextDocument, params: ReferenceParams): Location[] {
+    const text = document.getText();
+    const lines = text.split(/\r?\n/);
+    const lineText = lines[params.position.line] ?? '';
+
+    const word = getWord(lineText, params.position.character);
+    if (!word) return [];
+
+    const wordRe = new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi');
+    const locations: Location[] = [];
+
+    for (const filePath of this._index.getFiles()) {
+      let fileText: string;
+      try {
+        fileText = fsWrapper.readFileSync(filePath, 'utf8');
+      } catch {
+        continue;
+      }
+      const fileLines = fileText.split(/\r?\n/);
+      for (let lineIdx = 0; lineIdx < fileLines.length; lineIdx++) {
+        const line = fileLines[lineIdx];
+        const defMatch = FUNC_DEF_RE.exec(line);
+        if (defMatch && defMatch[1].toLowerCase() === word.toLowerCase()) continue;
+        wordRe.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = wordRe.exec(line)) !== null) {
+          locations.push({
+            uri: URI.file(filePath).toString(),
+            range: Range.create(
+              Position.create(lineIdx, match.index),
+              Position.create(lineIdx, match.index + word.length),
+            ),
+          });
+        }
+      }
+    }
+
+    return locations;
+  }
+}

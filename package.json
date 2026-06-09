@@ -5,11 +5,56 @@
   "version": "0.1.0",
   "publisher": "bchelkowski",
   "license": "MIT",
-  "icon": "images/logo.png",
-  "keywords": ["brightscript", "kopytko", "roku", "scenograph", "brs"],
+  "icon": "images/kopytko-logo.png",
+  "keywords": [
+    "brightscript",
+    "kopytko",
+    "roku",
+    "scenograph",
+    "brs"
+  ],
   "engines": {
-    "vscode": "^1.85.0",
-    "node": ">=18.0.0"
+    "vscode": "^1.120.0",
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
+    "watch": "tsc -w -p ./tsconfig.json",
+    "watch:server": "tsc -w -p ./tsconfig.server.json",
+    "lint": "eslint \"./src/**/*.ts\"",
+    "test": "mocha",
+    "test:coverage": "nyc mocha",
+    "clean": "node -e \"require('fs').rmSync('out', {recursive: true, force: true})\"",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@dazn/kopytko-packager": "^1.4.2",
+    "kopytko-formatter": "file:packages/kopytko-formatter",
+    "vscode-languageclient": "^10.0.0",
+    "vscode-languageserver": "^10.0.0",
+    "vscode-languageserver-textdocument": "^1.0.13",
+    "vscode-uri": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.9.2",
+    "@types/sinon": "^21.0.1",
+    "@types/vscode": "^1.120.0",
+    "@vscode/vsce": "^3.9.2",
+    "chai": "^6.2.2",
+    "eslint": "^10.4.1",
+    "mocha": "^11.3.0",
+    "nyc": "^18.0.0",
+    "sinon": "^22.0.0",
+    "source-map-support": "^0.5.21",
+    "tsx": "^4.20.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "diff": "^8.0.3"
   },
   "repository": {
     "type": "git",
@@ -27,15 +72,22 @@
     "onLanguage:brightscript",
     "onLanguage:xml",
     "workspaceContains:**/*.brs",
-    "workspaceContains:**/.kopytkorc"
+    "workspaceContains:**/.kopytkorc",
+    "onDebug"
   ],
   "main": "./out/extension",
   "contributes": {
     "languages": [
       {
         "id": "brightscript",
-        "aliases": ["BrightScript", "brightscript", "brs"],
-        "extensions": [".brs", ".bs"],
+        "aliases": [
+          "BrightScript",
+          "brightscript",
+          "brs"
+        ],
+        "extensions": [
+          ".brs"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -56,7 +108,11 @@
         },
         "kopytko.languageServer.trace": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Trace LSP communication for debugging."
         },
@@ -69,6 +125,634 @@
           "type": "string",
           "default": "app",
           "description": "Root source directory for resolving internal @import paths (matches .kopytkorc sourceDir)."
+        },
+        "kopytko.imports.generatedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Glob patterns for `@import` paths that are generated during the build process and do not exist as source files on disk (e.g. by a Kopytko plugin or code-generation tool). Unresolved imports matching these patterns are shown as informational hints instead of warnings, so the developer is aware of the situation without it being flagged as an error.\n\n**Supported wildcards:** `*` matches any characters except `/`; `**` matches any characters including `/`.\n\n**Examples:**\n- `/components/generated/**`\n- `**/auto-generated/*.brs`"
+        },
+        "kopytko.imports.siblingPatterns": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2
+          },
+          "default": [],
+          "markdownDescription": "Groups of file name patterns whose `.brs` files share import scope for the `import/unused` diagnostic check.\n\nFiles in the same group are always loaded together by the same XML component, so an `@import` in one file is considered used if any file in the group references one of its exported functions.\n\n**Pattern syntax:** each pattern may contain a single `*` wildcard; files with the same wildcard value in the same directory are considered siblings.\n\n**Example** — Kopytko component/template pairs:\n```json\n[\n  [\"*.component.brs\", \"*.template.brs\"],\n  [\"*.view.brs\", \"*.template.brs\"]\n]\n```\nWith this config, if `Foo.component.brs` imports `helperFn` and only `Foo.template.brs` calls it, the import is not flagged as unused."
+        },
+        "kopytko.readOnlyPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Glob patterns for files that the extension should treat as read-only. Matched files will not be modified by document formatting or code action edits.\n\n**Supported wildcards:** `*` matches any characters except `/`; `**` matches any characters including `/`.\n\n**Examples:**\n```json\n[\n  \"**/node_modules/**\",\n  \"**/generated/**\",\n  \"**/vendor/*.brs\"\n]\n```"
+        },
+        "kopytko.format.builtinCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "enumDescriptions": [
+            "Keep the catalog casing (e.g. Abs, CreateObject)",
+            "ALL CAPS (e.g. ABS, CREATEOBJECT)",
+            "all lowercase (e.g. abs, createobject)",
+            "First letter uppercase, rest lowercase (e.g. Abs, Createobject)",
+            "Each word capitalised (e.g. Abs, CreateObject)",
+            "First word lowercase, subsequent words capitalised (e.g. abs, createObject)"
+          ],
+          "default": "NoChange",
+          "description": "Casing applied to BrightScript built-in function names when a completion is inserted."
+        },
+        "kopytko.format.keywordCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "enumDescriptions": [
+            "Keep the catalog casing (e.g. for, end sub)",
+            "ALL CAPS (e.g. FOR, END SUB)",
+            "all lowercase (e.g. for, end sub)",
+            "First letter uppercase, rest lowercase (e.g. For, End sub)",
+            "Each word capitalised (e.g. For, End Sub)",
+            "First word lowercase, subsequent words capitalised (e.g. for, end Sub)"
+          ],
+          "default": "NoChange",
+          "description": "Casing applied to BrightScript keywords when a completion is inserted. Acts as fallback for type, literal, and operator casing when those are not set."
+        },
+        "kopytko.format.typeCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "default": "NoChange",
+          "markdownDescription": "Casing for BrightScript type names (`boolean`, `integer`, `string`, `void`, …). Falls back to `keywordCasing` when not set."
+        },
+        "kopytko.format.literalCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "default": "NoChange",
+          "markdownDescription": "Casing for literal values (`true`, `false`, `invalid`). Falls back to `keywordCasing` when not set."
+        },
+        "kopytko.format.logicOperatorCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "default": "NoChange",
+          "markdownDescription": "Casing for logic operators (`and`, `or`, `not`). Falls back to `keywordCasing` when not set."
+        },
+        "kopytko.format.mathOperatorCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "default": "NoChange",
+          "markdownDescription": "Casing for math operators (`mod`). Falls back to `keywordCasing` when not set."
+        },
+        "kopytko.format.methodCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "enumDescriptions": [
+            "Keep the catalog casing (e.g. Push, SetUrl)",
+            "ALL CAPS (e.g. PUSH, SETURL)",
+            "all lowercase (e.g. push, seturl)",
+            "First letter uppercase, rest lowercase (e.g. Push, Seturl)",
+            "Each word capitalised (e.g. Push, SetUrl)",
+            "First word lowercase, subsequent words capitalised (e.g. push, setUrl)"
+          ],
+          "default": "NoChange",
+          "description": "Casing applied to component method names when a completion is inserted."
+        },
+        "kopytko.format.userFunctionCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "enumDescriptions": [
+            "Keep the original casing",
+            "ALL CAPS",
+            "all lowercase",
+            "First letter uppercase, rest lowercase",
+            "Each word capitalised",
+            "First word lowercase, subsequent words capitalised"
+          ],
+          "default": "NoChange",
+          "description": "Casing applied to user-defined function/sub names in completions and formatting."
+        },
+        "kopytko.format.userMethodCasing": {
+          "type": "string",
+          "enum": [
+            "NoChange",
+            "UpperCase",
+            "LowerCase",
+            "Capitalize",
+            "PascalCase",
+            "CamelCase"
+          ],
+          "enumDescriptions": [
+            "Keep the original casing",
+            "ALL CAPS",
+            "all lowercase",
+            "First letter uppercase, rest lowercase",
+            "Each word capitalised",
+            "First word lowercase, subsequent words capitalised"
+          ],
+          "default": "NoChange",
+          "description": "Casing applied to user-defined associative array method names in completions."
+        },
+        "kopytko.format.exactCasing": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Per-identifier casing overrides applied after all other casing rules. Keys are identifier names (case-insensitive), values are the exact output string.\n\n**Example:**\n```json\n{\n  \"invalid\": \"Invalid\",\n  \"getglobalaa\": \"GetGlobalAA\"\n}\n```"
+        },
+        "kopytko.format.indentSize": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of spaces per indentation level used by the BrightScript formatter."
+        },
+        "kopytko.format.useTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use tabs instead of spaces for indentation."
+        },
+        "kopytko.format.lineEnding": {
+          "type": "string",
+          "enum": [
+            "lf",
+            "crlf",
+            "auto"
+          ],
+          "default": "auto",
+          "description": "Line ending style. 'auto' preserves the document's existing endings."
+        },
+        "kopytko.format.trimTrailingWhitespace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Remove trailing whitespace from lines."
+        },
+        "kopytko.format.insertFinalNewline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ensure the file ends with a newline."
+        },
+        "kopytko.format.maxEmptyLines": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "description": "Maximum consecutive blank lines allowed. 0 = no limit."
+        },
+        "kopytko.format.emptyLinesBetweenFunctions": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 0,
+          "description": "Number of blank lines to enforce between top-level function/sub declarations."
+        },
+        "kopytko.format.emptyLinesBetweenMethods": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 0,
+          "description": "Number of blank lines between AA method definitions inside a builder function."
+        },
+        "kopytko.format.emptyLinesAtBlockBoundaries": {
+          "type": "string",
+          "enum": [
+            "strip",
+            "enforce",
+            "preserve"
+          ],
+          "default": "preserve",
+          "description": "Blank lines at the start/end of blocks: 'strip' removes them, 'enforce' adds one."
+        },
+        "kopytko.format.endKeywordStyle": {
+          "type": "string",
+          "enum": [
+            "spaced",
+            "compact",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Compound end-keyword style: `spaced` = `end if`, `compact` = `endif`. Applies to endif, endfunction, endsub, endwhile, endfor, endtry."
+        },
+        "kopytko.format.thenStyle": {
+          "type": "string",
+          "enum": [
+            "always",
+            "never",
+            "multiline-only",
+            "singleline-only",
+            "preserve"
+          ],
+          "default": "preserve",
+          "description": "Controls 'then' on if-lines."
+        },
+        "kopytko.format.functionVsSubForVoid": {
+          "type": "string",
+          "enum": [
+            "function",
+            "sub",
+            "allow-void",
+            "preserve"
+          ],
+          "enumDescriptions": [
+            "Convert all void procedures to use function keyword",
+            "Convert all void procedures to use sub keyword (removes 'as Void')",
+            "Allow function() as Void — keep both function-with-Void and sub as valid styles",
+            "Leave as-is"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Controls function vs sub for void procedures.\n\n```brightscript\n' \"sub\": converts function foo() as Void → sub foo()\n' \"function\": converts sub foo() → function foo() as Void\n' \"allow-void\": preserves both sub foo() and function foo() as Void\n```"
+        },
+        "kopytko.format.spaceBeforeNamedFunctionParens": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Space before `(` in named function/sub definitions.\n\n```brightscript\n' true:  function doWork ()\n' false: function doWork()\n```"
+        },
+        "kopytko.format.spaceBeforeAnonymousFunctionParens": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Space before `(` in anonymous function expressions.\n\n```brightscript\n' true:  m.handler = function ()\n' false: m.handler = function()\n```"
+        },
+        "kopytko.format.spaceBeforeCallParens": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Space before `(` in function calls.\n\n```brightscript\n' true:  doWork ()\n' false: doWork()\n```"
+        },
+        "kopytko.format.spaceInsideParens": {
+          "type": "string",
+          "enum": [
+            "never",
+            "always"
+          ],
+          "default": "never",
+          "description": "Spaces inside '()' in calls and definitions."
+        },
+        "kopytko.format.returnTypeAnnotations": {
+          "type": "string",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ],
+          "default": "preserve",
+          "description": "Enforce or remove 'as Type' return annotations."
+        },
+        "kopytko.format.paramTypeAnnotations": {
+          "type": "string",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ],
+          "default": "preserve",
+          "description": "Enforce or remove 'as Type' parameter annotations."
+        },
+        "kopytko.format.paramAlignmentStyle": {
+          "type": "string",
+          "enum": [
+            "indent",
+            "align-to-paren"
+          ],
+          "default": "indent",
+          "description": "Multi-line parameter alignment style."
+        },
+        "kopytko.format.wrapParamsThreshold": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Line length at which to wrap parameters to multiple lines. 0 = never."
+        },
+        "kopytko.format.printWidth": {
+          "type": "integer",
+          "default": 160,
+          "minimum": 40,
+          "description": "Maximum desired line length."
+        },
+        "kopytko.format.wrapLongStrings": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "plus",
+            "array-join"
+          ],
+          "default": "preserve",
+          "markdownDescription": "How to break long string literals that exceed `printWidth`.\n\n- `plus`: break with `+` concatenation\n- `array-join`: break with `[..., ...].join(\"\")`"
+        },
+        "kopytko.format.wrapLongChains": {
+          "type": "boolean",
+          "default": false,
+          "description": "Break long method/field chains onto new lines."
+        },
+        "kopytko.format.wrapArrays": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "never",
+          "description": "Multi-line array literals. 'auto' = multi-line when exceeding printWidth."
+        },
+        "kopytko.format.wrapAssocArrays": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "never",
+          "description": "Multi-line associative array literals {}."
+        },
+        "kopytko.format.bracketSpacing": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Spaces inside `{}`: `{ key: value }` (true) vs `{key: value}` (false)."
+        },
+        "kopytko.format.trailingComma": {
+          "type": "string",
+          "enum": [
+            "never",
+            "always",
+            "multiline"
+          ],
+          "default": "never",
+          "description": "Trailing comma after the last item in multi-line arrays and associative arrays."
+        },
+        "kopytko.format.arrayCommaStyle": {
+          "type": "string",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Comma separators in multi-line arrays. BrightScript allows omitting commas when items are on separate lines.\n\n```brightscript\n' \"always\":\narr = [\n  1,\n  2,\n  3,\n]\n\n' \"never\":\narr = [\n  1\n  2\n  3\n]\n```"
+        },
+        "kopytko.format.assocArrayCommaStyle": {
+          "type": "string",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Comma separators in multi-line associative arrays. BrightScript allows omitting commas when entries are on separate lines.\n\n```brightscript\n' \"always\":\nobj = {\n  name: \"foo\",\n  value: 42,\n}\n\n' \"never\":\nobj = {\n  name: \"foo\"\n  value: 42\n}\n```"
+        },
+        "kopytko.format.arrayItemAlignment": {
+          "type": "string",
+          "enum": [
+            "off",
+            "align"
+          ],
+          "default": "off",
+          "description": "Align values in multi-line associative arrays."
+        },
+        "kopytko.format.singleLineObjectThreshold": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Max number of keys before forcing an AA to multi-line. 0 = no limit."
+        },
+        "kopytko.format.splitArrayOpenBracket": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When `true`, splits `[{` onto separate lines in multi-item arrays for better readability.\n\n```brightscript\n' true:\nreturn [\n  {\n    name: \"Component\",\n  },\n  otherItem()\n]\n\n' false:\nreturn [{\n    name: \"Component\",\n  },\n  otherItem()\n]\n```"
+        },
+        "kopytko.format.spaceAroundOperators": {
+          "type": "boolean",
+          "default": true,
+          "description": "Spaces around binary operators (+, -, *, /, <>, and, or, mod)."
+        },
+        "kopytko.format.spaceAroundAssignment": {
+          "type": "boolean",
+          "default": true,
+          "description": "Spaces around = in assignments."
+        },
+        "kopytko.format.unarySpacing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Space after unary 'not'."
+        },
+        "kopytko.format.operatorLineBreakStyle": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ],
+          "default": "before",
+          "description": "Where to put operators on wrapped lines."
+        },
+        "kopytko.format.commentStyle": {
+          "type": "string",
+          "enum": [
+            "'",
+            "rem",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Normalize comment markers: `'` or `rem`, or preserve existing."
+        },
+        "kopytko.format.spaceAfterCommentMarker": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enforce space after `'` or `rem`: `' comment` vs `'comment`."
+        },
+        "kopytko.format.commentWidth": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Max comment line length. 0 = no limit."
+        },
+        "kopytko.format.sortImports": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sort @import statements alphabetically (module name first, then path)."
+        },
+        "kopytko.format.emptyLineAfterImports": {
+          "type": "boolean",
+          "default": false,
+          "description": "Insert blank line after the last @import line, before code starts."
+        },
+        "kopytko.format.blankLineAfterFunctionOpen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Insert blank line after function/sub opening line."
+        },
+        "kopytko.format.blankLineBeforeFunctionClose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Insert blank line before end function/sub."
+        },
+        "kopytko.format.blankLineBeforeReturn": {
+          "type": [
+            "string",
+            "boolean"
+          ],
+          "enum": [
+            "always",
+            "not-alone",
+            false
+          ],
+          "enumDescriptions": [
+            "Always add a blank line before return",
+            "Add a blank line only when return is NOT the sole statement in a block",
+            "Do not enforce blank lines before return"
+          ],
+          "default": false,
+          "markdownDescription": "Blank line before `return` statements. `not-alone` skips the blank line when `return` is the only statement in its block (e.g. a guard clause like `if x then return`)."
+        },
+        "kopytko.format.blankLineBeforeComment": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce blank line before stand-alone comment blocks."
+        },
+        "kopytko.format.separateLogicBlocks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Insert blank lines between visually distinct statement groups."
+        },
+        "kopytko.format.inlineIfThreshold": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Max expression length for single-line if/then. 0 = never inline."
+        },
+        "kopytko.format.parenthesisIfCase": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "always",
+            "never"
+          ],
+          "default": "preserve",
+          "description": "Wrap if-condition in parentheses: 'always' adds them, 'never' removes them."
+        },
+        "kopytko.format.elseOnNewLine": {
+          "type": "boolean",
+          "default": true,
+          "description": "Place 'else' on its own line."
+        },
+        "kopytko.format.forLoopSpacing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enforce spaces around 'to' and 'step' in for loops."
+        },
+        "kopytko.format.printStatement": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "remove",
+            "preserve"
+          ],
+          "default": "preserve",
+          "description": "Flag or remove print debug statements."
+        },
+        "kopytko.format.lineCommentPosition": {
+          "type": "string",
+          "enum": [
+            "above",
+            "inline",
+            "preserve"
+          ],
+          "default": "preserve",
+          "description": "Move trailing comments: 'above' puts them on the line above."
+        },
+        "kopytko.format.stringConcatStyle": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "plus",
+            "array-join"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Normalize string concatenation style.\n\n```brightscript\n' \"plus\":\nresult = \"hello\" + \" \" + \"world\"\n\n' \"array-join\":\nresult = [\"hello\", \" \", \"world\"].join(\"\")\n```"
+        },
+        "kopytko.format.observeFieldStyle": {
+          "type": "string",
+          "enum": [
+            "always-scoped",
+            "warn",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Enforce `observeFieldScoped` over `observeField`. Using non-scoped `observeField` can cause memory leaks.\n\n```brightscript\n' \"always-scoped\": converts\nobserveField → observeFieldScoped\n\n' \"warn\": leaves as-is (diagnostic warns)\n```"
+        },
+        "kopytko.format.mPrefixStyle": {
+          "type": "string",
+          "enum": [
+            "dot",
+            "bracket",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Normalize `m`-prefix field access style.\n\n```brightscript\n' \"dot\":\nm.fieldName\nm.top.visible\n\n' \"bracket\":\nm[\"fieldName\"]\nm.top[\"visible\"]\n```"
+        },
+        "kopytko.format.alignAssignments": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Align `=` signs in consecutive assignment lines.\n\n```brightscript\n' true:\nname    = \"app\"\nversion = \"1.0\"\ncount   = 42\n\n' false:\nname = \"app\"\nversion = \"1.0\"\ncount = 42\n```"
+        },
+        "kopytko.format.fieldAccessConsistency": {
+          "type": "string",
+          "enum": [
+            "dot",
+            "method",
+            "preserve"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Field access consistency on nodes.\n\n```brightscript\n' \"dot\": prefers dot notation\nm.top.visible = true\nvalue = m.top.id\n\n' \"method\": prefers getField/setField\nm.top.setField(\"visible\", true)\nvalue = m.top.getField(\"id\")\n```"
         }
       }
     },
@@ -77,41 +761,138 @@
         "language": "brightscript",
         "path": "./snippets/brightscript.json"
       }
-    ]
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "**/.kopytkorc",
+        "url": "./schemas/kopytkorc.schema.json"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "kopytko",
+        "label": "Kopytko BrightScript",
+        "languages": [
+          "brightscript"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "host",
+              "password"
+            ],
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "IP address of the Roku device (e.g. 192.168.1.100)."
+              },
+              "password": {
+                "type": "string",
+                "description": "Developer password set on the Roku device."
+              },
+              "rootDir": {
+                "type": "string",
+                "description": "Root directory of the BrightScript project (where .kopytkorc lives).",
+                "default": "${workspaceFolder}"
+              },
+              "env": {
+                "type": "string",
+                "description": "Kopytko environment to build (matches .kopytkorc environments key).",
+                "default": "dev"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Pause execution at the first line of main on launch.",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "kopytko",
+            "request": "launch",
+            "name": "Run on Roku",
+            "host": "192.168.1.100",
+            "password": "rokudev",
+            "rootDir": "${workspaceFolder}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "BrightScript: Launch on Roku",
+            "description": "Package and deploy the current project to a Roku device.",
+            "body": {
+              "type": "kopytko",
+              "request": "launch",
+              "name": "Run on Roku",
+              "host": "^\"${1:192.168.1.100}\"",
+              "password": "^\"${2:rokudev}\"",
+              "rootDir": "^\"${workspaceFolder}\""
+            }
+          }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kopytko-sidebar",
+          "title": "Kopytko",
+          "icon": "images/kopytko-logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "kopytko-sidebar": [
+        {
+          "id": "kopytko.rokuDevices",
+          "icon": "images/roku-device.svg",
+          "name": "Roku Devices"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "kopytko.refreshDevices",
+        "title": "Refresh Roku Devices",
+        "icon": "$(refresh)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.selectDevice",
+        "title": "Set as Active Device",
+        "icon": "$(plug)",
+        "category": "Kopytko"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kopytko.refreshDevices",
+          "when": "view == kopytko.rokuDevices",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "kopytko.selectDevice",
+          "when": "view == kopytko.rokuDevices && viewItem == rokuDevice",
+          "group": "inline"
+        }
+      ]
+    }
   },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
-    "watch": "tsc -w -p ./tsconfig.json",
-    "watch:server": "tsc -w -p ./tsconfig.server.json",
-    "lint": "eslint \"./src/**/*.ts\" --ext .ts",
-    "test": "mocha",
-    "test:coverage": "nyc mocha",
-    "clean": "node -e \"require('fs').rmSync('out', {recursive: true, force: true})\"",
-    "package": "vsce package"
-  },
-  "dependencies": {
-    "vscode-languageclient": "^9.0.1",
-    "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-textdocument": "^1.0.11",
-    "vscode-uri": "^3.0.8"
-  },
-  "devDependencies": {
-    "@types/chai": "^4.3.12",
-    "@types/mocha": "^10.0.7",
-    "@types/node": "^20.14.10",
-    "@types/sinon": "^17.0.3",
-    "@types/vscode": "^1.85.0",
-    "@typescript-eslint/eslint-plugin": "^7.16.0",
-    "@typescript-eslint/parser": "^7.16.0",
-    "@vscode/vsce": "^3.0.0",
-    "chai": "^4.4.1",
-    "eslint": "^8.57.0",
-    "mocha": "^10.7.0",
-    "nyc": "^17.0.0",
-    "sinon": "^18.0.0",
-    "source-map-support": "^0.5.21",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
+  "configurationDefaults": {
+    "editor.tokenColorCustomizations": {
+      "textMateRules": [
+        {
+          "scope": "keyword.control.mock.brightscript",
+          "settings": {
+            "foreground": "#CE9178"
+          }
+        }
+      ]
+    }
   }
 }

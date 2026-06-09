@@ -1,0 +1,120 @@
+name: Release kopytko-formatter
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kopytko-formatter
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Bump version
+        id: version
+        run: |
+          npm version ${{ inputs.bump }} --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $VERSION"
+
+      - name: Generate changelog entry
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
+          PREV_TAG=$(git tag --list 'kopytko-formatter-v*' --sort=-v:refname | head -1)
+
+          # Build changelog from commits since last tag
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log "$PREV_TAG"..HEAD --oneline --no-merges -- packages/kopytko-formatter/ | sed 's/^/- /')
+          else
+            COMMITS=$(git log --oneline --no-merges -- packages/kopytko-formatter/ | head -20 | sed 's/^/- /')
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            COMMITS="- Release $VERSION"
+          fi
+
+          ENTRY="## [$VERSION] - $DATE
+
+          $COMMITS"
+
+          echo "entry<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$ENTRY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Update CHANGELOG.md
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          ENTRY='${{ steps.changelog.outputs.entry }}'
+
+          if [ -f packages/kopytko-formatter/CHANGELOG.md ]; then
+            # Insert after the first "# Changelog" header line
+            awk -v entry="$ENTRY" '
+              /^# Changelog/ { print; getline; print; print ""; print entry; next }
+              { print }
+            ' packages/kopytko-formatter/CHANGELOG.md > /tmp/changelog.tmp
+            mv /tmp/changelog.tmp packages/kopytko-formatter/CHANGELOG.md
+          else
+            echo -e "# Changelog\n\n$ENTRY\n" > packages/kopytko-formatter/CHANGELOG.md
+          fi
+
+      - name: Commit, tag, and push
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="kopytko-formatter-v${VERSION}"
+          git add packages/kopytko-formatter/package.json packages/kopytko-formatter/CHANGELOG.md
+          git commit -m "chore(kopytko-formatter): release v${VERSION}"
+          git tag "$TAG" -m "kopytko-formatter v${VERSION}"
+          git push origin HEAD --tags
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kopytko-formatter-v${{ steps.version.outputs.version }}
+          name: kopytko-formatter v${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.entry }}
+          generate_release_notes: false
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
