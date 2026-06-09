@@ -136,6 +136,10 @@ connection.onInitialized(async () => {
   });
   await refreshConfiguration();
   workspaceIndex.build(importResolver.getWorkspaceFolders());
+  // Re-validate all documents that may have been validated before config loaded
+  for (const document of documents.all()) {
+    scheduleValidation(document);
+  }
 });
 
 connection.onDidChangeConfiguration(async () => {

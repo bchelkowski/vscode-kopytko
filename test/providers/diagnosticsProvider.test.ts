@@ -543,6 +543,68 @@ describe('BrightScriptDiagnosticsProvider', () => {
     });
   });
 
+  // ── Test file scope: undefined function call check ───────────────────────
+
+  describe('test file scope for undefined function check', () => {
+    const TEST_URI = 'file:///workspace/app/components/_tests/Foo.test.brs';
+    const SOURCE_PATH = '/workspace/app/components/Foo.brs';
+    const COMPONENT_SOURCE_PATH = '/workspace/app/components/Foo.component.brs';
+
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('does not flag a function defined in the tested source file (.brs)', async () => {
+      const sourceText = 'function testedFn() as Void\nend function';
+      fsExistsStub.withArgs(SOURCE_PATH).returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs(SOURCE_PATH, 'utf-8').returns(sourceText);
+
+      const doc = TextDocument.create(TEST_URI, 'brightscript', 1, [
+        'sub TestSuite__Foo()',
+        '  testedFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], []);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag a function defined in the tested component file (.component.brs)', async () => {
+      const sourceText = 'function componentFn() as Void\nend function';
+      fsExistsStub.withArgs(COMPONENT_SOURCE_PATH).returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs(COMPONENT_SOURCE_PATH, 'utf-8').returns(sourceText);
+
+      const doc = TextDocument.create(TEST_URI, 'brightscript', 1, [
+        'sub TestSuite__Foo()',
+        '  componentFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], []);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('flags an undefined function when it is not in the tested source file', async () => {
+      const sourceText = 'function testedFn() as Void\nend function';
+      fsExistsStub.withArgs(SOURCE_PATH).returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs(SOURCE_PATH, 'utf-8').returns(sourceText);
+
+      const doc = TextDocument.create(TEST_URI, 'brightscript', 1, [
+        'sub TestSuite__Foo()',
+        '  unknownFn()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], []);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.length(1);
+      expect(undef[0].message).to.include('unknownFn');
+    });
+
+  });
+
   // ── Sibling scope: undefined function call check ─────────────────────────
 
   describe('sibling pattern scope for undefined function check', () => {
