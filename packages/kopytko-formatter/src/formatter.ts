@@ -62,9 +62,10 @@ export function formatText(
   lines = passEndKeywordStyle(lines, config);
   lines = passFunctionVsSub(lines, config);
 
-  // Pass 4 — Then style + parenthesis if case
+  // Pass 4 — Then style + parenthesis if case + catch paren style
   lines = passThenStyle(lines, config);
   lines = passParenthesisIfCase(lines, config);
+  lines = passCatchParenStyle(lines, config);
 
   // Pass 5 — Print statement handling
   lines = passPrintStatement(lines, config);
@@ -399,6 +400,27 @@ function passThenStyle(lines: string[], config: FormattingConfig): string[] {
 // Pass 4b — Parenthesis if case
 // ---------------------------------------------------------------------------
 
+function passCatchParenStyle(lines: string[], config: FormattingConfig): string[] {
+  if (config.catchParenStyle === 'preserve') return lines;
+
+  return lines.map(line => {
+    const trimmed = line.trim();
+    // Match `catch varname` or `catch (varname)` with optional trailing comment
+    const m = /^(catch)\s+\(?([a-zA-Z_]\w*)\)?((?:\s*'.*)?)$/i.exec(trimmed);
+    if (!m) return line;
+
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const varName = m[2];
+    const trailing = m[3];
+
+    if (config.catchParenStyle === 'always') {
+      return indent + 'catch (' + varName + ')' + trailing;
+    } else {
+      return indent + 'catch ' + varName + trailing;
+    }
+  });
+}
+
 function passParenthesisIfCase(lines: string[], config: FormattingConfig): string[] {
   if (config.parenthesisIfCase === 'preserve') return lines;
 
@@ -501,6 +523,11 @@ function passSpacing(lines: string[], config: FormattingConfig): string[] {
       }
     }
 
+    // Bracket spacing and AA comma spacing are applied to the full assembled line
+    // so that rules work correctly across string-literal segment boundaries
+    // (e.g. the space before `}` when the last value is a string literal).
+    result = applyBracketAndCommaSpacing(result, config);
+
     return indent + result;
   });
 }
@@ -553,7 +580,7 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
     }
   }
 
-  const _parenSkipWords = /^(?:if|for|while|print|and|or|not|mod|return|then|else|elseif|to|step|in|each|as|dim|end|exit)$/i;
+  const _parenSkipWords = /^(?:if|for|while|print|and|or|not|mod|return|then|else|elseif|to|step|in|each|as|dim|end|exit|catch|throw)$/i;
   if (config.spaceBeforeCallParens) {
     r = r.replace(/(\b(?!function\b|sub\b)[a-zA-Z_]\w*)\(/gi, (match, name) => {
       if (_parenSkipWords.test(name)) return match;
@@ -573,15 +600,114 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
     r = r.replace(/\s+\)/g, ')');
   }
 
-  if (config.bracketSpacing) {
-    r = r.replace(/\{([^\s}])/g, '{ $1');
-    r = r.replace(/([^\s{])\}/g, '$1 }');
-  } else {
-    r = r.replace(/\{\s+/g, '{');
-    r = r.replace(/\s+\}/g, '}');
+  return r;
+}
+
+/**
+ * Applies `bracketSpacing` and `aaCommaSpacing` to a fully-assembled line
+ * (code + string-literal segments joined together).
+ *
+ * This runs after all code segments are assembled so that the rules work
+ * correctly across string-literal boundaries — e.g. `{ key: "value"}` → `{ key: "value" }`
+ * where the closing `}` lives in a different segment than the preceding `"`.
+ *
+ * String literal contents are never modified.
+ */
+function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): string {
+  const addBracket = config.bracketSpacing;
+  const commaMode = config.aaCommaSpacing ?? 'preserve';
+  // Fast path: nothing to process if the line has no braces at all
+  if (!line.includes('{') && !line.includes('}')) return line;
+
+  let result = '';
+  let inString = false;
+  let braceDepth = 0;
+  let parenDepth = 0;
+  let squareDepth = 0;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+
+    // ── String literal handling ─────────────────────────────────────────────
+    if (ch === '"' && !inString) {
+      inString = true;
+      result += ch;
+      continue;
+    }
+    if (inString) {
+      if (ch === '"' && i + 1 < line.length && line[i + 1] === '"') {
+        result += '""'; i++; // BrightScript escaped quote
+      } else if (ch === '"') {
+        inString = false;
+        result += ch;
+      } else {
+        result += ch;
+      }
+      continue;
+    }
+
+    // ── Comment: pass through the rest unchanged ────────────────────────────
+    if (ch === "'") {
+      result += line.slice(i);
+      break;
+    }
+
+    // ── Depth tracking for non-brace brackets ───────────────────────────────
+    if (ch === '(') { parenDepth++; result += ch; continue; }
+    if (ch === ')') { parenDepth--; result += ch; continue; }
+    if (ch === '[') { squareDepth++; result += ch; continue; }
+    if (ch === ']') { squareDepth--; result += ch; continue; }
+
+    // ── Opening brace ────────────────────────────────────────────────────────
+    if (ch === '{') {
+      braceDepth++;
+      result += ch;
+      if (addBracket) {
+        // Add space after { unless immediately followed by space or }
+        const next = i + 1 < line.length ? line[i + 1] : '';
+        if (next !== ' ' && next !== '}') result += ' ';
+      } else {
+        // Remove space(s) after {
+        while (i + 1 < line.length && line[i + 1] === ' ') i++;
+      }
+      continue;
+    }
+
+    // ── Closing brace ────────────────────────────────────────────────────────
+    if (ch === '}') {
+      braceDepth--;
+      if (addBracket) {
+        // Add space before } unless already preceded by space or {
+        const last = result.length > 0 ? result[result.length - 1] : '';
+        if (last !== ' ' && last !== '{') result += ' ';
+      } else {
+        // Remove space(s) before }
+        while (result.length > 0 && result[result.length - 1] === ' ') {
+          result = result.slice(0, -1);
+        }
+      }
+      result += ch;
+      continue;
+    }
+
+    // ── AA comma spacing ─────────────────────────────────────────────────────
+    if (ch === ',' && commaMode !== 'preserve' && braceDepth > 0 && parenDepth === 0 && squareDepth === 0) {
+      const spaceBefore = commaMode === 'before' || commaMode === 'both';
+      const spaceAfter  = commaMode === 'after'  || commaMode === 'both';
+      // Remove any existing spaces before the comma
+      while (result.length > 0 && result[result.length - 1] === ' ') result = result.slice(0, -1);
+      if (spaceBefore) result += ' ';
+      result += ',';
+      // Skip any existing spaces after the comma in the source
+      while (i + 1 < line.length && line[i + 1] === ' ') i++;
+      if (spaceAfter) result += ' ';
+      continue;
+    }
+
+    result += ch;
   }
 
-  return r;
+  return result;
 }
 
 // ---------------------------------------------------------------------------

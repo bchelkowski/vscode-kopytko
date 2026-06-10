@@ -394,6 +394,50 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('NOT');
       expect(result).to.include('if');
     });
+
+    it('applies mathOperatorCasing independently', () => {
+      const result = format(
+        ['sub init()', '  x = a mod b', 'end sub'],
+        { indentSize: 2 },
+        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', mathOperators: 'UpperCase' },
+      );
+      expect(result).to.include('MOD');
+      expect(result).to.include('sub');
+    });
+
+    it('exactCasing overrides mathOperatorCasing for mod', () => {
+      const result = format(
+        ['sub init()', '  x = a mod b', 'end sub'],
+        { indentSize: 2 },
+        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', mathOperators: 'LowerCase', exactCasing: { 'mod': 'Mod' } },
+      );
+      expect(result).to.include('Mod');
+      expect(result).not.to.include(' mod ');
+      expect(result).not.to.include(' MOD ');
+    });
+
+    it('exactCasing applies to logic operators (and, or, not)', () => {
+      const result = format(
+        ['sub init()', '  if a and b or not c then', '    return', '  end if', 'end sub'],
+        { indentSize: 2 },
+        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'and': 'AND', 'or': 'OR', 'not': 'NOT' } },
+      );
+      expect(result).to.include('AND');
+      expect(result).to.include('OR');
+      expect(result).to.include('NOT');
+      expect(result).to.include('if');
+    });
+
+    it('exactCasing applies to literals (true, false, invalid)', () => {
+      const result = format(
+        ['sub init()', '  x = true', '  y = false', '  z = invalid', 'end sub'],
+        { indentSize: 2 },
+        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'true': 'True', 'false': 'False', 'invalid': 'Invalid' } },
+      );
+      expect(result).to.include('True');
+      expect(result).to.include('False');
+      expect(result).to.include('Invalid');
+    });
   });
 
   // ── Import sorting ──────────────────────────────────────────────────────
@@ -934,6 +978,232 @@ describe('kopytko-formatter', () => {
         '  x = 1',
         "  ' end function",
         '  y = 2',
+        'end sub',
+      ].join('\n'));
+    });
+  });
+
+  // ── bracketSpacing ────────────────────────────────────────────────────────
+
+  describe('bracketSpacing', () => {
+    it('adds space after { and before } for a plain code value', () => {
+      const result = format(['sub init()', '  x = {key: value}', 'end sub'], { bracketSpacing: true });
+      expect(result).to.include('{ key: value }');
+    });
+
+    it('adds space after { when key is a string literal', () => {
+      const result = format(['sub init()', '  x = {"key": value}', 'end sub'], { bracketSpacing: true });
+      expect(result).to.include('{ "key": value }');
+    });
+
+    it('adds space before } when last value is a string literal', () => {
+      const result = format(['sub init()', '  x = {key: "value"}', 'end sub'], { bracketSpacing: true });
+      expect(result).to.include('{ key: "value" }');
+    });
+
+    it('adds spaces on both sides when both key and value are string literals', () => {
+      const result = format(['sub init()', '  x = {"key": "value"}', 'end sub'], { bracketSpacing: true });
+      expect(result).to.include('{ "key": "value" }');
+    });
+
+    it('removes spaces after { and before } when false', () => {
+      const result = format(['sub init()', '  x = { key: "value" }', 'end sub'], { bracketSpacing: false });
+      expect(result).to.include('{key: "value"}');
+    });
+
+    it('does not add space inside empty {}', () => {
+      const result = format(['sub init()', '  x = {}', 'end sub'], { bracketSpacing: true });
+      expect(result).to.include('x = {}');
+    });
+
+    it('does not modify { or } inside string literals', () => {
+      const result = format(['sub init()', '  x = "{key: value}"', 'end sub'], { bracketSpacing: true });
+      expect(result).to.include('"{key: value}"');
+    });
+  });
+
+  // ── aaCommaSpacing ────────────────────────────────────────────────────────
+
+  describe('aaCommaSpacing', () => {
+    it("'after' adds space after commas and removes space before", () => {
+      const result = format(['sub init()', '  x = { a: 1 , b: 2 , c: 3 }', 'end sub'], { aaCommaSpacing: 'after' });
+      expect(result).to.include('{ a: 1, b: 2, c: 3 }');
+    });
+
+    it("'before' adds space before commas and removes space after", () => {
+      const result = format(['sub init()', '  x = { a: 1, b: 2, c: 3 }', 'end sub'], { aaCommaSpacing: 'before' });
+      expect(result).to.include('{ a: 1 ,b: 2 ,c: 3 }');
+    });
+
+    it("'both' adds spaces on both sides", () => {
+      const result = format(['sub init()', '  x = { a: 1, b: 2 }', 'end sub'], { aaCommaSpacing: 'both' });
+      expect(result).to.include('{ a: 1 , b: 2 }');
+    });
+
+    it("'none' removes spaces on both sides", () => {
+      const result = format(['sub init()', '  x = { a: 1 , b: 2 }', 'end sub'], { aaCommaSpacing: 'none' });
+      expect(result).to.include('{ a: 1,b: 2 }');
+    });
+
+    it("'preserve' leaves existing spacing unchanged", () => {
+      const result = format(['sub init()', '  x = { a: 1 , b: 2, c: 3 }', 'end sub'], { aaCommaSpacing: 'preserve' });
+      expect(result).to.include('{ a: 1 , b: 2, c: 3 }');
+    });
+
+    it('does not affect commas inside function call arguments within the AA', () => {
+      const result = format(['sub init()', '  x = { fn: doWork(a, b), key: 1 }', 'end sub'], { aaCommaSpacing: 'none' });
+      // AA comma between fn and key → removed; function-arg commas inside () → untouched
+      expect(result).to.include('doWork(a, b),key:');
+    });
+
+    it('does not affect commas in non-AA context', () => {
+      const result = format(['sub init()', '  doWork(a, b)', 'end sub'], { aaCommaSpacing: 'none' });
+      expect(result).to.include('doWork(a, b)');
+    });
+
+    it('works when value is a string literal (space before } preserved)', () => {
+      const result = format(['sub init()', '  x = { a: 1, b: "str" }', 'end sub'], { aaCommaSpacing: 'after' });
+      expect(result).to.include('{ a: 1, b: "str" }');
+    });
+  });
+
+  // ── catchParenStyle ───────────────────────────────────────────────────────
+
+  describe('catchParenStyle', () => {
+    it('preserve: leaves catch e unchanged', () => {
+      expect(format([
+        'sub test()',
+        'try',
+        '  doWork()',
+        'catch e',
+        '  print e.message',
+        'end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'preserve' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch e',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('preserve: leaves catch (e) unchanged', () => {
+      expect(format([
+        'sub test()',
+        'try',
+        '  doWork()',
+        'catch (e)',
+        '  print e.message',
+        'end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'preserve' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch (e)',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('always: wraps bare catch variable in parens', () => {
+      expect(format([
+        'sub test()',
+        'try',
+        '  doWork()',
+        'catch e',
+        '  print e.message',
+        'end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'always' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch (e)',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('always: leaves already-parenthesised catch unchanged', () => {
+      expect(format([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch (err)',
+        '    print err.message',
+        '  end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'always' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch (err)',
+        '    print err.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('never: removes parens from catch variable', () => {
+      expect(format([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch (e)',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'never' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch e',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('never: leaves bare catch variable unchanged', () => {
+      expect(format([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch err',
+        '    print err.message',
+        '  end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'never' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        '  catch err',
+        '    print err.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('always: preserves trailing comment on catch line', () => {
+      expect(format([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        "  catch e ' handle error",
+        '  end try',
+        'end sub',
+      ], { indentSize: 2, catchParenStyle: 'always' })).to.equal([
+        'sub test()',
+        '  try',
+        '    doWork()',
+        "  catch (e) ' handle error",
+        '  end try',
         'end sub',
       ].join('\n'));
     });

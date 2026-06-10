@@ -129,18 +129,29 @@ function findRawConfig(configPath: string | null): RawConfig | null {
 /**
  * Extracts kopytko.format.* keys from a VS Code settings.json object.
  * Strips the "kopytko.format." prefix from each key.
- * Returns null if no kopytko.format keys are found.
+ *
+ * Also extracts kopytko.readOnlyPaths — it lives under "kopytko.*" (not
+ * "kopytko.format.*") but the CLI must respect it the same way the extension
+ * does: files matching any readOnlyPaths pattern are skipped entirely.
+ *
+ * Returns null if no relevant kopytko keys are found.
  */
 function extractVscodeSettings(raw: Record<string, unknown>): Record<string, unknown> | null {
-  const PREFIX = 'kopytko.format.';
+  const FORMAT_PREFIX = 'kopytko.format.';
   const result: Record<string, unknown> = {};
   let found = false;
 
   for (const [key, value] of Object.entries(raw)) {
-    if (key.startsWith(PREFIX)) {
-      result[key.slice(PREFIX.length)] = value;
+    if (key.startsWith(FORMAT_PREFIX)) {
+      result[key.slice(FORMAT_PREFIX.length)] = value;
       found = true;
     }
+  }
+
+  // readOnlyPaths is under "kopytko.*", not "kopytko.format.*"
+  if ('kopytko.readOnlyPaths' in raw) {
+    result['readOnlyPaths'] = raw['kopytko.readOnlyPaths'];
+    found = true;
   }
 
   return found ? result : null;
@@ -175,6 +186,25 @@ function loadIgnorePatterns(configPath: string | null): string[] {
 
   const ignore = raw.settings['ignore'];
   if (Array.isArray(ignore)) return ignore.filter((p): p is string => typeof p === 'string');
+  return [];
+}
+
+/**
+ * Loads readOnlyPaths from the config file.
+ *
+ * In the VS Code extension, `kopytko.readOnlyPaths` prevents the formatter
+ * from touching matched files. The CLI treats them the same as `ignore` —
+ * matched files are skipped entirely.
+ *
+ * Supported in both `kopytko-formatter.json` (as a top-level `readOnlyPaths`
+ * key) and `.vscode/settings.json` (as `kopytko.readOnlyPaths`).
+ */
+function loadReadOnlyPaths(configPath: string | null): string[] {
+  const raw = findRawConfig(configPath);
+  if (!raw) return [];
+
+  const paths = raw.settings['readOnlyPaths'];
+  if (Array.isArray(paths)) return paths.filter((p): p is string => typeof p === 'string');
   return [];
 }
 
@@ -222,7 +252,7 @@ function loadCasingConfig(configPath: string | null): CasingConfig {
     mathOperators: result.mathOperators as CasingConfig['mathOperators'],
     userFunctions: result.userFunctions as CasingConfig['userFunctions'],
     userMethods: result.userMethods as CasingConfig['userMethods'],
-    exactCasing: result.exactCasing as CasingConfig['exactCasing'],
+    exactCasing: normalizeExactCasing(result.exactCasing),
   };
 }
 
@@ -278,6 +308,16 @@ function resolveGlob(pattern: string): string[] {
   return [];
 }
 
+/** Normalizes exactCasing keys to lowercase so lookups are case-insensitive (matches VS Code extension behaviour). */
+function normalizeExactCasing(raw: unknown): CasingConfig['exactCasing'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>)
+      .filter(([, v]) => typeof v === 'string')
+      .map(([k, v]) => [k.toLowerCase(), v as string]),
+  );
+}
+
 function main(): void {
   const opts = parseArgs(process.argv.slice(2));
 
@@ -289,7 +329,7 @@ function main(): void {
 
   const config = loadConfig(opts.config);
   const casing = loadCasingConfig(opts.config);
-  const ignorePatterns = [...loadIgnorePatterns(opts.config), ...opts.ignore];
+  const ignorePatterns = [...loadIgnorePatterns(opts.config), ...loadReadOnlyPaths(opts.config), ...opts.ignore];
   const allFiles = collectFiles(opts.patterns);
   const files = ignorePatterns.length > 0
     ? allFiles.filter((f) => !isIgnored(f, ignorePatterns))

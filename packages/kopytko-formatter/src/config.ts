@@ -69,6 +69,8 @@ export interface FormattingConfig {
   // ── Arrays & Associative Arrays ──────────────────────────────────────────
   /** Spaces inside `{}`: `{ key: value }` vs `{key: value}`. */
   bracketSpacing: boolean;
+  /** Spaces around commas separating key-value pairs inside inline `{}`. 'after' = `{a: 1, b: 2}`, 'before' = `{a: 1 ,b: 2}`, 'both' = `{a: 1 , b: 2}`, 'none' = `{a: 1,b: 2}`. Only applied to commas inside `{}` on the same line (not multi-line AAs). */
+  aaCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
   /** Trailing comma after the last item in multi-line arrays/AAs. */
   trailingComma: 'never' | 'always' | 'multiline';
   /** Comma separators between items in multi-line arrays. BrightScript allows omitting commas when items are on separate lines. */
@@ -124,6 +126,8 @@ export interface FormattingConfig {
   inlineIfThreshold: number;
   /** 'always' wraps if condition in parens, 'never' removes them. */
   parenthesisIfCase: 'preserve' | 'always' | 'never';
+  /** Controls parentheses around the catch variable: `catch e` vs `catch (e)`. */
+  catchParenStyle: 'always' | 'never' | 'preserve';
   /** else on its own line (true) vs same line as end if. */
   elseOnNewLine: boolean;
   /** Enforce spaces around `to` and `step` in for loops. */
@@ -184,6 +188,7 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
 
   // Arrays & AAs
   bracketSpacing: true,
+  aaCommaSpacing: 'preserve',
   trailingComma: 'never',
   arrayCommaStyle: 'preserve',
   assocArrayCommaStyle: 'preserve',
@@ -216,6 +221,7 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   // Control Flow
   inlineIfThreshold: 0,
   parenthesisIfCase: 'preserve',
+  catchParenStyle: 'preserve',
   elseOnNewLine: true,
   forLoopSpacing: true,
 
@@ -280,6 +286,7 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     wrapAssocArrays: str('wrapAssocArrays', d.wrapAssocArrays) as FormattingConfig['wrapAssocArrays'],
 
     bracketSpacing: bool('bracketSpacing', d.bracketSpacing),
+    aaCommaSpacing: str('aaCommaSpacing', d.aaCommaSpacing) as FormattingConfig['aaCommaSpacing'],
     trailingComma: str('trailingComma', d.trailingComma) as FormattingConfig['trailingComma'],
     arrayCommaStyle: str('arrayCommaStyle', d.arrayCommaStyle) as FormattingConfig['arrayCommaStyle'],
     assocArrayCommaStyle: str('assocArrayCommaStyle', d.assocArrayCommaStyle) as FormattingConfig['assocArrayCommaStyle'],
@@ -312,6 +319,7 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
 
     inlineIfThreshold: num('inlineIfThreshold', d.inlineIfThreshold),
     parenthesisIfCase: str('parenthesisIfCase', d.parenthesisIfCase) as FormattingConfig['parenthesisIfCase'],
+    catchParenStyle: str('catchParenStyle', d.catchParenStyle) as FormattingConfig['catchParenStyle'],
     elseOnNewLine: bool('elseOnNewLine', d.elseOnNewLine),
     forLoopSpacing: bool('forLoopSpacing', d.forLoopSpacing),
 
