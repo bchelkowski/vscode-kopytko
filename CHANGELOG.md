@@ -1,6 +1,15 @@
 # Changelog
 
 
+## [0.1.5] - 2026-06-10
+
+### Added
+- PascalCase test file resolution with service suffix
+- Suppress undefined-function in main.brs and entry-point functions
+- Per-function scope isolation, throw validation, and catch variable scope
+- Add generatedModules setting for build-generated imports
+- Add aaCommaSpacing and catchParenStyle VS Code settings
+
 ## [0.1.4] - 2026-06-09
 
 ### Fixed
