@@ -748,7 +748,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
     });
   });
 
-  // ── generatedModules configuration ────────────────────────────────────────
+  // ── generatedModules configuration ───────────────────────────────────────
 
   describe('generatedModules configuration', () => {
     beforeEach(() => {
@@ -828,6 +828,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
 
     it('only injects functions when the matching import is present in the current file', async () => {
       fsExistsStub.returns(false);
+      // No @import for PluginApi.brs here
       const doc = makeDocument([
         'sub init()',
         '  PluginInit()',
@@ -1339,6 +1340,194 @@ describe('BrightScriptDiagnosticsProvider', () => {
       const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
       expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'dd'"))).to.be.true;
     });
+
+    it('does not flag a variable assigned with a BrightScript type-declaration character (e.g. nowTimestamp&)', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  nowTimestamp& = CreateObject("roDateTime").asSeconds()',
+        '  validTimestamp = (nowTimestamp& - (14 - 4) * 6)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'nowTimestamp'"))).to.be.false;
+    });
+
+    it('does not flag variables with % (Integer) type-declaration suffix', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  count% = 0',
+        '  total = count% + 1',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'count'"))).to.be.false;
+    });
+
+    it('does not flag variables with ! (Float) type-declaration suffix', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  rate! = 1.5',
+        '  result = rate! * 100',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'rate'"))).to.be.false;
+    });
+
+    it('does not flag variables with # (Double) type-declaration suffix', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  precise# = 3.14159265',
+        '  val = precise# + 1',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'precise'"))).to.be.false;
+    });
+
+    it('does not flag variables with $ (String) type-declaration suffix', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  name$ = "hello"',
+        '  msg = name$ + " world"',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'name'"))).to.be.false;
+    });
+
+    it('does not flag a compound assignment lvalue (x += 1)', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  count = 0',
+        '  count += 1',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+  });
+
+  // ── Function scope isolation ─────────────────────────────────────────────
+
+  describe('function scope isolation (no closures)', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('flags an outer function parameter used inside an anonymous inner function', async () => {
+      const doc = makeDocument([
+        'function outer(name as String)',
+        '  callback = function()',
+        '    print name',
+        '  end function',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'name'"))).to.be.true;
+    });
+
+    it('flags an outer local variable used inside an anonymous inner function', async () => {
+      const doc = makeDocument([
+        'sub outer()',
+        '  count = 0',
+        '  callback = function()',
+        '    print count',
+        '  end function',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'count'"))).to.be.true;
+    });
+
+    it('does not flag variables defined inside the inner function', async () => {
+      const doc = makeDocument([
+        'sub outer()',
+        '  callback = function()',
+        '    inner = 42',
+        '    print inner',
+        '  end function',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'inner'"))).to.be.false;
+    });
+
+    it('does not flag variables defined in the outer function when used in the outer body', async () => {
+      const doc = makeDocument([
+        'function outer(a as Integer) as Integer',
+        '  b = a + 1',
+        '  return b',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag variables from one function in a sibling function', async () => {
+      const doc = makeDocument([
+        'function foo(x as Integer) as Integer',
+        '  return x',
+        'end function',
+        'function bar() as Integer',
+        '  return x',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'x'"))).to.be.true;
+    });
+
+    it('does not flag the outer variable assigned on the same line as the inner function', async () => {
+      const doc = makeDocument([
+        'sub outer()',
+        '  callback = function()',
+        '  end function',
+        '  callback()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'callback'"))).to.be.false;
+    });
+
+    it('isolates variables in 3+ levels of nesting', async () => {
+      const doc = makeDocument([
+        'sub outer()',
+        '  outerVar = 1',
+        '  cb = function()',
+        '    innerCb = function()',
+        '      print outerVar',
+        '    end function',
+        '  end function',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'outerVar'"))).to.be.true;
+    });
+
+    it('does not flag variables at file level (outside any function)', async () => {
+      const doc = makeDocument([
+        'someGlobal = 123',
+        'sub init()',
+        '  x = 1',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'someGlobal'"))).to.be.false;
+    });
   });
 
   // ── SceneGraph extends inheritance ───────────────────────────────────────
@@ -1610,6 +1799,201 @@ describe('BrightScriptDiagnosticsProvider', () => {
       const unused = diags.filter((d) => d.code === 'identifier/unused-parameter');
       expect(unused).to.have.length(1);
       expect(unused[0].severity).to.equal(DiagnosticSeverity.Hint);
+    });
+  });
+
+  // ── Main function entry-point exemption ──────────────────────────────────
+
+  describe('catch variable scope', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('does not flag the catch variable as undefined when used in the catch block', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  try',
+        '    doWork()',
+        '  catch e',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag the catch variable with parenthesised syntax', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  try',
+        '    doWork()',
+        '  catch (e)',
+        '    print e.message',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+
+    it('does not flag the catch variable used in a rethrow expression', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  try',
+        '    doWork()',
+        '  catch err',
+        '    throw err',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
+    });
+  });
+
+  // ── throw statement validation ────────────────────────────────────────────
+
+  describe('throw statement validation', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('does not flag throw with a string literal', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw "something went wrong"',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'throw/invalid-value')).to.be.empty;
+      expect(diags.filter((d) => d.code === 'throw/missing-message')).to.be.empty;
+    });
+
+    it('does not flag throw with a variable', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  err = { message: "oops" }',
+        '  throw err',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'throw/invalid-value')).to.be.empty;
+    });
+
+    it('does not flag throw with an AA literal that has a message field', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw { message: "oops", number: -1 }',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'throw/missing-message')).to.be.empty;
+    });
+
+    it('warns when an AA literal is thrown without a message field', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw { number: -1 }',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const missing = diags.filter((d) => d.code === 'throw/missing-message');
+      expect(missing).to.have.length(1);
+      expect(missing[0].severity).to.equal(DiagnosticSeverity.Warning);
+    });
+
+    it('warns when throwing a numeric literal', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw 42',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const invalid = diags.filter((d) => d.code === 'throw/invalid-value');
+      expect(invalid).to.have.length(1);
+      expect(invalid[0].severity).to.equal(DiagnosticSeverity.Warning);
+    });
+
+    it('warns when throwing an array literal', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw ["error"]',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const invalid = diags.filter((d) => d.code === 'throw/invalid-value');
+      expect(invalid).to.have.length(1);
+    });
+
+    it('warns when throwing invalid', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw invalid',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const invalid = diags.filter((d) => d.code === 'throw/invalid-value');
+      expect(invalid).to.have.length(1);
+    });
+
+    it('does not flag throw (expr) — parentheses are visual grouping only', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw ("error message")',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'throw/invalid-value')).to.be.empty;
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('throw (someVar) does not flag someVar as undefined function call', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  try',
+        '    print "test"',
+        '  catch e',
+        '    throw (e)',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('places the warning on the throw keyword', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw 42',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const d = diags.find((d) => d.code === 'throw/invalid-value')!;
+      expect(d.range.start.line).to.equal(1);
+    });
+
+    it('warns for a negative numeric literal', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw -1',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'throw/invalid-value')).to.have.length(1);
+    });
+
+    it('warns for a floating-point numeric literal', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  throw 3.14',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'throw/invalid-value')).to.have.length(1);
     });
   });
 });

@@ -163,6 +163,13 @@ export class BrightScriptDiagnosticsProvider {
       // Never let the undefined-variable check crash the entire diagnostic run.
     }
 
+    // ── throw statement validation ───────────────────────────────────────────
+    try {
+      diagnostics.push(...checkThrowStatements(fileLines));
+    } catch {
+      // Never let this check crash the diagnostic run.
+    }
+
     // ── CreateObject argument validation ──────────────────────────────────────
     try {
       diagnostics.push(...checkCreateObjectArgs(fileLines));
@@ -294,6 +301,8 @@ function checkUndefinedCalls(
     if (DECL_RE.test(raw)) continue;
     // Skip dim statements — `dim arr(10)` looks like a call but is an array declaration
     if (/^\s*dim\b/i.test(raw)) continue;
+    // Skip throw statements — `throw (expr)` uses parens for visual grouping, not a function call
+    if (/^\s*throw\b/i.test(raw)) continue;
 
     const stripped = stripStringLiterals(raw, true);
 
@@ -372,7 +381,8 @@ function collectLocalNames(lines: string[]): Set<string> {
   // Strips an optional `m.` prefix so object-field assignments are captured.
   // Does NOT match keyword-led lines (if/while/for/…) because they are excluded
   // via the _keywordNames check below.
-  const ASSIGN_RE = /^\s*(?:m\.)?([a-zA-Z_]\w*)(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
+  // The [&%!#$]? allows BrightScript type-declaration characters (e.g. nowTimestamp&).
+  const ASSIGN_RE = /^\s*(?:m\.)?([a-zA-Z_]\w*)[&%!#$]?(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
 
   // Matches for-loop iteration variables: `for i = …` and `for each item in …`
   const FOR_RE = /^\s*for\s+(?:each\s+)?([a-zA-Z_]\w*)\b/i;
@@ -380,6 +390,9 @@ function collectLocalNames(lines: string[]): Set<string> {
   // Matches typed parameters in function/sub signatures: `name as Type`
   // and `name = defaultValue as Type`
   const PARAM_RE = /\b([a-zA-Z_]\w*)(?:\s*=[^,)]*?)?\s+as\s+[a-zA-Z_]\w*/gi;
+
+  // Matches catch variable: `catch e` or `catch (e)`
+  const CATCH_VAR_RE = /^\s*catch\s+\(?([a-zA-Z_]\w*)\)?/i;
 
   for (const line of lines) {
     // 1. Assignment targets
@@ -401,6 +414,10 @@ function collectLocalNames(lines: string[]): Set<string> {
         names.add(m[1].toLowerCase());
       }
     }
+
+    // 4. catch variable — `catch e` or `catch (e)` — scoped to the catch block
+    const catchMatch = CATCH_VAR_RE.exec(line);
+    if (catchMatch) names.add(catchMatch[1].toLowerCase());
   }
 
   return names;
@@ -497,7 +514,9 @@ function checkUndefinedVariables(
   lines: string[],
   knownFuncNames: Set<string>,
 ): Diagnostic[] {
-  const fileScope = collectFileScope(lines);
+  // Build isolated scopes — each function/sub (named or anonymous) has its own scope.
+  // Outer variables are NOT accessible in inner functions (BrightScript has no closures).
+  const scopes = buildFunctionScopes(lines);
 
   const diagnostics: Diagnostic[] = [];
 
@@ -510,7 +529,19 @@ function checkUndefinedVariables(
     if (DECL_RE.test(raw)) continue;
     if (/^\s*dim\b/i.test(raw)) continue;
 
+    // Find the innermost function scope enclosing this line.
+    // If outside any function (file-level code), skip — nothing useful to check.
+    const scope = findScopeAtLine(scopes, lineIdx);
+    if (!scope) continue;
+
+    const scopeVars = new Set([...scope.params, ...scope.vars]);
     const stripped = stripStringLiterals(raw, true);
+
+    // If this line is an assignment statement, the lvalue identifier is being DECLARED
+    // (not used), so skip it — assigning to a variable never requires it to pre-exist.
+    const LVALUE_RE = /^\s*(?:m\.)?([a-zA-Z_]\w*)[&%!#$]?(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
+    const lvalueMatch = LVALUE_RE.exec(stripped);
+    const lvalue = lvalueMatch ? lvalueMatch[1].toLowerCase() : null;
 
     EXPR_IDENT_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -526,7 +557,8 @@ function checkUndefinedVariables(
       if (_builtinNames.has(nameLower)) continue;
       if (_alwaysValidVarIdents.has(nameLower)) continue;
       if (knownFuncNames.has(nameLower)) continue;
-      if (fileScope.has(nameLower)) continue;
+      if (lvalue !== null && nameLower === lvalue) continue; // lvalue — being assigned
+      if (scopeVars.has(nameLower)) continue;
 
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
@@ -545,52 +577,230 @@ function checkUndefinedVariables(
 }
 
 /**
- * Collects all identifier names defined anywhere in a file — variable assignments,
- * for-loop variables, function parameters (named and anonymous), and dim arrays.
- * The result is a whole-file superset used for undefined-variable scope analysis.
+ * A single function/sub scope (named declaration or anonymous expression).
+ * Only direct declarations are stored here — nested function scopes are NOT included,
+ * mirroring BrightScript's lack of closure/lexical scoping.
  */
-function collectFileScope(lines: string[]): Set<string> {
-  const names = new Set<string>();
+interface FunctionScope {
+  startLine: number;   // line of the function/sub header
+  endLine: number;     // line of end function/sub (defaults to last line for unclosed)
+  name: string;        // lowercased function/sub name; empty string for anonymous expressions
+  params: Set<string>; // parameter names declared in the header
+  vars: Set<string>;   // variables assigned/declared directly in this scope body
+}
 
-  const ASSIGN_RE = /^\s*(?:m\.)?([a-zA-Z_]\w*)(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
-  const FOR_RE = /^\s*for\s+(?:each\s+)?([a-zA-Z_]\w*)\b/i;
-  // Captures the content between the outer `(...)` of any function/sub declaration.
-  // The trailing \b prevents "sub" from matching the "Sub" prefix in names like "Substitute".
-  const FUNC_PARAMS_RE = /\b(?:function|sub)\b\s*(?:\w+\s*)?\(([^)]*)\)/gi;
-  const DIM_RE = /^\s*dim\s+([a-zA-Z_]\w*)\s*\(/i;
-  const IDENT_RE = /\b([a-zA-Z_]\w*)\b/g;
+/**
+ * Matches anonymous function/sub expressions anywhere on a line: `function(` or `sub(`.
+ * Used only when the named declaration regex does not match (to avoid double-counting).
+ */
+const ANON_FUNC_SCOPE_RE = /\b(?:function|sub)\s*\(/i;
 
-  for (const line of lines) {
+/** Matches end of a function/sub scope. */
+const FUNC_END_SCOPE_RE = /^\s*(?:end\s*(?:function|sub)|endfunction|endsub)\b/i;
+
+/** Extracts the params string from a function/sub declaration (named or anonymous). */
+const PARAM_LIST_RE = /\b(?:function|sub)\b\s*(?:[a-zA-Z_]\w*\s*)?\(([^)]*)\)/i;
+
+/**
+ * Builds an isolated scope for every function/sub declaration in the file.
+ * Scopes are NOT hierarchical — outer variables are not inherited by inner scopes,
+ * which matches BrightScript's semantics (no closures, each function call frame
+ * has its own local variables).
+ */
+function buildFunctionScopes(lines: string[]): FunctionScope[] {
+  const allScopes: FunctionScope[] = [];
+  const stack: FunctionScope[] = [];
+
+  const ASSIGN_RE_SCOPE = /^\s*(?:m\.)?([a-zA-Z_]\w*)[&%!#$]?(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
+  const FOR_RE_SCOPE = /^\s*for\s+(?:each\s+)?([a-zA-Z_]\w*)\b/i;
+  const DIM_RE_SCOPE = /^\s*dim\s+([a-zA-Z_]\w*)\s*\(/i;
+  const CATCH_RE_SCOPE = /^\s*catch\s+\(?([a-zA-Z_]\w*)\)?/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (/^\s*'/.test(line) || /^\s*rem\b/i.test(line)) continue;
 
-    const assignMatch = ASSIGN_RE.exec(line);
-    if (assignMatch) {
-      const n = assignMatch[1].toLowerCase();
-      if (!_keywordNames.has(n)) names.add(n);
+    // End of scope — pop before processing the line's content
+    if (FUNC_END_SCOPE_RE.test(line)) {
+      if (stack.length > 0) {
+        stack[stack.length - 1].endLine = i;
+        stack.pop();
+      }
+      continue;
     }
 
-    const forMatch = FOR_RE.exec(line);
-    if (forMatch) names.add(forMatch[1].toLowerCase());
+    // Collect direct variable definitions for the CURRENT (innermost) scope.
+    // This must happen BEFORE potentially pushing a new inner scope below,
+    // so that `callback = function()` adds `callback` to the OUTER scope.
+    const current = stack.length > 0 ? stack[stack.length - 1] : null;
+    if (current) {
+      const assignMatch = ASSIGN_RE_SCOPE.exec(line);
+      if (assignMatch) {
+        const n = assignMatch[1].toLowerCase();
+        if (!_keywordNames.has(n)) current.vars.add(n);
+      }
 
-    // Extract parameters from all function/sub declarations on this line (named or anonymous).
-    // Scan the params-string directly to avoid false captures from the surrounding line.
-    FUNC_PARAMS_RE.lastIndex = 0;
-    let funcMatch: RegExpExecArray | null;
-    while ((funcMatch = FUNC_PARAMS_RE.exec(line)) !== null) {
-      const paramsStr = funcMatch[1];
-      IDENT_RE.lastIndex = 0;
-      let identMatch: RegExpExecArray | null;
-      while ((identMatch = IDENT_RE.exec(paramsStr)) !== null) {
-        const n = identMatch[1].toLowerCase();
-        if (!_keywordNames.has(n)) names.add(n);
+      const forMatch = FOR_RE_SCOPE.exec(line);
+      if (forMatch) current.vars.add(forMatch[1].toLowerCase());
+
+      const dimMatch = DIM_RE_SCOPE.exec(line);
+      if (dimMatch) current.vars.add(dimMatch[1].toLowerCase());
+
+      const catchMatch = CATCH_RE_SCOPE.exec(line);
+      if (catchMatch) current.vars.add(catchMatch[1].toLowerCase());
+    }
+
+    // Detect whether this line opens a new function scope.
+    // Strip strings AND comments so `' calls function(x)` doesn't false-match ANON_FUNC_SCOPE_RE.
+    const strippedForScope = stripStringLiterals(line, true);
+    const namedDeclMatch = /^\s*(?:function|sub)\s+([a-zA-Z_]\w*)\s*\(/i.exec(strippedForScope);
+    const isNamed = namedDeclMatch !== null;
+    const isAnon = !isNamed && ANON_FUNC_SCOPE_RE.test(strippedForScope);
+
+    if (isNamed || isAnon) {
+      const params = new Set<string>();
+      const pm = PARAM_LIST_RE.exec(strippedForScope);
+      if (pm && pm[1].trim()) {
+        for (const part of pm[1].split(',')) {
+          const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
+          if (nm) {
+            const p = nm[1].toLowerCase();
+            if (!_keywordNames.has(p)) params.add(p);
+          }
+        }
+      }
+      const newScope: FunctionScope = {
+        startLine: i,
+        endLine: lines.length - 1,
+        name: namedDeclMatch ? namedDeclMatch[1].toLowerCase() : '',
+        params,
+        vars: new Set(),
+      };
+      allScopes.push(newScope);
+      stack.push(newScope);
+    }
+  }
+
+  return allScopes;
+}
+
+/**
+ * Returns the innermost function scope that contains `lineIdx`, or null when
+ * the line is outside all function scopes (file-level code).
+ *
+ * The range is `startLine <= lineIdx <= endLine` so that the declaration line
+ * itself (e.g. `m.handler = function(event as Object)`) falls inside the new
+ * scope and parameter names on that line are considered in-scope.
+ * Named function declarations are handled separately — they are skipped by
+ * `DECL_RE` in `checkUndefinedVariables` before the scope lookup matters.
+ */
+function findScopeAtLine(scopes: FunctionScope[], lineIdx: number): FunctionScope | null {
+  let innermost: FunctionScope | null = null;
+  for (const s of scopes) {
+    if (s.startLine <= lineIdx && lineIdx <= s.endLine) {
+      if (!innermost || s.startLine > innermost.startLine) {
+        innermost = s;
+      }
+    }
+  }
+  return innermost;
+}
+
+// ---------------------------------------------------------------------------
+// throw statement validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates throw statements. BrightScript allows throwing only strings or
+ * associative arrays. When an AA is thrown it must have a `message` field.
+ * `throw (expr)` with outer parens is valid — they are visual grouping only.
+ */
+function checkThrowStatements(lines: string[]): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const raw = lines[lineIdx];
+    if (/^\s*'/.test(raw) || /^\s*rem\b/i.test(raw)) continue;
+
+    // Match: throw <expression> [trailing comment]
+    const throwMatch = /^\s*throw\b\s+(.+?)(?:\s*'.*)?$/i.exec(raw);
+    if (!throwMatch) continue;
+
+    let expr = throwMatch[1].trim();
+
+    // Strip a single level of outer parentheses — `throw (expr)` is valid visual grouping
+    if (expr.startsWith('(') && expr.endsWith(')')) {
+      let depth = 0;
+      let isOuterWrapped = true;
+      for (let i = 0; i < expr.length - 1; i++) {
+        if (expr[i] === '(') depth++;
+        else if (expr[i] === ')') {
+          depth--;
+          if (depth === 0) { isOuterWrapped = false; break; }
+        }
+      }
+      if (isOuterWrapped) expr = expr.slice(1, -1).trim();
+    }
+
+    const throwKeywordStart = raw.search(/\bthrow\b/i);
+    const throwRange = {
+      start: { line: lineIdx, character: throwKeywordStart },
+      end: { line: lineIdx, character: throwKeywordStart + 5 },
+    };
+
+    // Numeric literal → invalid
+    if (/^-?[\d.]/.test(expr)) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Warning,
+        range: throwRange,
+        message: '`throw` requires a string or an associative array with a "message" field — numeric literals are not valid throw values.',
+        source: 'kopytko',
+        code: 'throw/invalid-value',
+      });
+      continue;
+    }
+
+    // Array literal → invalid
+    if (expr.startsWith('[')) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Warning,
+        range: throwRange,
+        message: '`throw` requires a string or an associative array with a "message" field — array literals are not valid throw values.',
+        source: 'kopytko',
+        code: 'throw/invalid-value',
+      });
+      continue;
+    }
+
+    // `invalid` keyword → invalid
+    if (/^invalid$/i.test(expr)) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Warning,
+        range: throwRange,
+        message: '`throw` requires a string or an associative array with a "message" field — `invalid` is not a valid throw value.',
+        source: 'kopytko',
+        code: 'throw/invalid-value',
+      });
+      continue;
+    }
+
+    // AA literal on a single line — must contain a `message` field
+    if (expr.startsWith('{') && expr.endsWith('}')) {
+      if (!/\bmessage\s*:/i.test(expr)) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Warning,
+          range: throwRange,
+          message: 'Thrown associative array should include a "message" field (e.g. `{ message: "error description", number: -1 }`).',
+          source: 'kopytko',
+          code: 'throw/missing-message',
+        });
       }
     }
 
-    const dimMatch = DIM_RE.exec(line);
-    if (dimMatch) names.add(dimMatch[1].toLowerCase());
+    // String literals, identifiers, and other expressions are valid — no diagnostic.
   }
 
-  return names;
+  return diagnostics;
 }
 
 // ---------------------------------------------------------------------------

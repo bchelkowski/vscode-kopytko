@@ -184,9 +184,11 @@ This diagnostic is only emitted for built-ins listed in the catalog. User-define
 
 | Code | Severity | Description |
 |---|---|---|
-| `identifier/undefined-variable` | Error | An identifier is used in expression position but is never defined anywhere in the file. |
+| `identifier/undefined-variable` | Error | An identifier is used in expression position but is never defined in the enclosing function scope. |
 
-**What counts as defined:** function parameters (named and anonymous functions), local variable assignments (`x = …`, `x += …`), for-loop iteration variables (`for each item in …`, `for i = …`), and dim-array names (`dim arr(10)`). The check uses a whole-file scope — all definitions anywhere in the file are collected before scanning, so use-before-assignment does not produce a false positive.
+**Per-function scope isolation:** each `function`/`sub` (named or anonymous) has its own isolated scope. Outer variables are **not** visible inside inner anonymous functions — BrightScript has no closures. This means a variable defined in `outer()` will be flagged as undefined if referenced inside a nested `function()` expression. The check correctly handles 3+ levels of nesting.
+
+**What counts as defined:** function parameters (named and anonymous functions), local variable assignments (`x = …`, `x += …`), for-loop iteration variables (`for each item in …`, `for i = …`), dim-array names (`dim arr(10)`), and `catch` variables (`catch e`, `catch (e)`). Variables with BrightScript type-declaration suffixes (`&`, `%`, `!`, `#`, `$`) are recognised.
 
 **What is NOT flagged:**
 - `m` — the BrightScript component self-reference, always valid.
@@ -196,6 +198,8 @@ This diagnostic is only emitted for built-ins listed in the catalog. User-define
 - Identifiers immediately followed by `(` — those are function calls handled by `identifier/undefined-function`.
 - Identifiers immediately followed by `:` — associative array literal keys (`{ key: value }`) or labels.
 - Identifiers immediately followed by `.` — used as an object prefix (`obj.method`); skipped to avoid false positives from platform globals.
+- Assignment targets (lvalues) — `x = …` defines a variable, it does not require `x` to pre-exist.
+- Code at file level (outside any function/sub) — not checked.
 - Anything inside a string literal or comment.
 - Conditional compilation directives (`#if`, `#const`, `#else`, `#end if`) — variables used there are `bs_const` values defined in the manifest, not BrightScript scope.
 
@@ -227,6 +231,26 @@ The diagnostic checks the first string literal argument of every `CreateObject("
 
 The checker tracks nesting of `for`, `while`, and other block structures. A flow control statement is only valid when a matching loop type exists in the current nesting stack. Mismatched types (e.g. `exit for` inside a `while` but not inside any `for`) are also flagged.
 
+#### Throw statement validation
+
+| Code | Severity | Description |
+|---|---|---|
+| `throw/invalid-value` | Warning | `throw` is used with a value that is not valid in BrightScript — numeric literals, array literals, or `invalid`. |
+| `throw/missing-message` | Warning | A thrown associative array literal does not contain a `message` field. |
+
+BrightScript allows throwing only strings or associative arrays. When an AA is thrown it should have a `message` field. `throw (expr)` with outer parentheses is valid — they are treated as visual grouping only and are unwrapped before analysis.
+
+**What IS flagged:**
+- Numeric literals (integer, negative, floating-point): `throw 42`, `throw -1`, `throw 3.14`
+- Array literals: `throw [1, 2]`
+- The `invalid` keyword: `throw invalid`
+- AA literals missing a `message` field: `throw { number: -1 }`
+
+**What is NOT flagged:**
+- String literals: `throw "error"` — always valid
+- Variable/expression references: `throw myError` — cannot be statically validated
+- AA literals with a `message` field: `throw { message: "oops", number: -1 }` — valid
+
 ### Code Actions (`textDocument/codeAction`)
 
 Quick-fix light-bulb actions are offered on `@import` diagnostic lines. The server registers `codeActionProvider` with kind `QuickFix` only.
@@ -245,6 +269,8 @@ Quick-fix light-bulb actions are offered on `@import` diagnostic lines. The serv
 | `identifier/unused-parameter` | **Fix: prefix with _ to mark as unused** *(preferred)* |
 | `syntax/flow-outside-loop` | — (no action) |
 | `syntax/trailing-comma` | — (no action) |
+| `throw/invalid-value` | — (no action) |
+| `throw/missing-message` | — (no action) |
 
 **Remove @import line** deletes the entire line (including its trailing newline). When the import is on the last line of the file (no trailing newline), only the line content is deleted.
 

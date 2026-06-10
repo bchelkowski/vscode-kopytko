@@ -49,12 +49,14 @@ This document is the canonical list of extension features. Each feature links to
 | Feature | Status | Doc |
 |---|---|---|
 | Undefined function calls (`identifier/undefined-function`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Undefined variables (`identifier/undefined-variable`) | ✅ Implemented | [language-server.md](./language-server.md) |
+| Undefined variables (`identifier/undefined-variable`) with per-function scope isolation — outer variables are not visible inside inner anonymous functions (no closures) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Unused function parameters with `_` prefix quick-fix (`identifier/unused-parameter`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Built-in function arity check (`identifier/wrong-arg-count`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `CreateObject` unknown component (`createobject/unknown-component`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Loop flow control validation (`syntax/flow-outside-loop`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Trailing comma syntax errors (`syntax/trailing-comma`) | ✅ Implemented | [language-server.md](./language-server.md) |
+| `catch` variable scope — variable defined by `catch e` / `catch (e)` is recognised in the catch block | ✅ Implemented | [language-server.md](./language-server.md) |
+| `throw` validation — warns for non-string/non-AA values and AAs missing `message` field (`throw/invalid-value`, `throw/missing-message`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `@import` diagnostics — unresolved, duplicate, unused, malformed, build-generated | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | Conditional compilation lines (`#if`, `#const`) skipped by diagnostics | ✅ Implemented | [language-server.md](./language-server.md) |
 | SceneGraph `extends` inheritance in diagnostic scope | ✅ Implemented | [language-server.md](./language-server.md) |
