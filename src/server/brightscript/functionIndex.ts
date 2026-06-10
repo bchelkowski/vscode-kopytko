@@ -376,8 +376,40 @@ export function collectFunctionsFromExtends(
 // Test file → tested file resolution
 // ---------------------------------------------------------------------------
 
-/** Kopytko component suffixes to check when resolving tested files. */
-const COMPONENT_SUFFIXES = ['', '.component', '.view', '.template', '.facade'];
+/**
+ * Known Kopytko component suffixes used to resolve tested files when the test
+ * filename exactly matches the source base name (e.g. `Foo.test.brs` →
+ * `Foo.component.brs`). This list does NOT gate the PascalCase-split path —
+ * any suffix works there (see `splitAtUpperCaseBoundaries`).
+ */
+const COMPONENT_SUFFIXES = ['', '.component', '.view', '.template', '.facade', '.service'];
+
+/**
+ * Splits a PascalCase name at every uppercase-letter boundary and returns all
+ * `{base, dotSuffix}` pairs — one per possible split point.
+ *
+ * This implements the general convention that any source file named
+ * `Something.<anything>.brs` has its test named `Something<Anything>.test.brs`:
+ *
+ *   `SomePageView`          → `{ base: 'SomePage',    dotSuffix: '.view' }`
+ *   `SomeServiceService`    → `{ base: 'SomeService', dotSuffix: '.service' }`
+ *   `FooCustomWidget`       → `{ base: 'FooCustom',   dotSuffix: '.widget' }`
+ *                             `{ base: 'Foo',          dotSuffix: '.customwidget' }`
+ *
+ * All candidates are returned; callers filter by `existsSync`.
+ */
+function splitAtUpperCaseBoundaries(name: string): { base: string; dotSuffix: string }[] {
+  const results: { base: string; dotSuffix: string }[] = [];
+  for (let i = 1; i < name.length; i++) {
+    if (name[i] >= 'A' && name[i] <= 'Z') {
+      results.push({
+        base: name.slice(0, i),
+        dotSuffix: '.' + name.slice(i).toLowerCase(),
+      });
+    }
+  }
+  return results;
+}
 
 /**
  * Resolves which source files a test file is testing.
@@ -386,6 +418,11 @@ const COMPONENT_SUFFIXES = ['', '.component', '.view', '.template', '.facade'];
  *   - `_tests/Foo.test.brs`                         → `../Foo.brs`, `../Foo.component.brs`, …
  *   - `_tests/Foo/Foo_Bar.test.brs`                 → `../Foo.brs`, `../Foo.component.brs`, …
  *   - `_tests/RailsService/RailsService_fetch.test.brs` → looks in the directory *above* `_tests/`
+ *
+ * Also handles the PascalCase-concatenated suffix convention:
+ *   - `_tests/SomePageView.test.brs`                → `../SomePage.view.brs`
+ *   - `_tests/SomeServiceService.test.brs`          → `../SomeService.service.brs`
+ *   - `_tests/SomeServiceService_fetch.test.brs`    → `../SomeService.service.brs`
  *
  * Returns all matching paths that exist on disk.
  */
@@ -400,18 +437,25 @@ export function resolveTestedFiles(testFilePath: string): string[] {
 
   const candidates: string[] = [];
 
-  // Try exact name match first
-  for (const suffix of COMPONENT_SUFFIXES) {
-    candidates.push(nodePath.join(parentDir, `${basename}${suffix}.brs`));
-  }
+  const addCandidates = (name: string): void => {
+    // Same-base-name variants: Name.brs, Name.component.brs, Name.view.brs, …
+    for (const suffix of COMPONENT_SUFFIXES) {
+      candidates.push(nodePath.join(parentDir, `${name}${suffix}.brs`));
+    }
+    // General PascalCase-suffix split: SomePageView → SomePage.view.brs,
+    // SomeFooBar → SomeFoo.bar.brs, SomeFooBar → Some.foobar.brs, …
+    for (const { base, dotSuffix } of splitAtUpperCaseBoundaries(name)) {
+      candidates.push(nodePath.join(parentDir, `${base}${dotSuffix}.brs`));
+    }
+  };
 
-  // For split suites (Foo_Bar.test.brs → Foo.brs)
+  // Try the full basename first (covers both exact matches and suffix-concatenated names)
+  addCandidates(basename);
+
+  // For split suites (Foo_Bar.test.brs → Foo.brs, SomePageView_fetch.test.brs → SomePage.view.brs)
   const underscoreIdx = basename.indexOf('_');
   if (underscoreIdx > 0) {
-    const baseName = basename.substring(0, underscoreIdx);
-    for (const suffix of COMPONENT_SUFFIXES) {
-      candidates.push(nodePath.join(parentDir, `${baseName}${suffix}.brs`));
-    }
+    addCandidates(basename.substring(0, underscoreIdx));
   }
 
   return candidates.filter(p => fsWrapper.existsSync(p));

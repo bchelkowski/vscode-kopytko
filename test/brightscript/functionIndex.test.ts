@@ -484,6 +484,48 @@ describe('functionIndex', () => {
       const result = resolveTestedFiles('/project/app/components/rails/_tests/RailsService/RailsService.test.brs');
       expect(result).to.include('/project/app/components/rails/RailsService.brs');
     });
+
+    it('resolves PascalCase-suffix test (SomePageView.test.brs → SomePage.view.brs)', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/SomePage.view.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/SomePageView.test.brs');
+      expect(result).to.include('/project/app/components/SomePage.view.brs');
+    });
+
+    it('resolves PascalCase-suffix test (SomeServiceService.test.brs → SomeService.service.brs)', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/SomeService.service.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/SomeServiceService.test.brs');
+      expect(result).to.include('/project/app/components/SomeService.service.brs');
+    });
+
+    it('resolves split suite with PascalCase-suffix (SomeServiceService_fetch.test.brs → SomeService.service.brs)', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/SomeService.service.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/SomeServiceService_fetch.test.brs');
+      expect(result).to.include('/project/app/components/SomeService.service.brs');
+    });
+
+    it('resolves PascalCase-suffix test (FooComponent.test.brs → Foo.component.brs)', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/Foo.component.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/FooComponent.test.brs');
+      expect(result).to.include('/project/app/components/Foo.component.brs');
+    });
+
+    it('still resolves exact match when no suffix split applies (FooService.test.brs → FooService.brs)', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/FooService.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/FooService.test.brs');
+      expect(result).to.include('/project/app/components/FooService.brs');
+    });
+
+    it('resolves any arbitrary suffix (SomeFooWidget.test.brs → SomeFoo.widget.brs)', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/SomeFoo.widget.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/SomeFooWidget.test.brs');
+      expect(result).to.include('/project/app/components/SomeFoo.widget.brs');
+    });
+
+    it('resolves multi-word suffix: SomeFooBarBaz.test.brs → SomeFooBar.baz.brs', () => {
+      existsStub.callsFake((p: string) => p === '/project/app/components/SomeFooBar.baz.brs');
+      const result = resolveTestedFiles('/project/app/components/_tests/SomeFooBarBaz.test.brs');
+      expect(result).to.include('/project/app/components/SomeFooBar.baz.brs');
+    });
   });
 
   // ── findTestSiblings ────────────────────────────────────────────────────────
