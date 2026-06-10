@@ -602,6 +602,37 @@ describe('kopytko-formatter', () => {
         'end function)',
       ].join('\n'));
     });
+
+    it('not-alone: removes existing blank line before return when return IS alone in its block', () => {
+      expect(format([
+        'function getLogos() as Object',
+        '',
+        '  return m._service.fetch()',
+        'end function',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'function getLogos() as Object',
+        '  return m._service.fetch()',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('not-alone: removes blank lines before return in nested anonymous functions when both returns are alone', () => {
+      expect(format([
+        'prototype.getLogos = function() as Object',
+        '',
+        '  return m._service.fetch().then(function(data as Object, m as Object) as Object',
+        '',
+        '    return m._utils.slice(data, 0, 5)',
+        '  end function, Invalid, m)',
+        'end function',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'prototype.getLogos = function() as Object',
+        '  return m._service.fetch().then(function(data as Object, m as Object) as Object',
+        '    return m._utils.slice(data, 0, 5)',
+        '  end function, Invalid, m)',
+        'end function',
+      ].join('\n'));
+    });
   });
 
   // ── Anonymous function indentation ────────────────────────────────────────

@@ -891,6 +891,10 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
             out.push('');
           }
         }
+        // With 'not-alone', actively remove blank lines before return when it IS alone in its block.
+        if (config.blankLineBeforeReturn === 'not-alone' && isAlone) {
+          while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
+        }
       }
       out.push(result[i]);
     }
