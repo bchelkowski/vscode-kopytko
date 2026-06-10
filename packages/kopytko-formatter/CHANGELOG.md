@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.4] - 2026-06-10
+
+### Fixed
+- Fix chain indentation, multi-line return blank line, and parenthesisIfCase comment wrapping
+
 ## [0.1.3] - 2026-06-09
 
 ### Fixed
