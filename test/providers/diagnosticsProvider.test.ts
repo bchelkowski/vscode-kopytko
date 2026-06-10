@@ -385,7 +385,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         '  print "component side"',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
     });
 
@@ -402,7 +402,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         'sub init()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
     });
 
@@ -418,7 +418,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         'end sub',
       ].join('\n'));
       // Sibling doesn't exist → only current file checked → unused
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
     });
 
@@ -438,7 +438,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         'sub init()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], patterns);
+      const diags = await provider.provideDiagnostics(doc, [], [], patterns);
       expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
     });
 
@@ -454,7 +454,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         'sub init()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
     });
 
@@ -467,7 +467,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         .throws(new Error('EACCES'));
 
       const doc = makeComponentDoc("' @import /utils.brs\nsub init()\nend sub");
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       // Sibling unreadable, current file has no call → still flagged
       expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
     });
@@ -486,7 +486,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         '  helperFn()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
     });
   });
@@ -626,7 +626,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         '  sharedHelper()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
       expect(undef).to.be.empty;
     });
@@ -645,7 +645,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         '  helperFn()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
       expect(undef).to.be.empty;
     });
@@ -669,7 +669,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         '  helperFn()',
         'end sub',
       ].join('\n'));
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
       expect(undef).to.have.length(1);
     });
@@ -685,7 +685,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
         'end sub',
       ].join('\n'));
       // Sibling unreadable → falls back to current-file-only scope → flags as undefined
-      const diags = await provider.provideDiagnostics(doc, [], SIBLING_PATTERNS);
+      const diags = await provider.provideDiagnostics(doc, [], [], SIBLING_PATTERNS);
       const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
       expect(undef).to.have.length(1);
     });
@@ -745,6 +745,116 @@ describe('BrightScriptDiagnosticsProvider', () => {
       const diags = await provider.provideDiagnostics(doc, []);
 
       expect(diags[0].severity).to.equal(DiagnosticSeverity.Warning);
+    });
+  });
+
+  // ── generatedModules configuration ────────────────────────────────────────
+
+  describe('generatedModules configuration', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('shows Information (not Warning) for an unresolved import matching a generatedModule path', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /generated/PluginApi.brs");
+      const diags = await provider.provideDiagnostics(doc, [], [
+        { path: '/generated/PluginApi.brs', functions: [] },
+      ]);
+
+      expect(diags).to.have.length(1);
+      expect(diags[0].severity).to.equal(DiagnosticSeverity.Information);
+      expect(diags[0].code).to.equal('import/build-generated');
+    });
+
+    it('matches using glob wildcards in generatedModule path', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument("' @import /generated/AutoFoo.brs");
+      const diags = await provider.provideDiagnostics(doc, [], [
+        { path: '/generated/*.brs', functions: [] },
+      ]);
+
+      expect(diags[0].code).to.equal('import/build-generated');
+    });
+
+    it('does not flag functions listed in generatedModules as undefined', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        "' @import /generated/PluginApi.brs",
+        'sub init()',
+        '  PluginInit()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], [
+        { path: '/generated/PluginApi.brs', functions: ['PluginInit'] },
+      ]);
+
+      const undefDiags = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undefDiags).to.be.empty;
+    });
+
+    it('still flags functions not listed in generatedModules as undefined', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        "' @import /generated/PluginApi.brs",
+        'sub init()',
+        '  NotDeclared()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], [
+        { path: '/generated/PluginApi.brs', functions: ['PluginInit'] },
+      ]);
+
+      const undefDiags = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undefDiags).to.have.length(1);
+      expect(undefDiags[0].message).to.include('NotDeclared');
+    });
+
+    it('treats function name matching as case-insensitive', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        "' @import /generated/PluginApi.brs",
+        'sub init()',
+        '  plugininit()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], [
+        { path: '/generated/PluginApi.brs', functions: ['PluginInit'] },
+      ]);
+
+      const undefDiags = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undefDiags).to.be.empty;
+    });
+
+    it('only injects functions when the matching import is present in the current file', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        'sub init()',
+        '  PluginInit()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc, [], [
+        { path: '/generated/PluginApi.brs', functions: ['PluginInit'] },
+      ]);
+
+      const undefDiags = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undefDiags).to.have.length(1);
+    });
+
+    it('combines generatedPaths and generatedModules for the build-generated diagnostic', async () => {
+      fsExistsStub.returns(false);
+      const doc = makeDocument([
+        "' @import /generated/PluginApi.brs",
+        "' @import /other/Auto.brs",
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(
+        doc,
+        ['/other/**'],
+        [{ path: '/generated/PluginApi.brs', functions: [] }],
+      );
+
+      const infoDiags = diags.filter((d) => d.code === 'import/build-generated');
+      expect(infoDiags).to.have.length(2);
     });
   });
 

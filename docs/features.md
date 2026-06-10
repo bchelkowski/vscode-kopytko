@@ -88,6 +88,7 @@ This document is the canonical list of extension features. Each feature links to
 | `@import` / `@mock` annotation parsing and resolution (internal, external, transitive) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | `kopytkoModuleDir` and `sourceDir` support | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | Configurable `generatedPaths` glob patterns | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
+| `generatedModules` — declare functions in build-generated imports (suppresses both path and undefined-function errors) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | Sibling file scope (`kopytko.imports.siblingPatterns`) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | Dynamic Kopytko module catalog (runtime scan of installed packages) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `.kopytkorc` JSON schema validation | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |

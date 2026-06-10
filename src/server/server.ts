@@ -50,6 +50,7 @@ import { BrightScriptCodeActionProvider } from './providers/codeActionProvider';
 import { BrightScriptFormattingProvider } from './providers/formattingProvider';
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from './brightscript/casingUtils';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
+import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
 import { invalidateAllCaches, getCachedAllFunctions } from './utils/documentCache';
 import { WorkspaceFunctionIndex } from './utils/workspaceFunctionIndex';
 import { findMatchingGlob } from './brightscript/globMatcher';
@@ -75,6 +76,7 @@ let formattingProvider: BrightScriptFormattingProvider;
 let casingConfig: CasingConfig = { ...DEFAULT_CASING_CONFIG };
 let formattingConfig: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG };
 let generatedPaths: string[] = [];
+let generatedModules: GeneratedModuleConfig[] = [];
 let siblingPatterns: string[][] = [];
 let readOnlyPaths: string[] = [];
 connection.onInitialize((params: InitializeParams): InitializeResult => {
@@ -182,6 +184,7 @@ async function refreshConfiguration(): Promise<void> {
   formattingConfig = await fetchFormattingConfig();
   const importCfg = await fetchImportConfig();
   generatedPaths = importCfg.generatedPaths;
+  generatedModules = importCfg.generatedModules;
   siblingPatterns = importCfg.siblingPatterns;
   readOnlyPaths = await fetchReadOnlyPaths();
   invalidateAllCaches();
@@ -189,13 +192,23 @@ async function refreshConfiguration(): Promise<void> {
   catalog.scan(importResolver.getWorkspaceFolders()[0] ?? '/', importResolver);
 }
 
-async function fetchImportConfig(): Promise<{ generatedPaths: string[]; siblingPatterns: string[][] }> {
+async function fetchImportConfig(): Promise<{ generatedPaths: string[]; generatedModules: GeneratedModuleConfig[]; siblingPatterns: string[][] }> {
   try {
     const cfg = await connection.workspace.getConfiguration('kopytko.imports');
     const paths = cfg?.generatedPaths;
+    const modules = cfg?.generatedModules;
     const patterns = cfg?.siblingPatterns;
     return {
       generatedPaths: Array.isArray(paths) ? paths.filter((p: unknown) => typeof p === 'string') : [],
+      generatedModules: Array.isArray(modules)
+        ? modules.filter(
+            (m: unknown): m is GeneratedModuleConfig =>
+              typeof m === 'object' && m !== null &&
+              typeof (m as GeneratedModuleConfig).path === 'string' &&
+              Array.isArray((m as GeneratedModuleConfig).functions) &&
+              (m as GeneratedModuleConfig).functions.every((f: unknown) => typeof f === 'string'),
+          )
+        : [],
       siblingPatterns: Array.isArray(patterns)
         ? patterns.filter(
             (group: unknown): group is string[] =>
@@ -204,7 +217,7 @@ async function fetchImportConfig(): Promise<{ generatedPaths: string[]; siblingP
         : [],
     };
   } catch {
-    return { generatedPaths: [], siblingPatterns: [] };
+    return { generatedPaths: [], generatedModules: [], siblingPatterns: [] };
   }
 }
 
@@ -280,7 +293,7 @@ function validateDocument(document: TextDocument): void {
   }
 
   try {
-    const diagnostics: Diagnostic[] = diagnosticsProvider.provideDiagnostics(document, generatedPaths, siblingPatterns);
+    const diagnostics: Diagnostic[] = diagnosticsProvider.provideDiagnostics(document, generatedPaths, generatedModules, siblingPatterns);
     connection.sendDiagnostics({ uri: document.uri, diagnostics });
   } catch (err) {
     connection.console.error(`[kopytko] Error validating ${document.uri}: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);

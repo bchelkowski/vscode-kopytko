@@ -1,7 +1,7 @@
 import { Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver, KopytkoImport } from '../kopytko/importResolver';
-import { findMatchingGlob } from '../brightscript/globMatcher';
+import { findMatchingGlob, matchesGlob } from '../brightscript/globMatcher';
 import { parseFunctionDefs, parseInnerMethodDefs } from '../brightscript/functionIndex';
 import fsWrapper from '../utils/fsWrapper';
 import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from '../brightscript/builtins';
@@ -12,6 +12,11 @@ import { findTestSiblings } from '../brightscript/functionIndex';
 import { getCachedLines, getCachedImports, getCachedKnownFuncNames } from '../utils/documentCache';
 import { isTestFile } from '../kopytko/testFramework';
 
+export interface GeneratedModuleConfig {
+  path: string;
+  functions: string[];
+}
+
 export class BrightScriptDiagnosticsProvider {
   constructor(
     private readonly importResolver: KopytkoImportResolver,
@@ -20,6 +25,7 @@ export class BrightScriptDiagnosticsProvider {
   provideDiagnostics(
     document: TextDocument,
     generatedPaths: string[] = [],
+    generatedModules: GeneratedModuleConfig[] = [],
     siblingPatterns: string[][] = [],
   ): Diagnostic[] {
     const diagnostics: Diagnostic[] = [];
@@ -94,7 +100,8 @@ export class BrightScriptDiagnosticsProvider {
       }
 
       // Check whether the unresolved path is intentionally build-generated
-      const matchedPattern = findMatchingGlob(imp.importPath, generatedPaths);
+      const matchedPattern = findMatchingGlob(imp.importPath, generatedPaths)
+        ?? generatedModules.find((m) => matchesGlob(imp.importPath, m.path))?.path;
       if (matchedPattern) {
         diagnostics.push({
           severity: DiagnosticSeverity.Information,
@@ -123,7 +130,24 @@ export class BrightScriptDiagnosticsProvider {
     }
 
     // ── Build shared function scope (used by both undefined-call and undefined-variable checks) ──
-    const knownFuncNames = getCachedKnownFuncNames(document, documentPath, this.importResolver, siblingPatterns);
+    const cachedKnownFuncNames = getCachedKnownFuncNames(document, documentPath, this.importResolver, siblingPatterns);
+
+    // Extend known names with functions declared in matching generatedModules entries
+    let knownFuncNames = cachedKnownFuncNames;
+    if (generatedModules.length > 0) {
+      const extra = new Set<string>();
+      for (const imp of imports) {
+        const mod = generatedModules.find((m) => matchesGlob(imp.importPath, m.path));
+        if (mod) {
+          for (const fn of mod.functions) {
+            extra.add(fn.toLowerCase());
+          }
+        }
+      }
+      if (extra.size > 0) {
+        knownFuncNames = new Set([...cachedKnownFuncNames, ...extra]);
+      }
+    }
 
     // ── Undefined function calls ─────────────────────────────────────────────
     try {

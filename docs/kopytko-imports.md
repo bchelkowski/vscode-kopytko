@@ -104,7 +104,9 @@ The search scope can be expanded to sibling files via `kopytko.imports.siblingPa
 
 Some projects generate `.brs` files during the build process (e.g. via a Kopytko plugin or a code-generation step). These files do not exist in the source tree, so the extension would normally flag their imports as warnings.
 
-Configure `kopytko.imports.generatedPaths` with glob patterns to tell the extension which paths are intentionally absent:
+### Silencing path warnings only (`generatedPaths`)
+
+Configure `kopytko.imports.generatedPaths` with glob patterns to tell the extension which paths are intentionally absent. Unresolved imports matching a pattern are shown as an informational hint instead of a warning:
 
 ```json
 // .vscode/settings.json
@@ -115,6 +117,38 @@ Configure `kopytko.imports.generatedPaths` with glob patterns to tell the extens
   ]
 }
 ```
+
+### Declaring functions in generated files (`generatedModules`)
+
+When a generated file exports functions that are called from your source, use `kopytko.imports.generatedModules` to declare the function names. The extension will:
+
+1. Treat the import as build-generated (informational hint, not a warning).
+2. Add the declared functions to the known function scope of any file that imports the generated path — so calls to those functions are not flagged as `identifier/undefined-function`.
+
+```json
+// .vscode/settings.json
+{
+  "kopytko.imports.generatedModules": [
+    {
+      "path": "/components/generated/PluginApi.brs",
+      "functions": ["PluginInit", "PluginGetData", "PluginDestroy"]
+    },
+    {
+      "path": "**/auto/RouterConfig.brs",
+      "functions": ["RouterConfig_GetRoutes"]
+    }
+  ]
+}
+```
+
+Each entry has two required fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `path` | string | Glob pattern matching the `@import` path of the generated file |
+| `functions` | string[] | Function and sub names exported by the generated file |
+
+Function name matching is case-insensitive, consistent with BrightScript's case-insensitive semantics.
 
 ### Wildcard syntax
 
@@ -138,6 +172,7 @@ Configure `kopytko.imports.generatedPaths` with glob patterns to tell the extens
 | `kopytko.imports.resolveModules` | `true` | Resolve imports from `node_modules` kopytko-module packages |
 | `kopytko.imports.sourceDir` | `"app"` | Source root for internal import resolution (matches `.kopytkorc` `sourceDir`) |
 | `kopytko.imports.generatedPaths` | `[]` | Glob patterns for `@import` paths generated during the build; matched unresolved imports are shown as informational hints rather than warnings |
+| `kopytko.imports.generatedModules` | `[]` | Declarations for generated `@import` paths including the function names they export; suppresses both the path warning and undefined-function errors for those functions |
 | `kopytko.imports.siblingPatterns` | `[]` | Groups of filename patterns whose files share import scope for the `import/unused` check |
 
 ## Sibling patterns (shared import scope)

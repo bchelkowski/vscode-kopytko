@@ -138,6 +138,28 @@
           "default": [],
           "markdownDescription": "Glob patterns for `@import` paths that are generated during the build process and do not exist as source files on disk (e.g. by a Kopytko plugin or code-generation tool). Unresolved imports matching these patterns are shown as informational hints instead of warnings, so the developer is aware of the situation without it being flagged as an error.\n\n**Supported wildcards:** `*` matches any characters except `/`; `**` matches any characters including `/`.\n\n**Examples:**\n- `/components/generated/**`\n- `**/auto-generated/*.brs`"
         },
+        "kopytko.imports.generatedModules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "functions"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Glob pattern matching the @import path of the generated file."
+              },
+              "functions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Function and sub names exported by the generated file."
+              }
+            }
+          },
+          "default": [],
+          "markdownDescription": "Declarations for `@import` paths that are generated during the build process and whose function names should be known to the language server.\n\nEach entry has a `path` glob pattern and a `functions` list. When a file imports a path matching `path`, the listed functions are added to the known function scope — so they are not flagged as undefined — and the import itself is shown as an informational hint rather than an unresolved warning.\n\nUse this when a plugin or code-generation tool creates `.brs` files that are not present as source files on disk but will exist at build time.\n\n**Example:**\n```json\n[\n  {\n    \"path\": \"/components/generated/PluginApi.brs\",\n    \"functions\": [\"PluginInit\", \"PluginGetData\"]\n  }\n]\n```"
+        },
         "kopytko.imports.siblingPatterns": {
           "type": "array",
           "items": {
