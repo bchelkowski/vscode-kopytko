@@ -1804,6 +1804,203 @@ describe('BrightScriptDiagnosticsProvider', () => {
 
   // ── Main function entry-point exemption ──────────────────────────────────
 
+  describe('Roku entry-point — undefined function call exemption', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('does not flag an unimported function call inside Main', async () => {
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        '  StartUserInterface(args)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('is case-insensitive for the Main function name', async () => {
+      const doc = makeDocument([
+        'function main(args as Object)',
+        '  doSetup(args)',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('still flags undefined calls outside Main', async () => {
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        'end sub',
+        'sub helper()',
+        '  notDefined()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef.some((d) => d.message.includes("'notDefined'"))).to.be.true;
+    });
+
+    it('does not suppress checks for a function also named "main" that is nested inside another', async () => {
+      // Only the TOP-LEVEL Main is exempt; a helper sub called main is not.
+      const doc = makeDocument([
+        'sub outer()',
+        '  inner()',
+        'end sub',
+        'sub inner()',
+        '  notExist()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef.some((d) => d.message.includes("'notExist'"))).to.be.true;
+    });
+
+    it('does not flag calls inside anonymous callbacks declared within Main', async () => {
+      // NewRelic / analytics SDKs are often called inside observeField callbacks.
+      // The anonymous function is technically a nested scope but the user considers
+      // it "inside Main" and expects no false positives.
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        '  m.onReady = function()',
+        '    NewRelic("ready")',
+        '  end function',
+        '  RunUserInterface(args)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('still suppresses when Main body lines have trailing comments containing "function("', async () => {
+      // Regression: `doWork() ' calls function(x)` in a comment used to trick
+      // ANON_FUNC_SCOPE_RE into pushing a phantom scope that was never popped,
+      // causing findMainFunctionScope to return null for the whole file.
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        "  StartUserInterface(args) ' called as function(args)",
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('does not suppress undefined-variable checks inside Main', async () => {
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        '  print undeclaredVar',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => d.message.includes("'undeclaredVar'"))).to.be.true;
+    });
+
+    it('does not flag an unimported function call inside RunUserInterface', async () => {
+      const doc = makeDocument([
+        'sub RunUserInterface(args as Object)',
+        '  InitApp(args)',
+        '  ShowScreen(args)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('does not flag an unimported function call inside RunScreenSaver', async () => {
+      const doc = makeDocument([
+        'sub RunScreenSaver()',
+        '  StartScreenSaver()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('is case-insensitive for RunUserInterface', async () => {
+      const doc = makeDocument([
+        'function runuserinterface(args as Object)',
+        '  doSetup(args)',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('still flags undefined calls outside RunUserInterface', async () => {
+      const doc = makeDocument([
+        'sub RunUserInterface(args as Object)',
+        'end sub',
+        'sub helper()',
+        '  notDefined()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef.some((d) => d.message.includes("'notDefined'"))).to.be.true;
+    });
+  });
+
+  // ── main.brs file-level exemption ─────────────────────────────────────────
+
+  describe('main.brs file — undefined function call exemption', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('does not flag any undefined function call in a file named main.brs', async () => {
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        '  StartUI(args)',
+        'end sub',
+        'sub StartUI(args as Object)',
+        '  ShowMainScreen(args)',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/source/main.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('is case-insensitive for the filename', async () => {
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        '  ExternalFunc()',
+        'end sub',
+        'sub Helper()',
+        '  AnotherExternal()',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/source/Main.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+
+    it('still flags undefined calls in non-main files', async () => {
+      const doc = makeDocument([
+        'sub helper()',
+        '  notDefined()',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/components/helper.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef.some((d) => d.message.includes("'notDefined'"))).to.be.true;
+    });
+
+    it('still checks undefined variables in main.brs', async () => {
+      const doc = makeDocument([
+        'sub Main(args as Object)',
+        '  print undeclaredVar',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/source/main.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => d.message.includes("'undeclaredVar'"))).to.be.true;
+    });
+  });
+
+  // ── catch variable scope ──────────────────────────────────────────────────
+
   describe('catch variable scope', () => {
     beforeEach(() => {
       sinon.stub(fsWrapper, 'readdirSync').returns([]);

@@ -167,6 +167,8 @@ BrightScript XML component siblings that share the same `<script>` tag list but 
 - Language keywords that can appear in call position (`print`, `tab`, `type`, …).
 - Names on `dim` lines — `dim arr(10)` uses `name(size)` syntax, not a call.
 - Anything inside a string literal or comment.
+- **Calls inside Roku entry-point functions** (`Main`, `RunUserInterface`, `RunScreenSaver` — case-insensitive). These functions are invoked directly by the Roku firmware and have access to every globally compiled BrightScript function without `@import`. The exemption also covers anonymous callbacks nested inside the entry point.
+- **The entire `main.brs` file** (case-insensitive filename). This is the Roku application entry-point file — all functions in it run with global scope and can call any compiled function without `@import`.
 
 **Important:** Kopytko module exports are **not** globally suppressed. A call to `setState()` or any other Kopytko function will produce an `identifier/undefined-function` warning unless the function is reachable via the `@import` chain. This ensures the diagnostic drives correct `@import` hygiene — use the Quick-fix `Ask to insert @import` offered by completion, or add the import manually.
 

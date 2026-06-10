@@ -150,10 +150,15 @@ export class BrightScriptDiagnosticsProvider {
     }
 
     // ── Undefined function calls ─────────────────────────────────────────────
-    try {
-      diagnostics.push(...checkUndefinedCalls(fileLines, knownFuncNames));
-    } catch {
-      // Never let the undefined-function check crash the entire diagnostic run.
+    // main.brs is the Roku application entry-point file — every function in it
+    // runs with global scope and can call any compiled function without @imports.
+    const isMainFile = /[/\\]main\.brs$/i.test(documentPath);
+    if (!isMainFile) {
+      try {
+        diagnostics.push(...checkUndefinedCalls(fileLines, knownFuncNames));
+      } catch {
+        // Never let the undefined-function check crash the entire diagnostic run.
+      }
     }
 
     // ── Undefined variable uses ──────────────────────────────────────────────
@@ -282,11 +287,69 @@ function countCallArgs(stripped: string, openParenPos: number): number | null {
   return null; // no matching close paren on this line
 }
 
+/**
+ * Roku entry-point function names (case-insensitive). All of these are called
+ * directly by the Roku firmware and have access to every globally compiled
+ * BrightScript function — no `@import` is needed inside them.
+ */
+const ENTRY_POINT_NAMES = new Set(['main', 'runuserinterface', 'runscreensaver']);
+
+/**
+ * Returns a boolean array where `result[i]` is true when line `i` is inside
+ * the body of a Roku entry-point function (`Main`, `RunUserInterface`, or
+ * `RunScreenSaver` — all case-insensitive). Anonymous callbacks and nested
+ * named functions declared inside the entry point are also covered.
+ *
+ * Uses a plain depth counter — no scope objects, no regex caching. Works even
+ * when `buildFunctionScopes` fails to detect the entry point for any reason.
+ */
+function computeMainBodyLines(lines: string[]): boolean[] {
+  const result = new Array<boolean>(lines.length).fill(false);
+  let inEntryPoint = false;
+  let depth = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw || /^\s*'/.test(raw) || /^\s*rem\b/i.test(raw)) continue;
+    // Strip string literals and inline comments so neither can false-trigger regexes
+    const s = stripStringLiterals(raw, true);
+
+    if (!inEntryPoint) {
+      // Look for a Roku entry-point declaration: `function Main(`, `sub RunUserInterface(`, etc.
+      const m = /^\s*(?:function|sub)\s+([a-zA-Z_]\w*)\s*\(/i.exec(s);
+      if (m && ENTRY_POINT_NAMES.has(m[1].toLowerCase())) {
+        inEntryPoint = true;
+        depth = 1;
+        // The declaration line itself is NOT marked — DECL_RE already skips it
+      }
+    } else {
+      // Mark every line inside the entry point (including nested anonymous functions)
+      result[i] = true;
+
+      if (/^\s*(?:end\s*(?:function|sub)|endfunction|endsub)\b/i.test(s)) {
+        depth--;
+        if (depth === 0) inEntryPoint = false;
+      } else {
+        // Count any function/sub opener to track nesting depth
+        if (/^\s*(?:function|sub)\b/i.test(s) || /\b(?:function|sub)\s*\(/i.test(s)) {
+          depth++;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 function checkUndefinedCalls(
   lines: string[],
   knownFuncNames: Set<string>,
 ): Diagnostic[] {
   const localNames = collectLocalNames(lines);
+  // Pre-compute which lines are inside a Roku entry-point function body
+  // (Main, RunUserInterface, RunScreenSaver). These entry points can call any
+  // globally compiled function without @imports.
+  const inMainBody = computeMainBodyLines(lines);
 
   const diagnostics: Diagnostic[] = [];
 
@@ -303,6 +366,8 @@ function checkUndefinedCalls(
     if (/^\s*dim\b/i.test(raw)) continue;
     // Skip throw statements — `throw (expr)` uses parens for visual grouping, not a function call
     if (/^\s*throw\b/i.test(raw)) continue;
+    // Skip lines inside Roku entry points — they can call any project function without @imports
+    if (inMainBody[lineIdx]) continue;
 
     const stripped = stripStringLiterals(raw, true);
 
