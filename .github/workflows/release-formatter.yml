@@ -140,7 +140,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           VERSION="${{ steps.version.outputs.version }}"
           TAG="kopytko-formatter-v${VERSION}"
-          git add packages/kopytko-formatter/package.json packages/kopytko-formatter/CHANGELOG.md
+          git add packages/kopytko-formatter/package.json packages/kopytko-formatter/package-lock.json packages/kopytko-formatter/CHANGELOG.md
           git commit -m "chore(kopytko-formatter): release v${VERSION}"
           git tag "$TAG" -m "kopytko-formatter v${VERSION}"
           git push origin HEAD --tags

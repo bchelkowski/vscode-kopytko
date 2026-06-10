@@ -133,7 +133,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="v${VERSION}"
-          git add package.json CHANGELOG.md
+          git add package.json package-lock.json CHANGELOG.md
           git commit -m "chore: release v${VERSION}"
           git tag "$TAG" -m "vscode-kopytko v${VERSION}"
           git push origin HEAD --tags
