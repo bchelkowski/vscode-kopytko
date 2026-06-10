@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.1.5] - 2026-06-10
+
+### Added
+- Add aaCommaSpacing and catchParenStyle formatting options
+
+### Fixed
+- Remove spurious blank lines before lone return with not-alone setting
+
 ## [0.1.4] - 2026-06-10
 
 ### Fixed
