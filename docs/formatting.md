@@ -128,6 +128,19 @@ SomeFunction(function () as Object ' Some comment
 end function)
 ```
 
+Method-chain continuation lines (starting with `.`) are indented one level deeper than the line that started the chain. Object/array contents opened on a chain line nest from there:
+
+```brightscript
+' indentSize: 2
+sub test()
+  expect(foo)
+    .toEquals({
+      field1: 1,
+      field2: 2
+    })
+end sub
+```
+
 ---
 
 **`kopytko.format.useTabs`**

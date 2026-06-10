@@ -71,6 +71,7 @@ This document is the canonical list of extension features. Each feature links to
 | Conditional compilation indentation (`#if`/`#else if`/`#else`/`#end if`, `#const`) | ✅ Implemented | [formatting.md](./formatting.md) |
 | Increment (`++`) and decrement (`--`) operators preserved by spacing pass | ✅ Implemented | [formatting.md](./formatting.md) |
 | Comment lines never affect indentation depth (commented-out blocks are inert) | ✅ Implemented | [formatting.md](./formatting.md) |
+| Method-chain continuation (`.method(…)`) lines indent one level deeper than the chain start | ✅ Implemented | [formatting.md](./formatting.md) |
 | `blankLineBeforeReturn` skips blank between a comment and its following return | ✅ Implemented | [formatting.md](./formatting.md) |
 | Standalone formatter CLI (`kopytko-format --check`, `--write`) | ✅ Implemented | [kopytko-formatter README](../packages/kopytko-formatter/README.md) |
 | CLI ignore patterns (`--ignore`, config `ignore` array) | ✅ Implemented | [formatting.md](./formatting.md#cli--ci-usage) |

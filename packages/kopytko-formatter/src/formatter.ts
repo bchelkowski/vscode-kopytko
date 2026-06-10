@@ -372,9 +372,9 @@ function passThenStyle(lines: string[], config: FormattingConfig): string[] {
     }
 
     const removeThen = (): string => {
-      const cleaned = trimmed.replace(/\s*\bthen\b\s*(?=(?:'.*)?$)/i, '').trimEnd();
-      const trailingComment = trimmed.match(/\bthen\b\s*('.*)/i);
-      return indent + cleaned + (trailingComment ? ' ' + trailingComment[1] : '');
+      const split = splitTrailingComment(trimmed);
+      const codeOnly = split.code.replace(/\s*\bthen\b\s*$/i, '').trimEnd();
+      return indent + codeOnly + (split.comment ? ' ' + split.comment : '');
     };
 
     switch (config.thenStyle) {
@@ -421,15 +421,18 @@ function passParenthesisIfCase(lines: string[], config: FormattingConfig): strin
       const mNoThen = /^((?:if|else\s*if|elseif)\b)\s+(.+?)\s*$/i.exec(trimmed);
       if (mNoThen) {
         const rest = mNoThen[2];
-        const hasThen = /\bthen\b/i.test(rest);
+        const split = splitTrailingComment(rest);
+        const codeOnly = split.code;
+        const trailingComment = split.comment ? ' ' + split.comment : '';
+        const hasThen = /\bthen\b/i.test(codeOnly);
         if (!hasThen) {
-          if (isWrappedInParens(rest)) {
+          if (isWrappedInParens(codeOnly)) {
             return line;
           }
-          if (/\breturn\b/i.test(rest) || /=\s*\S/.test(rest.replace(/[<>!]=?|<>/g, ''))) {
+          if (/\breturn\b/i.test(codeOnly) || /=\s*\S/.test(codeOnly.replace(/[<>!]=?|<>/g, ''))) {
             return line;
           }
-          return indent + mNoThen[1] + ' (' + rest + ')';
+          return indent + mNoThen[1] + ' (' + codeOnly + ')' + trailingComment;
         }
       }
     } else {
@@ -451,6 +454,21 @@ function isWrappedInParens(s: string): boolean {
     if (depth === 0 && i < s.length - 1) return false;
   }
   return depth === 0;
+}
+
+/** Splits a code line into code and trailing tick comment, ignoring `'` inside strings. */
+function splitTrailingComment(s: string): { code: string; comment: string } {
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '"') {
+      if (inStr && s[i + 1] === '"') { i++; continue; }
+      inStr = !inStr;
+    } else if (!inStr && ch === "'") {
+      return { code: s.slice(0, i).trimEnd(), comment: s.slice(i) };
+    }
+  }
+  return { code: s, comment: '' };
 }
 
 // ---------------------------------------------------------------------------
@@ -738,6 +756,11 @@ function removeCommaBeforeComment(line: string): string {
 function passIndentation(lines: string[], config: FormattingConfig): string[] {
   const indentUnit = config.useTabs ? '\t' : ' '.repeat(config.indentSize);
   let indentLevel = 0;
+  // Chain-continuation indent: when a line starts with `.` it is a method-chain
+  // continuation and gets +1 extra indent. The extra persists until the indent
+  // level returns to the level recorded when the chain started.
+  let chainExtra = 0;
+  let chainStartLevel = -1;
 
   return lines.map(line => {
     const trimmed = line.trim();
@@ -745,7 +768,21 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
 
     // Comments are indented at the current level but never alter indentation state.
     const isComment = trimmed.startsWith("'") || /^rem\b/i.test(trimmed);
-    if (isComment) return indentUnit.repeat(indentLevel) + trimmed;
+    if (isComment) return indentUnit.repeat(indentLevel + chainExtra) + trimmed;
+
+    const isChainCont = /^\.[a-zA-Z_]/.test(trimmed);
+
+    // Exit the chain when a non-chain line returns to the chain's start level.
+    if (chainExtra > 0 && !isChainCont && indentLevel === chainStartLevel) {
+      chainExtra = 0;
+      chainStartLevel = -1;
+    }
+
+    // Enter a chain on the first `.`-line after a non-chain line.
+    if (isChainCont && chainExtra === 0) {
+      chainStartLevel = indentLevel;
+      chainExtra = 1;
+    }
 
     if (isDeindentLine(trimmed) && indentLevel > 0) indentLevel--;
     if (/^[}\]]/.test(trimmed) && !isDeindentLine(trimmed)) {
@@ -757,7 +794,7 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
       indentLevel = Math.max(0, indentLevel - closers);
     }
 
-    const result = indentUnit.repeat(indentLevel) + trimmed;
+    const result = indentUnit.repeat(indentLevel + chainExtra) + trimmed;
 
     if (isIndentLine(trimmed)) indentLevel++;
     if (!/^[}\]]/.test(trimmed)) {
@@ -1017,6 +1054,24 @@ function isAnonFunctionOpener(t: string): boolean {
     && !t.startsWith("'");
 }
 
+/** Net change in (), [], {} depth on a line, ignoring string literals and tick-comments. */
+function netBracketDepth(line: string): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inStr && line[i + 1] === '"') { i++; continue; }
+      inStr = !inStr;
+    } else if (!inStr) {
+      if (ch === "'") break;
+      if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') depth--;
+    }
+  }
+  return depth;
+}
+
 function isReturnAloneInBlock(lines: string[], returnIdx: number): boolean {
   let openerIdx = returnIdx - 1;
   while (openerIdx >= 0) {
@@ -1028,7 +1083,13 @@ function isReturnAloneInBlock(lines: string[], returnIdx: number): boolean {
     openerIdx--;
   }
 
+  // Skip past the return statement's own multi-line expression.
+  let exprDepth = netBracketDepth(lines[returnIdx]);
   let closerIdx = returnIdx + 1;
+  while (closerIdx < lines.length && exprDepth > 0) {
+    exprDepth += netBracketDepth(lines[closerIdx]);
+    closerIdx++;
+  }
   while (closerIdx < lines.length) {
     const t = lines[closerIdx].trim();
     if (t !== '' && !t.startsWith("'") && !/^rem\b/i.test(t)) {

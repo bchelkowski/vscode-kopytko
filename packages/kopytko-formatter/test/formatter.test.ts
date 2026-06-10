@@ -543,6 +543,51 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
+    it('not-alone: does not add blank line when return value is a multi-line AA and is the only statement in the if block', () => {
+      expect(format([
+        'function test() as Object',
+        '  if (condition)',
+        '    return {',
+        '      name: "Label",',
+        '      props: {',
+        '        id: "x"',
+        '      }',
+        '    }',
+        '  end if',
+        '  return invalid',
+        'end function',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'function test() as Object',
+        '  if (condition)',
+        '    return {',
+        '      name: "Label",',
+        '      props: {',
+        '        id: "x"',
+        '      }',
+        '    }',
+        '  end if',
+        '',
+        '  return invalid',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('not-alone: does not add blank line when return value continues across an inline anon function and its body contains another return', () => {
+      expect(format([
+        'prototype.getLogos = function() as Object',
+        '  return m._service.fetch().then(function(data as Object, m as Object) as Object',
+        '    return m._utils.slice(data, 0, 5)',
+        '  end function, Invalid, m)',
+        'end function',
+      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+        'prototype.getLogos = function() as Object',
+        '  return m._service.fetch().then(function(data as Object, m as Object) as Object',
+        '    return m._utils.slice(data, 0, 5)',
+        '  end function, Invalid, m)',
+        'end function',
+      ].join('\n'));
+    });
+
     it('not-alone: adds blank line before return when not alone in anonymous function body', () => {
       expect(format([
         'SomeFunction(function () as Object',
@@ -682,6 +727,150 @@ describe('kopytko-formatter', () => {
         { indentSize: 2, spaceAroundOperators: true },
       );
       expect(result).to.include('a + b');
+    });
+  });
+
+  // ── parenthesisIfCase with trailing comments ────────────────────────────
+
+  describe('parenthesisIfCase with trailing comment', () => {
+    it('does not wrap a trailing comment inside the parens (no then)', () => {
+      expect(format([
+        'sub test()',
+        "  if NOT someBoolean ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ], { indentSize: 2, parenthesisIfCase: 'always' })).to.equal([
+        'sub test()',
+        "  if (NOT someBoolean) ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('preserves already-parenthesised if with trailing comment', () => {
+      expect(format([
+        'sub test()',
+        "  if (NOT someBoolean) ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ], { indentSize: 2, parenthesisIfCase: 'always' })).to.equal([
+        'sub test()',
+        "  if (NOT someBoolean) ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('handles else if with trailing comment', () => {
+      expect(format([
+        'sub test()',
+        '  if (a)',
+        "  else if NOT someBoolean ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ], { indentSize: 2, parenthesisIfCase: 'always' })).to.equal([
+        'sub test()',
+        '  if (a)',
+        "  else if (NOT someBoolean) ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('strips then with trailing comment without duplicating the comment', () => {
+      expect(format([
+        'sub test()',
+        "  if (NOT someBoolean) then ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ], { indentSize: 2, parenthesisIfCase: 'always', thenStyle: 'singleline-only' })).to.equal([
+        'sub test()',
+        "  if (NOT someBoolean) ' Some comment",
+        '    x = 1',
+        '  end if',
+        'end sub',
+      ].join('\n'));
+    });
+  });
+
+  // ── Chained method indentation ───────────────────────────────────────────
+
+  describe('chained method indentation', () => {
+    it('indents .method() chain continuation one level deeper than the chain start', () => {
+      expect(format([
+        'sub test()',
+        '  expect(foo)',
+        '    .toEquals({',
+        '      field1: 1,',
+        '      field2: 2',
+        '    })',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  expect(foo)',
+        '    .toEquals({',
+        '      field1: 1,',
+        '      field2: 2',
+        '    })',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('re-indents under-indented chain continuation lines', () => {
+      expect(format([
+        'sub test()',
+        'expect(foo)',
+        '.toEquals({',
+        'field1: 1',
+        '})',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  expect(foo)',
+        '    .toEquals({',
+        '      field1: 1',
+        '    })',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('handles multiple chained .method() calls', () => {
+      expect(format([
+        'sub test()',
+        '  foo()',
+        '    .first()',
+        '    .second()',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  foo()',
+        '    .first()',
+        '    .second()',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('exits chain when a non-chain statement follows', () => {
+      expect(format([
+        'sub test()',
+        '  foo()',
+        '    .bar()',
+        '  baz()',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  foo()',
+        '    .bar()',
+        '  baz()',
+        'end sub',
+      ].join('\n'));
     });
   });
 
