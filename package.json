@@ -524,6 +524,25 @@
           "default": true,
           "markdownDescription": "Spaces inside `{}`: `{ key: value }` (true) vs `{key: value}` (false)."
         },
+        "kopytko.format.aaCommaSpacing": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "after",
+            "before",
+            "both",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Keep existing spacing around commas.",
+            "Space after comma only: `{ a: 1, b: 2 }`.",
+            "Space before comma only: `{ a: 1 ,b: 2 }`.",
+            "Space on both sides: `{ a: 1 , b: 2 }`.",
+            "No spaces around commas: `{ a: 1,b: 2 }`."
+          ],
+          "default": "preserve",
+          "markdownDescription": "Spaces around commas separating key-value pairs in inline associative arrays `{}`. Only applies to commas on the same line as `{` and `}` — multi-line AAs are not affected."
+        },
         "kopytko.format.trailingComma": {
           "type": "string",
           "enum": [
@@ -682,6 +701,21 @@
           ],
           "default": "preserve",
           "description": "Wrap if-condition in parentheses: 'always' adds them, 'never' removes them."
+        },
+        "kopytko.format.catchParenStyle": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "always",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Leave catch variable parentheses as-is",
+            "Always wrap: catch (e)",
+            "Never wrap: catch e"
+          ],
+          "default": "preserve",
+          "markdownDescription": "Controls whether the catch variable is wrapped in parentheses.\n\n- `always` → `catch (e)`\n- `never` → `catch e`\n- `preserve` → leave as written"
         },
         "kopytko.format.elseOnNewLine": {
           "type": "boolean",

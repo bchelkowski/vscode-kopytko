@@ -764,6 +764,32 @@ config = {name: "app", version: "1.0"}
 
 ---
 
+**`kopytko.format.aaCommaSpacing`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"after"`, `"before"`, `"both"`, `"none"` | `"preserve"` |
+
+Controls spaces around commas separating key-value pairs in **inline** associative arrays `{}`. Only applies to commas on the same line as `{` and `}` — multi-line AAs are not affected.
+
+```brightscript
+' "after" — space after comma only:
+config = { a: 1, b: 2 }
+
+' "before" — space before comma only:
+config = { a: 1 ,b: 2 }
+
+' "both" — space on both sides:
+config = { a: 1 , b: 2 }
+
+' "none" — no spaces around commas:
+config = { a: 1,b: 2 }
+
+' "preserve" — leave as written (default)
+```
+
+---
+
 **`kopytko.format.trailingComma`**
 
 | Type | Values | Default |
@@ -1348,6 +1374,36 @@ else if (name = "test") then
 ' After:
 else if name = "test" then
 ```
+
+---
+
+**`kopytko.format.catchParenStyle`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"always"`, `"never"` | `"preserve"` |
+
+Controls whether the variable in a `catch` clause is wrapped in parentheses.
+
+```brightscript
+' "always" — adds parentheses:
+' Before:
+catch e
+
+' After:
+catch (e)
+
+' "never" — removes parentheses:
+' Before:
+catch (err)
+
+' After:
+catch err
+
+' "preserve" — leaves as written (default)
+```
+
+Trailing comments on the `catch` line are preserved unchanged.
 
 ---
 
