@@ -949,6 +949,106 @@ describe('kopytko-formatter', () => {
     });
   });
 
+  // ── Multi-line function argument indentation ────────────────────────────
+
+  describe('multi-line function argument indentation', () => {
+    it('indents multiple array arguments in a function call', () => {
+      expect(format([
+        'sub test()',
+        'm._someFunction([',
+        '"string one",',
+        '"string two",',
+        '], [',
+        '{ a: 1, b: 2 },',
+        '{ a: 2, b: 4 },',
+        '])',
+        'end sub',
+      ], { indentSize: 2, trailingComma: 'multiline' })).to.equal([
+        'sub test()',
+        '  m._someFunction([',
+        '    "string one",',
+        '    "string two",',
+        '  ], [',
+        '    { a: 1, b: 2 },',
+        '    { a: 2, b: 4 },',
+        '  ])',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('indents mixed AA and array arguments', () => {
+      expect(format([
+        'sub test()',
+        'm._someFunction2({',
+        'a: "string one",',
+        'b: "string two",',
+        '}, [',
+        '{ a: 1, b: 2 },',
+        '{ a: 2, b: 4 },',
+        '])',
+        'end sub',
+      ], { indentSize: 2, trailingComma: 'multiline' })).to.equal([
+        'sub test()',
+        '  m._someFunction2({',
+        '    a: "string one",',
+        '    b: "string two",',
+        '  }, [',
+        '    { a: 1, b: 2 },',
+        '    { a: 2, b: 4 },',
+        '  ])',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('indents multiple AA arguments', () => {
+      expect(format([
+        'sub test()',
+        'm._someFunction3({',
+        'a: "string one",',
+        'b: "string two",',
+        '}, {',
+        '"key1": { a: 1, b: 2 },',
+        '"key2": { a: 2, b: 4 },',
+        '})',
+        'end sub',
+      ], { indentSize: 2, trailingComma: 'multiline' })).to.equal([
+        'sub test()',
+        '  m._someFunction3({',
+        '    a: "string one",',
+        '    b: "string two",',
+        '  }, {',
+        '    "key1": { a: 1, b: 2 },',
+        '    "key2": { a: 2, b: 4 },',
+        '  })',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('indents mixed AA and array with string keys', () => {
+      expect(format([
+        'sub test()',
+        'm._someFunction4({',
+        '"key1": "string one",',
+        '"key2": "string two",',
+        '}, [',
+        '{ a: 1, b: 2 },',
+        '{ a: 2, b: 4 },',
+        '])',
+        'end sub',
+      ], { indentSize: 2, trailingComma: 'multiline' })).to.equal([
+        'sub test()',
+        '  m._someFunction4({',
+        '    "key1": "string one",',
+        '    "key2": "string two",',
+        '  }, [',
+        '    { a: 1, b: 2 },',
+        '    { a: 2, b: 4 },',
+        '  ])',
+        'end sub',
+      ].join('\n'));
+    });
+  });
+
   // ── Comments do not affect indentation ───────────────────────────────────
 
   describe('commented-out code does not affect indentation', () => {

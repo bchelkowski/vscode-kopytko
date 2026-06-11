@@ -911,27 +911,28 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
     }
 
     if (isDeindentLine(trimmed) && indentLevel > 0) indentLevel--;
-    if (/^[}\]]/.test(trimmed) && !isDeindentLine(trimmed)) {
-      let closers = 0;
+
+    // Count leading ] and } closers for bracket de-indentation
+    let leadingClosers = 0;
+    if (!isDeindentLine(trimmed)) {
       for (const ch of trimmed) {
-        if (ch === '}' || ch === ']') closers++;
+        if (ch === '}' || ch === ']') leadingClosers++;
         else break;
       }
-      indentLevel = Math.max(0, indentLevel - closers);
+      if (leadingClosers > 0) indentLevel = Math.max(0, indentLevel - leadingClosers);
     }
 
     const result = indentUnit.repeat(indentLevel + chainExtra) + trimmed;
 
     if (isIndentLine(trimmed)) indentLevel++;
-    if (!/^[}\]]/.test(trimmed)) {
-      let opens = 0;
-      let depth = 0;
-      for (const ch of trimmed) {
-        if (ch === '{' || ch === '[') { depth++; opens++; }
-        else if (ch === '}' || ch === ']') { depth--; opens = Math.max(0, opens - 1); }
-      }
-      if (depth > 0) indentLevel += depth;
-    }
+
+    // Bracket depth: net change in [ ] { } on this line (string-aware).
+    // trailingOpens = netDepth + leadingClosers gives the effective opens
+    // remaining at the end of the line (leading closers were already applied).
+    const netDepth = netContainerDepth(trimmed);
+    const trailingOpens = netDepth + leadingClosers;
+    if (trailingOpens !== 0) indentLevel = Math.max(0, indentLevel + trailingOpens);
+
     // Anonymous function expressions: trailing comment after return type is allowed.
     if (/\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
       indentLevel++;
@@ -1182,6 +1183,24 @@ function isAnonFunctionOpener(t: string): boolean {
   return /\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(t)
     && !/^(?:function|sub)\b/i.test(t)
     && !t.startsWith("'");
+}
+
+/** Net change in [], {} depth on a line, ignoring string literals and tick-comments. Does NOT track (). */
+function netContainerDepth(line: string): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inStr && line[i + 1] === '"') { i++; continue; }
+      inStr = !inStr;
+    } else if (!inStr) {
+      if (ch === "'") break;
+      if (ch === '{' || ch === '[') depth++;
+      else if (ch === '}' || ch === ']') depth--;
+    }
+  }
+  return depth;
 }
 
 /** Net change in (), [], {} depth on a line, ignoring string literals and tick-comments. */
