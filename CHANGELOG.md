@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.6] - 2026-06-11
+
+### Fixed
+- Resolve false-positive undefined-variable on scope-boundary lines
+
 ## [0.1.5] - 2026-06-10
 
 ### Added
