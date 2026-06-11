@@ -46,9 +46,10 @@ export class BrightScriptDiagnosticsProvider {
     generatedModules: GeneratedModuleConfig[] = [],
     siblingPatterns: string[][] = [],
   ): Diagnostic[] {
-    const fileLines = getCachedLines(document);
     const documentPath = getDocumentPath(document);
     const content = document.getText();
+    const cachedLines = getCachedLines(document);
+    const cachedImports = getCachedImports(document, this.importResolver);
 
     // Build per-file known function names from extension caches
     const cachedKnownFuncNames = getCachedKnownFuncNames(document, documentPath, this.importResolver, siblingPatterns);
@@ -56,9 +57,8 @@ export class BrightScriptDiagnosticsProvider {
     // Extend with generated module functions
     let knownFuncNames = cachedKnownFuncNames;
     if (generatedModules.length > 0) {
-      const imports = getCachedImports(document, this.importResolver);
       const extra = new Set<string>();
-      for (const imp of imports) {
+      for (const imp of cachedImports) {
         const mod = generatedModules.find((m) => matchesGlob(imp.importPath, m.path));
         if (mod) {
           for (const fn of mod.functions) {
@@ -74,8 +74,9 @@ export class BrightScriptDiagnosticsProvider {
     const context: LintContext = {
       knownFuncNames,
 
-      parseImports: (text: string): KopytkoImport[] => {
-        return this.importResolver.parseImports(text);
+      parseImports: (_text: string): KopytkoImport[] => {
+        // Return cached imports — the adapter always lints the current document
+        return cachedImports;
       },
 
       resolveImportPath: (importPath: string, _docPath: string, fromModule?: string): string | null => {
@@ -123,12 +124,14 @@ export class BrightScriptDiagnosticsProvider {
     };
 
     const config: LinterConfig = { ...DEFAULT_LINTER_CONFIG, generatedPaths, generatedModules, siblingPatterns };
-    const lintDiagnostics = lintFile(documentPath, content, context, config);
 
-    return lintDiagnostics.map((d) => this.toLspDiagnostic(d, fileLines));
+    // Pass cached lines directly to avoid re-splitting content inside lintFile
+    const lintDiagnostics = lintFile(documentPath, content, context, config, cachedLines);
+
+    return lintDiagnostics.map((d) => this.toLspDiagnostic(d));
   }
 
-  private toLspDiagnostic(d: LintDiagnostic, _lines: string[]): Diagnostic {
+  private toLspDiagnostic(d: LintDiagnostic): Diagnostic {
     return {
       severity: SEVERITY_MAP[d.severity] ?? DiagnosticSeverity.Warning,
       range: {

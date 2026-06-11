@@ -39,7 +39,7 @@ export class ImportResolver {
     this.options = options;
   }
 
-  private cachedExists(filePath: string): boolean {
+  cachedExists(filePath: string): boolean {
     const normalized = nodePath.normalize(filePath);
     let result = this.existsCache.get(normalized);
     if (result === undefined) {

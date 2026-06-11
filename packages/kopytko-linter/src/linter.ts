@@ -8,6 +8,7 @@ import { parseImports, ImportResolver } from './analysis/importParser';
 import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, resolveTestedFiles } from './analysis/testUtils';
+import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from './analysis/xmlParser';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 
@@ -20,8 +21,9 @@ export function lintFile(
   content: string,
   context: LintContext,
   config: LinterConfig,
+  preLines?: string[],
 ): LintDiagnostic[] {
-  const lines = content.split(/\r?\n/);
+  const lines = preLines ?? content.split(/\r?\n/);
   const imports = context.parseImports(content);
 
   const ruleContext: RuleContext = {
@@ -94,13 +96,70 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     resolveModules: config.resolveModules,
   });
 
-  // Build a project-wide function index — single pass over all files
-  const brsFiles = collectBrsFiles(projectRoot, config.sourceDir);
-  const allFunctions = new Map<string, Set<string>>();
+  const workspaceFolders = [projectRoot];
+  const sourceDir = config.sourceDir;
+
+  // ── Phase 1: Scan all BRS and XML files (project + packages, single pass) ──
+  const brsFiles: string[] = [];
+  const fileContentsCache = new Map<string, string>();
   const fileFunctions = new Map<string, string[]>();
   const fileImports = new Map<string, KopytkoImport[]>();
-  const fileContentsCache = new Map<string, string>();
+  const componentNameToXml = new Map<string, string>();    // lowercase component name → xml path
+  const xmlTextCache = new Map<string, string>();           // normalized xml path → content
+  const brsToXmlParents = new Map<string, string[]>();     // normalized brs path → xml paths
 
+  // Walk a directory collecting BRS files and indexing XML component names
+  function walkAndIndex(dir: string, collectBrs: boolean): void {
+    let entries;
+    try { entries = fsWrapper.readdirTyped(dir); } catch { return; }
+    for (const entry of entries) {
+      const fullPath = nodePath.join(dir, entry.name);
+      if (entry.isDirectory) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        walkAndIndex(fullPath, collectBrs);
+      } else if (entry.name.endsWith('.brs') && collectBrs) {
+        brsFiles.push(fullPath);
+      } else if (entry.name.endsWith('.xml')) {
+        try {
+          const text = fsWrapper.readFileSync(fullPath, 'utf-8');
+          const normalized = nodePath.normalize(fullPath);
+          xmlTextCache.set(normalized, text);
+          fileContentsCache.set(normalized, text);
+          const name = parseXmlComponentName(text);
+          if (name) componentNameToXml.set(name.toLowerCase(), normalized);
+        } catch { /* skip */ }
+      }
+    }
+  }
+
+  // Scan project source (collect BRS + XML)
+  const sourceRoot = nodePath.join(projectRoot, sourceDir);
+  const walkRoot = fsWrapper.existsSync(sourceRoot) ? sourceRoot : projectRoot;
+  walkAndIndex(walkRoot, true);
+
+  // Scan Kopytko packages (XML only — for extends chain resolution)
+  const nmDir = nodePath.join(projectRoot, 'node_modules');
+  try {
+    for (const entry of fsWrapper.readdirTyped(nmDir)) {
+      if (!entry.isDirectory) continue;
+      if (entry.name.startsWith('@')) {
+        try {
+          for (const scoped of fsWrapper.readdirTyped(nodePath.join(nmDir, entry.name))) {
+            if (!scoped.isDirectory) continue;
+            const pkgDir = nodePath.join(nmDir, entry.name, scoped.name);
+            const moduleDir = readKopytkoModuleDir(pkgDir);
+            if (moduleDir) walkAndIndex(nodePath.join(pkgDir, moduleDir), false);
+          }
+        } catch { /* skip */ }
+      } else {
+        const pkgDir = nodePath.join(nmDir, entry.name);
+        const moduleDir = readKopytkoModuleDir(pkgDir);
+        if (moduleDir) walkAndIndex(nodePath.join(pkgDir, moduleDir), false);
+      }
+    }
+  } catch { /* no node_modules */ }
+
+  // ── Phase 2: Parse all BRS files ──
   for (const file of brsFiles) {
     try {
       const text = fsWrapper.readFileSync(file, 'utf-8');
@@ -111,7 +170,23 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     } catch { /* skip */ }
   }
 
-  // Helper: read a file, using cache when available
+  // Build BRS→XML parent mapping from indexed XML files
+  for (const [xmlPath, xmlText] of xmlTextCache) {
+    const scriptPaths = getScriptPathsFromXml(
+      xmlPath, xmlText, workspaceFolders, sourceDir,
+      (p) => importResolver.cachedExists(p),
+    );
+    for (const scriptPath of scriptPaths) {
+      const normalizedScript = nodePath.normalize(scriptPath);
+      const parents = brsToXmlParents.get(normalizedScript) ?? [];
+      parents.push(xmlPath);
+      brsToXmlParents.set(normalizedScript, parents);
+    }
+  }
+
+  // ── Phase 3: Cached helpers ──
+  const allFunctions = new Map<string, Set<string>>();
+
   const readFileCached = (filePath: string): string | null => {
     const normalized = nodePath.normalize(filePath);
     const cached = fileContentsCache.get(normalized);
@@ -125,7 +200,6 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     }
   };
 
-  // Helper: get parsed functions for a file, using cache
   const getFunctions = (filePath: string): string[] => {
     const normalized = nodePath.normalize(filePath);
     const cached = fileFunctions.get(normalized);
@@ -137,7 +211,6 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     return fns;
   };
 
-  // Helper: get parsed imports for a file, using cache
   const getImports = (filePath: string): KopytkoImport[] => {
     const normalized = nodePath.normalize(filePath);
     const cached = fileImports.get(normalized);
@@ -149,7 +222,60 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     return imports;
   };
 
-  // For each file, compute its known function names from imports + siblings + self
+  // Collect functions from an XML component's extends chain (map-based, no filesystem traversal)
+  const extendsCache = new Map<string, string[]>();
+  const collectFromExtendsChain = (componentNameLower: string): string[] => {
+    const cached = extendsCache.get(componentNameLower);
+    if (cached) return cached;
+
+    const fns: string[] = [];
+    const visitedComponents = new Set<string>();
+
+    const walk = (nameLower: string): void => {
+      if (visitedComponents.has(nameLower)) return;
+      visitedComponents.add(nameLower);
+
+      const xmlPath = componentNameToXml.get(nameLower);
+      if (!xmlPath) return;
+
+      const xmlText = xmlTextCache.get(xmlPath) ?? readFileCached(xmlPath);
+      if (!xmlText) return;
+
+      // Add functions from all BRS scripts listed in this XML
+      const scriptPaths = getScriptPathsFromXml(
+        xmlPath, xmlText, workspaceFolders, sourceDir,
+        (p) => importResolver.cachedExists(p),
+      );
+      for (const scriptPath of scriptPaths) {
+        for (const fn of getFunctions(scriptPath)) fns.push(fn);
+        // Follow the script's @import chain
+        const visited = new Set<string>();
+        const followImports = (file: string): void => {
+          for (const imp of getImports(file)) {
+            if (imp.isMock) continue;
+            const resolved = importResolver.resolveImportPath(imp, file);
+            if (!resolved) continue;
+            const norm = nodePath.normalize(resolved);
+            if (visited.has(norm)) continue;
+            visited.add(norm);
+            for (const fn of getFunctions(resolved)) fns.push(fn);
+            followImports(resolved);
+          }
+        };
+        followImports(scriptPath);
+      }
+
+      // Walk up the extends chain
+      const parentName = parseXmlExtends(xmlText);
+      if (parentName) walk(parentName.toLowerCase());
+    };
+
+    walk(componentNameLower);
+    extendsCache.set(componentNameLower, fns);
+    return fns;
+  };
+
+  // ── Phase 4: Build per-file known function names ──
   for (const file of brsFiles) {
     const normalizedFile = nodePath.normalize(file);
     const known = new Set<string>();
@@ -160,7 +286,7 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
       for (const fn of TEST_FRAMEWORK_GLOBALS) known.add(fn);
     }
 
-    // Collect functions from imports (transitively)
+    // Collect functions from @import chain (transitively)
     const visited = new Set<string>();
     const collectFromImports = (sourceFile: string, imps: KopytkoImport[]): void => {
       for (const imp of imps) {
@@ -177,7 +303,37 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     };
     collectFromImports(file, getImports(file));
 
-    // Add sibling functions (and their imports)
+    // Add XML sibling functions — other BRS files in the same XML component
+    const parentXmls = brsToXmlParents.get(normalizedFile) ?? [];
+    for (const xmlPath of parentXmls) {
+      const xmlText = readFileCached(xmlPath);
+      if (!xmlText) continue;
+
+      // Add all sibling BRS scripts from this XML
+      const scriptPaths = getScriptPathsFromXml(
+        xmlPath, xmlText, workspaceFolders, sourceDir,
+        (p) => importResolver.cachedExists(p),
+      );
+      for (const scriptPath of scriptPaths) {
+        const normalizedScript = nodePath.normalize(scriptPath);
+        if (normalizedScript === normalizedFile) continue;
+        if (!visited.has(normalizedScript)) {
+          visited.add(normalizedScript);
+          for (const fn of getFunctions(scriptPath)) known.add(fn);
+          collectFromImports(scriptPath, getImports(scriptPath));
+        }
+      }
+
+      // Walk the extends chain and add inherited functions
+      const parentComponentName = parseXmlExtends(xmlText);
+      if (parentComponentName) {
+        for (const fn of collectFromExtendsChain(parentComponentName.toLowerCase())) {
+          known.add(fn);
+        }
+      }
+    }
+
+    // Add pattern sibling functions
     for (const siblingPath of findSiblingFiles(file, config.siblingPatterns)) {
       const normalizedSibling = nodePath.normalize(siblingPath);
       if (!visited.has(normalizedSibling)) {
@@ -187,7 +343,7 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
       }
     }
 
-    // For test files, add tested file functions and test siblings
+    // For test files, add tested file scope
     if (isTestFile(file)) {
       for (const testedPath of resolveTestedFiles(file)) {
         const normalizedTested = nodePath.normalize(testedPath);
@@ -195,6 +351,18 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
           visited.add(normalizedTested);
           for (const fn of getFunctions(testedPath)) known.add(fn);
           collectFromImports(testedPath, getImports(testedPath));
+        }
+        // Also add the tested file's XML extends chain
+        const testedXmls = brsToXmlParents.get(normalizedTested) ?? [];
+        for (const txmlPath of testedXmls) {
+          const txmlText = readFileCached(txmlPath);
+          if (!txmlText) continue;
+          const parentName = parseXmlExtends(txmlText);
+          if (parentName) {
+            for (const fn of collectFromExtendsChain(parentName.toLowerCase())) {
+              known.add(fn);
+            }
+          }
         }
       }
       for (const siblingTest of findTestSiblings(file)) {
@@ -272,34 +440,13 @@ export function createFileContext(baseContext: LintContext, filePath: string): L
   };
 }
 
-function collectBrsFiles(dir: string, sourceDir: string): string[] {
-  const sourceRoot = nodePath.join(dir, sourceDir);
-  const files: string[] = [];
-
-  function walk(currentDir: string): void {
-    let entries;
-    try {
-      entries = fsWrapper.readdirTyped(currentDir);
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = nodePath.join(currentDir, entry.name);
-      if (entry.isDirectory) {
-        if (entry.name === 'node_modules' || entry.name === '.git') continue;
-        walk(fullPath);
-      } else if (entry.name.endsWith('.brs')) {
-        files.push(fullPath);
-      }
-    }
+/** Read `kopytkoModuleDir` from a package's package.json. Returns null if not a Kopytko package. */
+function readKopytkoModuleDir(pkgDir: string): string | null {
+  try {
+    const content = fsWrapper.readFileSync(nodePath.join(pkgDir, 'package.json'), 'utf-8');
+    const pkg = JSON.parse(content) as { kopytkoModuleDir?: string };
+    return pkg.kopytkoModuleDir ?? null;
+  } catch {
+    return null;
   }
-
-  if (fsWrapper.existsSync(sourceRoot)) {
-    walk(sourceRoot);
-  } else {
-    walk(dir);
-  }
-
-  return files;
 }
