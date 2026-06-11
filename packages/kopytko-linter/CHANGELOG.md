@@ -1,5 +1,10 @@
 # Changelog
 
+
+## [0.1.1] - 2026-06-11
+
+### Added
+- Add standalone BrightScript linter package
 All notable changes to kopytko-linter will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
