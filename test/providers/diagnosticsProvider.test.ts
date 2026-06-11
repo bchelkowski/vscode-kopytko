@@ -1445,6 +1445,86 @@ describe('BrightScriptDiagnosticsProvider', () => {
     });
   });
 
+  // ── Shadowed built-in names ─────────────────────────────────────────────
+
+  describe('shadowed built-in function names', () => {
+    it('flags a parameter that shadows a built-in function', async () => {
+      const doc = makeDocument([
+        'function test(str as String) as String',
+        '  return str',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const shadows = diags.filter((d) => d.code === 'identifier/shadows-builtin');
+      expect(shadows).to.have.lengthOf(1);
+      expect(shadows[0].message).to.include("'str'");
+      expect(shadows[0].range.start.line).to.equal(0);
+    });
+
+    it('flags a variable assignment that shadows a built-in', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  len = 5',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const shadows = diags.filter((d) => d.code === 'identifier/shadows-builtin');
+      expect(shadows).to.have.lengthOf(1);
+      expect(shadows[0].message).to.include("'len'");
+    });
+
+    it('flags a for-loop variable that shadows a built-in', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  for val = 1 to 10',
+        '    print val',
+        '  end for',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const shadows = diags.filter((d) => d.code === 'identifier/shadows-builtin');
+      expect(shadows).to.have.lengthOf(1);
+      expect(shadows[0].message).to.include("'val'");
+    });
+
+    it('flags anonymous function parameter that shadows a built-in', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  SomeFunction({ a: "asd" }, function (str as Object) as Boolean',
+        '    return true',
+        '  end function)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const shadows = diags.filter((d) => d.code === 'identifier/shadows-builtin');
+      expect(shadows).to.have.lengthOf(1);
+      expect(shadows[0].message).to.include("'str'");
+    });
+
+    it('does not flag normal variable names that do not match builtins', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  myVar = 5',
+        '  result = myVar + 1',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const shadows = diags.filter((d) => d.code === 'identifier/shadows-builtin');
+      expect(shadows).to.have.lengthOf(0);
+    });
+
+    it('uses Error severity', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  str = "hello"',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const shadows = diags.filter((d) => d.code === 'identifier/shadows-builtin');
+      expect(shadows[0].severity).to.equal(DiagnosticSeverity.Error);
+    });
+  });
+
   // ── Function scope isolation ─────────────────────────────────────────────
 
   describe('function scope isolation (no closures)', () => {

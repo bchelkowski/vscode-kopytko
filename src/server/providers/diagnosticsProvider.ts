@@ -168,6 +168,13 @@ export class BrightScriptDiagnosticsProvider {
       // Never let the undefined-variable check crash the entire diagnostic run.
     }
 
+    // ── Shadowed built-in function names ──────────────────────────────────────
+    try {
+      diagnostics.push(...checkShadowedBuiltins(fileLines));
+    } catch {
+      // Never let this check crash the diagnostic run.
+    }
+
     // ── throw statement validation ───────────────────────────────────────────
     try {
       diagnostics.push(...checkThrowStatements(fileLines));
@@ -658,6 +665,141 @@ function checkUndefinedVariables(
         source: 'kopytko',
         code: 'identifier/undefined-variable',
       });
+    }
+  }
+
+  return diagnostics;
+}
+
+// ---------------------------------------------------------------------------
+// Shadowed built-in name checker
+// ---------------------------------------------------------------------------
+
+/**
+ * Flags variables, parameters, and loop iterators whose names shadow a
+ * BrightScript built-in global function (e.g. `str`, `len`, `val`).
+ * Using such names is legal but hides the built-in, which is almost
+ * always a mistake.
+ */
+function checkShadowedBuiltins(lines: string[]): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+
+  const ASSIGN_RE = /^\s*(?:m\.)?([a-zA-Z_]\w*)[&%!#$]?(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
+  const FOR_RE = /^\s*for\s+(?:each\s+)?([a-zA-Z_]\w*)\b/i;
+  const DIM_RE = /^\s*dim\s+([a-zA-Z_]\w*)\s*\(/i;
+  const CATCH_RE = /^\s*catch\s+\(?([a-zA-Z_]\w*)\)?/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*'/.test(line) || /^\s*rem\b/i.test(line)) continue;
+
+    const stripped = stripStringLiterals(line, true);
+
+    // Check function/sub parameters
+    const funcMatch = /\b(?:function|sub)\b\s*(?:[a-zA-Z_]\w*\s*)?\(([^)]*)\)/i.exec(stripped);
+    if (funcMatch && funcMatch[1].trim()) {
+      const paramsStr = funcMatch[1];
+      const paramsStart = stripped.indexOf(paramsStr, funcMatch.index);
+      for (const part of paramsStr.split(',')) {
+        const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
+        if (nm) {
+          const paramName = nm[1];
+          const lower = paramName.toLowerCase();
+          if (_builtinNames.has(lower)) {
+            const col = stripped.indexOf(paramName, paramsStart);
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: {
+                start: { line: i, character: col >= 0 ? col : 0 },
+                end: { line: i, character: (col >= 0 ? col : 0) + paramName.length },
+              },
+              message: `'${paramName}' shadows the built-in global function '${paramName}'. Use a different name to avoid hiding the built-in.`,
+              source: 'kopytko',
+              code: 'identifier/shadows-builtin',
+            });
+          }
+        }
+      }
+    }
+
+    // Check variable assignments
+    const assignMatch = ASSIGN_RE.exec(stripped);
+    if (assignMatch) {
+      const varName = assignMatch[1];
+      const lower = varName.toLowerCase();
+      if (_builtinNames.has(lower)) {
+        const col = stripped.indexOf(varName);
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: i, character: col >= 0 ? col : 0 },
+            end: { line: i, character: (col >= 0 ? col : 0) + varName.length },
+          },
+          message: `'${varName}' shadows the built-in global function '${varName}'. Use a different name to avoid hiding the built-in.`,
+          source: 'kopytko',
+          code: 'identifier/shadows-builtin',
+        });
+      }
+    }
+
+    // Check for-loop variables
+    const forMatch = FOR_RE.exec(stripped);
+    if (forMatch) {
+      const varName = forMatch[1];
+      const lower = varName.toLowerCase();
+      if (_builtinNames.has(lower)) {
+        const col = stripped.indexOf(varName, forMatch.index);
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: i, character: col >= 0 ? col : 0 },
+            end: { line: i, character: (col >= 0 ? col : 0) + varName.length },
+          },
+          message: `'${varName}' shadows the built-in global function '${varName}'. Use a different name to avoid hiding the built-in.`,
+          source: 'kopytko',
+          code: 'identifier/shadows-builtin',
+        });
+      }
+    }
+
+    // Check dim declarations
+    const dimMatch = DIM_RE.exec(stripped);
+    if (dimMatch) {
+      const varName = dimMatch[1];
+      const lower = varName.toLowerCase();
+      if (_builtinNames.has(lower)) {
+        const col = stripped.indexOf(varName, dimMatch.index);
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: i, character: col >= 0 ? col : 0 },
+            end: { line: i, character: (col >= 0 ? col : 0) + varName.length },
+          },
+          message: `'${varName}' shadows the built-in global function '${varName}'. Use a different name to avoid hiding the built-in.`,
+          source: 'kopytko',
+          code: 'identifier/shadows-builtin',
+        });
+      }
+    }
+
+    // Check catch variables
+    const catchMatch = CATCH_RE.exec(stripped);
+    if (catchMatch) {
+      const varName = catchMatch[1];
+      const lower = varName.toLowerCase();
+      if (_builtinNames.has(lower)) {
+        const col = stripped.indexOf(varName, catchMatch.index);
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: i, character: col >= 0 ? col : 0 },
+            end: { line: i, character: (col >= 0 ? col : 0) + varName.length },
+          },
+          message: `'${varName}' shadows the built-in global function '${varName}'. Use a different name to avoid hiding the built-in.`,
+          source: 'kopytko',
+          code: 'identifier/shadows-builtin',
+        });
+      }
     }
   }
 
