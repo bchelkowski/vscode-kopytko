@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.1.8] - 2026-06-11
+
+### Fixed
+- Suppress unused-import warning for PromiseResolve/PromiseReject when resolvedValue/rejectedValue is used
+- Fix Roku device discovery with per-NIC sockets and triple M-SEARCH
+- Deduplicate go-to-definition results for project functions
+
 ## [0.1.7] - 2026-06-11
 
 ### Added
