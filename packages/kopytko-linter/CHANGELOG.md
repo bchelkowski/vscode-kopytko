@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.3.4] - 2026-06-11
+
+### Fixed
+- Parse params with nested parens in default values
+
 ## [0.3.3] - 2026-06-11
 
 ### Fixed
