@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.3.1] - 2026-06-11
+
+### Fixed
+- Align scope building with extension for parity
+
 ## [0.3.0] - 2026-06-11
 
 ### Changed
