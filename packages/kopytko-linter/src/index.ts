@@ -24,5 +24,5 @@ export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, builtinNames
 export { findComponent } from './catalog/components';
 export { parseImports, ImportResolver } from './analysis/importParser';
 export { parseFunctionDefs, parseInnerMethodDefs } from './analysis/functionIndex';
-export { isTestFile, getTestBaseName, findTestSiblings } from './analysis/testUtils';
+export { isTestFile, isMockFile, isTestRelatedFile, getTestBaseName, findTestSiblings } from './analysis/testUtils';
 export { stripStringLiterals, escapeRegex } from './analysis/textUtils';

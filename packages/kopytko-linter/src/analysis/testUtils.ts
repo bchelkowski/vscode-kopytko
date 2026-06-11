@@ -6,6 +6,16 @@ export function isTestFile(uriOrPath: string): boolean {
   return /[/\\]_tests[/\\].*\.test\.brs$/i.test(uriOrPath) || /\.test\.brs$/i.test(uriOrPath);
 }
 
+/** Check if a file URI or path looks like a mock file. */
+export function isMockFile(uriOrPath: string): boolean {
+  return /[/\\]_mocks[/\\].*\.mock\.brs$/i.test(uriOrPath) || /\.mock\.brs$/i.test(uriOrPath);
+}
+
+/** Check if a file is test-related (test or mock) — gets test framework globals. */
+export function isTestRelatedFile(uriOrPath: string): boolean {
+  return isTestFile(uriOrPath) || isMockFile(uriOrPath);
+}
+
 /**
  * Extracts the base test name from a test file path.
  * `Foo.test.brs` → `Foo`, `Foo_Bar.test.brs` → `Foo`

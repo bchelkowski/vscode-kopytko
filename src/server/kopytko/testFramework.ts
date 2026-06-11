@@ -400,6 +400,13 @@ export const GLOBAL_TEST_FUNCTIONS: TestApiEntry[] = [
     description: 'Gets a mock controller for the named function. Use dot notation for methods: `mockFunction("Service.method")`. Chain with `.returnValue()`, `.implementation()`, etc.',
     context: 'global',
   },
+  {
+    name: 'Mock',
+    signature: 'Mock(options as Object) as Dynamic',
+    returnType: 'Dynamic',
+    description: 'Creates a mock object/function/node based on options. Used in manual mock files (`_mocks/*.mock.brs`). Auto-detects type: ObjectMock (if `.methods`), NodeMock (if `.fields`), or FunctionMock.',
+    context: 'global',
+  },
 ];
 
 // ─── Test utilities ─────────────────────────────────────────────────────────
@@ -443,6 +450,16 @@ export const FAKE_CLOCK_METHODS: TestApiEntry[] = [
 /** Check if a file URI or path looks like a test file. */
 export function isTestFile(uriOrPath: string): boolean {
   return /[/\\]_tests[/\\].*\.test\.brs$/i.test(uriOrPath) || /\.test\.brs$/i.test(uriOrPath);
+}
+
+/** Check if a file URI or path looks like a mock file. */
+export function isMockFile(uriOrPath: string): boolean {
+  return /[/\\]_mocks[/\\].*\.mock\.brs$/i.test(uriOrPath) || /\.mock\.brs$/i.test(uriOrPath);
+}
+
+/** Check if a file is test-related (test or mock) — gets test framework globals. */
+export function isTestRelatedFile(uriOrPath: string): boolean {
+  return isTestFile(uriOrPath) || isMockFile(uriOrPath);
 }
 
 /**

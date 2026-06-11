@@ -8,7 +8,7 @@ import { ALL_RULE_GROUPS } from './rules/index';
 import { parseImports, ImportResolver } from './analysis/importParser';
 import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
-import { findTestSiblings, isTestFile, resolveTestedFiles } from './analysis/testUtils';
+import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
 import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from './analysis/xmlParser';
 import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
@@ -499,8 +499,8 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     const known = new Set<string>();
     for (const fn of (fileFunctions.get(normalizedFile) ?? [])) known.add(fn);
 
-    // Add test framework globals for test files
-    if (isTestFile(file)) {
+    // Add test framework globals for test and mock files
+    if (isTestRelatedFile(file)) {
       for (const fn of TEST_FRAMEWORK_GLOBALS) known.add(fn);
     }
 

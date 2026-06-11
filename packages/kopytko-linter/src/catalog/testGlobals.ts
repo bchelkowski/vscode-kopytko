@@ -10,7 +10,7 @@ export const TEST_FRAMEWORK_GLOBALS: string[] = [
   'it', 'test', 'iteach', 'testeach',
   'beforeeach', 'aftereach', 'beforeall', 'afterall',
   // Assertions & mocking
-  'expect', 'mockfunction',
+  'expect', 'mockfunction', 'mock',
   // Test utilities
   'fakeclock', 'initkopytko', 'forceupdate', 'destroykopytko',
   // Test suite object
