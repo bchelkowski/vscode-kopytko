@@ -504,6 +504,17 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
       for (const fn of TEST_FRAMEWORK_GLOBALS) known.add(fn);
     }
 
+    // Add functions from generatedModules whose paths match this file's imports
+    const fileImps = fileImports.get(normalizedFile) ?? [];
+    if (config.generatedModules.length > 0) {
+      for (const imp of fileImps) {
+        const mod = config.generatedModules.find((m) => matchesGlob(imp.importPath, m.path));
+        if (mod) {
+          for (const fn of mod.functions) known.add(fn.toLowerCase());
+        }
+      }
+    }
+
     // Collect functions from @import chain (transitively)
     const visited = new Set<string>();
     const collectFromImports = (sourceFile: string, imps: KopytkoImport[]): void => {
