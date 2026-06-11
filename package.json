@@ -2,7 +2,7 @@
   "name": "vscode-kopytko",
   "displayName": "Kopytko BrightScript",
   "description": "BrightScript & Kopytko language support for Visual Studio Code — syntax, IntelliSense, diagnostics, and Kopytko import resolution.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "bchelkowski",
   "license": "MIT",
   "icon": "images/kopytko-logo.png",

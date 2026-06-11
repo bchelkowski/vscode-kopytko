@@ -1,6 +1,17 @@
 # Changelog
 
 
+## [0.1.7] - 2026-06-11
+
+### Added
+- Add diagnostic for variables shadowing built-in functions
+
+### Fixed
+- Recognize anonymous function params as callable local names
+- Recognize anonymous function params on end-function lines
+- Skip readOnlyPaths in formatting provider
+- Remove undocumented builtins and add docsUrl to all entries
+
 ## [0.1.6] - 2026-06-11
 
 ### Fixed
