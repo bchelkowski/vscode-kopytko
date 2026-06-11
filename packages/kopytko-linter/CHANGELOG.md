@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.3] - 2026-06-11
+
+### Fixed
+- Fix CLI import resolution with kopytkoModuleDir and walk-up node_modules
+
 ## [0.1.2] - 2026-06-11
 
 ### Fixed
