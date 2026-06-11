@@ -504,8 +504,25 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
       for (const fn of TEST_FRAMEWORK_GLOBALS) known.add(fn);
     }
 
-    // Add functions from generatedModules whose paths match this file's imports
     const fileImps = fileImports.get(normalizedFile) ?? [];
+
+    // For test files: auto-import mock config files (*.config.brs)
+    // When @mock /path/to/Foo.brs is used, the build auto-imports _mocks/Foo.config.brs
+    if (isTestFile(file)) {
+      for (const imp of fileImps) {
+        if (!imp.isMock) continue;
+        const resolved = importResolver.resolveImportPath(imp, file);
+        if (!resolved) continue;
+
+        const dir = nodePath.dirname(resolved);
+        const basename = nodePath.basename(resolved, '.brs');
+        const configPath = nodePath.join(dir, '_mocks', `${basename}.config.brs`);
+        const configFns = getFunctions(configPath);
+        for (const fn of configFns) known.add(fn);
+      }
+    }
+
+    // Add functions from generatedModules whose paths match this file's imports
     if (config.generatedModules.length > 0) {
       for (const imp of fileImps) {
         const mod = config.generatedModules.find((m) => matchesGlob(imp.importPath, m.path));

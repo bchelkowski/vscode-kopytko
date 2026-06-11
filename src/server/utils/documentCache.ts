@@ -1,8 +1,9 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver, KopytkoImport } from '../kopytko/importResolver';
-import { FunctionDefinition, collectFunctionsFromImports, collectFunctionsFromExtends, collectAllFunctions, collectAllInnerMethods, InnerMethodDefinition, resolveTestedFiles, findTestSiblings } from '../brightscript/functionIndex';
+import { FunctionDefinition, collectFunctionsFromImports, collectFunctionsFromExtends, collectAllFunctions, collectAllInnerMethods, InnerMethodDefinition, resolveTestedFiles, findTestSiblings, parseFunctionDefs } from '../brightscript/functionIndex';
 import { TypeMap, inferTypes } from '../brightscript/typeInference';
 import { findSiblingFiles } from '../brightscript/patternSiblings';
+import * as nodePath from 'path';
 import fsWrapper from './fsWrapper';
 import { isTestFile } from '../kopytko/testFramework';
 
@@ -106,6 +107,23 @@ export function getCachedKnownFuncNames(
 
     // For test files: include the tested file's full scope (imports, XML siblings, extends)
     if (isTestFile(documentPath)) {
+      // Auto-import mock config files (*.config.brs) for @mock annotations
+      const imports = importResolver.parseImports(text);
+      for (const imp of imports) {
+        if (!imp.isMock) continue;
+        const resolved = importResolver.resolveImportPath(imp, documentPath);
+        if (!resolved) continue;
+        const dir = nodePath.dirname(resolved);
+        const basename = nodePath.basename(resolved, '.brs');
+        const configPath = nodePath.join(dir, '_mocks', `${basename}.config.brs`);
+        try {
+          const configText = fsWrapper.readFileSync(configPath, 'utf-8');
+          for (const fn of parseFunctionDefs(configText, configPath)) {
+            names.add(fn.nameLower);
+          }
+        } catch { /* no config file */ }
+      }
+
       for (const testedPath of resolveTestedFiles(documentPath)) {
         try {
           const testedText = fsWrapper.readFileSync(testedPath, 'utf-8');
