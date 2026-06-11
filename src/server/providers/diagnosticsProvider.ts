@@ -625,6 +625,29 @@ function checkUndefinedVariables(
       if (lvalue !== null && nameLower === lvalue) continue; // lvalue — being assigned
       if (scopeVars.has(nameLower)) continue;
 
+      // On scope-boundary lines, part of the code belongs to the outer scope:
+      //   start line:  setState({ a: a }, sub ()   → `a` before `sub` is outer-scope
+      //   end line:    end function, Invalid, { a: a })  → `a` after `end function` is outer-scope
+      // When an identifier is not found in the inner scope, check the parent
+      // scope for identifiers in the appropriate position.
+      if (lineIdx === scope.startLine && scope.name === '' && match.index < scope.startColumn) {
+        const parentScope = findParentScopeAtLine(scopes, lineIdx, scope);
+        if (parentScope) {
+          const parentVars = new Set([...parentScope.params, ...parentScope.vars]);
+          if (parentVars.has(nameLower)) continue;
+        }
+      }
+      if (lineIdx === scope.endLine) {
+        const endKw = /\b(?:end\s*(?:function|sub)|endfunction|endsub)\b/i.exec(stripped);
+        if (endKw && match.index >= endKw.index + endKw[0].length) {
+          const parentScope = findParentScopeAtLine(scopes, lineIdx, scope);
+          if (parentScope) {
+            const parentVars = new Set([...parentScope.params, ...parentScope.vars]);
+            if (parentVars.has(nameLower)) continue;
+          }
+        }
+      }
+
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         range: {
@@ -649,6 +672,7 @@ function checkUndefinedVariables(
 interface FunctionScope {
   startLine: number;   // line of the function/sub header
   endLine: number;     // line of end function/sub (defaults to last line for unclosed)
+  startColumn: number; // column where the function/sub keyword starts on startLine
   name: string;        // lowercased function/sub name; empty string for anonymous expressions
   params: Set<string>; // parameter names declared in the header
   vars: Set<string>;   // variables assigned/declared directly in this scope body
@@ -734,9 +758,14 @@ function buildFunctionScopes(lines: string[]): FunctionScope[] {
           }
         }
       }
+      // Record where the function/sub keyword starts on this line so that
+      // identifiers appearing before the keyword can be attributed to the
+      // outer scope (they are evaluated before the inner scope exists).
+      const kwMatch = /\b(?:function|sub)\s*(?:\(|[a-zA-Z_])/i.exec(strippedForScope);
       const newScope: FunctionScope = {
         startLine: i,
         endLine: lines.length - 1,
+        startColumn: kwMatch ? kwMatch.index : 0,
         name: namedDeclMatch ? namedDeclMatch[1].toLowerCase() : '',
         params,
         vars: new Set(),
@@ -769,6 +798,28 @@ function findScopeAtLine(scopes: FunctionScope[], lineIdx: number): FunctionScop
     }
   }
   return innermost;
+}
+
+/**
+ * Returns the second-innermost (parent) scope enclosing `lineIdx`, excluding
+ * the given `innermost` scope.  Used on scope-boundary lines where part of
+ * the code belongs to the enclosing scope rather than the inner one.
+ */
+function findParentScopeAtLine(
+  scopes: FunctionScope[],
+  lineIdx: number,
+  innermost: FunctionScope,
+): FunctionScope | null {
+  let parent: FunctionScope | null = null;
+  for (const s of scopes) {
+    if (s === innermost) continue;
+    if (s.startLine <= lineIdx && lineIdx <= s.endLine) {
+      if (!parent || s.startLine > parent.startLine) {
+        parent = s;
+      }
+    }
+  }
+  return parent;
 }
 
 // ---------------------------------------------------------------------------

@@ -1528,6 +1528,58 @@ describe('BrightScriptDiagnosticsProvider', () => {
       const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
       expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'someGlobal'"))).to.be.false;
     });
+
+    it('does not flag an outer variable used before an inline anonymous sub on the same line', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  a = 1',
+        '  setState({ b: false, a: a }, sub ()',
+        '  end sub)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'a'"))).to.be.false;
+    });
+
+    it('does not flag an outer variable used after end function on the same line', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  a = 1',
+        '  return m.service.fetch().then(function (items as Object) as Object',
+        '    return items',
+        '  end function, Invalid, { a: a })',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'a'"))).to.be.false;
+    });
+
+    it('still flags a truly undefined variable before an inline anonymous sub', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  setState({ b: false, a: nope }, sub ()',
+        '  end sub)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'nope'"))).to.be.true;
+    });
+
+    it('still flags a truly undefined variable after end function on the same line', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  m.service.fetch().then(function () as Void',
+        '    doStuff()',
+        '  end function, Invalid, { x: nope })',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'nope'"))).to.be.true;
+    });
   });
 
   // ── SceneGraph extends inheritance ───────────────────────────────────────
