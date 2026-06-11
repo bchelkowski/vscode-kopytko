@@ -15,7 +15,7 @@ export function checkTestFileStructure(ctx: RuleContext): LintDiagnostic[] {
   const mockedIdentifiers = new Set<string>();
   for (const imp of imports) {
     if (!imp.isMock) continue;
-    const resolved = lintContext.resolveImportPath(imp.importPath, imp.fromModule);
+    const resolved = lintContext.resolveImportPath(imp.importPath, filePath, imp.fromModule);
     if (!resolved) continue;
 
     const text = lintContext.readFile(resolved);

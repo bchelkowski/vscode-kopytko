@@ -78,12 +78,12 @@ export class BrightScriptDiagnosticsProvider {
         return this.importResolver.parseImports(text);
       },
 
-      resolveImportPath: (importPath: string, fromModule?: string): string | null => {
+      resolveImportPath: (importPath: string, _docPath: string, fromModule?: string): string | null => {
         const imp = { raw: '', importPath, fromModule, line: 0, isMock: false };
         return this.importResolver.resolveImportPath(imp, documentPath) ?? null;
       },
 
-      importExists: (importPath: string, fromModule?: string): boolean => {
+      importExists: (importPath: string, _docPath: string, fromModule?: string): boolean => {
         const imp = { raw: '', importPath, fromModule, line: 0, isMock: false };
         return this.importResolver.resolveImportPath(imp, documentPath) !== undefined;
       },

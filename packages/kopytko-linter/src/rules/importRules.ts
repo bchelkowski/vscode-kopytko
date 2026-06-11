@@ -85,7 +85,7 @@ export function checkImports(ctx: RuleContext): LintDiagnostic[] {
     }
 
     // File resolution checks
-    const resolved = lintContext.resolveImportPath(imp.importPath, imp.fromModule);
+    const resolved = lintContext.resolveImportPath(imp.importPath, filePath, imp.fromModule);
     if (resolved !== null) {
       // Skip unused-import check for @mock
       if (!imp.isMock && config['import/unused'] !== 'off') {

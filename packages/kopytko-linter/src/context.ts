@@ -10,8 +10,8 @@ export interface LintContext {
   knownFuncNames: Set<string>;
 
   parseImports(text: string): KopytkoImport[];
-  resolveImportPath(importPath: string, fromModule?: string): string | null;
-  importExists(importPath: string, fromModule?: string): boolean;
+  resolveImportPath(importPath: string, documentPath: string, fromModule?: string): string | null;
+  importExists(importPath: string, documentPath: string, fromModule?: string): boolean;
   readFile(filePath: string): string | null;
   parseFunctionsFromFile(filePath: string): string[];
   getSiblingFiles(filePath: string): string[];
