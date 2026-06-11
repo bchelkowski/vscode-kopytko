@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [0.1.7] - 2026-06-11
+
+### Fixed
+- Parse .vscode/settings.json as JSONC with inline comments, block comments, and trailing commas
+- Convert anonymous function() as Void to sub() with functionVsSubForVoid option
+
 ## [0.1.6] - 2026-06-11
 
 ### Fixed
