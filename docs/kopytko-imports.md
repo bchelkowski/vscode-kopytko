@@ -100,6 +100,8 @@ The search scope can be expanded to sibling files via `kopytko.imports.siblingPa
 
 `@mock` annotations are exempt from the `import/unused` check — mocks are consumed indirectly through `mockFunction()`, not direct calls.
 
+**Implicit test-framework dependencies** are also exempt: `mockFunction().resolvedValue()` requires `PromiseResolve` and `mockFunction().rejectedValue()` requires `PromiseReject` at runtime, even though user code never calls these functions directly. In test files, imports of `PromiseResolve.brs` or `PromiseReject.brs` are not flagged as unused when the corresponding `.resolvedValue()` or `.rejectedValue()` call is present.
+
 ## Build-generated Paths
 
 Some projects generate `.brs` files during the build process (e.g. via a Kopytko plugin or a code-generation step). These files do not exist in the source tree, so the extension would normally flag their imports as warnings.

@@ -445,7 +445,7 @@ if count > 0 then doSomething()
 |---|---|---|
 | `string` | `"function"`, `"sub"`, `"allow-void"`, `"preserve"` | `"preserve"` |
 
-Controls whether void procedures use `sub` or `function`. When set to `"sub"`, functions that return `void` (or have no return type annotation) are converted to `sub`. When set to `"function"`, all `sub` declarations are converted to `function`. The matching `end sub`/`end function` keyword is updated accordingly.
+Controls whether void procedures use `sub` or `function`. When set to `"sub"`, functions that return `void` (or have no return type annotation) are converted to `sub`. When set to `"function"`, all `sub` declarations are converted to `function`. The matching `end sub`/`end function` keyword is updated accordingly. This applies to both named declarations and anonymous function expressions.
 
 ```brightscript
 ' "sub" — converts void functions to sub:
@@ -457,6 +457,17 @@ end function
 ' After:
 sub doSomething(name as string)
     print name
+end sub
+
+' Anonymous functions are also converted:
+' Before:
+callback = function() as Void
+    print "hello"
+end function
+
+' After:
+callback = sub()
+    print "hello"
 end sub
 
 ' Non-void functions are left unchanged:

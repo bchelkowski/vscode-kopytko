@@ -126,7 +126,7 @@ If the uploaded channel fails to compile, the error message appears in the **Deb
 
 | Component | File | Responsibility |
 |---|---|---|
-| SSDP scanner | `src/client/roku/deviceDiscovery.ts` | UDP M-SEARCH + ECP `/query/device-info` |
+| SSDP scanner | `src/client/roku/deviceDiscovery.ts` | Per-NIC UDP sockets, triple M-SEARCH for reliability, ECP `/query/device-info` |
 | Device tree view | `src/client/roku/deviceProvider.ts` | VS Code TreeDataProvider |
 | Deployer | `src/client/roku/rokuDeployer.ts` | Build via kopytko-packager pipeline, breakpoint injection, digest-auth deploy via AppDeployer |
 | Telnet connection | `src/client/debug/rokuConnection.ts` | TCP socket on port 8085, command/event parsing |

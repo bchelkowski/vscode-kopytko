@@ -33,6 +33,7 @@ npm publishing uses **OIDC provenance** — no token needed. Just link your npm 
    - Commit, tag as `kopytko-formatter-v{version}`, push
    - Publish to npm
    - Create a GitHub Release
+   - **Auto-bump** the root `package.json` dependency to the newly published version (waits for npm propagation, then commits and pushes)
 
 ### Releasing vscode-kopytko
 

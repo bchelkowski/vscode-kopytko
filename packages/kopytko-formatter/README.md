@@ -40,7 +40,7 @@ The formatter reads config from (in priority order):
 
 1. `--config <file>` CLI flag
 2. `kopytko-formatter.json` in the current directory
-3. `.vscode/settings.json` — reads `kopytko.format.*` keys automatically
+3. `.vscode/settings.json` — reads `kopytko.format.*` keys automatically (supports JSONC: inline `//` comments, block `/* */` comments, and trailing commas)
 
 Config keys match the VS Code extension settings without the `kopytko.format.` prefix.
 
