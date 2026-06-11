@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.3.0] - 2026-06-11
+
+### Changed
+- Async I/O for 2.7x faster CLI linting
+
 ## [0.2.0] - 2026-06-11
 
 ### Added
