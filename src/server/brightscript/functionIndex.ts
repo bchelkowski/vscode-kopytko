@@ -35,6 +35,17 @@ const FUNC_FULL_RE = /^\s*(?:function|sub)\s+(\w+)\s*\(/i;
 const INNER_METHOD_RE = /^\s*\w+\.(\w+)\s*=\s*(?:function|sub)\s*\(/i;
 const INNER_COLON_METHOD_RE = /^\s*(\w+)\s*:\s*(?:function|sub)\s*\(/i;
 
+/** Removes duplicate definitions that share the same file, line, and column. */
+function deduplicateByLocation<T extends { filePath: string; line: number; column: number }>(defs: T[]): T[] {
+  const seen = new Set<string>();
+  return defs.filter(d => {
+    const key = `${d.filePath}:${d.line}:${d.column}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /**
  * Parses all top-level function/sub definitions from a BrightScript text.
  * Accepts optional pre-split lines to avoid redundant splitting.
@@ -75,15 +86,16 @@ export function collectFunctionsFromImports(
   importResolver: KopytkoImportResolver,
   visited: Set<string> = new Set(),
 ): FunctionDefinition[] {
-  if (visited.has(filePath)) return [];
-  visited.add(filePath);
+  const normalPath = nodePath.normalize(filePath);
+  if (visited.has(normalPath)) return [];
+  visited.add(normalPath);
 
-  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, filePath)];
+  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, normalPath)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
-    const resolved = importResolver.resolveImportPath(imp, filePath);
-    if (resolved && !visited.has(resolved) && fsWrapper.existsSync(resolved)) {
+    const resolved = importResolver.resolveImportPath(imp, normalPath);
+    if (resolved && !visited.has(nodePath.normalize(resolved)) && fsWrapper.existsSync(resolved)) {
       try {
         const text = fsWrapper.readFileSync(resolved, 'utf-8');
         defs.push(...collectFunctionsFromImports(resolved, text, importResolver, visited));
@@ -107,16 +119,17 @@ export function collectAllFunctions(
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
 ): FunctionDefinition[] {
-  if (visited.has(filePath)) return [];
-  visited.add(filePath);
+  const normalPath = nodePath.normalize(filePath);
+  if (visited.has(normalPath)) return [];
+  visited.add(normalPath);
 
-  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, filePath)];
+  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, normalPath)];
 
   // 1. Collect from @import annotations
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
-    const resolved = importResolver.resolveImportPath(imp, filePath);
-    if (resolved && !visited.has(resolved) && fsWrapper.existsSync(resolved)) {
+    const resolved = importResolver.resolveImportPath(imp, normalPath);
+    if (resolved && !visited.has(nodePath.normalize(resolved)) && fsWrapper.existsSync(resolved)) {
       try {
         const text = fsWrapper.readFileSync(resolved, 'utf-8');
         defs.push(...collectAllFunctions(resolved, text, importResolver, visited, siblingPatterns));
@@ -127,9 +140,9 @@ export function collectAllFunctions(
   // 2. Collect from XML sibling BrightScript files
   const workspaceFolders = importResolver.getWorkspaceFolders();
   const sourceDir = importResolver.getSourceDir();
-  const siblings = getXmlSiblingPaths(filePath, workspaceFolders, sourceDir);
+  const siblings = getXmlSiblingPaths(normalPath, workspaceFolders, sourceDir);
   for (const sibling of siblings) {
-    if (visited.has(sibling)) continue;
+    if (visited.has(nodePath.normalize(sibling))) continue;
     if (!fsWrapper.existsSync(sibling)) continue;
     try {
       const text = fsWrapper.readFileSync(sibling, 'utf-8');
@@ -138,8 +151,8 @@ export function collectAllFunctions(
   }
 
   // 3. Collect from pattern-based sibling files (e.g. *.component.brs ↔ *.template.brs)
-  for (const siblingPath of findSiblingFiles(filePath, siblingPatterns)) {
-    if (visited.has(siblingPath)) continue;
+  for (const siblingPath of findSiblingFiles(normalPath, siblingPatterns)) {
+    if (visited.has(nodePath.normalize(siblingPath))) continue;
     if (!fsWrapper.existsSync(siblingPath)) continue;
     try {
       const text = fsWrapper.readFileSync(siblingPath, 'utf-8');
@@ -148,9 +161,9 @@ export function collectAllFunctions(
   }
 
   // 4. For test files: include tested file scope, extends chain, and test siblings
-  if (isTestFile(filePath)) {
-    for (const testedPath of resolveTestedFiles(filePath)) {
-      if (visited.has(testedPath)) continue;
+  if (isTestFile(normalPath)) {
+    for (const testedPath of resolveTestedFiles(normalPath)) {
+      if (visited.has(nodePath.normalize(testedPath))) continue;
       if (!fsWrapper.existsSync(testedPath)) continue;
       try {
         const text = fsWrapper.readFileSync(testedPath, 'utf-8');
@@ -160,8 +173,8 @@ export function collectAllFunctions(
     }
 
     // Include sibling test files (e.g. Foo.test.brs ↔ Foo_Bar.test.brs share scope)
-    for (const siblingTest of findTestSiblings(filePath)) {
-      if (visited.has(siblingTest)) continue;
+    for (const siblingTest of findTestSiblings(normalPath)) {
+      if (visited.has(nodePath.normalize(siblingTest))) continue;
       if (!fsWrapper.existsSync(siblingTest)) continue;
       try {
         const text = fsWrapper.readFileSync(siblingTest, 'utf-8');
@@ -170,7 +183,7 @@ export function collectAllFunctions(
     }
   }
 
-  return defs;
+  return deduplicateByLocation(defs);
 }
 
 /**
@@ -222,15 +235,16 @@ export function collectAllInnerMethods(
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
 ): InnerMethodDefinition[] {
-  if (visited.has(filePath)) return [];
-  visited.add(filePath);
+  const normalPath = nodePath.normalize(filePath);
+  if (visited.has(normalPath)) return [];
+  visited.add(normalPath);
 
-  const defs: InnerMethodDefinition[] = [...parseInnerMethodDefs(fileText, filePath)];
+  const defs: InnerMethodDefinition[] = [...parseInnerMethodDefs(fileText, normalPath)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
-    const resolved = importResolver.resolveImportPath(imp, filePath);
-    if (resolved && !visited.has(resolved) && fsWrapper.existsSync(resolved)) {
+    const resolved = importResolver.resolveImportPath(imp, normalPath);
+    if (resolved && !visited.has(nodePath.normalize(resolved)) && fsWrapper.existsSync(resolved)) {
       try {
         const importedText = fsWrapper.readFileSync(resolved, 'utf-8');
         defs.push(...collectAllInnerMethods(resolved, importedText, importResolver, visited, siblingPatterns));
@@ -240,9 +254,9 @@ export function collectAllInnerMethods(
 
   const workspaceFolders = importResolver.getWorkspaceFolders();
   const sourceDir = importResolver.getSourceDir();
-  const siblings = getXmlSiblingPaths(filePath, workspaceFolders, sourceDir);
+  const siblings = getXmlSiblingPaths(normalPath, workspaceFolders, sourceDir);
   for (const sibling of siblings) {
-    if (visited.has(sibling)) continue;
+    if (visited.has(nodePath.normalize(sibling))) continue;
     if (!fsWrapper.existsSync(sibling)) continue;
     try {
       const siblingText = fsWrapper.readFileSync(sibling, 'utf-8');
@@ -251,8 +265,8 @@ export function collectAllInnerMethods(
   }
 
   // Collect from pattern-based sibling files
-  for (const siblingPath of findSiblingFiles(filePath, siblingPatterns)) {
-    if (visited.has(siblingPath)) continue;
+  for (const siblingPath of findSiblingFiles(normalPath, siblingPatterns)) {
+    if (visited.has(nodePath.normalize(siblingPath))) continue;
     if (!fsWrapper.existsSync(siblingPath)) continue;
     try {
       const siblingText = fsWrapper.readFileSync(siblingPath, 'utf-8');
@@ -260,7 +274,14 @@ export function collectAllInnerMethods(
     } catch { /* skip unreadable files */ }
   }
 
-  return defs;
+  // Deduplicate by location
+  const seen = new Set<string>();
+  return defs.filter(d => {
+    const key = `${d.filePath}:${d.line}:${d.column}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**

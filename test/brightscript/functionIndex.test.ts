@@ -250,6 +250,43 @@ describe('functionIndex', () => {
       expect(names.filter((n) => n === 'componentFn')).to.have.length(1);
       expect(names).to.include('templateFn');
     });
+
+    it('deduplicates functions found via both imports and extends chain in test files', () => {
+      const testText = "function testSomething()\nend function";
+      const sourceText = "' @import /utils/helper.brs\nfunction init()\nend function";
+      const helperText = 'function helperFn()\nend function';
+
+      // Source file exists and imports helper
+      existsStub.returns(false);
+      existsStub.withArgs('/project/app/Source.brs').returns(true);
+      existsStub.withArgs('/project/app/utils/helper.brs').returns(true);
+      existsStub.withArgs('/project/app/Parent.xml').returns(true);
+      readFileStub.withArgs('/project/app/Source.brs', 'utf-8').returns(sourceText);
+      readFileStub.withArgs('/project/app/utils/helper.brs', 'utf-8').returns(helperText);
+
+      // Source.xml extends Parent, Parent.xml lists helper.brs too
+      readdirStub.returns([]);
+      readdirStub.withArgs('/project/app').returns(['Source.xml']);
+      readFileStub.withArgs('/project/app/Source.xml', 'utf-8').returns(
+        '<component name="Source" extends="Parent"><script type="text/brightscript" uri="Source.brs" /></component>'
+      );
+      readFileStub.withArgs('/project/app/Parent.xml', 'utf-8').returns(
+        '<component name="Parent"><script type="text/brightscript" uri="utils/helper.brs" /></component>'
+      );
+
+      // readdirTyped for findComponentXml tree walk
+      readdirTypedStub.returns([]);
+      readdirTypedStub.withArgs('/project/app').returns([
+        { name: 'Parent.xml', isDirectory: false },
+        { name: 'Source.xml', isDirectory: false },
+        { name: 'utils', isDirectory: true },
+      ]);
+
+      const resolver = makeResolver();
+      const defs = collectAllFunctions('/project/app/_tests/Source.test.brs', testText, resolver);
+      const helperDefs = defs.filter((d) => d.name === 'helperFn');
+      expect(helperDefs).to.have.length(1);
+    });
   });
 
   // ── collectFunctionsFromImports ──────────────────────────────────────────
