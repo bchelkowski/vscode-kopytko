@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.3.2] - 2026-06-11
+
+### Fixed
+- Fix scope analysis and config reading
+
 ## [0.3.1] - 2026-06-11
 
 ### Fixed
