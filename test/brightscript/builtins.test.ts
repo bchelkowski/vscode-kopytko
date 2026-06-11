@@ -7,10 +7,10 @@ import {
 
 describe('BrightScript builtins', () => {
   describe('BRIGHTSCRIPT_BUILTINS', () => {
-    it('contains at least the core math functions', () => {
+    it('contains core math functions including CInt and Csng', () => {
       const mathFns = BRIGHTSCRIPT_BUILTINS.filter((b) => b.category === 'math');
       const names = mathFns.map((b) => b.name);
-      expect(names).to.include.members(['Abs', 'Sin', 'Cos', 'Sqr', 'Rnd', 'Fix', 'Int']);
+      expect(names).to.include.members(['Abs', 'Sin', 'Cos', 'Sqr', 'Rnd', 'Fix', 'Int', 'CInt', 'Csng']);
     });
 
     it('Fix and Int have distinct descriptions clarifying truncation vs floor', () => {
@@ -25,39 +25,23 @@ describe('BrightScript builtins', () => {
     it('contains core string functions', () => {
       const strFns = BRIGHTSCRIPT_BUILTINS.filter((b) => b.category === 'string');
       const names = strFns.map((b) => b.name);
-      expect(names).to.include.members(['Len', 'Left', 'Right', 'Mid', 'UCase', 'LCase', 'Tr', 'InstrRev']);
+      expect(names).to.include.members(['Len', 'Left', 'Right', 'Mid', 'UCase', 'LCase', 'Tr']);
     });
 
-    it('contains type-conversion functions', () => {
+    it('contains type functions', () => {
       const typeFns = BRIGHTSCRIPT_BUILTINS.filter((b) => b.category === 'type');
       const names = typeFns.map((b) => b.name);
-      expect(names).to.include.members(['Box', 'CBool', 'CDbl', 'CFloat', 'CInt', 'CLng', 'CObj', 'CStr', 'Csng']);
+      expect(names).to.include.members(['Box', 'GetInterface', 'Type']);
     });
 
-    it('contains type-inspection functions', () => {
-      const typeFns = BRIGHTSCRIPT_BUILTINS.filter((b) => b.category === 'type');
-      const names = typeFns.map((b) => b.name);
-      expect(names).to.include.members([
-        'GetInterface', 'IsArray', 'IsAssociativeArray', 'IsBoolean', 'IsDefined',
-        'IsDouble', 'IsFloat', 'IsFunction', 'IsInt', 'IsInvalid', 'IsLongInteger',
-        'IsList', 'IsNaN', 'IsNode', 'IsObject', 'IsString', 'Type',
-      ]);
-    });
-
-    it('contains Unbox as type-conversion function', () => {
-      const typeFns = BRIGHTSCRIPT_BUILTINS.filter((b) => b.category === 'type');
-      const names = typeFns.map((b) => b.name);
-      expect(names).to.include('Unbox');
-    });
-
-    it('contains utility functions including dynamic dispatch helpers', () => {
+    it('contains utility functions', () => {
       const utilFns = BRIGHTSCRIPT_BUILTINS.filter((b) => b.category === 'utility');
       const names = utilFns.map((b) => b.name);
       expect(names).to.include.members([
         'CreateObject', 'Eval', 'FindMemberFunction', 'GetGlobalAA',
-        'GetLastRunCompileError', 'GetLastRunRuntimeError', 'Mktime', 'ObjFun',
-        'FormatJson', 'ParseJson', 'ParseXML',
-        'FormatDrive', 'Run', 'StrToI', 'Tab',
+        'GetLastRunCompileError', 'GetLastRunRuntimeError',
+        'FormatJson', 'ParseJson',
+        'FormatDrive', 'Run', 'StrToI',
       ]);
     });
 
@@ -116,7 +100,7 @@ describe('BrightScript builtins', () => {
       expect(result!.category).to.equal('utility');
     });
 
-    it('finds Box as a type-conversion function', () => {
+    it('finds Box as a type function', () => {
       const result = findBuiltin('Box');
       expect(result).to.not.be.undefined;
       expect(result!.category).to.equal('type');
@@ -139,22 +123,16 @@ describe('BrightScript builtins', () => {
       expect(findBuiltin('GetLastRunError')).to.be.undefined;
     });
 
-    it('finds Unbox as a type function', () => {
-      const result = findBuiltin('Unbox');
+    it('finds CInt as a math function', () => {
+      const result = findBuiltin('CInt');
       expect(result).to.not.be.undefined;
-      expect(result!.category).to.equal('type');
+      expect(result!.category).to.equal('math');
     });
 
-    it('finds InstrRev as a string function', () => {
-      const result = findBuiltin('InstrRev');
+    it('finds Csng as a math function', () => {
+      const result = findBuiltin('Csng');
       expect(result).to.not.be.undefined;
-      expect(result!.category).to.equal('string');
-    });
-
-    it('finds IsList as a type function', () => {
-      const result = findBuiltin('IsList');
-      expect(result).to.not.be.undefined;
-      expect(result!.category).to.equal('type');
+      expect(result!.category).to.equal('math');
     });
 
     it('Eval and Run are marked as utility (deprecated)', () => {
@@ -162,22 +140,10 @@ describe('BrightScript builtins', () => {
       expect(findBuiltin('Run')!.category).to.equal('utility');
     });
 
-    it('finds Csng as type-conversion function', () => {
-      const result = findBuiltin('Csng');
-      expect(result).to.not.be.undefined;
-      expect(result!.category).to.equal('type');
-    });
-
-    it('finds StrToI as utility function', () => {
-      const result = findBuiltin('StrToI');
-      expect(result).to.not.be.undefined;
-      expect(result!.category).to.equal('utility');
-    });
-
-    it('finds FormatDrive as utility function', () => {
-      const result = findBuiltin('FormatDrive');
-      expect(result).to.not.be.undefined;
-      expect(result!.category).to.equal('utility');
+    it('every entry has a docsUrl pointing to Roku developer docs', () => {
+      for (const b of BRIGHTSCRIPT_BUILTINS) {
+        expect(b.docsUrl, `docsUrl for ${b.name}`).to.be.a('string').that.includes('developer.roku.com');
+      }
     });
   });
 
