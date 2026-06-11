@@ -1,5 +1,6 @@
 import * as dgram from 'dgram';
 import * as http from 'http';
+import * as os from 'os';
 import { RokuDevice } from './types';
 
 const SSDP_MULTICAST = '239.255.255.250';
@@ -15,23 +16,49 @@ const SSDP_SEARCH = [
 ].join('\r\n');
 
 /**
+ * Returns the IPv4 address of every non-internal network interface.
+ * Used to bind one SSDP socket per NIC — the same strategy RokuCommunity
+ * uses via `explicitSocketBind` — so that the M-SEARCH goes out on every
+ * adapter (Wi-Fi, Ethernet, VPN, …).
+ */
+function getLocalIPv4Addresses(): string[] {
+  const addresses: string[] = [];
+  for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
+    for (const info of iface) {
+      if (info.family === 'IPv4' && !info.internal) {
+        addresses.push(info.address);
+      }
+    }
+  }
+  return addresses.length > 0 ? addresses : ['0.0.0.0'];
+}
+
+/**
  * Scans the local network for Roku devices via SSDP, then queries each
  * discovered device's ECP endpoint for model details.
+ *
+ * Binds one UDP socket per network interface and sends the M-SEARCH three
+ * times (UDP is unreliable) to maximise the chance of a response.
  */
 export function discoverDevices(timeoutMs = 5000): Promise<RokuDevice[]> {
   return new Promise((resolve) => {
     const found = new Map<string, RokuDevice>();
-    const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    const sockets: dgram.Socket[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
     const finish = () => {
-      try { socket.close(); } catch { /* already closed */ }
+      for (const t of timers) clearTimeout(t);
+      for (const s of sockets) { try { s.close(); } catch { /* already closed */ } }
       resolve(Array.from(found.values()));
     };
 
-    const timer = setTimeout(finish, timeoutMs);
+    timers.push(setTimeout(finish, timeoutMs));
 
-    socket.on('message', async (msg) => {
+    const handleMessage = async (msg: Buffer) => {
       const text = msg.toString();
+      if (!text.includes('roku')) return;
+
       const locMatch = /LOCATION:\s*(.+)/i.exec(text);
       if (!locMatch) return;
 
@@ -49,15 +76,32 @@ export function discoverDevices(timeoutMs = 5000): Promise<RokuDevice[]> {
       } catch {
         // device didn't respond to ECP — skip
       }
-    });
+    };
 
-    socket.on('error', finish);
+    const searchBuf = Buffer.from(SSDP_SEARCH);
+    const addresses = getLocalIPv4Addresses();
 
-    socket.bind(() => {
-      socket.send(Buffer.from(SSDP_SEARCH), SSDP_PORT, SSDP_MULTICAST, (err) => {
-        if (err) { clearTimeout(timer); finish(); }
+    for (const localAddr of addresses) {
+      const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      sockets.push(socket);
+
+      socket.on('message', handleMessage);
+      socket.on('error', () => { /* ignore per-socket errors */ });
+
+      socket.bind({ address: localAddr, port: 0 }, () => {
+        try {
+          socket.setMulticastTTL(4);
+        } catch { /* not critical */ }
+
+        // Send M-SEARCH 3× for UDP reliability (t=0, +100ms, +200ms)
+        const send = () => {
+          socket.send(searchBuf, 0, searchBuf.length, SSDP_PORT, SSDP_MULTICAST, () => {});
+        };
+        send();
+        timers.push(setTimeout(send, 100));
+        timers.push(setTimeout(send, 200));
       });
-    });
+    }
   });
 }
 
