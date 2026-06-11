@@ -294,12 +294,45 @@ function passFunctionVsSub(lines: string[], config: FormattingConfig): string[] 
   if (config.functionVsSubForVoid === 'preserve') return lines;
 
   const result = [...lines];
-  const declRegex = /^(\s*)(function|sub)\s+(\w+)\s*\(([^)]*)\)(?:\s+as\s+(\w+))?\s*$/i;
+  const namedDeclRegex = /^(\s*)(function|sub)\s+(\w+)\s*\(([^)]*)\)(?:\s+as\s+(\w+))?\s*$/i;
+  const anonDeclRegex = /^(.*\b)(function|sub)(\s*\([^)]*\))(?:\s+as\s+(\w+))?\s*$/i;
 
   for (let i = 0; i < result.length; i++) {
-    const m = declRegex.exec(result[i]);
-    if (!m) continue;
-    const [, indent, keyword, name, params, returnType] = m;
+    // Named declarations
+    const nm = namedDeclRegex.exec(result[i]);
+    if (nm) {
+      const [, indent, keyword, name, params, returnType] = nm;
+      const kw = keyword.toLowerCase();
+
+      const endIdx = findMatchingEnd(result, i);
+      if (endIdx < 0) continue;
+
+      const hasExplicitReturnType = returnType && returnType.toLowerCase() !== 'void';
+      const hasValueReturn = hasReturnWithValue(result, i + 1, endIdx);
+      const isVoid = !hasExplicitReturnType && !hasValueReturn;
+
+      if (config.functionVsSubForVoid === 'sub' && kw === 'function' && isVoid) {
+        result[i] = `${indent}sub ${name}(${params})`;
+        const ei = result[endIdx].match(/^(\s*)/)?.[1] ?? '';
+        const el = result[endIdx].trim().toLowerCase();
+        if (el === 'end function') result[endIdx] = ei + 'end sub';
+        else if (el === 'endfunction') result[endIdx] = ei + 'endsub';
+      } else if (config.functionVsSubForVoid === 'function' && kw === 'sub') {
+        result[i] = `${indent}function ${name}(${params}) as Void`;
+        const ei = result[endIdx].match(/^(\s*)/)?.[1] ?? '';
+        const el = result[endIdx].trim().toLowerCase();
+        if (el === 'end sub') result[endIdx] = ei + 'end function';
+        else if (el === 'endsub') result[endIdx] = ei + 'endfunction';
+      }
+      continue;
+    }
+
+    // Anonymous function declarations
+    const am = anonDeclRegex.exec(result[i]);
+    if (!am) continue;
+    if (/^\s*(?:function|sub)\b/i.test(result[i])) continue;
+
+    const [, prefix, keyword, paramsWithParens, returnType] = am;
     const kw = keyword.toLowerCase();
 
     const endIdx = findMatchingEnd(result, i);
@@ -310,27 +343,31 @@ function passFunctionVsSub(lines: string[], config: FormattingConfig): string[] 
     const isVoid = !hasExplicitReturnType && !hasValueReturn;
 
     if (config.functionVsSubForVoid === 'sub' && kw === 'function' && isVoid) {
-      result[i] = `${indent}sub ${name}(${params})`;
-      const ei = result[endIdx].match(/^(\s*)/)?.[1] ?? '';
-      const el = result[endIdx].trim().toLowerCase();
-      if (el === 'end function') result[endIdx] = ei + 'end sub';
-      else if (el === 'endfunction') result[endIdx] = ei + 'endsub';
+      result[i] = `${prefix}sub${paramsWithParens}`;
+      replaceEndKeyword(result, endIdx, 'function', 'sub');
     } else if (config.functionVsSubForVoid === 'function' && kw === 'sub') {
-      result[i] = `${indent}function ${name}(${params}) as Void`;
-      const ei = result[endIdx].match(/^(\s*)/)?.[1] ?? '';
-      const el = result[endIdx].trim().toLowerCase();
-      if (el === 'end sub') result[endIdx] = ei + 'end function';
-      else if (el === 'endsub') result[endIdx] = ei + 'endfunction';
+      result[i] = `${prefix}function${paramsWithParens} as Void`;
+      replaceEndKeyword(result, endIdx, 'sub', 'function');
     }
   }
   return result;
+}
+
+function replaceEndKeyword(lines: string[], idx: number, from: string, to: string): void {
+  const spaced = new RegExp(`\\bend\\s+${from}\\b`, 'i');
+  const joined = new RegExp(`\\bend${from}\\b`, 'i');
+  if (spaced.test(lines[idx])) {
+    lines[idx] = lines[idx].replace(spaced, `end ${to}`);
+  } else {
+    lines[idx] = lines[idx].replace(joined, `end${to}`);
+  }
 }
 
 function hasReturnWithValue(lines: string[], startIdx: number, endIdx: number): boolean {
   let depth = 0;
   for (let i = startIdx; i < endIdx; i++) {
     const trimmed = lines[i].trim().toLowerCase();
-    if (/^(?:function|sub)\b/.test(trimmed)) depth++;
+    if (/^(?:function|sub)\b/.test(trimmed) || isAnonFunctionOpener(trimmed)) depth++;
     else if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/.test(trimmed)) depth--;
 
     if (depth > 0) continue;
@@ -344,7 +381,7 @@ function findMatchingEnd(lines: string[], startIdx: number): number {
   let depth = 1;
   for (let i = startIdx + 1; i < lines.length; i++) {
     const lower = lines[i].trim().toLowerCase();
-    if (/^(?:function|sub)\b/i.test(lower)) depth++;
+    if (/^(?:function|sub)\b/i.test(lower) || isAnonFunctionOpener(lower)) depth++;
     else if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/i.test(lower)) {
       if (--depth === 0) return i;
     }

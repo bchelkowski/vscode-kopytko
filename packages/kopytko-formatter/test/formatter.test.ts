@@ -530,6 +530,52 @@ describe('kopytko-formatter', () => {
       expect(result).to.not.include('sub getData()');
     });
 
+    it('converts anonymous function() as Void to sub() when functionVsSubForVoid is sub', () => {
+      const result = format(
+        ['sub main()', '  callback = function() as Void', '    print "hello"', '  end function', 'end sub'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('callback = sub()');
+      expect(result).to.not.include('function()');
+      expect(result).to.include('  end sub\nend sub');
+    });
+
+    it('converts anonymous sub() to function() as Void when functionVsSubForVoid is function', () => {
+      const result = format(
+        ['function main() as Void', '  callback = sub()', '    print "hello"', '  end sub', 'end function'],
+        { indentSize: 2, functionVsSubForVoid: 'function' },
+      );
+      expect(result).to.include('callback = function() as Void');
+      expect(result).to.include('  end function\nend function');
+    });
+
+    it('does not convert anonymous function with non-void return type', () => {
+      const result = format(
+        ['sub main()', '  getter = function() as Object', '    return {}', '  end function', 'end sub'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('function() as Object');
+      expect(result).to.not.include('sub()');
+    });
+
+    it('does not convert anonymous function to sub when body has return with value', () => {
+      const result = format(
+        ['sub main()', '  getter = function()', '    return { name: "test" }', '  end function', 'end sub'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('getter = function()');
+      expect(result).to.not.include('getter = sub()');
+    });
+
+    it('converts anonymous function as argument with as Void', () => {
+      const result = format(
+        ['sub main()', '  SomeFunc(function() as Void', '    print "hello"', '  end function)', 'end sub'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('SomeFunc(sub()');
+      expect(result).to.include('end sub)');
+    });
+
     it('does not split compound assignment operators', () => {
       const result = format(
         ['sub t()', '  url += "/" + effect', '  count -= 1', '  ratio *= 2', '  total /= 3', 'end sub'],
