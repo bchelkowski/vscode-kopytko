@@ -52,7 +52,7 @@ export class ImportResolver {
 
   resolveImportPath(imp: KopytkoImport, documentPath: string): string | undefined {
     if (imp.fromModule) {
-      return this.resolveExternalImport(imp.importPath, imp.fromModule);
+      return this.resolveExternalImport(imp.importPath, imp.fromModule, documentPath);
     }
     return this.resolveInternalImport(imp.importPath, documentPath);
   }
@@ -68,7 +68,7 @@ export class ImportResolver {
   private resolveInternalImport(importPath: string, documentPath: string): string | undefined {
     const { workspaceFolders, sourceDir } = this.options;
 
-    // Try workspace folders
+    // Try each workspace folder: <root>/<sourceDir><importPath> then <root><importPath>
     for (const folder of workspaceFolders) {
       const withSource = nodePath.join(folder, sourceDir, importPath);
       if (fsWrapper.existsSync(withSource)) return withSource;
@@ -77,36 +77,76 @@ export class ImportResolver {
       if (fsWrapper.existsSync(direct)) return direct;
     }
 
-    // Try relative to document
+    // If the document lives inside a node_modules package, resolve relative
+    // to that package's kopytkoModuleDir root
+    const pkgRoot = getNodeModulesPackageRoot(documentPath);
+    if (pkgRoot) {
+      const kopytkoDir = readKopytkoModuleDir(pkgRoot);
+      const candidate = nodePath.join(pkgRoot, kopytkoDir, importPath);
+      if (fsWrapper.existsSync(candidate)) return candidate;
+    }
+
+    // Last resort: resolve relative to the document's directory
     const relative = nodePath.resolve(nodePath.dirname(documentPath), importPath);
     if (fsWrapper.existsSync(relative)) return relative;
 
     return undefined;
   }
 
-  private resolveExternalImport(importPath: string, moduleName: string): string | undefined {
+  private resolveExternalImport(importPath: string, moduleName: string, documentPath: string): string | undefined {
     if (!this.options.resolveModules) return undefined;
 
-    const packageRoot = this.resolvePackageBaseDir(moduleName);
-    if (!packageRoot) return undefined;
+    // Walk up from documentPath to find node_modules (like npm resolution)
+    let dir = nodePath.dirname(documentPath);
+    const maxDepth = 10;
+    for (let i = 0; i < maxDepth; i++) {
+      const modulePath = nodePath.join(dir, 'node_modules', moduleName);
+      if (fsWrapper.existsSync(modulePath)) {
+        const kopytkoDir = readKopytkoModuleDir(modulePath);
+        const candidate = nodePath.join(modulePath, kopytkoDir, importPath);
+        if (fsWrapper.existsSync(candidate)) return candidate;
 
-    const fullPath = nodePath.join(packageRoot, importPath);
-    if (fsWrapper.existsSync(fullPath)) return fullPath;
+        // Also try without the subdir
+        const candidateRoot = nodePath.join(modulePath, importPath);
+        if (fsWrapper.existsSync(candidateRoot)) return candidateRoot;
+
+        return undefined; // module found but file not found inside it
+      }
+      const parent = nodePath.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
 
     return undefined;
   }
+}
 
-  resolvePackageBaseDir(packageName: string): string | undefined {
-    if (!this.packageCache) {
-      this.packageCache = new Map();
-      for (const folder of this.options.workspaceFolders) {
-        const nodeModulesPath = nodePath.join(folder, 'node_modules', packageName);
-        if (fsWrapper.existsSync(nodeModulesPath)) {
-          this.packageCache.set(packageName, nodeModulesPath);
-          break;
-        }
-      }
-    }
-    return this.packageCache.get(packageName);
+/** Read `kopytkoModuleDir` from a package's package.json if it exists. */
+function readKopytkoModuleDir(modulePath: string): string {
+  try {
+    const pkgJson = nodePath.join(modulePath, 'package.json');
+    const content = fsWrapper.readFileSync(pkgJson, 'utf-8');
+    const pkg = JSON.parse(content) as { kopytkoModuleDir?: string };
+    return pkg.kopytkoModuleDir ?? '';
+  } catch {
+    return '';
   }
+}
+
+/**
+ * Given any path inside a node_modules package, returns the package root
+ * (handles both regular and scoped packages).
+ */
+function getNodeModulesPackageRoot(filePath: string): string | undefined {
+  const marker = `${nodePath.sep}node_modules${nodePath.sep}`;
+  const idx = filePath.lastIndexOf(marker);
+  if (idx === -1) return undefined;
+  const base = filePath.slice(0, idx + marker.length);
+  const after = filePath.slice(base.length);
+  const parts = after.split(nodePath.sep).filter(Boolean);
+  if (parts.length === 0) return undefined;
+  const pkgName = parts[0].startsWith('@') && parts.length >= 2
+    ? parts[0] + nodePath.sep + parts[1]
+    : parts[0];
+  return base + pkgName;
 }
