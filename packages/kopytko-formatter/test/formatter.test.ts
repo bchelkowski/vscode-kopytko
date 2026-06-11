@@ -298,6 +298,16 @@ describe('kopytko-formatter', () => {
       );
       expect(result).to.include('CreateObject(');
     });
+
+    it('does not apply builtin casing to parameters or variables sharing a builtin name', () => {
+      const result = format(
+        ['sub init()', '  SomeFunction({ a: "asd" }, function (str as String) as Boolean', '    print str', '    return true', '  end function)', 'end sub'],
+        { indentSize: 2 },
+        { builtins: 'PascalCase', keywords: 'NoChange', methods: 'NoChange' },
+      );
+      expect(result).to.include('function (str as');
+      expect(result).to.include('print str');
+    });
   });
 
   // ── Edge cases ───────────────────────────────────────────────────────────

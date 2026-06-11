@@ -1345,6 +1345,10 @@ function transformCodeSegment(code: string, casing: CasingConfig, userFuncMap: M
     }
 
     if (_builtinMap.has(lower)) {
+      // Only treat as a built-in function when it is actually being called.
+      // Identifiers that happen to share a name with a built-in (e.g. a
+      // parameter named `str`) should not be re-cased.
+      if (!/^\s*\(/.test(restAfter)) return match;
       const canonical = _builtinMap.get(lower)!;
       if (casing.builtins !== 'NoChange') {
         return applyCasingWithOverrides(canonical, casing.builtins, exactMap);
