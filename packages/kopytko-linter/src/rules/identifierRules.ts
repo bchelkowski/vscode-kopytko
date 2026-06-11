@@ -8,7 +8,7 @@ import {
   findParentScopeAtLine,
   computeMainBodyLines,
   countCallArgs,
-  PARAM_LIST_RE,
+  extractParamList,
 } from '../analysis/scopeAnalysis';
 
 const CALL_RE = /(?<![.\w])([a-zA-Z_]\w*)\s*\(/g;
@@ -33,9 +33,9 @@ function collectLocalNames(lines: string[]): Set<string> {
     if (forMatch) names.add(forMatch[1].toLowerCase());
 
     const strippedForParams = stripStringLiterals(line, true);
-    const paramListMatch = PARAM_LIST_RE.exec(strippedForParams);
-    if (paramListMatch && paramListMatch[1].trim()) {
-      for (const part of paramListMatch[1].split(',')) {
+    const paramStr = extractParamList(strippedForParams);
+    if (paramStr && paramStr.trim()) {
+      for (const part of paramStr.split(',')) {
         const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
         if (nm) {
           const p = nm[1].toLowerCase();

@@ -12,10 +12,31 @@ export interface FunctionScope {
 
 const ANON_FUNC_SCOPE_RE = /\b(?:function|sub)\s*\(/i;
 const FUNC_END_SCOPE_RE = /^\s*(?:end\s*(?:function|sub)|endfunction|endsub)\b/i;
-const PARAM_LIST_RE = /\b(?:function|sub)\b\s*(?:[a-zA-Z_]\w*\s*)?\(([^)]*)\)/i;
 const ENTRY_POINT_NAMES = new Set(['main', 'runuserinterface', 'runscreensaver']);
 
-export { PARAM_LIST_RE, ENTRY_POINT_NAMES };
+export { ENTRY_POINT_NAMES };
+
+/**
+ * Extracts the parameter list string from a function/sub declaration,
+ * handling nested parentheses in default values (e.g. `a = SomeObject().FIELD`).
+ */
+export function extractParamList(line: string): string | null {
+  const funcMatch = /\b(?:function|sub)\b\s*(?:[a-zA-Z_]\w*\s*)?\(/i.exec(line);
+  if (!funcMatch) return null;
+
+  const openIdx = line.indexOf('(', funcMatch.index + funcMatch[0].length - 1);
+  if (openIdx < 0) return null;
+
+  let depth = 0;
+  for (let i = openIdx; i < line.length; i++) {
+    if (line[i] === '(') depth++;
+    else if (line[i] === ')') {
+      depth--;
+      if (depth === 0) return line.slice(openIdx + 1, i);
+    }
+  }
+  return null;
+}
 
 export function buildFunctionScopes(lines: string[]): FunctionScope[] {
   const allScopes: FunctionScope[] = [];
@@ -62,9 +83,9 @@ export function buildFunctionScopes(lines: string[]): FunctionScope[] {
 
     if (isNamed || isAnon) {
       const params = new Set<string>();
-      const pm = PARAM_LIST_RE.exec(strippedForScope);
-      if (pm && pm[1].trim()) {
-        for (const part of pm[1].split(',')) {
+      const paramStr = extractParamList(strippedForScope);
+      if (paramStr && paramStr.trim()) {
+        for (const part of paramStr.split(',')) {
           const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
           if (nm) {
             const p = nm[1].toLowerCase();
