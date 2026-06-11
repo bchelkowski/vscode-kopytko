@@ -544,7 +544,7 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
       }
     }
 
-    // Add pattern sibling functions
+    // Add pattern sibling functions + their extends chains
     for (const siblingPath of findSiblingFiles(file, config.siblingPatterns)) {
       const normalizedSibling = nodePath.normalize(siblingPath);
       if (!visited.has(normalizedSibling)) {
@@ -552,9 +552,19 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
         for (const fn of getFunctions(siblingPath)) known.add(fn);
         collectFromImports(siblingPath, getImports(siblingPath));
       }
+      // Pattern sibling's extends chain (e.g. view.brs may extend a component)
+      const siblingXmls = brsToXmlParents.get(normalizedSibling) ?? [];
+      for (const sxmlPath of siblingXmls) {
+        const sxmlText = readFileCached(sxmlPath);
+        if (!sxmlText) continue;
+        const parentName = parseXmlExtends(sxmlText);
+        if (parentName) {
+          for (const fn of collectFromExtendsChain(parentName.toLowerCase())) known.add(fn);
+        }
+      }
     }
 
-    // For test files, add tested file scope
+    // For test files, add the tested file's FULL scope (same as extension's collectAllFunctions)
     if (isTestFile(file)) {
       for (const testedPath of resolveTestedFiles(file)) {
         const normalizedTested = nodePath.normalize(testedPath);
@@ -563,19 +573,47 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
           for (const fn of getFunctions(testedPath)) known.add(fn);
           collectFromImports(testedPath, getImports(testedPath));
         }
-        // Also add the tested file's XML extends chain
+
+        // Tested file's XML siblings + extends chain
         const testedXmls = brsToXmlParents.get(normalizedTested) ?? [];
         for (const txmlPath of testedXmls) {
           const txmlText = readFileCached(txmlPath);
           if (!txmlText) continue;
+
+          // Add all sibling scripts from the tested file's XML component
+          const testedScripts = getScriptPathsFromXml(
+            txmlPath, txmlText, workspaceFolders, sourceDir,
+            (p) => importResolver.cachedExists(p),
+          );
+          for (const scriptPath of testedScripts) {
+            const normalizedScript = nodePath.normalize(scriptPath);
+            if (normalizedScript === normalizedTested) continue;
+            if (!visited.has(normalizedScript)) {
+              visited.add(normalizedScript);
+              for (const fn of getFunctions(scriptPath)) known.add(fn);
+              collectFromImports(scriptPath, getImports(scriptPath));
+            }
+          }
+
+          // Extends chain
           const parentName = parseXmlExtends(txmlText);
           if (parentName) {
-            for (const fn of collectFromExtendsChain(parentName.toLowerCase())) {
-              known.add(fn);
-            }
+            for (const fn of collectFromExtendsChain(parentName.toLowerCase())) known.add(fn);
+          }
+        }
+
+        // Tested file's pattern siblings + their extends
+        for (const testedSibling of findSiblingFiles(testedPath, config.siblingPatterns)) {
+          const normalizedTS = nodePath.normalize(testedSibling);
+          if (!visited.has(normalizedTS)) {
+            visited.add(normalizedTS);
+            for (const fn of getFunctions(testedSibling)) known.add(fn);
+            collectFromImports(testedSibling, getImports(testedSibling));
           }
         }
       }
+
+      // Sibling test files (Foo.test.brs ↔ Foo_Bar.test.brs share scope)
       for (const siblingTest of findTestSiblings(file)) {
         const normalizedSibTest = nodePath.normalize(siblingTest);
         if (!visited.has(normalizedSibTest)) {
