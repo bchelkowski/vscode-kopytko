@@ -10,12 +10,21 @@ import { FormattingConfig } from '../brightscript/formattingConfig';
  * Converts TextDocument ↔ string and TextEdit result types.
  */
 export class BrightScriptFormattingProvider {
+  private _isReadOnly: (uri: string) => boolean = () => false;
+
+  /** Inject a predicate that returns true for documents that should not be formatted. */
+  setReadOnlyCheck(check: (uri: string) => boolean): void {
+    this._isReadOnly = check;
+  }
+
   provideDocumentFormatting(
     document: TextDocument,
     formattingConfig: FormattingConfig,
     casing: CasingConfig = DEFAULT_CASING_CONFIG,
     userFunctions: FunctionDefinition[] = [],
   ): TextEdit[] {
+    if (this._isReadOnly(document.uri)) return [];
+
     const text = document.getText();
 
     const newText = formatText(text, formattingConfig, casing, userFunctions);

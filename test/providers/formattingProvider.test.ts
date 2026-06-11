@@ -956,4 +956,41 @@ describe('BrightScriptFormattingProvider', () => {
       expect(text).to.not.include('context.ArrayUtils');
     });
   });
+
+  // ── readOnlyPaths guard ─────────────────────────────────────────────────
+
+  describe('readOnlyPaths guard', () => {
+    it('returns no edits when the document URI matches a readOnly check', () => {
+      const doc = makeDocument([
+        'function main()',
+        'print "hello"',
+        'end function',
+      ]);
+      provider.setReadOnlyCheck(() => true);
+      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 4, insertFinalNewline: false };
+      const edits = provider.provideDocumentFormatting(doc, config, NO_CASING);
+      expect(edits).to.deep.equal([]);
+    });
+
+    it('formats normally when the document URI does not match', () => {
+      const doc = makeDocument([
+        'function main()',
+        'print "hello"',
+        'end function',
+      ]);
+      provider.setReadOnlyCheck(() => false);
+      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 4, insertFinalNewline: false };
+      const edits = provider.provideDocumentFormatting(doc, config, NO_CASING);
+      expect(edits).to.have.length.greaterThan(0);
+    });
+
+    it('passes the document URI to the readOnly check', () => {
+      const doc = TextDocument.create('file:///project/node_modules/pkg/file.brs', 'brightscript', 1, 'print 1');
+      let capturedUri = '';
+      provider.setReadOnlyCheck((uri) => { capturedUri = uri; return true; });
+      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, insertFinalNewline: false };
+      provider.provideDocumentFormatting(doc, config, NO_CASING);
+      expect(capturedUri).to.equal('file:///project/node_modules/pkg/file.brs');
+    });
+  });
 });

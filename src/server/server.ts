@@ -187,6 +187,7 @@ async function refreshConfiguration(): Promise<void> {
   generatedModules = importCfg.generatedModules;
   siblingPatterns = importCfg.siblingPatterns;
   readOnlyPaths = await fetchReadOnlyPaths();
+  formattingProvider.setReadOnlyCheck(isReadOnlyPath);
   invalidateAllCaches();
   importResolver.invalidatePackageCache();
   catalog.scan(importResolver.getWorkspaceFolders()[0] ?? '/', importResolver);
