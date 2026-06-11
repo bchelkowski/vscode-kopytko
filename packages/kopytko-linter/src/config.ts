@@ -10,6 +10,7 @@ export interface LinterConfig {
   generatedPaths: string[];
   generatedModules: GeneratedModuleConfig[];
   siblingPatterns: string[][];
+  readOnlyPaths: string[];
 }
 
 export const DEFAULT_RULE_CONFIG: RuleConfig = {
@@ -41,6 +42,7 @@ export const DEFAULT_LINTER_CONFIG: LinterConfig = {
   generatedPaths: [],
   generatedModules: [],
   siblingPatterns: [],
+  readOnlyPaths: [],
 };
 
 export function parseLinterConfig(raw: Record<string, unknown>): LinterConfig {
@@ -60,6 +62,7 @@ export function parseLinterConfig(raw: Record<string, unknown>): LinterConfig {
   if (Array.isArray(raw['generatedPaths'])) config.generatedPaths = raw['generatedPaths'] as string[];
   if (Array.isArray(raw['generatedModules'])) config.generatedModules = raw['generatedModules'] as GeneratedModuleConfig[];
   if (Array.isArray(raw['siblingPatterns'])) config.siblingPatterns = raw['siblingPatterns'] as string[][];
+  if (Array.isArray(raw['readOnlyPaths'])) config.readOnlyPaths = raw['readOnlyPaths'] as string[];
 
   return config;
 }
@@ -114,24 +117,41 @@ function extractVscodeSettings(settings: Record<string, unknown>): LinterConfig 
   let found = false;
 
   for (const [key, value] of Object.entries(settings)) {
-    if (!key.startsWith('kopytko.lint.')) continue;
-    found = true;
+    // Read kopytko.lint.* keys
+    if (key.startsWith('kopytko.lint.')) {
+      found = true;
+      const subKey = key.replace('kopytko.lint.', '');
 
-    const subKey = key.replace('kopytko.lint.', '');
+      if (subKey === 'sourceDir' && typeof value === 'string') {
+        config.sourceDir = value;
+      } else if (subKey === 'resolveModules' && typeof value === 'boolean') {
+        config.resolveModules = value;
+      } else if (subKey.startsWith('rules.') && isValidSeverity(value)) {
+        const ruleKey = subKey.replace('rules.', '');
+        config.rules[ruleKey] = value;
+      }
+    }
 
-    if (subKey === 'sourceDir' && typeof value === 'string') {
-      config.sourceDir = value;
-    } else if (subKey === 'resolveModules' && typeof value === 'boolean') {
-      config.resolveModules = value;
-    } else if (subKey === 'generatedPaths' && Array.isArray(value)) {
-      config.generatedPaths = value as string[];
-    } else if (subKey === 'generatedModules' && Array.isArray(value)) {
-      config.generatedModules = value as GeneratedModuleConfig[];
-    } else if (subKey === 'siblingPatterns' && Array.isArray(value)) {
-      config.siblingPatterns = value as string[][];
-    } else if (subKey.startsWith('rules.') && isValidSeverity(value)) {
-      const ruleKey = subKey.replace('rules.', '');
-      config.rules[ruleKey] = value;
+    // Read kopytko.imports.* keys (same settings the extension uses)
+    if (key === 'kopytko.imports.generatedPaths' && Array.isArray(value)) {
+      config.generatedPaths = value.filter((p): p is string => typeof p === 'string');
+      found = true;
+    } else if (key === 'kopytko.imports.generatedModules' && Array.isArray(value)) {
+      config.generatedModules = value.filter(
+        (m): m is GeneratedModuleConfig =>
+          typeof m === 'object' && m !== null &&
+          typeof (m as GeneratedModuleConfig).path === 'string' &&
+          Array.isArray((m as GeneratedModuleConfig).functions),
+      );
+      found = true;
+    } else if (key === 'kopytko.imports.siblingPatterns' && Array.isArray(value)) {
+      config.siblingPatterns = value.filter(
+        (group): group is string[] => Array.isArray(group),
+      );
+      found = true;
+    } else if (key === 'kopytko.readOnlyPaths' && Array.isArray(value)) {
+      config.readOnlyPaths = value.filter((p): p is string => typeof p === 'string');
+      found = true;
     }
   }
 

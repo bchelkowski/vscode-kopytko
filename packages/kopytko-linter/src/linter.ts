@@ -10,6 +10,7 @@ import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, resolveTestedFiles } from './analysis/testUtils';
 import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from './analysis/xmlParser';
+import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 
@@ -92,6 +93,9 @@ function runLint(
   const allDiagnostics: LintDiagnostic[] = [];
 
   for (const file of brsFiles) {
+    // Skip read-only files (same as extension's readOnlyPaths check)
+    if (config.readOnlyPaths.length > 0 && config.readOnlyPaths.some(p => matchesGlob(file, p))) continue;
+
     const content = fileContentsCache.get(nodePath.normalize(file));
     if (!content) continue;
 
@@ -260,6 +264,7 @@ async function buildProjectContextAsync(projectRoot: string, config: LinterConfi
     importResolver, workspaceFolders, sourceDir, brsFiles,
     fileContentsCache, fileFunctions, fileImports,
     componentNameToXml, xmlTextCache, brsToXmlParents,
+    linterConfig: config,
   });
 }
 
@@ -370,6 +375,7 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): Project
     importResolver, workspaceFolders, sourceDir, brsFiles,
     fileContentsCache, fileFunctions, fileImports,
     componentNameToXml, xmlTextCache, brsToXmlParents,
+    linterConfig: config,
   });
 }
 
@@ -386,6 +392,7 @@ interface BuildParams {
   componentNameToXml: Map<string, string>;
   xmlTextCache: Map<string, string>;
   brsToXmlParents: Map<string, string[]>;
+  linterConfig: LinterConfig;
 }
 
 function buildKnownFunctions(params: BuildParams): ProjectContextResult {
@@ -393,8 +400,8 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     importResolver, workspaceFolders, sourceDir, brsFiles,
     fileContentsCache, fileFunctions, fileImports,
     componentNameToXml, xmlTextCache, brsToXmlParents,
+    linterConfig: config,
   } = params;
-  const config = { generatedPaths: [] as string[], generatedModules: [] as { path: string; functions: string[] }[], siblingPatterns: [] as string[][] };
 
   const allFunctions = new Map<string, Set<string>>();
 

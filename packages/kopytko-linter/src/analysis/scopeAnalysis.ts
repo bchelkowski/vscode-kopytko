@@ -72,7 +72,7 @@ export function buildFunctionScopes(lines: string[]): FunctionScope[] {
           }
         }
       }
-      const kwMatch = /\b(?:function|sub)\s*(?:\(|[a-zA-Z_])/i.exec(strippedForScope);
+      const kwMatch = /\b(?:function|sub)\b/i.exec(strippedForScope);
       const newScope: FunctionScope = {
         startLine: i,
         endLine: lines.length - 1,
@@ -83,6 +83,16 @@ export function buildFunctionScopes(lines: string[]): FunctionScope[] {
       };
       allScopes.push(newScope);
       stack.push(newScope);
+    }
+
+    // Handle inline `end sub`/`end function` after `:` separator
+    // (e.g. `sub (_e as Object) : end sub` — all on one line)
+    const inlineEndCount = (strippedForScope.match(/:\s*(?:end\s*(?:function|sub)|endfunction|endsub)\b/gi) || []).length;
+    for (let j = 0; j < inlineEndCount; j++) {
+      if (stack.length > 0) {
+        stack[stack.length - 1].endLine = i;
+        stack.pop();
+      }
     }
   }
 
