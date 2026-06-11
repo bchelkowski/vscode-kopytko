@@ -155,3 +155,24 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --access public --provenance
+
+      - name: Update root kopytko-formatter dependency
+        working-directory: ${{ github.workspace }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for i in 1 2 3 4 5; do
+            npm view "kopytko-formatter@${VERSION}" version && break
+            echo "Waiting for npm registry to propagate (attempt $i)..."
+            sleep 15
+          done
+          npm install "kopytko-formatter@${VERSION}"
+
+      - name: Commit and push root dependency update
+        working-directory: ${{ github.workspace }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add package.json package-lock.json
+          git diff --cached --quiet && echo "No changes" || {
+            git commit -m "chore(vscode-kopytko): bump kopytko-formatter to v${VERSION}"
+            git push origin HEAD
+          }
