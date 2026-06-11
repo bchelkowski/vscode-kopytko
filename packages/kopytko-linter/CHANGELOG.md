@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.2.0] - 2026-06-11
+
+### Added
+- Add XML component scope and extends chain resolution
+
 ## [0.1.4] - 2026-06-11
 
 ### Fixed
