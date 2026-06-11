@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.3.3] - 2026-06-11
+
+### Fixed
+- Add generatedModules functions to knownFuncNames in CLI
+
 ## [0.3.2] - 2026-06-11
 
 ### Fixed
