@@ -562,6 +562,13 @@ function checkUnusedImport(
   );
   if (anyUsed) return null;
 
+  // Implicit test-framework dependencies: mockFunction().resolvedValue() needs
+  // PromiseResolve and .rejectedValue() needs PromiseReject at runtime, but the
+  // functions are never referenced directly in user code.
+  if (isTestFile(documentPath) && isImplicitMockDependency(imp.importPath, corpus)) {
+    return null;
+  }
+
   return {
     severity: DiagnosticSeverity.Warning,
     range: lineRange(lineIndex),
@@ -569,6 +576,22 @@ function checkUnusedImport(
     source: 'kopytko',
     code: 'import/unused',
   };
+}
+
+/**
+ * Maps import paths to the mock method that implicitly requires them.
+ * mockFunction().resolvedValue() needs PromiseResolve at runtime;
+ * mockFunction().rejectedValue() needs PromiseReject.
+ */
+const IMPLICIT_MOCK_DEPS: { pathPattern: RegExp; usagePattern: RegExp }[] = [
+  { pathPattern: /\/PromiseResolve\.brs$/i, usagePattern: /\.resolvedValue\s*\(/i },
+  { pathPattern: /\/PromiseReject\.brs$/i, usagePattern: /\.rejectedValue\s*\(/i },
+];
+
+function isImplicitMockDependency(importPath: string, corpus: string): boolean {
+  return IMPLICIT_MOCK_DEPS.some(
+    (dep) => dep.pathPattern.test(importPath) && dep.usagePattern.test(corpus),
+  );
 }
 
 function lineRange(lineIndex: number): Range {

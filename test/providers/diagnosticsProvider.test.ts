@@ -352,6 +352,63 @@ describe('BrightScriptDiagnosticsProvider', () => {
       const diags = await provider.provideDiagnostics(doc);
       expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
     });
+
+    it('suppresses unused warning for PromiseResolve import when .resolvedValue() is used in a test file', async () => {
+      const modulePath = '/workspace/node_modules/@dazn/kopytko-utils';
+      const filePath = modulePath + '/components/promise/PromiseResolve.brs';
+      fsExistsStub.withArgs(modulePath).returns(true);
+      fsExistsStub.withArgs(filePath).returns(true);
+      readFileStub.withArgs(filePath, 'utf-8')
+        .returns('function PromiseResolve(value as Dynamic) as Object\n  return {}\nend function');
+      readFileStub.withArgs(modulePath + '/package.json', 'utf-8').returns('{}');
+
+      const doc = makeDocument([
+        "' @import /components/promise/PromiseResolve.brs from @dazn/kopytko-utils",
+        'sub testCase()',
+        '  mockFunction("someModule").resolvedValue({ data: "ok" })',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/_tests/Foo.test.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('suppresses unused warning for PromiseReject import when .rejectedValue() is used in a test file', async () => {
+      const modulePath = '/workspace/node_modules/@dazn/kopytko-utils';
+      const filePath = modulePath + '/components/promise/PromiseReject.brs';
+      fsExistsStub.withArgs(modulePath).returns(true);
+      fsExistsStub.withArgs(filePath).returns(true);
+      readFileStub.withArgs(filePath, 'utf-8')
+        .returns('function PromiseReject(error as Dynamic) as Object\n  return {}\nend function');
+      readFileStub.withArgs(modulePath + '/package.json', 'utf-8').returns('{}');
+
+      const doc = makeDocument([
+        "' @import /components/promise/PromiseReject.brs from @dazn/kopytko-utils",
+        'sub testCase()',
+        '  mockFunction("someModule").rejectedValue("error")',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/_tests/Foo.test.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.be.empty;
+    });
+
+    it('still warns for PromiseResolve import when .resolvedValue() is NOT used', async () => {
+      const modulePath = '/workspace/node_modules/@dazn/kopytko-utils';
+      const filePath = modulePath + '/components/promise/PromiseResolve.brs';
+      fsExistsStub.withArgs(modulePath).returns(true);
+      fsExistsStub.withArgs(filePath).returns(true);
+      readFileStub.withArgs(filePath, 'utf-8')
+        .returns('function PromiseResolve(value as Dynamic) as Object\n  return {}\nend function');
+      readFileStub.withArgs(modulePath + '/package.json', 'utf-8').returns('{}');
+
+      const doc = makeDocument([
+        "' @import /components/promise/PromiseResolve.brs from @dazn/kopytko-utils",
+        'sub testCase()',
+        '  mockFunction("someModule").returnValue("ok")',
+        'end sub',
+      ].join('\n'), 'file:///workspace/app/_tests/Foo.test.brs');
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'import/unused')).to.have.length(1);
+    });
   });
 
   // ── Sibling pattern scope expansion ──────────────────────────────────────
