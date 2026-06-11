@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [0.1.6] - 2026-06-11
+
+### Fixed
+- Do not apply builtin casing to non-call identifiers
+- Indent multi-line function arguments with mixed [] and {} correctly
+
 ## [0.1.5] - 2026-06-10
 
 ### Added
