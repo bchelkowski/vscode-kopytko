@@ -8,6 +8,7 @@ import { parseImports, ImportResolver } from './analysis/importParser';
 import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, resolveTestedFiles } from './analysis/testUtils';
+import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 
 /**
@@ -57,20 +58,17 @@ export function lintProject(
     ...configOverride,
   };
 
-  const context = buildProjectContext(projectRoot, config);
-  const brsFiles = collectBrsFiles(projectRoot, config.sourceDir);
+  const { context, brsFiles, fileContentsCache } = buildProjectContext(projectRoot, config);
 
   const allDiagnostics: LintDiagnostic[] = [];
 
   for (const file of brsFiles) {
-    try {
-      const content = fsWrapper.readFileSync(file, 'utf-8');
-      const fileContext = createFileContext(context, file);
-      const diagnostics = lintFile(file, content, fileContext, config);
-      allDiagnostics.push(...diagnostics);
-    } catch {
-      // skip unreadable files
-    }
+    const content = fileContentsCache.get(nodePath.normalize(file));
+    if (!content) continue;
+
+    const fileContext = createFileContext(context, file);
+    const diagnostics = lintFile(file, content, fileContext, config);
+    allDiagnostics.push(...diagnostics);
   }
 
   return {
@@ -83,108 +81,136 @@ export function lintProject(
   };
 }
 
-function buildProjectContext(projectRoot: string, config: LinterConfig): LintContext {
+interface ProjectContextResult {
+  context: LintContext;
+  brsFiles: string[];
+  fileContentsCache: Map<string, string>;
+}
+
+function buildProjectContext(projectRoot: string, config: LinterConfig): ProjectContextResult {
   const importResolver = new ImportResolver({
     workspaceFolders: [projectRoot],
     sourceDir: config.sourceDir,
     resolveModules: config.resolveModules,
   });
 
-  // Build a project-wide function index
+  // Build a project-wide function index — single pass over all files
   const brsFiles = collectBrsFiles(projectRoot, config.sourceDir);
   const allFunctions = new Map<string, Set<string>>();
   const fileFunctions = new Map<string, string[]>();
+  const fileImports = new Map<string, KopytkoImport[]>();
+  const fileContentsCache = new Map<string, string>();
 
   for (const file of brsFiles) {
     try {
       const text = fsWrapper.readFileSync(file, 'utf-8');
-      const fns = parseFunctionDefs(text, file);
-      fileFunctions.set(nodePath.normalize(file), fns.map(f => f.nameLower));
+      const normalized = nodePath.normalize(file);
+      fileContentsCache.set(normalized, text);
+      fileFunctions.set(normalized, parseFunctionDefs(text, file).map(f => f.nameLower));
+      fileImports.set(normalized, parseImports(text));
     } catch { /* skip */ }
   }
+
+  // Helper: read a file, using cache when available
+  const readFileCached = (filePath: string): string | null => {
+    const normalized = nodePath.normalize(filePath);
+    const cached = fileContentsCache.get(normalized);
+    if (cached !== undefined) return cached;
+    try {
+      const text = fsWrapper.readFileSync(filePath, 'utf-8');
+      fileContentsCache.set(normalized, text);
+      return text;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper: get parsed functions for a file, using cache
+  const getFunctions = (filePath: string): string[] => {
+    const normalized = nodePath.normalize(filePath);
+    const cached = fileFunctions.get(normalized);
+    if (cached) return cached;
+    const text = readFileCached(filePath);
+    if (!text) return [];
+    const fns = parseFunctionDefs(text, filePath).map(f => f.nameLower);
+    fileFunctions.set(normalized, fns);
+    return fns;
+  };
+
+  // Helper: get parsed imports for a file, using cache
+  const getImports = (filePath: string): KopytkoImport[] => {
+    const normalized = nodePath.normalize(filePath);
+    const cached = fileImports.get(normalized);
+    if (cached) return cached;
+    const text = readFileCached(filePath);
+    if (!text) return [];
+    const imports = parseImports(text);
+    fileImports.set(normalized, imports);
+    return imports;
+  };
 
   // For each file, compute its known function names from imports + siblings + self
   for (const file of brsFiles) {
+    const normalizedFile = nodePath.normalize(file);
     const known = new Set<string>();
-    const selfFns = fileFunctions.get(file) ?? [];
-    for (const fn of selfFns) known.add(fn);
+    for (const fn of (fileFunctions.get(normalizedFile) ?? [])) known.add(fn);
 
-    try {
-      const text = fsWrapper.readFileSync(file, 'utf-8');
-      const imports = parseImports(text);
+    // Add test framework globals for test files
+    if (isTestFile(file)) {
+      for (const fn of TEST_FRAMEWORK_GLOBALS) known.add(fn);
+    }
 
-      // Collect functions from imports (transitively)
-      const visited = new Set<string>();
-      const collectFromImports = (fileToParse: string, imps: KopytkoImport[]): void => {
-        for (const imp of imps) {
-          if (imp.isMock) continue;
-          const resolved = importResolver.resolveImportPath(imp, fileToParse);
-          if (!resolved || visited.has(resolved)) continue;
-          visited.add(resolved);
+    // Collect functions from imports (transitively)
+    const visited = new Set<string>();
+    const collectFromImports = (sourceFile: string, imps: KopytkoImport[]): void => {
+      for (const imp of imps) {
+        if (imp.isMock) continue;
+        const resolved = importResolver.resolveImportPath(imp, sourceFile);
+        if (!resolved) continue;
+        const normalizedResolved = nodePath.normalize(resolved);
+        if (visited.has(normalizedResolved)) continue;
+        visited.add(normalizedResolved);
 
-          const normalizedResolved = nodePath.normalize(resolved);
-          const importedFns = fileFunctions.get(normalizedResolved);
-          if (importedFns) {
-            for (const fn of importedFns) known.add(fn);
-          } else {
-            try {
-              const impText = fsWrapper.readFileSync(resolved, 'utf-8');
-              for (const fn of parseFunctionDefs(impText, resolved)) known.add(fn.nameLower);
-              // Follow transitive imports
-              collectFromImports(resolved, parseImports(impText));
-            } catch { /* skip */ }
-          }
-        }
-      };
-      collectFromImports(file, imports);
-
-      // Add sibling functions (and their imports)
-      for (const siblingPath of findSiblingFiles(file, config.siblingPatterns)) {
-        const normalizedSibling = nodePath.normalize(siblingPath);
-        const siblingFns = fileFunctions.get(normalizedSibling);
-        if (siblingFns) {
-          for (const fn of siblingFns) known.add(fn);
-        }
-        // Also follow sibling's imports
-        try {
-          const sibText = fsWrapper.readFileSync(normalizedSibling, 'utf-8');
-          collectFromImports(normalizedSibling, parseImports(sibText));
-        } catch { /* skip */ }
+        for (const fn of getFunctions(resolved)) known.add(fn);
+        collectFromImports(resolved, getImports(resolved));
       }
+    };
+    collectFromImports(file, getImports(file));
 
-      // For test files, add tested file functions and test siblings
-      if (isTestFile(file)) {
-        for (const testedPath of resolveTestedFiles(file)) {
-          const normalizedTested = nodePath.normalize(testedPath);
-          const testedFns = fileFunctions.get(normalizedTested);
-          if (testedFns) {
-            for (const fn of testedFns) known.add(fn);
-          }
-          // Also follow tested file's imports
-          try {
-            const testedText = fsWrapper.readFileSync(normalizedTested, 'utf-8');
-            collectFromImports(normalizedTested, parseImports(testedText));
-          } catch { /* skip */ }
-        }
-        for (const siblingTest of findTestSiblings(file)) {
-          const normalizedSibTest = nodePath.normalize(siblingTest);
-          const siblingFns = fileFunctions.get(normalizedSibTest);
-          if (siblingFns) {
-            for (const fn of siblingFns) known.add(fn);
-          }
-          // Also follow sibling test's imports
-          try {
-            const sibTestText = fsWrapper.readFileSync(normalizedSibTest, 'utf-8');
-            collectFromImports(normalizedSibTest, parseImports(sibTestText));
-          } catch { /* skip */ }
+    // Add sibling functions (and their imports)
+    for (const siblingPath of findSiblingFiles(file, config.siblingPatterns)) {
+      const normalizedSibling = nodePath.normalize(siblingPath);
+      if (!visited.has(normalizedSibling)) {
+        visited.add(normalizedSibling);
+        for (const fn of getFunctions(siblingPath)) known.add(fn);
+        collectFromImports(siblingPath, getImports(siblingPath));
+      }
+    }
+
+    // For test files, add tested file functions and test siblings
+    if (isTestFile(file)) {
+      for (const testedPath of resolveTestedFiles(file)) {
+        const normalizedTested = nodePath.normalize(testedPath);
+        if (!visited.has(normalizedTested)) {
+          visited.add(normalizedTested);
+          for (const fn of getFunctions(testedPath)) known.add(fn);
+          collectFromImports(testedPath, getImports(testedPath));
         }
       }
-    } catch { /* skip */ }
+      for (const siblingTest of findTestSiblings(file)) {
+        const normalizedSibTest = nodePath.normalize(siblingTest);
+        if (!visited.has(normalizedSibTest)) {
+          visited.add(normalizedSibTest);
+          for (const fn of getFunctions(siblingTest)) known.add(fn);
+          collectFromImports(siblingTest, getImports(siblingTest));
+        }
+      }
+    }
 
-    allFunctions.set(nodePath.normalize(file), known);
+    allFunctions.set(normalizedFile, known);
   }
 
-  return {
+  const context: LintContext = {
     get knownFuncNames() { return new Set<string>(); },
 
     parseImports(text: string): KopytkoImport[] {
@@ -201,22 +227,11 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): LintCon
     },
 
     readFile(filePath: string): string | null {
-      try {
-        return fsWrapper.readFileSync(filePath, 'utf-8');
-      } catch {
-        return null;
-      }
+      return readFileCached(filePath);
     },
 
     parseFunctionsFromFile(filePath: string): string[] {
-      const fns = fileFunctions.get(nodePath.normalize(filePath));
-      if (fns) return fns;
-      try {
-        const text = fsWrapper.readFileSync(filePath, 'utf-8');
-        return parseFunctionDefs(text, filePath).map(f => f.nameLower);
-      } catch {
-        return [];
-      }
+      return getFunctions(filePath);
     },
 
     getSiblingFiles(filePath: string): string[] {
@@ -234,9 +249,13 @@ function buildProjectContext(projectRoot: string, config: LinterConfig): LintCon
     generatedPaths: config.generatedPaths,
     generatedModules: config.generatedModules,
     siblingPatterns: config.siblingPatterns,
+  };
 
-    _allFunctions: allFunctions,
-  } as LintContext & { _allFunctions: Map<string, Set<string>> };
+  return {
+    context: Object.assign(context, { _allFunctions: allFunctions }) as LintContext,
+    brsFiles,
+    fileContentsCache,
+  };
 }
 
 /**

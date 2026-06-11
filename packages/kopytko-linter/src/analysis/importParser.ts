@@ -32,10 +32,21 @@ export interface ImportResolverOptions {
 
 export class ImportResolver {
   private readonly options: ImportResolverOptions;
-  private packageCache: Map<string, string> | null = null;
+  private readonly existsCache = new Map<string, boolean>();
+  private readonly resolveCache = new Map<string, string | undefined>();
 
   constructor(options: ImportResolverOptions) {
     this.options = options;
+  }
+
+  private cachedExists(filePath: string): boolean {
+    const normalized = nodePath.normalize(filePath);
+    let result = this.existsCache.get(normalized);
+    if (result === undefined) {
+      result = fsWrapper.existsSync(filePath);
+      this.existsCache.set(normalized, result);
+    }
+    return result;
   }
 
   getWorkspaceFolders(): string[] {
@@ -51,44 +62,44 @@ export class ImportResolver {
   }
 
   resolveImportPath(imp: KopytkoImport, documentPath: string): string | undefined {
-    if (imp.fromModule) {
-      return this.resolveExternalImport(imp.importPath, imp.fromModule, documentPath);
-    }
-    return this.resolveInternalImport(imp.importPath, documentPath);
+    // Cache key: importPath + fromModule + documentDir (resolution depends on where the file is)
+    const docDir = nodePath.dirname(nodePath.normalize(documentPath));
+    const cacheKey = `${imp.importPath}|${imp.fromModule ?? ''}|${docDir}`;
+    const cached = this.resolveCache.get(cacheKey);
+    if (cached !== undefined) return cached || undefined;
+
+    const result = imp.fromModule
+      ? this.resolveExternalImport(imp.importPath, imp.fromModule, documentPath)
+      : this.resolveInternalImport(imp.importPath, documentPath);
+
+    this.resolveCache.set(cacheKey, result ?? '');
+    return result;
   }
 
   importExists(imp: KopytkoImport, documentPath: string): boolean {
     return this.resolveImportPath(imp, documentPath) !== undefined;
   }
 
-  invalidatePackageCache(): void {
-    this.packageCache = null;
-  }
-
   private resolveInternalImport(importPath: string, documentPath: string): string | undefined {
     const { workspaceFolders, sourceDir } = this.options;
 
-    // Try each workspace folder: <root>/<sourceDir><importPath> then <root><importPath>
     for (const folder of workspaceFolders) {
       const withSource = nodePath.join(folder, sourceDir, importPath);
-      if (fsWrapper.existsSync(withSource)) return withSource;
+      if (this.cachedExists(withSource)) return withSource;
 
       const direct = nodePath.join(folder, importPath);
-      if (fsWrapper.existsSync(direct)) return direct;
+      if (this.cachedExists(direct)) return direct;
     }
 
-    // If the document lives inside a node_modules package, resolve relative
-    // to that package's kopytkoModuleDir root
     const pkgRoot = getNodeModulesPackageRoot(documentPath);
     if (pkgRoot) {
       const kopytkoDir = readKopytkoModuleDir(pkgRoot);
       const candidate = nodePath.join(pkgRoot, kopytkoDir, importPath);
-      if (fsWrapper.existsSync(candidate)) return candidate;
+      if (this.cachedExists(candidate)) return candidate;
     }
 
-    // Last resort: resolve relative to the document's directory
     const relative = nodePath.resolve(nodePath.dirname(documentPath), importPath);
-    if (fsWrapper.existsSync(relative)) return relative;
+    if (this.cachedExists(relative)) return relative;
 
     return undefined;
   }
@@ -96,21 +107,19 @@ export class ImportResolver {
   private resolveExternalImport(importPath: string, moduleName: string, documentPath: string): string | undefined {
     if (!this.options.resolveModules) return undefined;
 
-    // Walk up from documentPath to find node_modules (like npm resolution)
     let dir = nodePath.dirname(documentPath);
     const maxDepth = 10;
     for (let i = 0; i < maxDepth; i++) {
       const modulePath = nodePath.join(dir, 'node_modules', moduleName);
-      if (fsWrapper.existsSync(modulePath)) {
+      if (this.cachedExists(modulePath)) {
         const kopytkoDir = readKopytkoModuleDir(modulePath);
         const candidate = nodePath.join(modulePath, kopytkoDir, importPath);
-        if (fsWrapper.existsSync(candidate)) return candidate;
+        if (this.cachedExists(candidate)) return candidate;
 
-        // Also try without the subdir
         const candidateRoot = nodePath.join(modulePath, importPath);
-        if (fsWrapper.existsSync(candidateRoot)) return candidateRoot;
+        if (this.cachedExists(candidateRoot)) return candidateRoot;
 
-        return undefined; // module found but file not found inside it
+        return undefined;
       }
       const parent = nodePath.dirname(dir);
       if (parent === dir) break;
