@@ -709,13 +709,14 @@ function buildFunctionScopes(lines: string[]): FunctionScope[] {
     const line = lines[i];
     if (/^\s*'/.test(line) || /^\s*rem\b/i.test(line)) continue;
 
-    // End of scope — pop before processing the line's content
+    // End of scope — pop before processing the line's content.
+    // Do NOT continue — the same line may also open a new scope
+    // (e.g. `end function, function (b as String) as Void`).
     if (FUNC_END_SCOPE_RE.test(line)) {
       if (stack.length > 0) {
         stack[stack.length - 1].endLine = i;
         stack.pop();
       }
-      continue;
     }
 
     // Collect direct variable definitions for the CURRENT (innermost) scope.

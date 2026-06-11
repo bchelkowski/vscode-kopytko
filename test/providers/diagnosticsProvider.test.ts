@@ -1325,6 +1325,37 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'event'"))).to.be.false;
     });
 
+    it('does not flag anonymous function parameters when passed as a function call argument', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  SomeFunction({ a: "asd" }, function (someArg as Object) as Boolean',
+        '    print someArg',
+        '    return true',
+        '  end function)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'someArg'"))).to.be.false;
+    });
+
+    it('does not flag params of a second anonymous function on an end-function line', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  callWith(function (a as Object) as Boolean',
+        '    print a',
+        '    return true',
+        '  end function, function (b as String) as Void',
+        '    print b',
+        '  end function)',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-variable');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'a'"))).to.be.false;
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'b'"))).to.be.false;
+    });
+
     it('flags an undefined variable inside a call to a function whose name starts with "sub" (e.g. Substitute)', async () => {
       // Regression: FUNC_PARAMS_RE with /i flag matched "Sub" in "Substitute", treating
       // its argument list as function parameters and silently adding "dd" to fileScope.
