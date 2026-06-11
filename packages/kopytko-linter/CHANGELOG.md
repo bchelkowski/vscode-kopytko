@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.4.0] - 2026-06-11
+
+### Added
+- Add Mock() as test framework global for mock files
+
 ## [0.3.4] - 2026-06-11
 
 ### Fixed
