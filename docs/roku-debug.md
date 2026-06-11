@@ -17,17 +17,27 @@ This document covers the two runtime-facing features of vscode-kopytko:
 
 ## Roku Device Discovery
 
-The **Roku Devices** panel appears in the Explorer sidebar. It scans your local network using [SSDP](https://en.wikipedia.org/wiki/Simple_Service_Discovery_Protocol) and queries each discovered device for its model name, serial number, and firmware version.
+> Full documentation: **[device-discovery.md](./device-discovery.md)**
 
-### How to scan
+The extension automatically discovers Roku devices on your local network using [SSDP](https://en.wikipedia.org/wiki/Simple_Service_Discovery_Protocol) (active M-SEARCH and passive NOTIFY listening). Discovered devices appear in the **Roku Devices** sidebar panel with model name, serial number, and firmware version.
 
-Click the **↺ Refresh** button in the panel title bar. VS Code will show a spinner while scanning (default timeout: 5 seconds).
+### Automatic scanning
+
+Devices are discovered automatically when the sidebar panel is visible. The extension also rescans when it detects a network change (e.g. switching Wi-Fi networks) or when the machine wakes from sleep. You can trigger a manual rescan with the **↺ Refresh** button in the panel title bar.
+
+### Adding a device manually
+
+If a device is not discovered automatically (e.g. it is on a different subnet), use the **Add Device** command (`kopytko.addDevice`) from the command palette or the panel title bar. Enter the device IP address and the extension will query it via ECP to fetch its info.
+
+### Password management
+
+Device passwords are stored securely in your operating system's keychain via VS Code's `SecretStorage` API — they never appear in settings files. Right-click a device and choose **Set Password** to store the developer password. Passwords are keyed by device serial number, so they persist across IP changes.
 
 ### Setting the active device
 
 Right-click any discovered device and choose **Set as Active Device**, or click the plug icon next to it. The active device is remembered per workspace.
 
-When you launch a debug session, the active device's IP address is automatically filled into the `host` field of your launch configuration if it is not already set.
+When you launch a debug session, the active device's IP and stored password are automatically used if `host` or `password` are not set in `launch.json`.
 
 ---
 
@@ -64,13 +74,13 @@ Add a configuration via **Run → Add Configuration** or create `.vscode/launch.
 
 | Property | Required | Description |
 |---|---|---|
-| `host` | Yes | IP address of the Roku device |
-| `password` | Yes | Developer password set during developer mode activation |
+| `host` | No\* | IP address of the Roku device (\*auto-filled from active device if omitted) |
+| `password` | No\* | Developer password (\*auto-filled from SecretStorage if omitted) |
 | `rootDir` | No | Project root where `.kopytkorc` lives (default: `${workspaceFolder}`) |
 | `env` | No | Kopytko environment to build — matches `.kopytkorc` environments key (default: `dev`) |
 | `stopOnEntry` | No | If `true`, pause at the first line of `main` on launch |
 
-> **Tip:** If you have an active device selected in the Roku Devices panel, `host` is filled in automatically and can be omitted from `launch.json`.
+> **Tip:** If you have an active device selected in the Roku Devices panel with a stored password, both `host` and `password` are filled in automatically and can be omitted from `launch.json`. See [device-discovery.md](./device-discovery.md) for details.
 
 ### Starting a debug session
 
@@ -126,8 +136,13 @@ If the uploaded channel fails to compile, the error message appears in the **Deb
 
 | Component | File | Responsibility |
 |---|---|---|
-| SSDP scanner | `src/client/roku/deviceDiscovery.ts` | Per-NIC UDP sockets, triple M-SEARCH for reliability, ECP `/query/device-info` |
-| Device tree view | `src/client/roku/deviceProvider.ts` | VS Code TreeDataProvider |
+| SSDP client | `src/client/roku/ssdpClient.ts` | Active M-SEARCH and passive NOTIFY scanning via raw dgram sockets |
+| ECP client | `src/client/roku/ecpClient.ts` | HTTP queries to device port 8060 (`/query/device-info`) |
+| Network monitor | `src/client/roku/networkMonitor.ts` | Interface polling, sleep/wake detection, network change events |
+| Device manager | `src/client/roku/deviceManager.ts` | Orchestrator — state machine, health checks, view-gated scanning |
+| Device store | `src/client/roku/deviceStore.ts` | Network-scoped persistence, favorites, 30-day expiration |
+| Credential store | `src/client/roku/credentialStore.ts` | Secure password storage via VS Code SecretStorage |
+| Device tree view | `src/client/roku/deviceProvider.ts` | VS Code TreeDataProvider with context menus |
 | Deployer | `src/client/roku/rokuDeployer.ts` | Build via kopytko-packager pipeline, breakpoint injection, digest-auth deploy via AppDeployer |
 | Telnet connection | `src/client/debug/rokuConnection.ts` | TCP socket on port 8085, command/event parsing |
 | Debug adapter | `src/client/debug/brightScriptDebugAdapter.ts` | Inline VS Code DAP implementation |

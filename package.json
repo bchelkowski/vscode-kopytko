@@ -817,6 +817,21 @@
           ],
           "default": "preserve",
           "markdownDescription": "Field access consistency on nodes.\n\n```brightscript\n' \"dot\": prefers dot notation\nm.top.visible = true\nvalue = m.top.id\n\n' \"method\": prefers getField/setField\nm.top.setField(\"visible\", true)\nvalue = m.top.getField(\"id\")\n```"
+        },
+        "kopytko.deviceDiscovery.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic Roku device discovery via SSDP."
+        },
+        "kopytko.deviceDiscovery.scanTimeout": {
+          "type": "number",
+          "default": 5000,
+          "description": "Timeout in milliseconds for active SSDP device scans."
+        },
+        "kopytko.deviceDiscovery.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification messages when devices come online or go offline."
         }
       }
     },
@@ -928,6 +943,53 @@
         "title": "Set as Active Device",
         "icon": "$(plug)",
         "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.addDevice",
+        "title": "Add Device by IP",
+        "icon": "$(add)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.toggleFavorite",
+        "title": "Toggle Favorite",
+        "icon": "$(star)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.setDevicePassword",
+        "title": "Set Device Password",
+        "icon": "$(key)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.clearDevicePassword",
+        "title": "Clear Device Password",
+        "icon": "$(close)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.copyDeviceIp",
+        "title": "Copy IP Address",
+        "icon": "$(clippy)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.openDevicePortal",
+        "title": "Open Web Portal",
+        "icon": "$(globe)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.removeDevice",
+        "title": "Remove Device",
+        "icon": "$(trash)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.copyToClipboard",
+        "title": "Copy to Clipboard",
+        "category": "Kopytko"
       }
     ],
     "menus": {
@@ -935,14 +997,59 @@
         {
           "command": "kopytko.refreshDevices",
           "when": "view == kopytko.rokuDevices",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "kopytko.addDevice",
+          "when": "view == kopytko.rokuDevices",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
           "command": "kopytko.selectDevice",
-          "when": "view == kopytko.rokuDevices && viewItem == rokuDevice",
-          "group": "inline"
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "inline@1"
+        },
+        {
+          "command": "kopytko.toggleFavorite",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "inline@2"
+        },
+        {
+          "command": "kopytko.selectDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "device@1"
+        },
+        {
+          "command": "kopytko.toggleFavorite",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "device@2"
+        },
+        {
+          "command": "kopytko.setDevicePassword",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "credentials@1"
+        },
+        {
+          "command": "kopytko.clearDevicePassword",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "credentials@2"
+        },
+        {
+          "command": "kopytko.copyDeviceIp",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "group": "info@1"
+        },
+        {
+          "command": "kopytko.openDevicePortal",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "group": "info@2"
+        },
+        {
+          "command": "kopytko.removeDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
+          "group": "danger@1"
         }
       ]
     }

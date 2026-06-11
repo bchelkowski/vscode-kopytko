@@ -122,8 +122,19 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Status | Doc |
 |---|---|---|
-| SSDP device discovery with Roku Devices tree view | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Active device selection (persisted per workspace, auto-fills launch config) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| SSDP device discovery (active M-SEARCH + passive NOTIFY) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Network change detection and auto-rescan | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Sleep/wake detection with auto-rescan | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Device health checks via ECP | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Sidebar tree view with device info | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Favorite/saved devices (persisted globally) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Manual device entry by IP | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Secure password storage (OS keychain via SecretStorage) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Set as active device for debug/deploy | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Context menu actions (copy IP, open web portal, set password) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Package upload via sidebar UI | ⬜ Planned | — |
+| Device info webview panel | ⬜ Planned | — |
+| Remote control | ⬜ Planned | — |
 
 ## Debugging
 
@@ -145,7 +156,9 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Notes |
 |---|---|
-| ECP remote control | Send key presses to the active Roku from the command palette or a webview panel. |
+| Package upload via sidebar UI | Upload a channel package to the active device directly from the Roku Devices panel. |
+| Device info webview panel | Detailed device information in a dedicated webview panel. |
+| Remote control | Send key presses to the active Roku from the command palette or a webview panel. |
 | Channel screenshot | Capture a screenshot via ECP and open in VS Code. |
 | Roku log streaming panel | Always-on output channel streaming Roku syslog, independent of debug sessions. |
 
