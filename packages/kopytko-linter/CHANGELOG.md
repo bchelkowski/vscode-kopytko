@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.5.0] - 2026-06-11
+
+### Added
+- Auto-import mock config files for @mock annotations
+
 ## [0.4.0] - 2026-06-11
 
 ### Added
