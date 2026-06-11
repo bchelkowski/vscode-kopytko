@@ -1062,6 +1062,25 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(undef).to.be.empty;
     });
 
+    it('does not warn when calling an anonymous function parameter typed as Function', async () => {
+      const doc = makeDocument([
+        'function SomeClass() as Object',
+        '  prototype = {}',
+        '  prototype._invokeCallback = sub (callback as Function, payload = Invalid as Object, context = Invalid as Object)',
+        '    if (callback <> Invalid AND context <> Invalid)',
+        '      callback(payload, context)',
+        '    else if (callback <> Invalid)',
+        '      callback(payload)',
+        '    end if',
+        '  end sub',
+        '  return prototype',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const undef = diags.filter((d) => d.code === 'identifier/undefined-function');
+      expect(undef.some((d) => typeof d.message === 'string' && d.message.includes("'callback'"))).to.be.false;
+    });
+
     it('does not warn for for-loop iteration variables used as calls', async () => {
       // edge case: a variable from a for loop later used in a call position
       const doc = makeDocument([

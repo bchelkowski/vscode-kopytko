@@ -478,12 +478,19 @@ function collectLocalNames(lines: string[]): Set<string> {
     const forMatch = FOR_RE.exec(line);
     if (forMatch) names.add(forMatch[1].toLowerCase());
 
-    // 3. Parameters on function/sub declaration lines
-    if (DECL_RE.test(line)) {
-      PARAM_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = PARAM_RE.exec(line)) !== null) {
-        names.add(m[1].toLowerCase());
+    // 3. Parameters on function/sub declaration lines (named or anonymous).
+    //    Extract the param list from the signature first, then parse individual
+    //    param names — applying PARAM_RE to the full line would over-match when
+    //    an assignment target and default values span the function keyword.
+    const strippedForParams = stripStringLiterals(line, true);
+    const paramListMatch = PARAM_LIST_RE.exec(strippedForParams);
+    if (paramListMatch && paramListMatch[1].trim()) {
+      for (const part of paramListMatch[1].split(',')) {
+        const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
+        if (nm) {
+          const p = nm[1].toLowerCase();
+          if (!_keywordNames.has(p)) names.add(p);
+        }
       }
     }
 
