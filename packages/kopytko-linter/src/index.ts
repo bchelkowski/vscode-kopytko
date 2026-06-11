@@ -13,7 +13,7 @@
  * ```
  */
 
-export { lintFile, lintProject, createFileContext } from './linter';
+export { lintFile, lintProject, lintProjectAsync, createFileContext } from './linter';
 export { LinterConfig, DEFAULT_LINTER_CONFIG, DEFAULT_RULE_CONFIG, parseLinterConfig, resolveConfig } from './config';
 export type { LintDiagnostic, LintResult, LintSeverity, GeneratedModuleConfig, KopytkoImport, FunctionDefinition, RuleContext, RuleConfig, RuleFn, RuleDefinition } from './types';
 export type { LintContext } from './context';

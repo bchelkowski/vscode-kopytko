@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import * as nodePath from 'path';
-import { lintProject } from '../src/linter';
+import { lintProjectAsync } from '../src/linter';
 import { resolveConfig } from '../src/config';
 import { formatText } from '../src/output/textFormatter';
 import { formatJson } from '../src/output/jsonFormatter';
@@ -95,7 +95,7 @@ function printVersion(): void {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const options = parseArgs(process.argv);
   const projectRoot = process.cwd();
 
@@ -105,7 +105,7 @@ function main(): void {
     config.sourceDir = options.sourceDir;
   }
 
-  const result = lintProject(projectRoot, config);
+  const result = await lintProjectAsync(projectRoot, config);
 
   // Output
   switch (options.format) {

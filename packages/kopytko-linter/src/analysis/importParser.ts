@@ -34,13 +34,25 @@ export class ImportResolver {
   private readonly options: ImportResolverOptions;
   private readonly existsCache = new Map<string, boolean>();
   private readonly resolveCache = new Map<string, string | undefined>();
+  private readonly knownFilePaths = new Set<string>();
 
   constructor(options: ImportResolverOptions) {
     this.options = options;
   }
 
+  /** Pre-seed with paths known to exist (from filesystem walk). */
+  registerKnownPaths(paths: Iterable<string>): void {
+    for (const p of paths) {
+      const normalized = nodePath.normalize(p);
+      this.knownFilePaths.add(normalized);
+      this.existsCache.set(normalized, true);
+    }
+  }
+
   cachedExists(filePath: string): boolean {
     const normalized = nodePath.normalize(filePath);
+    // Fast path: check in-memory set of known files first
+    if (this.knownFilePaths.has(normalized)) return true;
     let result = this.existsCache.get(normalized);
     if (result === undefined) {
       result = fsWrapper.existsSync(filePath);
