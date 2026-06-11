@@ -83,6 +83,17 @@ This document is the canonical list of extension features. Each feature links to
 | `catchParenStyle` — normalise `catch e` ↔ `catch (e)` | ✅ Implemented | [formatting.md](./formatting.md) |
 | `aaCommaSpacing` — control spaces around commas in inline `{}` associative arrays | ✅ Implemented | [formatting.md](./formatting.md) |
 
+## Standalone Linter (CI)
+
+| Feature | Status | Doc |
+|---|---|---|
+| Standalone linter package (`kopytko-linter`) with all 19 diagnostic rules | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| CLI tool (`kopytko-lint --check`) for CI pipelines | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| Configurable per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| Three output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| Library API: `lintProject()` and `lintFile()` | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| Extension `diagnosticsProvider` uses `kopytko-linter` as thin LSP adapter | ✅ Implemented | [language-server.md](./language-server.md) |
+
 ## Kopytko Import Resolution
 
 | Feature | Status | Doc |

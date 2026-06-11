@@ -1,12 +1,12 @@
 # Publishing Guide
 
-Step-by-step instructions for publishing `kopytko-formatter` to npm and the VS Code extension to the Marketplace.
+Step-by-step instructions for publishing `kopytko-formatter`, `kopytko-linter`, and the VS Code extension.
 
 ---
 
 ## Automated releases (GitHub Actions)
 
-Both projects have release workflows triggered manually from the **Actions** tab.
+All three projects have release workflows triggered manually from the **Actions** tab.
 
 ### Setup (one-time)
 
@@ -31,6 +31,20 @@ npm publishing uses **OIDC provenance** — no token needed. Just link your npm 
    - Bump `packages/kopytko-formatter/package.json` version
    - Generate and prepend a changelog entry (from `feat(kopytko-formatter):` / `fix(kopytko-formatter):` commits)
    - Commit, tag as `kopytko-formatter-v{version}`, push
+   - Publish to npm
+   - Create a GitHub Release
+   - **Auto-bump** the root `package.json` dependency to the newly published version (waits for npm propagation, then commits and pushes)
+
+### Releasing kopytko-linter
+
+1. Go to **Actions** → **Release kopytko-linter**
+2. Click **Run workflow**
+3. Select bump type: `patch`, `minor`, or `major`
+4. The workflow will:
+   - Run tests and build
+   - Bump `packages/kopytko-linter/package.json` version
+   - Generate and prepend a changelog entry (from `feat(kopytko-linter):` / `fix(kopytko-linter):` commits)
+   - Commit, tag as `kopytko-linter-v{version}`, push
    - Publish to npm
    - Create a GitHub Release
    - **Auto-bump** the root `package.json` dependency to the newly published version (waits for npm propagation, then commits and pushes)
@@ -78,6 +92,33 @@ npm publish --access public
 
 # 4. Verify it's live
 npm view kopytko-formatter
+```
+
+### Publish `kopytko-linter` to npm
+
+#### Prerequisites
+
+- An [npm account](https://www.npmjs.com/signup)
+- Logged in via CLI: `npm login`
+
+#### Steps
+
+```bash
+cd packages/kopytko-linter
+
+# 1. Verify everything passes
+npm install
+npm test
+npm run build
+
+# 2. Preview what will be published
+npm pack --dry-run
+
+# 3. Publish (first time)
+npm publish --access public
+
+# 4. Verify it's live
+npm view kopytko-linter
 ```
 
 ---
@@ -136,21 +177,23 @@ npx vsce publish --pre-release
 
 ## Publishing order
 
-1. **First**: publish `kopytko-formatter` to npm
-2. **Then**: update root `package.json` to use versioned dep (`"kopytko-formatter": "^0.1.0"`)
-3. **Then**: `npm install` + `npm test` to verify
-4. **Finally**: publish the VS Code extension
+1. **First**: publish `kopytko-formatter` to npm (if changed)
+2. **Second**: publish `kopytko-linter` to npm (if changed)
+3. **Then**: update root `package.json` to use versioned deps (`"kopytko-formatter": "^0.1.x"`, `"kopytko-linter": "^0.1.x"`)
+4. **Then**: `npm install` + `npm test` to verify
+5. **Finally**: publish the VS Code extension
 
-This ensures the VSIX can install `kopytko-formatter` from npm rather than bundling a local copy.
+This ensures the VSIX can install both packages from npm rather than bundling local copies.
 
 ---
 
 ## Version sync
 
-Keep versions in sync between the two packages when the formatter changes:
+Keep versions in sync between all packages when they change:
 
-| Change | kopytko-formatter | vscode-kopytko |
-|---|---|---|
-| Formatter-only fix | Bump formatter, publish to npm | Bump dep version, publish extension |
-| Extension-only fix | No change | Bump extension, publish |
-| Both change | Bump both, publish formatter first | Then publish extension |
+| Change | kopytko-formatter | kopytko-linter | vscode-kopytko |
+|---|---|---|---|
+| Formatter-only fix | Bump formatter, publish to npm | No change | Bump dep version, publish extension |
+| Linter-only fix | No change | Bump linter, publish to npm | Bump dep version, publish extension |
+| Extension-only fix | No change | No change | Bump extension, publish |
+| All change | Bump both, publish to npm first | Then publish linter | Then publish extension |
