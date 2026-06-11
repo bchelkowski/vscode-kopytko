@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.2] - 2026-06-11
+
+### Fixed
+- Fix import resolution and transitive function scope
+
 ## [0.1.1] - 2026-06-11
 
 ### Added
