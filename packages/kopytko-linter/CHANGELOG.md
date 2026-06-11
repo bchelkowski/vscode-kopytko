@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.1.4] - 2026-06-11
+
+### Fixed
+- Add test globals, resolution caching, and performance optimization
+
 ## [0.1.3] - 2026-06-11
 
 ### Fixed
