@@ -13,6 +13,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 const FIXABLE_CODES = new Set([
   'import/unresolved',
   'import/unused',
+  'import/duplicate',
   'import/missing-path',
   'import/path-not-absolute',
   'import/wrong-comment-style',
@@ -55,6 +56,11 @@ export class BrightScriptCodeActionProvider {
         continue;
       }
 
+      if (code === 'import/duplicate') {
+        actions.push(makeRemoveLineAction(document.uri, lineIndex, lines.length, lineText.length, diag, 'Remove duplicate @import line'));
+        continue;
+      }
+
       actions.push(makeRemoveLineAction(document.uri, lineIndex, lines.length, lineText.length, diag));
     }
 
@@ -75,7 +81,7 @@ function makeRemoveLineAction(
     : Range.create(lineIndex, 0, lineIndex, lineLength);
 
   return {
-    title: 'Remove @import line',
+    title,
     kind: CodeActionKind.QuickFix,
     diagnostics: [diagnostic],
     isPreferred: false,

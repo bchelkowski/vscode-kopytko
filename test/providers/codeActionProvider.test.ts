@@ -223,6 +223,37 @@ describe('BrightScriptCodeActionProvider', () => {
     });
   });
 
+  // ── import/duplicate ───────────────────────────────────────────────────────
+
+  describe('import/duplicate', () => {
+    it('offers "Remove duplicate @import line"', () => {
+      const doc = makeDocument(
+        "' @import /utils/Math.brs\n" +
+        "' @import /utils/Math.brs\n",
+      );
+      const diag = makeDiag('import/duplicate', 1);
+      const result = provider.provideCodeActions(doc, makeParams([diag]));
+      expect(result).to.have.length(1);
+      expect(result[0].title).to.equal('Remove duplicate @import line');
+      expect(result[0].kind).to.equal(CodeActionKind.QuickFix);
+    });
+
+    it('remove action deletes the duplicate line', () => {
+      const doc = makeDocument(
+        "' @import /utils/Math.brs\n" +
+        "' @import /utils/Math.brs\n" +
+        'function test()\nend function\n',
+      );
+      const diag = makeDiag('import/duplicate', 1);
+      const [action] = provider.provideCodeActions(doc, makeParams([diag]));
+      const edits = action.edit!.changes![DOCUMENT_URI];
+      expect(edits).to.have.length(1);
+      expect(edits[0].range.start).to.deep.equal({ line: 1, character: 0 });
+      expect(edits[0].range.end).to.deep.equal({ line: 2, character: 0 });
+      expect(edits[0].newText).to.equal('');
+    });
+  });
+
   // ── Multiple diagnostics ──────────────────────────────────────────────────
 
   it('handles multiple diagnostics on different lines', () => {
