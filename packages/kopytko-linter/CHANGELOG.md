@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.5.4] - 2026-06-12
+
+### Added
+- Add auto-fix for import/duplicate rule
+
+### Fixed
+- Change import/duplicate default severity to warning
+
 ## [0.5.3] - 2026-06-12
 
 - Release 0.5.3
