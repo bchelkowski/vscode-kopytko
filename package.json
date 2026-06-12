@@ -847,6 +847,11 @@
         "url": "./schemas/kopytkorc.schema.json"
       }
     ],
+    "breakpoints": [
+      {
+        "language": "brightscript"
+      }
+    ],
     "debuggers": [
       {
         "type": "kopytko",

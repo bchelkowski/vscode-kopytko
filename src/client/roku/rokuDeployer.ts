@@ -1,51 +1,76 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-import { fork, execSync } from 'child_process';
-
-export interface BreakpointInjection {
-  /** Absolute path to the source file */
-  filePath: string;
-  /** 1-indexed line numbers where `stop` should be inserted */
-  lines: number[];
-}
+import { fork } from 'child_process';
 
 export interface DeployOptions {
   rootDir: string;
   host: string;
   password: string;
   env?: string;
-  breakpoints?: BreakpointInjection[];
+  /** Enable the socket-based debug protocol (remotedebug=1). Default true. */
+  remoteDebug?: boolean;
   onOutput?: (message: string) => void;
 }
 
 /**
  * Builds the project using kopytko-packager (reads .kopytkorc, runs plugins,
- * generates manifest), optionally injects `stop` statements for breakpoints,
- * then deploys the resulting zip to the Roku device.
+ * generates manifest), then deploys the resulting zip to the Roku device
+ * with the socket-based debug protocol enabled.
  */
 export async function deploy(options: DeployOptions): Promise<void> {
-  const { rootDir, host, password, env = 'dev', breakpoints = [], onOutput } = options;
+  const { rootDir, host, password, env = 'dev', remoteDebug = true, onOutput } = options;
   const log = onOutput ?? (() => {});
 
   // 1. Build using kopytko-packager (reads .kopytkorc, runs plugins, archives)
   log('Building with kopytko-packager…');
   const archivePath = await runKopytkoBuild(rootDir, env, log);
 
-  // 2. If breakpoints are set, inject `stop` statements into the archive
-  if (breakpoints.length > 0) {
-    log('Injecting breakpoints…');
-    await injectBreakpointsIntoArchive(archivePath, rootDir, breakpoints, env);
-  }
-
-  // 3. Deploy to Roku using kopytko-packager's AppDeployer (digest auth)
+  // 2. Uninstall current app (ignore errors if none installed)
   log(`Deploying to ${host}…`);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const AppDeployer = require('@dazn/kopytko-packager/src/core/app-deployer');
   const deployer = new AppDeployer({ rokuIP: host, rokuDevUser: 'rokudev', rokuDevPassword: password });
   await deployer.uninstallCurrentApp();
-  await deployer.installApp(path.resolve(rootDir, archivePath));
+
+  // 3. Install with remotedebug flags for the socket-based debugger
+  if (remoteDebug) {
+    await installWithRemoteDebug(host, password, path.resolve(rootDir, archivePath));
+  } else {
+    await deployer.installApp(path.resolve(rootDir, archivePath));
+  }
+
   log('Deploy successful.');
+}
+
+/**
+ * Installs the app archive with `remotedebug=1` and `remotedebug_connect_early=1`
+ * form fields, enabling the socket-based debug protocol on port 8081.
+ * Uses kopytko-packager's digest auth utilities directly since AppDeployer
+ * doesn't support extra form fields.
+ */
+async function installWithRemoteDebug(host: string, password: string, archivePath: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { postFormWithDigestAuth } = require('@dazn/kopytko-packager/src/core/digest-auth');
+
+  const fields = [
+    { name: 'mysubmit', value: 'Replace' },
+    { name: 'archive', value: fs.readFileSync(archivePath), filename: 'archive.zip', contentType: 'application/octet-stream' },
+    { name: 'remotedebug', value: '1' },
+    { name: 'remotedebug_connect_early', value: '1' },
+  ];
+
+  const response = await postFormWithDigestAuth(
+    `http://${host}/plugin_install`,
+    fields,
+    { user: 'rokudev', pass: password },
+    { resolveWithFullResponse: true },
+  );
+
+  if (response.body && response.body.includes('Install Failure')) {
+    const messageMatch = /'Set message content', '([^']+)'/g;
+    const messages = Array.from(response.body.matchAll(messageMatch), (m: RegExpMatchArray) => m[1]);
+    throw new Error(`Install failed: ${messages.join(' ') || 'unknown error'}`);
+  }
 }
 
 /**
@@ -113,57 +138,3 @@ function readArchivePath(rootDir: string, _env: string): string {
   return 'dist/kopytko_archive.zip';
 }
 
-/**
- * Injects `stop` statements into .brs files inside the built archive.
- * Unpacks the zip, modifies files, and re-archives.
- */
-async function injectBreakpointsIntoArchive(
-  archivePath: string,
-  rootDir: string,
-  breakpoints: BreakpointInjection[],
-  env: string,
-): Promise<void> {
-  // Read sourceDir from .kopytkorc to compute relative paths
-  let sourceDir = 'app';
-  const rcPath = path.join(rootDir, '.kopytkorc');
-  if (fs.existsSync(rcPath)) {
-    try {
-      const rc = JSON.parse(fs.readFileSync(rcPath, 'utf-8'));
-      const envConfig = rc.environments?.[env] ?? {};
-      sourceDir = (envConfig.sourceDir ?? rc.sourceDir ?? '/app').replace(/^\//, '');
-    } catch { /* use default */ }
-  }
-
-  const fullArchivePath = path.resolve(rootDir, archivePath);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kopytko-bp-'));
-
-  try {
-    // Unzip
-    execSync(`unzip -o "${fullArchivePath}" -d "${tempDir}"`, { stdio: 'pipe' });
-
-    // Inject stops
-    for (const bp of breakpoints) {
-      const rel = path.relative(path.join(rootDir, sourceDir), bp.filePath);
-      const tempFile = path.join(tempDir, rel);
-      if (!fs.existsSync(tempFile)) continue;
-
-      const lines = fs.readFileSync(tempFile, 'utf8').split('\n');
-      const sorted = [...new Set(bp.lines)].sort((a, b) => b - a);
-      for (const lineNum of sorted) {
-        const idx = lineNum - 1;
-        if (idx >= 0 && idx < lines.length) {
-          lines.splice(idx, 0, 'stop');
-        }
-      }
-      fs.writeFileSync(tempFile, lines.join('\n'), 'utf8');
-    }
-
-    // Re-archive
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Archiver = require('@dazn/kopytko-packager/src/core/archiver');
-    fs.unlinkSync(fullArchivePath);
-    await new Archiver().archive(fullArchivePath, tempDir);
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
-}

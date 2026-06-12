@@ -1,8 +1,20 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { RokuConnection, DebugStop } from './rokuConnection';
+import { ProtocolClient } from './protocol/protocolClient';
+import { DebugCommands } from './protocol/commands';
+import { IOClient } from './protocol/ioClient';
+import {
+  StepType,
+  UpdateType,
+  StopReason,
+  ErrorCode,
+} from './protocol/constants';
+import type {
+  ThreadInfo,
+  VariableInfo,
+} from './protocol/types';
+import { BinaryReader } from './protocol/binaryIO';
 import { deploy } from '../roku/rokuDeployer';
-import type { BreakpointInjection } from '../roku/rokuDeployer';
 
 // ---------------------------------------------------------------------------
 // Minimal DAP type helpers (subset of the Debug Adapter Protocol)
@@ -15,36 +27,62 @@ interface DAPMessage {
 }
 interface DAPRequest extends DAPMessage { type: 'request'; command: string; arguments?: Record<string, unknown>; }
 
-// Scope variable-reference IDs
-const SCOPE_LOCALS = 1;
-const SCOPE_GLOBALS = 2;
+// Variable-reference base — expandable container references start here
+const VAR_REF_BASE = 1000;
 
 /**
- * Inline VS Code debug adapter for BrightScript.
+ * Represents a variable reference that can be expanded in the Variables panel.
+ * Maps a DAP variablesReference → a protocol path for getVariables().
+ */
+interface VarRefEntry {
+  threadIndex: number;
+  stackFrameIndex: number;
+  path: string[];
+}
+
+/**
+ * Inline VS Code debug adapter for BrightScript using the Roku socket-based
+ * debug protocol (port 8081).
  *
  * Workflow:
- *   1. `initialize`      → report capabilities, fire `initialized` event
- *   2. `setBreakpoints`  → record breakpoints per source file
- *   3. `launch`          → store launch config
- *   4. `configurationDone` → inject stops, deploy to Roku, connect debugger
- *   5. Running:          RokuConnection emits events → adapter sends DAP events
+ *   1. `initialize`        → report capabilities, fire `initialized` event
+ *   2. `setBreakpoints`    → store breakpoints (device not connected yet)
+ *   3. `launch`            → store launch config
+ *   4. `configurationDone` → deploy with remotedebug=1, connect protocol client,
+ *                            send breakpoints, optionally continue
+ *   5. Running:            ProtocolClient emits update events → DAP events
  */
 export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private readonly _onDidSendMessage = new vscode.EventEmitter<vscode.DebugProtocolMessage>();
   readonly onDidSendMessage = this._onDidSendMessage.event;
 
   private _seq = 1;
-  private _connection: RokuConnection | null = null;
+  private _protocolClient: ProtocolClient | null = null;
+  private _commands: DebugCommands | null = null;
+  private _ioClient: IOClient | null = null;
   private _launchConfig: Record<string, unknown> = {};
-  private _breakpoints = new Map<string, number[]>(); // absPath → line numbers (1-based)
   private _outputChannel: vscode.OutputChannel;
 
-  // Cached vars for the current stop (avoid double querying scopes+variables)
-  private _cachedLocals: { name: string; type: string; value: string }[] = [];
-  private _cachedGlobals: { name: string; type: string; value: string }[] = [];
+  // Breakpoints stored before connection — absPath → DAP breakpoint specs
+  private _pendingBreakpoints = new Map<string, Array<{ line: number; condition?: string; hitCondition?: string }>>();
+  // Device breakpoint ID tracking — absPath → array of protocol breakpoint IDs
+  private _deviceBreakpointIds = new Map<string, number[]>();
+
+  // Variable reference management — reset on each stop event
+  private _nextVarRef = VAR_REF_BASE;
+  private _varRefs = new Map<number, VarRefEntry>();
+
+  // Thread state from last stop
+  private _threads: ThreadInfo[] = [];
+  private _primaryThreadIndex = 0;
+  private _stopped = false;
+
+  // Diagnostics for compile errors
+  private _diagnostics: vscode.DiagnosticCollection;
 
   constructor(outputChannel: vscode.OutputChannel) {
     this._outputChannel = outputChannel;
+    this._diagnostics = vscode.languages.createDiagnosticCollection('brightscript-debug');
   }
 
   // ---------------------------------------------------------------------------
@@ -61,8 +99,11 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   }
 
   dispose(): void {
-    this._connection?.close();
-    this._connection = null;
+    this._ioClient?.close();
+    this._ioClient = null;
+    this._protocolClient?.close();
+    this._protocolClient = null;
+    this._diagnostics.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -71,20 +112,22 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
   private async _handleRequest(req: DAPRequest): Promise<void> {
     switch (req.command) {
-      case 'initialize':     return this._onInitialize(req);
-      case 'launch':         return this._onLaunch(req);
-      case 'setBreakpoints': return this._onSetBreakpoints(req);
-      case 'configurationDone': return this._onConfigurationDone(req);
-      case 'threads':        return this._onThreads(req);
-      case 'stackTrace':     return this._onStackTrace(req);
-      case 'scopes':         return this._onScopes(req);
-      case 'variables':      return this._onVariables(req);
-      case 'continue':       return this._onContinue(req);
-      case 'next':           return this._onNext(req);
-      case 'stepIn':         return this._onStepIn(req);
-      case 'stepOut':        return this._onStepOut(req);
-      case 'evaluate':       return this._onEvaluate(req);
-      case 'disconnect':     return this._onDisconnect(req);
+      case 'initialize':              return this._onInitialize(req);
+      case 'launch':                  return this._onLaunch(req);
+      case 'setBreakpoints':          return this._onSetBreakpoints(req);
+      case 'setExceptionBreakpoints': return this._onSetExceptionBreakpoints(req);
+      case 'configurationDone':       return this._onConfigurationDone(req);
+      case 'threads':                 return this._onThreads(req);
+      case 'stackTrace':              return this._onStackTrace(req);
+      case 'scopes':                  return this._onScopes(req);
+      case 'variables':               return this._onVariables(req);
+      case 'continue':                return this._onContinue(req);
+      case 'pause':                   return this._onPause(req);
+      case 'next':                    return this._onNext(req);
+      case 'stepIn':                  return this._onStepIn(req);
+      case 'stepOut':                 return this._onStepOut(req);
+      case 'evaluate':                return this._onEvaluate(req);
+      case 'disconnect':              return this._onDisconnect(req);
       default:
         this._sendResponse(req.seq, req.command, false, {}, 'Unsupported request');
     }
@@ -99,6 +142,13 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       supportsConfigurationDoneRequest: true,
       supportsEvaluateForHovers: true,
       supportTerminateDebuggee: true,
+      supportsConditionalBreakpoints: true,
+      supportsHitConditionalBreakpoints: true,
+      supportsPauseRequest: true,
+      exceptionBreakpointFilters: [
+        { filter: 'uncaught', label: 'Uncaught Exceptions', default: true },
+        { filter: 'caught', label: 'Caught Exceptions', default: false },
+      ],
     });
     this._sendEvent('initialized');
   }
@@ -111,14 +161,45 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private _onSetBreakpoints(req: DAPRequest): void {
     const args = req.arguments ?? {};
     const source = (args['source'] as { path?: string } | undefined)?.path ?? '';
-    const bpLines: number[] = ((args['breakpoints'] as Array<{ line: number }> | undefined) ?? [])
-      .map((bp) => bp.line);
+    const bps = (args['breakpoints'] as Array<{ line: number; condition?: string; hitCondition?: string }> | undefined) ?? [];
 
-    this._breakpoints.set(source, bpLines);
+    this._pendingBreakpoints.set(source, bps);
 
-    this._sendResponse(req.seq, 'setBreakpoints', true, {
-      breakpoints: bpLines.map((line) => ({ verified: true, line })),
-    });
+    if (this._protocolClient?.isConnected) {
+      // Device is connected — send breakpoints immediately
+      this._syncBreakpointsForFile(source, bps).then((results) => {
+        this._sendResponse(req.seq, 'setBreakpoints', true, {
+          breakpoints: results.map((r, i) => ({
+            verified: r.errorCode === ErrorCode.OK,
+            line: bps[i].line,
+            id: r.id,
+          })),
+        });
+      }).catch(() => {
+        this._sendResponse(req.seq, 'setBreakpoints', true, {
+          breakpoints: bps.map((bp) => ({ verified: false, line: bp.line })),
+        });
+      });
+    } else {
+      // Not connected yet — mark as unverified, will be sent after connect
+      this._sendResponse(req.seq, 'setBreakpoints', true, {
+        breakpoints: bps.map((bp) => ({ verified: false, line: bp.line })),
+      });
+    }
+  }
+
+  private async _onSetExceptionBreakpoints(req: DAPRequest): Promise<void> {
+    const filters = (req.arguments?.['filters'] as string[] | undefined) ?? [];
+    this._sendResponse(req.seq, 'setExceptionBreakpoints', true);
+
+    if (this._commands && this._protocolClient?.isConnected) {
+      try {
+        await this._commands.setExceptionBreakpoints(filters);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this._sendOutput('stderr', `Failed to set exception breakpoints: ${msg}\n`);
+      }
+    }
   }
 
   private async _onConfigurationDone(req: DAPRequest): Promise<void> {
@@ -137,47 +218,52 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     }
 
     try {
-      const breakpointInjections: BreakpointInjection[] = [];
-      for (const [filePath, lines] of this._breakpoints) {
-        if (lines.length > 0) {
-          breakpointInjections.push({ filePath, lines });
-        }
-      }
+      // Clear previous diagnostics
+      this._diagnostics.clear();
 
+      // Deploy with remotedebug=1
       await deploy({
         rootDir,
         host,
         password,
         env,
-        breakpoints: breakpointInjections,
+        remoteDebug: true,
         onOutput: (msg) => this._sendOutput('console', msg + '\n'),
       });
 
-      const conn = new RokuConnection();
-      this._connection = conn;
+      // Connect the socket-based debug protocol
+      this._sendOutput('console', 'Connecting debugger (port 8081)…\n');
+      const client = new ProtocolClient();
+      this._protocolClient = client;
+      this._commands = new DebugCommands(client);
 
-      conn.on('stopped', (stop: DebugStop) => this._onDebuggerStopped(stop));
-      conn.on('output', (line: string) => this._sendOutput('stdout', line + '\n'));
-      conn.on('compileError', (msg: string) => {
-        this._sendOutput('stderr', `Compilation error: ${msg}\n`);
+      // Listen for update events
+      client.on('update', (updateType: number, errorCode: number, payload: Buffer) => {
+        this._handleUpdate(updateType, errorCode, payload);
+      });
+      client.on('disconnected', () => {
+        this._sendOutput('console', 'Debugger disconnected.\n');
         this._sendEvent('terminated');
       });
-      conn.on('terminated', () => {
-        this._sendOutput('console', 'Program exited.\n');
-        this._sendEvent('terminated');
-      });
-      conn.on('error', (err: Error) => {
-        this._sendOutput('stderr', `Debugger error: ${err.message}\n`);
+      client.on('error', (err: Error) => {
+        this._sendOutput('stderr', `Protocol error: ${err.message}\n`);
       });
 
-      await conn.connect(host);
-      this._sendOutput('console', 'Debugger connected.\n');
+      const handshake = await client.connect(host);
+      const ver = handshake.protocolVersion;
+      this._sendOutput('console',
+        `Debugger connected (protocol ${ver.major}.${ver.minor}.${ver.patch}).\n`);
+
+      // Device stops on first statement (protocol 2.0+). Send breakpoints now.
+      await this._sendAllBreakpoints(rootDir);
 
       if (this._launchConfig['stopOnEntry']) {
-        this._sendEvent('stopped', { reason: 'entry', threadId: 1 });
+        // Already stopped — fire the event
+        this._stopped = true;
+        this._sendEvent('stopped', { reason: 'entry', threadId: 1, allThreadsStopped: true });
       } else {
-        conn.continue();
-        this._sendEvent('continued', { threadId: 1 });
+        // Continue past the initial stop
+        await this._commands.continue();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -186,38 +272,47 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     }
   }
 
-  private _onDebuggerStopped(stop: DebugStop): void {
-    this._cachedLocals = [];
-    this._cachedGlobals = [];
-    const reason = stop.kind === 'breakpoint' ? 'breakpoint' : 'exception';
-    this._sendEvent('stopped', {
-      reason,
-      threadId: 1,
-      description: stop.message ?? (stop.kind === 'error' ? 'Runtime error' : 'Breakpoint hit'),
-      allThreadsStopped: true,
-    });
-  }
+  private async _onThreads(req: DAPRequest): Promise<void> {
+    if (!this._commands || !this._stopped) {
+      this._sendResponse(req.seq, 'threads', true, {
+        threads: [{ id: 1, name: 'Main' }],
+      });
+      return;
+    }
 
-  private _onThreads(req: DAPRequest): void {
-    this._sendResponse(req.seq, 'threads', true, {
-      threads: [{ id: 1, name: 'BrightScript' }],
-    });
+    try {
+      this._threads = await this._commands.getThreads();
+      this._sendResponse(req.seq, 'threads', true, {
+        threads: this._threads.map((t, i) => ({
+          id: i + 1, // DAP thread IDs are 1-based
+          name: t.functionName || `Thread ${i}`,
+        })),
+      });
+    } catch {
+      this._sendResponse(req.seq, 'threads', true, {
+        threads: [{ id: 1, name: 'Main' }],
+      });
+    }
   }
 
   private async _onStackTrace(req: DAPRequest): Promise<void> {
-    if (!this._connection) {
+    if (!this._commands) {
       this._sendResponse(req.seq, 'stackTrace', true, { stackFrames: [], totalFrames: 0 });
       return;
     }
+
+    const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
+    const threadIndex = threadId - 1;
+    const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
+
     try {
-      const frames = await this._connection.getStackFrames();
-      const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
+      const frames = await this._commands.getStackTrace(threadIndex);
       this._sendResponse(req.seq, 'stackTrace', true, {
-        stackFrames: frames.map((f) => ({
-          id: f.index,
+        stackFrames: frames.map((f, i) => ({
+          id: this._encodeFrameId(threadIndex, i),
           name: f.functionName,
-          source: { path: rokuPathToLocal(f.file, rootDir) },
-          line: f.line,
+          source: { path: rokuPathToLocal(f.filePath, rootDir) },
+          line: f.lineNumber,
           column: 0,
         })),
         totalFrames: frames.length,
@@ -228,10 +323,15 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   }
 
   private _onScopes(req: DAPRequest): void {
+    const frameId = (req.arguments?.['frameId'] as number | undefined) ?? 0;
+    const { threadIndex, frameIndex } = this._decodeFrameId(frameId);
+
+    // Register the local scope variable reference
+    const localRef = this._allocateVarRef(threadIndex, frameIndex, []);
+
     this._sendResponse(req.seq, 'scopes', true, {
       scopes: [
-        { name: 'Local', variablesReference: SCOPE_LOCALS, expensive: false },
-        { name: 'Global', variablesReference: SCOPE_GLOBALS, expensive: true },
+        { name: 'Local', variablesReference: localRef, expensive: false },
       ],
     });
   }
@@ -239,77 +339,415 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private async _onVariables(req: DAPRequest): Promise<void> {
     const ref = (req.arguments?.['variablesReference'] as number | undefined) ?? 0;
 
-    if (!this._connection) {
+    if (!this._commands) {
+      this._sendResponse(req.seq, 'variables', true, { variables: [] });
+      return;
+    }
+
+    const entry = this._varRefs.get(ref);
+    if (!entry) {
       this._sendResponse(req.seq, 'variables', true, { variables: [] });
       return;
     }
 
     try {
-      if (this._cachedLocals.length === 0 && this._cachedGlobals.length === 0) {
-        const all = await this._connection.getVariables();
-        this._cachedLocals = all.locals;
-        this._cachedGlobals = all.globals;
-      }
+      const vars = await this._commands.getVariables(
+        entry.threadIndex,
+        entry.stackFrameIndex,
+        entry.path,
+        true,
+        true,
+      );
 
-      const list = ref === SCOPE_LOCALS ? this._cachedLocals : this._cachedGlobals;
-      this._sendResponse(req.seq, 'variables', true, {
-        variables: list.map((v) => ({
-          name: v.name,
-          value: v.value,
-          type: v.type,
-          variablesReference: 0,
-        })),
-      });
+      const dapVars = vars.map((v) => this._variableInfoToDAP(v, entry.threadIndex, entry.stackFrameIndex, entry.path));
+
+      this._sendResponse(req.seq, 'variables', true, { variables: dapVars });
     } catch {
       this._sendResponse(req.seq, 'variables', true, { variables: [] });
     }
   }
 
-  private _onContinue(req: DAPRequest): void {
-    this._connection?.continue();
+  private async _onContinue(req: DAPRequest): Promise<void> {
+    this._stopped = false;
     this._sendResponse(req.seq, 'continue', true, { allThreadsContinued: true });
+    try {
+      await this._commands?.continue();
+    } catch { /* connection may have closed */ }
+  }
+
+  private async _onPause(req: DAPRequest): Promise<void> {
+    this._sendResponse(req.seq, 'pause', true);
+    try {
+      await this._commands?.stop();
+    } catch { /* connection may have closed */ }
   }
 
   private async _onNext(req: DAPRequest): Promise<void> {
+    const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
+    this._stopped = false;
     this._sendResponse(req.seq, 'next', true);
     try {
-      await this._connection?.stepOver();
-      this._sendEvent('stopped', { reason: 'step', threadId: 1, allThreadsStopped: true });
+      await this._commands?.step(threadId - 1, StepType.Over);
     } catch { /* connection may have closed */ }
   }
 
   private async _onStepIn(req: DAPRequest): Promise<void> {
+    const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
+    this._stopped = false;
     this._sendResponse(req.seq, 'stepIn', true);
     try {
-      await this._connection?.stepIn();
-      this._sendEvent('stopped', { reason: 'step', threadId: 1, allThreadsStopped: true });
+      await this._commands?.step(threadId - 1, StepType.Line);
     } catch { /* connection may have closed */ }
   }
 
   private async _onStepOut(req: DAPRequest): Promise<void> {
+    const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
+    this._stopped = false;
     this._sendResponse(req.seq, 'stepOut', true);
     try {
-      await this._connection?.stepOut();
-      this._sendEvent('stopped', { reason: 'step', threadId: 1, allThreadsStopped: true });
+      await this._commands?.step(threadId - 1, StepType.Out);
     } catch { /* connection may have closed */ }
   }
 
   private async _onEvaluate(req: DAPRequest): Promise<void> {
     const expr = (req.arguments?.['expression'] as string | undefined) ?? '';
+    const context = (req.arguments?.['context'] as string | undefined) ?? 'hover';
+    const frameId = (req.arguments?.['frameId'] as number | undefined) ?? 0;
+
+    if (!this._commands || !this._stopped) {
+      this._sendResponse(req.seq, 'evaluate', false, {}, 'Not stopped');
+      return;
+    }
+
+    const { threadIndex, frameIndex } = this._decodeFrameId(frameId);
+
     try {
-      const result = await this._connection?.sendCommand(`print ${expr}`) ?? '';
-      const value = result.replace(/BrightScript Debugger>.*$/s, '').trim();
-      this._sendResponse(req.seq, 'evaluate', true, { result: value, variablesReference: 0 });
+      if (context === 'repl') {
+        // Execute arbitrary BrightScript in the debug console
+        const result = await this._commands.execute(threadIndex, frameIndex, expr);
+        const varRef = result.isContainer
+          ? this._allocateVarRef(threadIndex, frameIndex, expr.split('.'))
+          : 0;
+        this._sendResponse(req.seq, 'evaluate', true, {
+          result: result.resultValue || `<${result.resultType}>`,
+          variablesReference: varRef,
+        });
+      } else {
+        // Hover or watch — try to get the variable by path
+        const pathSegments = expr.split('.');
+        const vars = await this._commands.getVariables(threadIndex, frameIndex, pathSegments, true, false);
+        if (vars.length > 0) {
+          const v = vars[0];
+          const varRef = v.isContainer
+            ? this._allocateVarRef(threadIndex, frameIndex, pathSegments)
+            : 0;
+          this._sendResponse(req.seq, 'evaluate', true, {
+            result: v.value || `<${v.type}>`,
+            type: variableTypeName(v.type),
+            variablesReference: varRef,
+          });
+        } else {
+          this._sendResponse(req.seq, 'evaluate', false, {}, 'Variable not found');
+        }
+      }
     } catch {
       this._sendResponse(req.seq, 'evaluate', false, {}, 'Evaluate failed');
     }
   }
 
-  private _onDisconnect(req: DAPRequest): void {
-    this._connection?.close();
-    this._connection = null;
+  private async _onDisconnect(req: DAPRequest): Promise<void> {
+    try {
+      await this._commands?.exitChannel();
+    } catch { /* ignore */ }
+    this._ioClient?.close();
+    this._ioClient = null;
+    this._protocolClient?.close();
+    this._protocolClient = null;
+    this._commands = null;
     this._sendResponse(req.seq, 'disconnect', true);
     this._sendEvent('terminated');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Update event handling (from ProtocolClient)
+  // ---------------------------------------------------------------------------
+
+  private _handleUpdate(updateType: number, _errorCode: number, payload: Buffer): void {
+    switch (updateType) {
+      case UpdateType.AllThreadsStopped:
+        this._onAllThreadsStopped(payload);
+        break;
+      case UpdateType.ThreadAttached:
+        this._onThreadAttached(payload);
+        break;
+      case UpdateType.IOPortOpened:
+        this._onIOPortOpened(payload);
+        break;
+      case UpdateType.CompileError:
+        this._onCompileError(payload);
+        break;
+      case UpdateType.BreakpointVerified:
+        this._onBreakpointVerified(payload);
+        break;
+      case UpdateType.BreakpointError:
+        this._onBreakpointError(payload);
+        break;
+      case UpdateType.ProtocolError:
+        this._sendOutput('stderr', 'Fatal protocol error — debug session terminated.\n');
+        this._sendEvent('terminated');
+        break;
+    }
+  }
+
+  private _onAllThreadsStopped(payload: Buffer): void {
+    const reader = new BinaryReader(payload);
+    const primaryThreadIndex = reader.readUint32();
+    const stopReason: StopReason = reader.readUint32();
+    const stopReasonDetail = reader.remaining > 0 ? reader.readStringNT() : '';
+
+    this._stopped = true;
+    this._primaryThreadIndex = primaryThreadIndex;
+    this._resetVarRefs();
+
+    const reason = this._stopReasonToDAP(stopReason);
+    this._sendEvent('stopped', {
+      reason,
+      threadId: primaryThreadIndex + 1,
+      description: stopReasonDetail || reason,
+      allThreadsStopped: true,
+    });
+  }
+
+  private _onThreadAttached(payload: Buffer): void {
+    const reader = new BinaryReader(payload);
+    const threadIndex = reader.readUint32();
+    const stopReason: StopReason = reader.readUint32();
+
+    this._stopped = true;
+    this._resetVarRefs();
+
+    this._sendEvent('stopped', {
+      reason: this._stopReasonToDAP(stopReason),
+      threadId: threadIndex + 1,
+      allThreadsStopped: true,
+    });
+  }
+
+  private _onIOPortOpened(payload: Buffer): void {
+    const reader = new BinaryReader(payload);
+    const ioPort = reader.readUint32();
+    const host = this._launchConfig['host'] as string;
+
+    if (!host || this._ioClient) return;
+
+    const io = new IOClient();
+    this._ioClient = io;
+
+    io.on('output', (text: string) => {
+      this._sendOutput('stdout', text);
+    });
+    io.on('error', (err: Error) => {
+      this._sendOutput('stderr', `IO channel error: ${err.message}\n`);
+    });
+
+    io.connect(host, ioPort).catch((err: Error) => {
+      this._sendOutput('stderr', `Failed to connect IO channel: ${err.message}\n`);
+    });
+  }
+
+  private _onCompileError(payload: Buffer): void {
+    const reader = new BinaryReader(payload);
+    const errorString = reader.readStringNT();
+    const filePath = reader.readStringNT();
+    const lineNumber = reader.readUint32();
+
+    this._sendOutput('stderr', `Compile error: ${errorString} (${filePath}:${lineNumber})\n`);
+
+    // Show as VS Code diagnostic
+    const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
+    const localPath = rokuPathToLocal(filePath, rootDir);
+    const uri = vscode.Uri.file(localPath);
+    const range = new vscode.Range(
+      Math.max(0, lineNumber - 1), 0,
+      Math.max(0, lineNumber - 1), Number.MAX_SAFE_INTEGER,
+    );
+    const diag = new vscode.Diagnostic(range, errorString, vscode.DiagnosticSeverity.Error);
+    diag.source = 'Roku';
+    const existing = this._diagnostics.get(uri) ?? [];
+    this._diagnostics.set(uri, [...existing, diag]);
+  }
+
+  private _onBreakpointVerified(payload: Buffer): void {
+    const reader = new BinaryReader(payload);
+    const count = reader.readUint32();
+    for (let i = 0; i < count; i++) {
+      const bpId = reader.readUint32();
+      this._sendEvent('breakpoint', {
+        reason: 'changed',
+        breakpoint: { id: bpId, verified: true },
+      });
+    }
+  }
+
+  private _onBreakpointError(payload: Buffer): void {
+    // Log breakpoint errors — the breakpoint condition failed to compile
+    const reader = new BinaryReader(payload);
+    const bpId = reader.readUint32();
+    const compileErrorCount = reader.readUint32();
+    for (let i = 0; i < compileErrorCount; i++) {
+      const err = reader.readStringNT();
+      this._sendOutput('stderr', `Breakpoint ${bpId} error: ${err}\n`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Breakpoint management
+  // ---------------------------------------------------------------------------
+
+  private async _sendAllBreakpoints(_rootDir: string): Promise<void> {
+    if (!this._commands) return;
+
+    for (const [filePath, bps] of this._pendingBreakpoints) {
+      if (bps.length === 0) continue;
+      try {
+        await this._syncBreakpointsForFile(filePath, bps);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this._sendOutput('stderr', `Failed to set breakpoints in ${filePath}: ${msg}\n`);
+      }
+    }
+  }
+
+  private async _syncBreakpointsForFile(
+    filePath: string,
+    bps: Array<{ line: number; condition?: string; hitCondition?: string }>,
+  ): Promise<Array<{ id: number; errorCode: ErrorCode }>> {
+    if (!this._commands) return bps.map(() => ({ id: 0, errorCode: ErrorCode.OtherError }));
+
+    // Remove existing breakpoints for this file
+    const existingIds = this._deviceBreakpointIds.get(filePath);
+    if (existingIds && existingIds.length > 0) {
+      try {
+        await this._commands.removeBreakpoints(existingIds);
+      } catch { /* ignore removal errors */ }
+    }
+
+    if (bps.length === 0) {
+      this._deviceBreakpointIds.delete(filePath);
+      return [];
+    }
+
+    const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
+    const pkgPath = localPathToRoku(filePath, rootDir);
+
+    // Split into conditional and simple breakpoints
+    const conditionalBps = bps.filter(bp => bp.condition);
+    const simpleBps = bps.filter(bp => !bp.condition);
+    const results: Array<{ id: number; errorCode: ErrorCode }> = new Array(bps.length);
+    const newIds: number[] = [];
+
+    if (simpleBps.length > 0) {
+      const simpleResults = await this._commands.addBreakpoints(
+        simpleBps.map(bp => ({
+          filePath: pkgPath,
+          lineNumber: bp.line,
+          ignoreCount: bp.hitCondition ? Math.max(0, parseInt(bp.hitCondition, 10) - 1) : 0,
+        })),
+      );
+      let simpleIdx = 0;
+      for (let i = 0; i < bps.length; i++) {
+        if (!bps[i].condition) {
+          results[i] = simpleResults[simpleIdx] ?? { id: 0, errorCode: ErrorCode.OtherError };
+          newIds.push(results[i].id);
+          simpleIdx++;
+        }
+      }
+    }
+
+    if (conditionalBps.length > 0) {
+      const condResults = await this._commands.addConditionalBreakpoints(
+        conditionalBps.map(bp => ({
+          filePath: pkgPath,
+          lineNumber: bp.line,
+          condition: bp.condition!,
+        })),
+      );
+      let condIdx = 0;
+      for (let i = 0; i < bps.length; i++) {
+        if (bps[i].condition) {
+          results[i] = condResults[condIdx] ?? { id: 0, errorCode: ErrorCode.OtherError };
+          newIds.push(results[i].id);
+          condIdx++;
+        }
+      }
+    }
+
+    this._deviceBreakpointIds.set(filePath, newIds);
+    return results;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Variable reference management
+  // ---------------------------------------------------------------------------
+
+  private _allocateVarRef(threadIndex: number, stackFrameIndex: number, path: string[]): number {
+    const ref = this._nextVarRef++;
+    this._varRefs.set(ref, { threadIndex, stackFrameIndex, path });
+    return ref;
+  }
+
+  private _resetVarRefs(): void {
+    this._nextVarRef = VAR_REF_BASE;
+    this._varRefs.clear();
+  }
+
+  private _variableInfoToDAP(
+    v: VariableInfo,
+    threadIndex: number,
+    stackFrameIndex: number,
+    parentPath: string[],
+  ): { name: string; value: string; type: string; variablesReference: number } {
+    const childPath = [...parentPath, v.name];
+    const varRef = v.isContainer && v.childCount > 0
+      ? this._allocateVarRef(threadIndex, stackFrameIndex, childPath)
+      : 0;
+
+    return {
+      name: v.name,
+      value: v.value || `<${variableTypeName(v.type)}>`,
+      type: variableTypeName(v.type),
+      variablesReference: varRef,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Frame ID encoding (threadIndex + frameIndex packed into a single number)
+  // ---------------------------------------------------------------------------
+
+  private _encodeFrameId(threadIndex: number, frameIndex: number): number {
+    return threadIndex * 10000 + frameIndex;
+  }
+
+  private _decodeFrameId(frameId: number): { threadIndex: number; frameIndex: number } {
+    return {
+      threadIndex: Math.floor(frameId / 10000),
+      frameIndex: frameId % 10000,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stop reason mapping
+  // ---------------------------------------------------------------------------
+
+  private _stopReasonToDAP(reason: StopReason): string {
+    switch (reason) {
+      case StopReason.StopStatement: return 'breakpoint';
+      case StopReason.Break: return 'breakpoint';
+      case StopReason.RuntimeError: return 'exception';
+      case StopReason.CaughtRuntimeError: return 'exception';
+      case StopReason.NormalExit: return 'exit';
+      default: return 'pause';
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -354,11 +792,21 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 // Path mapping
 // ---------------------------------------------------------------------------
 
-/**
- * Maps a Roku runtime path (/pkg:/components/Foo.brs) to a local absolute
- * path by stripping the pkg:/ prefix and joining with rootDir.
- */
+import { VariableType } from './protocol/constants';
+
+/** Maps a Roku runtime path (pkg:/components/Foo.brs) to a local absolute path. */
 function rokuPathToLocal(rokuPath: string, rootDir: string): string {
   const relative = rokuPath.replace(/^\/pkg:\//i, '').replace(/^pkg:\//i, '');
   return path.join(rootDir, relative);
+}
+
+/** Maps a local absolute path to a Roku pkg:/ path. */
+function localPathToRoku(localPath: string, rootDir: string): string {
+  const relative = path.relative(rootDir, localPath).replace(/\\/g, '/');
+  return `pkg:/${relative}`;
+}
+
+/** Returns a human-readable name for a VariableType enum value. */
+function variableTypeName(type: VariableType): string {
+  return VariableType[type] ?? 'Unknown';
 }

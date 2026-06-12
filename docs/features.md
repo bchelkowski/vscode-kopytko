@@ -140,9 +140,22 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Status | Doc |
 |---|---|---|
-| Deploy via kopytko-packager with source breakpoints | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Variable inspection (Local/Global), call stack, stepping | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Hover-to-evaluate, compilation errors, runtime errors, program output | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Deploy via kopytko-packager with `remotedebug=1` | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Socket-based debug protocol (port 8081, protocol 3.3.0) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Dynamic breakpoints (add/remove at runtime, no source injection) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Conditional breakpoints (BrightScript expressions) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Hit-count breakpoints | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Breakpoint verification events | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Exception breakpoints (caught/uncaught) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Variable inspection — typed, expandable containers, virtual variables | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Multi-thread inspection (SceneGraph threads) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Call stack with per-thread support | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Stepping (over, into, out) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Pause command (STOP) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Debug console REPL (EXECUTE command) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Hover-to-evaluate | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Compile errors as VS Code diagnostics | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Program output via dedicated IO channel | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 
 ## Planned / Future
 
@@ -162,17 +175,6 @@ This document is the canonical list of extension features. Each feature links to
 | Channel screenshot | Capture a screenshot via ECP and open in VS Code. |
 | Roku log streaming panel | Always-on output channel streaming Roku syslog, independent of debug sessions. |
 
-### Debugger — socket-based protocol migration
+### Debugger — future enhancements
 
-The current debugger uses the older Roku telnet interface (port 8085). Migrating to the [socket-based debug protocol](https://developer.roku.com/dev/docs/socket-based-debugger) unlocks:
-
-| Feature | Notes |
-|---|---|
-| Socket-based transport | Binary-framed protocol with versioned handshake. Foundation for all items below. |
-| Compile errors as inline diagnostics | Structured `{file, line, message}` events → VS Code `Diagnostic` squiggles. |
-| Breakpoint verification | Rejected breakpoints shown as unverified grey circles. |
-| Typed variable values | `Integer`, `roArray[12]`, expandable `roAssociativeArray` in Variables panel. |
-| Pause (STOP command) | Interrupt running channel without a breakpoint. |
-| Multi-thread inspection | Show all SceneGraph threads (main, render, Task nodes) in Threads panel. |
-| Logpoints | Evaluate expressions on hit without pausing execution. |
-| BrightScript REPL | Evaluate arbitrary expressions via `COMMAND_EXECUTE` in debug console. |
+See [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities) for the full roadmap including source map support, profiling, SceneGraph inspector, logpoints, and more.

@@ -9,6 +9,7 @@ This document covers the two runtime-facing features of vscode-kopytko:
 
 ## Prerequisites
 
+- **Roku OS 14.1 or later** — the debugger uses the [socket-based debug protocol](https://developer.roku.com/dev/docs/socket-based-debugger) (protocol 3.3.0).
 - **Developer mode** must be enabled on the Roku. On the remote, press: Home × 3, Up, Right, Left, Right, Left, Right.
 - Note the **IP address** shown on the Roku developer dashboard (Settings → Network → About, or the developer mode screen).
 - Set a **developer password** when prompted the first time.
@@ -46,10 +47,9 @@ When you launch a debug session, the active device's IP and stored password are 
 The extension registers a `kopytko` debug type that handles the full deploy-and-debug cycle:
 
 1. Build the project using `@dazn/kopytko-packager` (reads `.kopytkorc`, runs plugins, generates manifest)
-2. Optionally inject `stop` statements at breakpoint lines
-3. Deploy the zip to the Roku via kopytko-packager's AppDeployer (digest auth)
-4. Connect to the BrightScript Micro Debugger on port 8085
-5. Surface breakpoints, variables, stack frames, and stepping through VS Code's standard debug UI
+2. Deploy the zip to the Roku with `remotedebug=1` via digest auth
+3. Connect to the socket-based debug protocol on TCP port 8081
+4. Surface breakpoints, variables, stack frames, threads, and stepping through VS Code's standard debug UI
 
 ### Setting up `launch.json`
 
@@ -90,60 +90,137 @@ Press **F5** or click **Run → Start Debugging**. The Debug Console shows:
 Building with kopytko-packager…
 Deploying to 192.168.1.100…
 Deploy successful.
-Connecting to debugger…
-Debugger connected.
+Connecting debugger (port 8081)…
+Debugger connected (protocol 3.3.0).
 ```
 
 ### Breakpoints
 
-Set breakpoints in any `.brs` file by clicking in the gutter. The extension injects a `stop` statement immediately before each breakpoint line when packaging — no modification to your source files on disk.
+Set breakpoints in any `.brs` file by clicking in the gutter. Breakpoints are managed dynamically via the socket-based debug protocol — no source code modification is needed. The device stops execution when a breakpoint is hit.
 
-> **Note:** Because `stop` statements are inserted before breakpoint lines, line numbers in stack traces may be off by the number of active breakpoints above the current position. This is a known limitation of the `stop`-injection approach.
+**Conditional breakpoints** — right-click a breakpoint and add a condition (any BrightScript expression). The breakpoint only fires when the condition evaluates to true.
+
+**Hit-count breakpoints** — add a hit condition to skip the first N hits (e.g. `5` means stop on the 5th hit).
+
+**Breakpoint verification** — the device confirms which breakpoints were set successfully. Unverified breakpoints appear as grey circles in the gutter.
+
+### Exception breakpoints
+
+In the **Breakpoints** panel in the Run sidebar, toggle:
+
+- **Uncaught Exceptions** (on by default) — break on unhandled runtime errors
+- **Caught Exceptions** — break on caught runtime errors (try/catch)
 
 ### Variable inspection
 
-When execution pauses at a breakpoint or runtime error, the **Variables** panel shows two scopes:
+When execution pauses, the **Variables** panel shows:
 
-- **Local** — variables in the current function scope
-- **Global** — `m` and other global references
+- **Local** — variables in the current function scope, with full type information
+- Container types (`roAssociativeArray`, `roArray`, `roList`) can be expanded to inspect their contents
+- Virtual variables (`$children`, `$parent`, `$count`) are available for SceneGraph nodes and collections
 
-Hover over a variable in the editor to evaluate it via `print` in the running session.
+Hover over a variable in the editor to evaluate it inline.
 
-### Call stack
+### Debug console (REPL)
 
-The **Call Stack** panel shows the full BrightScript stack. Click any frame to switch context.
+Type any BrightScript expression in the **Debug Console** to evaluate it in the current scope. This uses the protocol's `EXECUTE` command for reliable structured results.
+
+### Multi-thread inspection
+
+The **Call Stack** panel shows all SceneGraph threads (main, render, Task nodes). Click any thread to inspect its stack. Step commands target the selected thread.
 
 ### Stepping
 
 | Action | Keyboard | What it does |
 |---|---|---|
 | Continue | F5 | Resume until next breakpoint |
+| Pause | F6 | Halt execution immediately (STOP command) |
 | Step Over | F10 | Execute the current line, stay in current function |
 | Step Into | F11 | Follow a function call into its body |
 | Step Out | Shift+F11 | Finish the current function and return to the caller |
 
 ### Compilation errors
 
-If the uploaded channel fails to compile, the error message appears in the **Debug Console** and the session terminates. Fix the error and press F5 to redeploy.
+Compile errors from the device are shown as VS Code diagnostics (red squiggles in the editor) with file and line information. The error also appears in the Debug Console.
 
 ### Program output
 
-`print` statements and other console output are forwarded to the **Debug Console** while the session is active.
+`print` statements and other console output are received via a dedicated IO channel (separate from the debug protocol) and shown in the **Debug Console**.
 
 ---
 
-## Architecture notes
+## Architecture
+
+The debugger uses the [Roku socket-based debug protocol](https://developer.roku.com/dev/docs/socket-based-debugger) — a binary-framed TCP protocol on port 8081 (protocol 3.3.0, Roku OS 14.1+).
+
+```
+VS Code (DAP)
+  │
+  ▼
+BrightScriptDebugAdapter (inline DAP)
+  │
+  ├─ ProtocolClient ── TCP port 8081 (binary commands + responses)
+  │                         Roku device
+  └─ IOClient ── TCP dynamic port (app stdout, negotiated via IO_PORT_OPENED)
+                     Roku device
+```
+
+### Connection lifecycle
+
+1. **Deploy** — build with kopytko-packager, sideload with `remotedebug=1` and `remotedebug_connect_early=1`
+2. **Handshake** — TCP connect to port 8081, exchange magic bytes, read protocol version
+3. **Initial stop** — device pauses before the first BrightScript statement
+4. **Set breakpoints** — send `ADD_BREAKPOINTS` for all VS Code breakpoints
+5. **Continue** — send `CONTINUE` to start the app (unless `stopOnEntry` is true)
+6. **IO channel** — device sends `IO_PORT_OPENED` update with a dynamic port number; a second TCP connection is opened for app output
+
+### Component files
 
 | Component | File | Responsibility |
 |---|---|---|
-| SSDP client | `src/client/roku/ssdpClient.ts` | Active M-SEARCH and passive NOTIFY scanning via raw dgram sockets |
-| ECP client | `src/client/roku/ecpClient.ts` | HTTP queries to device port 8060 (`/query/device-info`) |
-| Network monitor | `src/client/roku/networkMonitor.ts` | Interface polling, sleep/wake detection, network change events |
-| Device manager | `src/client/roku/deviceManager.ts` | Orchestrator — state machine, health checks, view-gated scanning |
-| Device store | `src/client/roku/deviceStore.ts` | Network-scoped persistence, favorites, 30-day expiration |
-| Credential store | `src/client/roku/credentialStore.ts` | Secure password storage via VS Code SecretStorage |
-| Device tree view | `src/client/roku/deviceProvider.ts` | VS Code TreeDataProvider with context menus |
-| Deployer | `src/client/roku/rokuDeployer.ts` | Build via kopytko-packager pipeline, breakpoint injection, digest-auth deploy via AppDeployer |
-| Telnet connection | `src/client/debug/rokuConnection.ts` | TCP socket on port 8085, command/event parsing |
+| Protocol client | `src/client/debug/protocol/protocolClient.ts` | TCP connection, binary handshake, packet framing, request/response tracking |
+| Protocol commands | `src/client/debug/protocol/commands.ts` | High-level command builders and response parsers |
+| Binary IO | `src/client/debug/protocol/binaryIO.ts` | Little-endian binary reader/writer |
+| Constants | `src/client/debug/protocol/constants.ts` | Protocol enums, magic values, command codes |
+| Types | `src/client/debug/protocol/types.ts` | TypeScript interfaces for protocol data |
+| IO client | `src/client/debug/protocol/ioClient.ts` | App stdout channel (dynamic port) |
 | Debug adapter | `src/client/debug/brightScriptDebugAdapter.ts` | Inline VS Code DAP implementation |
 | Factory | `src/client/debug/debugAdapterFactory.ts` | Creates one adapter instance per debug session |
+| Deployer | `src/client/roku/rokuDeployer.ts` | Build via kopytko-packager, deploy with remotedebug flags |
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| "Connection timed out" | Ensure the device is on the same network. The debugger retries for 60 seconds. Check firewall rules for TCP port 8081. |
+| "Handshake timed out" | The device may not support the socket-based debugger. Ensure Roku OS 14.1+. |
+| "Install failed" | Check that the developer password is correct. Try re-enabling developer mode. |
+| Breakpoints appear grey (unverified) | The file path may not match the `pkg:/` path on the device. Ensure `rootDir` in `launch.json` matches your project root. |
+| No program output | The IO channel connects on a dynamic port. Ensure no firewall blocks outgoing TCP connections. |
+
+---
+
+## Future possibilities
+
+These features could be built on top of the socket-based debug protocol and Roku ECP:
+
+| Feature | Description | Complexity |
+|---|---|---|
+| **Source map support** | Map transpiled BrighterScript `.bs` → `.brs` for breakpoints and stack traces. Load `.map` files from build output. | Medium |
+| **Logpoints** | Evaluate expressions on hit without pausing. Implement via `EXECUTE` on conditional breakpoint. | Medium |
+| **Data breakpoints** | Break when a variable changes. Not natively supported — would require polling via `VARIABLES` command. | High |
+| **Rendezvous tracking** | Monitor SceneGraph synchronization points via ECP `/query/chanperf`. Show timing data in a panel. | Medium |
+| **Channel performance panel** | CPU, memory, rendering stats from ECP `chanperf` in a VS Code webview. | Medium |
+| **Profiling (Perfetto)** | Capture performance traces (Roku OS 15.2+). Save as `.perfetto-trace`. | High |
+| **SceneGraph Inspector** | Visualize the SceneGraph node tree from a running channel via ECP `/query/sgnodes`. | High |
+| **Remote file system** | Browse and download files from `tmp:/` and `cachefs:/` via ECP. | Low |
+| **Log streaming panel** | Always-on output channel streaming device syslog, independent of debug sessions. | Low |
+| **Component library debugging** | `lib:/<name>/<path>` breakpoints for multi-component-library projects. | High |
+| **Deep link debugging** | Sideload, set breakpoints, then trigger a deep link via ECP `launch`. | Medium |
+| **Watch expressions** | Persistent watch panel with auto-refresh on stop (via `EXECUTE` command). | Low |
+| **RALE integration** | Inject Roku Advanced Layout Editor's `TrackerTask.xml` at deploy time. | Medium |
+| **Remote control webview** | Send key presses via ECP `/keypress/` from a VS Code webview. | Low |
+| **Inline variable values** | Show variable values inline in the editor (VS Code `InlineValueProvider` API). | Medium |
+| **Debug visualizers** | Custom renderers for Roku types (node trees, AA tables). | Medium |
