@@ -3,6 +3,7 @@
 import * as nodePath from 'path';
 import { lintProjectAsync } from '../src/linter';
 import { resolveConfig } from '../src/config';
+import { applyFixes } from '../src/fixer';
 import { formatText } from '../src/output/textFormatter';
 import { formatJson } from '../src/output/jsonFormatter';
 import { formatSarif } from '../src/output/sarifFormatter';
@@ -12,6 +13,7 @@ interface CliOptions {
   configPath?: string;
   sourceDir?: string;
   check: boolean;
+  fix: boolean;
   noColor: boolean;
 }
 
@@ -19,6 +21,7 @@ function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     format: 'text',
     check: false,
+    fix: false,
     noColor: false,
   };
 
@@ -39,6 +42,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.sourceDir = argv[++i];
     } else if (arg === '--check') {
       options.check = true;
+    } else if (arg === '--fix') {
+      options.fix = true;
     } else if (arg === '--no-color') {
       options.noColor = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -65,6 +70,7 @@ Usage:
 
 Options:
   --check             Exit with code 1 if any errors are found (for CI)
+  --fix               Auto-fix fixable issues (unused imports, unused parameters)
   --format, -f        Output format: text (default), json, sarif
   --config, -c        Path to config file (default: kopytko-linter.json)
   --source-dir        Source directory (default: from config or "src")
@@ -106,6 +112,20 @@ async function main(): Promise<void> {
   }
 
   const result = await lintProjectAsync(projectRoot, config);
+
+  // Apply fixes before outputting results
+  if (options.fix) {
+    const fixCount = applyFixes(result.diagnostics);
+    if (fixCount > 0) {
+      console.log(`Fixed ${fixCount} issue${fixCount !== 1 ? 's' : ''}.`);
+      // Remove fixed diagnostics from the output
+      result.diagnostics = result.diagnostics.filter((d) => !d.fix);
+      result.errorCount = result.diagnostics.filter(d => d.severity === 'error').length;
+      result.warningCount = result.diagnostics.filter(d => d.severity === 'warning').length;
+      result.infoCount = result.diagnostics.filter(d => d.severity === 'info').length;
+      result.hintCount = result.diagnostics.filter(d => d.severity === 'hint').length;
+    }
+  }
 
   // Output
   switch (options.format) {

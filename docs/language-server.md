@@ -264,7 +264,7 @@ Quick-fix light-bulb actions are offered on `@import` diagnostic lines. The serv
 | `import/path-not-absolute` | **Fix: add leading / to import path** *(preferred)*, **Remove @import line** |
 | `import/wrong-comment-style` | **Fix: use apostrophe comment style (' @import)** *(preferred)*, **Remove @import line** |
 | `import/duplicate` | — (no action) |
-| `import/unused` | — (no action) |
+| `import/unused` | **Remove unused @import line** |
 | `import/build-generated` | — (informational only, no action) |
 | `identifier/undefined-function` | — (no action) |
 | `identifier/undefined-variable` | — (no action) |

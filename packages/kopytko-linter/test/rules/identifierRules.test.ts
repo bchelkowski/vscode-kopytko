@@ -303,7 +303,7 @@ describe('identifierRules', () => {
       const diags = checkUnusedParameters(ctx);
       const unused = diags.filter(d => d.code === 'identifier/unused-parameter');
       expect(unused).to.have.lengthOf(1);
-      expect(unused[0].severity).to.equal('hint');
+      expect(unused[0].severity).to.equal('warning');
       expect(unused[0].message).to.include('unused');
     });
 
@@ -367,6 +367,45 @@ describe('identifierRules', () => {
       const ctx = createRuleContext(content);
       const diags = checkUnusedParameters(ctx);
       expect(diags).to.be.empty;
+    });
+
+    it('emits a fix that inserts _ prefix', () => {
+      const content = [
+        'function doWork(unused)',
+        '  print "hello"',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedParameters(ctx);
+      const d = diags.find(d => d.code === 'identifier/unused-parameter');
+      expect(d).to.exist;
+      expect(d!.fix).to.deep.include({ type: 'insert', text: '_' });
+    });
+  });
+
+  describe('@mock function visibility', () => {
+    it('does not flag functions from @mock files as undefined when included in knownFuncNames', () => {
+      const content = [
+        "' @mock /components/AuthStrategy.brs",
+        "' @mock /components/AuthService.brs",
+        'function TestSuite__AuthGateway()',
+        '  ts = {}',
+        '  AuthStrategy()',
+        '  AuthService()',
+        '  return ts',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        filePath: '/project/src/_tests/AuthGateway.test.brs',
+        lintContextOverrides: {
+          knownFuncNames: new Set(['testsuite__authgateway', 'authstrategy', 'authservice']),
+        },
+      });
+
+      const diags = checkUndefinedCalls(ctx);
+      expect(diags.filter(d => d.code === 'identifier/undefined-function')).to.be.empty;
     });
   });
 });

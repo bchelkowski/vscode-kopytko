@@ -2,6 +2,17 @@ import type { LintContext } from './context';
 
 export type LintSeverity = 'error' | 'warning' | 'info' | 'hint';
 
+export interface LintFix {
+  /** Type of fix to apply. */
+  type: 'delete-line' | 'insert';
+  /** 0-based line number. */
+  line: number;
+  /** 0-based column (for 'insert'). */
+  column: number;
+  /** Text to insert (for 'insert'). */
+  text?: string;
+}
+
 export interface LintDiagnostic {
   code: string;
   message: string;
@@ -11,6 +22,8 @@ export interface LintDiagnostic {
   endLine?: number;
   endColumn?: number;
   filePath: string;
+  /** Optional auto-fix for this diagnostic. */
+  fix?: LintFix;
 }
 
 export interface LintResult {

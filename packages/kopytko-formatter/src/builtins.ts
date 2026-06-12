@@ -27,6 +27,7 @@ export const BRIGHTSCRIPT_BUILTINS: BrightScriptBuiltin[] = [
   { name: 'Abs', signature: 'Abs(x as Float) as Float', returnType: 'Float', description: 'Returns the absolute value of x.', docsUrl: MATH_DOCS, category: 'math' },
   { name: 'Atn', signature: 'Atn(x as Float) as Float', returnType: 'Float', description: 'Returns the arctangent of x in radians.', docsUrl: MATH_DOCS, category: 'math' },
   { name: 'CInt', signature: 'CInt(x as Dynamic) as Integer', returnType: 'Integer', description: 'Converts x to Integer (rounds to nearest).', docsUrl: MATH_DOCS, category: 'math' },
+  { name: 'Cdbl', signature: 'Cdbl(x as Dynamic) as Double', returnType: 'Double', description: 'Returns a double-precision float representation of the argument.', docsUrl: MATH_DOCS, category: 'math' },
   { name: 'Cos', signature: 'Cos(x as Float) as Float', returnType: 'Float', description: 'Returns the cosine of x (x in radians).', docsUrl: MATH_DOCS, category: 'math' },
   { name: 'Csng', signature: 'Csng(x as Dynamic) as Float', returnType: 'Float', description: 'Returns a single-precision float representation of the argument.', docsUrl: MATH_DOCS, category: 'math' },
   { name: 'Exp', signature: 'Exp(x as Float) as Float', returnType: 'Float', description: 'Returns e^x.', docsUrl: MATH_DOCS, category: 'math' },

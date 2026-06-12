@@ -315,10 +315,11 @@ export function checkUnusedParameters(ctx: RuleContext): LintDiagnostic[] {
       const used = new RegExp(`\\b${escapeRegex(param.name)}\\b`, 'i').test(bodyText);
       if (!used) {
         diagnostics.push({
-          severity: config['identifier/unused-parameter'] ?? 'hint',
+          severity: config['identifier/unused-parameter'] ?? 'warning',
           code: 'identifier/unused-parameter',
           message: `Parameter "${param.name}" is never used. Prefix with \`_\` to indicate it is intentionally unused.`,
           line: i, column: param.col, endLine: i, endColumn: param.col + param.name.length, filePath,
+          fix: { type: 'insert', line: i, column: param.col, text: '_' },
         });
       }
     }

@@ -12,6 +12,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 /** Diagnostic codes for which we offer quick fixes. */
 const FIXABLE_CODES = new Set([
   'import/unresolved',
+  'import/unused',
   'import/missing-path',
   'import/path-not-absolute',
   'import/wrong-comment-style',
@@ -49,6 +50,11 @@ export class BrightScriptCodeActionProvider {
         continue;
       }
 
+      if (code === 'import/unused') {
+        actions.push(makeRemoveLineAction(document.uri, lineIndex, lines.length, lineText.length, diag, 'Remove unused @import line'));
+        continue;
+      }
+
       actions.push(makeRemoveLineAction(document.uri, lineIndex, lines.length, lineText.length, diag));
     }
 
@@ -62,6 +68,7 @@ function makeRemoveLineAction(
   totalLines: number,
   lineLength: number,
   diagnostic: Diagnostic,
+  title = 'Remove @import line',
 ): CodeAction {
   const range: Range = lineIndex + 1 < totalLines
     ? Range.create(lineIndex, 0, lineIndex + 1, 0)

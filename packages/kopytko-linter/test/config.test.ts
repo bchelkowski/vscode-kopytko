@@ -59,7 +59,7 @@ describe('config', () => {
       });
       expect(config.rules['import/duplicate']).to.equal('warning');
       // Other rules should still have defaults
-      expect(config.rules['import/unresolved']).to.equal('warning');
+      expect(config.rules['import/unresolved']).to.equal('error');
     });
 
     it('allows turning a rule off', () => {

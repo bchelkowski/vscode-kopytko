@@ -187,5 +187,6 @@ function checkUnusedImport(
     code: 'import/unused',
     message: `Kopytko @import: "${imp.importPath}" is imported but none of its exported functions are referenced in this file.`,
     ...lineRange(lineIndex, documentPath),
+    fix: { type: 'delete-line', line: lineIndex, column: 0 },
   };
 }

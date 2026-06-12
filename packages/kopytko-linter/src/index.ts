@@ -15,9 +15,9 @@
 
 export { lintFile, lintProject, lintProjectAsync, createFileContext } from './linter';
 export { LinterConfig, DEFAULT_LINTER_CONFIG, DEFAULT_RULE_CONFIG, parseLinterConfig, resolveConfig } from './config';
-export type { LintDiagnostic, LintResult, LintSeverity, GeneratedModuleConfig, KopytkoImport, FunctionDefinition, RuleContext, RuleConfig, RuleFn, RuleDefinition } from './types';
+export type { LintDiagnostic, LintFix, LintResult, LintSeverity, GeneratedModuleConfig, KopytkoImport, FunctionDefinition, RuleContext, RuleConfig, RuleFn, RuleDefinition } from './types';
 export type { LintContext } from './context';
-export { formatText } from './output/textFormatter';
+export { applyFixes } from './fixer';export { formatText } from './output/textFormatter';
 export { formatJson } from './output/jsonFormatter';
 export { formatSarif } from './output/sarifFormatter';
 export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, builtinNames, keywordNames } from './catalog/builtins';

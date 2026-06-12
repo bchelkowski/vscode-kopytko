@@ -83,7 +83,7 @@ describe('importRules — checkImports', () => {
     const diags = checkImports(ctx);
     const unresolved = diags.filter(d => d.code === 'import/unresolved');
     expect(unresolved).to.have.lengthOf(1);
-    expect(unresolved[0].severity).to.equal('warning');
+    expect(unresolved[0].severity).to.equal('error');
     expect(unresolved[0].message).to.include('cannot resolve');
   });
 

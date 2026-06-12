@@ -43,6 +43,7 @@ npx kopytko-lint --source-dir components
 | Option | Description |
 |---|---|
 | `--check` | Exit with code 1 if any errors are found (for CI) |
+| `--fix` | Auto-fix fixable issues (unused imports, unused parameters) |
 | `--format`, `-f` | Output format: `text` (default), `json`, `sarif` |
 | `--config`, `-c` | Path to config file |
 | `--source-dir` | Override source directory (default: from config or `src`) |
@@ -101,7 +102,7 @@ Add `kopytko.lint.*` keys to `.vscode/settings.json`:
 | `import/path-not-absolute` | warning | Import path doesn't start with `/` |
 | `import/wrong-comment-style` | error | `@import` written with `"` instead of `'` comment |
 | `import/build-generated` | info | Unresolved path matches a configured generated-path pattern |
-| `import/unresolved` | warning | Cannot resolve import to a file on disk |
+| `import/unresolved` | error | Cannot resolve import to a file on disk |
 | `import/unused` | warning | Imported file's functions are never referenced |
 
 ### Identifier Rules
@@ -112,7 +113,7 @@ Add `kopytko.lint.*` keys to `.vscode/settings.json`:
 | `identifier/wrong-arg-count` | error | Built-in function called with wrong number of arguments |
 | `identifier/undefined-variable` | error | Variable used but never assigned in the enclosing scope |
 | `identifier/shadows-builtin` | error | Variable name shadows a BrightScript built-in function |
-| `identifier/unused-parameter` | hint | Function parameter never used in body (prefix `_` to suppress) |
+| `identifier/unused-parameter` | warning | Function parameter never used in body (prefix `_` to suppress) |
 
 ### Syntax Rules
 

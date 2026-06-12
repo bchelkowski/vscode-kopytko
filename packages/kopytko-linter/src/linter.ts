@@ -470,7 +470,6 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
         const visited = new Set<string>();
         const followImports = (file: string): void => {
           for (const imp of getImports(file)) {
-            if (imp.isMock) continue;
             const resolved = importResolver.resolveImportPath(imp, file);
             if (!resolved) continue;
             const norm = nodePath.normalize(resolved);
@@ -536,7 +535,6 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     const visited = new Set<string>();
     const collectFromImports = (sourceFile: string, imps: KopytkoImport[]): void => {
       for (const imp of imps) {
-        if (imp.isMock) continue;
         const resolved = importResolver.resolveImportPath(imp, sourceFile);
         if (!resolved) continue;
         const normalizedResolved = nodePath.normalize(resolved);
