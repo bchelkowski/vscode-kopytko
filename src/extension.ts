@@ -52,8 +52,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const store = new DeviceStore(context.globalState);
   const credentials = new CredentialStore(context.secrets);
   const networkMonitor = new NetworkMonitor();
+  const discoveryChannel = vscode.window.createOutputChannel('Roku Discovery');
 
-  deviceManager = new DeviceManager(ssdp, ecp, store, credentials, networkMonitor);
+  deviceManager = new DeviceManager(ssdp, ecp, store, credentials, networkMonitor, discoveryChannel);
   treeProvider = new DeviceTreeProvider(deviceManager);
 
   context.subscriptions.push(
@@ -101,9 +102,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage(
           `Added ${device.friendlyName} (${device.ip})`
         );
-      } catch {
+      } catch (err) {
+        let detail = '';
+        if (err instanceof Error) {
+          if (err.message.includes('timed out')) {
+            detail = ' The device did not respond within 3 seconds.';
+          } else if (err.message.includes('ECONNREFUSED')) {
+            detail = ' Connection refused — ECP may not be enabled on this device.';
+          } else {
+            detail = ` (${err.message})`;
+          }
+        }
+        discoveryChannel.appendLine(`Add device failed for ${ip}: ${err instanceof Error ? err.message : String(err)}`);
         vscode.window.showErrorMessage(
-          `Could not reach a Roku device at ${ip}. Verify the IP and that the device is on.`
+          `Could not reach a Roku device at ${ip}.${detail} Check the "Roku Discovery" output for details.`
         );
       }
     })

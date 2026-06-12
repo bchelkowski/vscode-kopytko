@@ -35,6 +35,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
   private healthCheckTimes = new Map<string, number>();
   private networkId = '';
   private activeSerial: string | undefined;
+  private log: (message: string) => void;
 
   constructor(
     private readonly ssdp: SsdpClient,
@@ -42,8 +43,12 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     private readonly store: DeviceStore,
     private readonly credentials: CredentialStore,
     private readonly networkMonitor: NetworkMonitor,
+    outputChannel?: { appendLine(value: string): void },
   ) {
     super();
+    this.log = outputChannel
+      ? (msg: string) => outputChannel.appendLine(`[${new Date().toISOString()}] ${msg}`)
+      : () => {};
     this.wireEvents();
   }
 
@@ -52,6 +57,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
   /** Initialize the manager. Call once on extension activation. */
   async initialize(): Promise<void> {
     this.networkId = DeviceStore.computeNetworkId();
+    this.log(`Initializing device manager (network: ${this.networkId.slice(0, 8)}…)`);
 
     this.loadCachedDevices();
     this.loadFavorites();
@@ -59,6 +65,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
 
     this.networkMonitor.start();
     await this.ssdp.start();
+    this.log('SSDP listening — starting initial scan');
     await this.ssdp.scan();
     this.store.cleanup();
   }
@@ -83,6 +90,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
    * The device is automatically marked as a favorite.
    */
   async addManualDevice(ip: string): Promise<RokuDevice> {
+    this.log(`Adding manual device at ${ip}…`);
     const info = await this.ecp.queryDeviceInfo(ip, 8060, HEALTH_CHECK_TIMEOUT_MS);
     const serial = info['serial-number'];
 
@@ -170,6 +178,9 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     this.ssdp.on('lost', (ip: string) => this.onSsdpLost(ip));
     this.ssdp.on('scan-started', () => this.emit('scan-started'));
     this.ssdp.on('scan-ended', () => this.onScanEnded());
+    this.ssdp.on('error', (err: Error) => {
+      this.log(`SSDP error: ${err.message}`);
+    });
 
     this.networkMonitor.on('network-changed', (id: string) => this.onNetworkChanged(id));
     this.networkMonitor.on('wake', () => this.scan());
@@ -182,8 +193,10 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
       // DHCP may have changed the IP — update and refresh health
       existing.ip = found.ip;
       existing.port = found.port;
+      this.log(`SSDP: device ${found.serialNumber} updated (${found.ip}:${found.port})`);
       this.healthCheckDevice(found.serialNumber);
     } else {
+      this.log(`SSDP: new device found — ${found.serialNumber} at ${found.ip}:${found.port}`);
       // New device — add in unknown state and trigger health check
       const device: RokuDevice = {
         ip: found.ip,
@@ -283,11 +296,14 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
       );
       this.devices.set(serial, updated);
       this.healthCheckTimes.set(serial, Date.now());
+      this.log(`Health check: ${updated.friendlyName} (${device.ip}) — online`);
 
       await this.persistDevice(updated);
-    } catch {
+    } catch (err) {
       device.state = 'offline';
       this.healthCheckTimes.set(serial, Date.now());
+      const msg = err instanceof Error ? err.message : String(err);
+      this.log(`Health check: ${device.ip} — offline (${msg})`);
     }
 
     this.emit('devices-changed');

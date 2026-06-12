@@ -143,3 +143,24 @@ When you launch a debug session with an active device selected:
 
 - **Change**: right-click → **Set Password** and enter the new password. The old one is overwritten.
 - **Clear**: right-click → **Clear Password** to remove the stored credential entirely.
+
+---
+
+## Troubleshooting
+
+If devices are not appearing or manual add fails, check the **Roku Discovery** output channel (**View → Output** → select **Roku Discovery** from the dropdown). It logs:
+
+- SSDP scan start/end and discovered devices
+- Health check results (online/offline per device)
+- Socket errors that may indicate firewall or network issues
+- Manual add attempts with detailed error reasons
+
+### Common issues
+
+| Problem | Possible cause | Solution |
+|---|---|---|
+| No devices discovered | Firewall blocking UDP multicast (port 1900) | Allow UDP traffic on port 1900 for the VS Code process |
+| No devices discovered | Device on a different subnet or VLAN | Use **Add Device** with the device's IP address |
+| Manual add fails with timeout | Device not powered on or not on the network | Verify the device is reachable (try `curl http://<ip>:8060/query/device-info`) |
+| Manual add fails with "connection refused" | ECP not enabled on the device | Enable developer mode on the Roku (Home × 3, Up, Right, Left, Right, Left, Right) |
+| Devices show as offline | Network changed since last scan | Click **↺ Refresh** or wait for automatic re-scan |

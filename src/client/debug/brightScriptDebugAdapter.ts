@@ -210,6 +210,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     const env = this._launchConfig['env'] as string | undefined ?? 'dev';
     const rootDir = this._launchConfig['rootDir'] as string | undefined
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const startCommand = this._launchConfig['startCommand'] as string | undefined;
 
     if (!host || !password) {
       this._sendOutput('stderr', 'Missing "host" or "password" in launch configuration.\n');
@@ -221,13 +222,13 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       // Clear previous diagnostics
       this._diagnostics.clear();
 
-      // Deploy with remotedebug=1
+      // Build and deploy with remotedebug enabled via manifest
       await deploy({
         rootDir,
         host,
         password,
         env,
-        remoteDebug: true,
+        startCommand,
         onOutput: (msg) => this._sendOutput('console', msg + '\n'),
       });
 

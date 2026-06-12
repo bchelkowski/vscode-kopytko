@@ -140,7 +140,7 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Status | Doc |
 |---|---|---|
-| Deploy via kopytko-packager with `remotedebug=1` | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Build and deploy via project's kopytko-packager with `remotedebug=1` manifest injection | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 | Socket-based debug protocol (port 8081, protocol 3.3.0) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 | Dynamic breakpoints (add/remove at runtime, no source injection) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 | Conditional breakpoints (BrightScript expressions) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |

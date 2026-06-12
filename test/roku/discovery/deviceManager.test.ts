@@ -622,4 +622,70 @@ describe('DeviceManager', () => {
       expect((networkMonitor.stop as sinon.SinonStub).called).to.be.true;
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // SSDP error handling
+  // ---------------------------------------------------------------------------
+
+  describe('SSDP error handling', () => {
+    it('does not crash when SSDP emits an error event', async () => {
+      await manager.initialize();
+
+      // Should not throw — error is caught by the error handler
+      expect(() => {
+        (ssdp as unknown as EventEmitter).emit('error', new Error('UDP socket error'));
+      }).to.not.throw();
+    });
+
+    it('logs SSDP errors to the output channel', async () => {
+      const logged: string[] = [];
+      const channel = { appendLine: (msg: string) => logged.push(msg) };
+      const loggedManager = new DeviceManager(ssdp, ecp, deviceStore, credentials, networkMonitor, channel);
+
+      await loggedManager.initialize();
+      (ssdp as unknown as EventEmitter).emit('error', new Error('bind failed'));
+
+      expect(logged.some(msg => msg.includes('SSDP error: bind failed'))).to.be.true;
+
+      loggedManager.dispose();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // output channel logging
+  // ---------------------------------------------------------------------------
+
+  describe('output channel logging', () => {
+    it('logs discovery events when output channel is provided', async () => {
+      const logged: string[] = [];
+      const channel = { appendLine: (msg: string) => logged.push(msg) };
+      const loggedManager = new DeviceManager(ssdp, ecp, deviceStore, credentials, networkMonitor, channel);
+
+      await loggedManager.initialize();
+
+      expect(logged.some(msg => msg.includes('Initializing device manager'))).to.be.true;
+      expect(logged.some(msg => msg.includes('SSDP listening'))).to.be.true;
+
+      loggedManager.dispose();
+    });
+
+    it('logs when a new device is found via SSDP', async () => {
+      const logged: string[] = [];
+      const channel = { appendLine: (msg: string) => logged.push(msg) };
+      const loggedManager = new DeviceManager(ssdp, ecp, deviceStore, credentials, networkMonitor, channel);
+
+      (ecp.queryDeviceInfo as sinon.SinonStub).resolves(makeDeviceInfo('SN002', 'Test Device'));
+
+      await loggedManager.initialize();
+      (ssdp as unknown as EventEmitter).emit('found', {
+        ip: '192.168.1.20',
+        port: 8060,
+        serialNumber: 'SN002',
+      } as SsdpDeviceFound);
+
+      expect(logged.some(msg => msg.includes('new device found') && msg.includes('SN002'))).to.be.true;
+
+      loggedManager.dispose();
+    });
+  });
 });

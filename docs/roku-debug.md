@@ -46,10 +46,13 @@ When you launch a debug session, the active device's IP and stored password are 
 
 The extension registers a `kopytko` debug type that handles the full deploy-and-debug cycle:
 
-1. Build the project using `@dazn/kopytko-packager` (reads `.kopytkorc`, runs plugins, generates manifest)
-2. Deploy the zip to the Roku with `remotedebug=1` via digest auth
-3. Connect to the socket-based debug protocol on TCP port 8081
-4. Surface breakpoints, variables, stack frames, threads, and stepping through VS Code's standard debug UI
+1. Inject `remotedebug=1` into the project's local manifest override (enables the socket-based debug protocol)
+2. Run `kopytko start` (or a custom command) which builds and deploys the app to the Roku device
+3. Restore the original manifest override
+4. Connect to the socket-based debug protocol on TCP port 8081
+5. Surface breakpoints, variables, stack frames, threads, and stepping through VS Code's standard debug UI
+
+The build and deploy steps use the **project's own** `@dazn/kopytko-packager` — the extension invokes it via CLI, it does not bundle it.
 
 ### Setting up `launch.json`
 
@@ -79,6 +82,7 @@ Add a configuration via **Run → Add Configuration** or create `.vscode/launch.
 | `rootDir` | No | Project root where `.kopytkorc` lives (default: `${workspaceFolder}`) |
 | `env` | No | Kopytko environment to build — matches `.kopytkorc` environments key (default: `dev`) |
 | `stopOnEntry` | No | If `true`, pause at the first line of `main` on launch |
+| `startCommand` | No | Command to build and deploy (default: `npx kopytko start`). Must accept env as a positional argument and `ROKU_IP`, `ROKU_DEV_PASSWORD`, `ENV` as environment variables. |
 
 > **Tip:** If you have an active device selected in the Roku Devices panel with a stored password, both `host` and `password` are filled in automatically and can be omitted from `launch.json`. See [device-discovery.md](./device-discovery.md) for details.
 
@@ -87,9 +91,10 @@ Add a configuration via **Run → Add Configuration** or create `.vscode/launch.
 Press **F5** or click **Run → Start Debugging**. The Debug Console shows:
 
 ```
-Building with kopytko-packager…
+Running: npx kopytko start
+Building package…
 Deploying to 192.168.1.100…
-Deploy successful.
+Build and deploy successful.
 Connecting debugger (port 8081)…
 Debugger connected (protocol 3.3.0).
 ```
@@ -167,7 +172,7 @@ BrightScriptDebugAdapter (inline DAP)
 
 ### Connection lifecycle
 
-1. **Deploy** — build with kopytko-packager, sideload with `remotedebug=1` and `remotedebug_connect_early=1`
+1. **Deploy** — inject `remotedebug=1` into local manifest override, run `kopytko start` to build and deploy
 2. **Handshake** — TCP connect to port 8081, exchange magic bytes, read protocol version
 3. **Initial stop** — device pauses before the first BrightScript statement
 4. **Set breakpoints** — send `ADD_BREAKPOINTS` for all VS Code breakpoints
@@ -186,7 +191,7 @@ BrightScriptDebugAdapter (inline DAP)
 | IO client | `src/client/debug/protocol/ioClient.ts` | App stdout channel (dynamic port) |
 | Debug adapter | `src/client/debug/brightScriptDebugAdapter.ts` | Inline VS Code DAP implementation |
 | Factory | `src/client/debug/debugAdapterFactory.ts` | Creates one adapter instance per debug session |
-| Deployer | `src/client/roku/rokuDeployer.ts` | Build via kopytko-packager, deploy with remotedebug flags |
+| Deployer | `src/client/roku/rokuDeployer.ts` | Inject debug manifest, run kopytko start, restore manifest |
 
 ---
 

@@ -20,7 +20,7 @@
   "scripts": {
     "vscode:prepublish": "npm run bundle",
     "bundle": "npm run bundle:extension && npm run bundle:server",
-    "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:@dazn/kopytko-packager --platform=node --format=cjs --sourcemap",
+    "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
     "watch": "tsc -w -p ./tsconfig.json",
@@ -32,7 +32,6 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "@dazn/kopytko-packager": "^1.4.2",
     "kopytko-formatter": "^0.1.7",
     "kopytko-linter": "^0.5.0",
     "vscode-languageclient": "^10.0.0",
@@ -888,6 +887,11 @@
                 "type": "boolean",
                 "description": "Pause execution at the first line of main on launch.",
                 "default": false
+              },
+              "startCommand": {
+                "type": "string",
+                "description": "Command to build and deploy the project (default: 'npx kopytko start'). Must accept env as a positional argument and ROKU_IP, ROKU_DEV_PASSWORD, ENV as environment variables.",
+                "default": "npx kopytko start"
               }
             }
           }
