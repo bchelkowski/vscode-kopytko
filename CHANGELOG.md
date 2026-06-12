@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [0.2.1] - 2026-06-12
+
+### Fixed
+- Use env var instead of inline single quotes for changelog entry
+- Use project's kopytko-packager for build/deploy and fix device detection
+
 ## [0.2.0] - 2026-06-12
 
 ### Added
