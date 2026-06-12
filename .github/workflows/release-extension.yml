@@ -116,9 +116,9 @@ jobs:
           rm "$ENTRY_FILE"
 
       - name: Update CHANGELOG.md
+        env:
+          ENTRY: ${{ steps.changelog.outputs.entry }}
         run: |
-          ENTRY='${{ steps.changelog.outputs.entry }}'
-
           if [ -f CHANGELOG.md ]; then
             awk -v entry="$ENTRY" '
               /^# Changelog/ { print; getline; print; print ""; print entry; next }
