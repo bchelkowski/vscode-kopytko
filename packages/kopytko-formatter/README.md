@@ -46,6 +46,8 @@ Config keys match the VS Code extension settings without the `kopytko.format.` p
 
 ### Example `kopytko-formatter.json`
 
+The config file can contain both formatting rules and casing settings:
+
 ```json
 {
   "indentSize": 2,
@@ -70,6 +72,8 @@ Config keys match the VS Code extension settings without the `kopytko.format.` p
   ]
 }
 ```
+
+> **Note:** `keywordCasing`, `builtinCasing`, `typeCasing`, `literalCasing`, and `logicOperatorCasing` are casing settings (see `CasingConfig`). All other keys are formatting rules (see `FormattingConfig`).
 
 If your project already has formatting settings in `.vscode/settings.json`, no extra config file is needed — the CLI reads them directly.
 
@@ -107,7 +111,7 @@ const isClean = checkFormatting(source, DEFAULT_FORMATTING_CONFIG);
 
 #### `formatText(source, config, casing?, userFunctions?): string`
 
-Formats BrightScript source code using an 11-pass engine.
+Formats BrightScript source code using a multi-pass engine (16 pass functions in 11 logical stages).
 
 - `source` — raw BrightScript source text
 - `config` — `FormattingConfig` object
@@ -135,6 +139,36 @@ jobs:
       - run: npm ci
       - run: npx kopytko-format --check "src/**/*.brs"
 ```
+
+## Planned Features (Not Yet Implemented)
+
+The following `FormattingConfig` fields are defined and accepted in config files but
+**do not affect formatting output yet**. They are reserved for future implementation:
+
+| Category | Field | Description |
+|---|---|---|
+| Whitespace | `emptyLinesBetweenMethods` | Blank lines between AA method definitions |
+| Functions | `returnTypeAnnotations` | Enforce/remove `as Type` return annotations |
+| Functions | `paramTypeAnnotations` | Enforce/remove `as Type` param annotations |
+| Functions | `paramAlignmentStyle` | Multi-line parameter alignment style |
+| Functions | `wrapParamsThreshold` | Line length to trigger parameter wrapping |
+| Line Length | `printWidth` | Maximum desired line length |
+| Line Length | `wrapLongStrings` | Long string handling strategy |
+| Line Length | `stringConcatStyle` | String concatenation normalization |
+| Line Length | `wrapLongChains` | Break long method/field chains |
+| Line Length | `wrapArrays` | Multi-line array literals |
+| Line Length | `wrapAssocArrays` | Multi-line AA literals |
+| Arrays & AAs | `arrayItemAlignment` | Align values in multi-line AAs |
+| Arrays & AAs | `singleLineObjectThreshold` | Max keys before forcing multi-line |
+| Operators | `operatorLineBreakStyle` | Operator placement on wrapped lines |
+| Blank Lines | `separateLogicBlocks` | Blank lines between logic groups |
+| Control Flow | `inlineIfThreshold` | Max length for single-line if/then |
+| Control Flow | `elseOnNewLine` | Else on its own line |
+| Miscellaneous | `lineCommentPosition` | Move trailing comments above |
+| BrightScript | `observeFieldStyle` | Enforce observeFieldScoped |
+| BrightScript | `mPrefixStyle` | m-prefix field access style |
+| BrightScript | `alignAssignments` | Align = signs in assignments |
+| BrightScript | `fieldAccessConsistency` | Dot vs method field access |
 
 ## License
 
