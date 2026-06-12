@@ -22,8 +22,14 @@
   },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "bin": {
-    "kopytko-format": "dist/bin/kopytko-format.js"
+    "kopytko-format": "./dist/bin/kopytko-format.js"
   },
   "files": [
     "dist",
