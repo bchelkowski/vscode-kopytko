@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.5.1] - 2026-06-12
+
+### Fixed
+- Count AA and array literals as arguments in countCallArgs
+
 ## [0.5.0] - 2026-06-11
 
 ### Added
