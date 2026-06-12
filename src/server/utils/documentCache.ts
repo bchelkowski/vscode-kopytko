@@ -122,6 +122,16 @@ export function getCachedKnownFuncNames(
             names.add(fn.nameLower);
           }
         } catch { /* no config file */ }
+
+        // Also auto-import mock implementation files (_mocks/*.mock.brs)
+        // The build replaces the original with the mock, which may define new functions
+        const mockPath = nodePath.join(dir, '_mocks', `${basename}.mock.brs`);
+        try {
+          const mockText = fsWrapper.readFileSync(mockPath, 'utf-8');
+          for (const fn of parseFunctionDefs(mockText, mockPath)) {
+            names.add(fn.nameLower);
+          }
+        } catch { /* no mock file */ }
       }
 
       for (const testedPath of resolveTestedFiles(documentPath)) {

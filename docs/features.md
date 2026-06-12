@@ -113,6 +113,7 @@ This document is the canonical list of extension features. Each feature links to
 | Test file detection and scope resolution (tested file, extends, XML siblings, split suites) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Nested `_tests/` subdirectory support | ✅ Implemented | [language-server.md](./language-server.md) |
 | `@mock` annotation support (links, completions, highlighting, sorting) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
+| `@mock` auto-import of `_mocks/*.mock.brs` and `_mocks/*.config.brs` functions | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | Test framework completions (`expect()` matchers, `mockFunction()` methods, globals) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Test framework hover docs | ✅ Implemented | [language-server.md](./language-server.md) |
 | Test case symbols in Outline (`it()`, `test()`, `itEach()`) | ✅ Implemented | [language-server.md](./language-server.md) |

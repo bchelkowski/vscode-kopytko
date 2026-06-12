@@ -518,6 +518,12 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
         const configPath = nodePath.join(dir, '_mocks', `${basename}.config.brs`);
         const configFns = getFunctions(configPath);
         for (const fn of configFns) known.add(fn);
+
+        // Also auto-import mock implementation files (_mocks/*.mock.brs)
+        // The build replaces the original with the mock, which may define new functions
+        const mockPath = nodePath.join(dir, '_mocks', `${basename}.mock.brs`);
+        const mockFns = getFunctions(mockPath);
+        for (const fn of mockFns) known.add(fn);
       }
     }
 

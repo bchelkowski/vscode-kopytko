@@ -37,6 +37,13 @@ Imports a `.brs` file from an NPM package with the `kopytko-module` keyword inst
 
 Used in test files (`*.test.brs`) to declare a mocked dependency. `@mock` follows the same resolution algorithm as `@import` and produces the same clickable document links, but serves a different purpose: it registers dependencies for use with `mockFunction()`. The extension validates that `mockFunction("X")` calls reference functions actually defined in `@mock`'ed files.
 
+When a `@mock` annotation is used, the extension automatically looks for companion files next to the resolved path:
+
+- **`_mocks/<Basename>.config.brs`** — mock configuration functions (e.g. setup helpers)
+- **`_mocks/<Basename>.mock.brs`** — mock implementation files that may define new functions not present in the original (e.g. a `Foo()` factory)
+
+Functions from both files are added to the known scope, so test files can call them without triggering `identifier/undefined-function`. This is important because the Kopytko packager replaces the original file with the mock implementation at build time, and mock files often define functions (such as constructor factories) that don't exist in the original source.
+
 `@mock` annotations use a distinct colour (`keyword.control.mock.brightscript`) to visually distinguish them from `@import` annotations.
 
 ## Document Links

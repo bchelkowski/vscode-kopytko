@@ -120,4 +120,26 @@ describe('linter — lintFile', () => {
       expect(d).to.have.property('filePath').that.is.a('string');
     }
   });
+
+  it('does not flag functions from @mock implementation files as undefined', () => {
+    // Simulates a test file calling a function defined in _mocks/*.mock.brs
+    // (e.g. TotalRekallService() from _mocks/TotalRekallService.mock.brs)
+    // The context builder (buildKnownFunctions) adds these to knownFuncNames
+    const content = [
+      "' @mock /components/Bar.brs",
+      'function TestSuite__Foo()',
+      '  myBar = Bar()',
+      '  return ts',
+      'end function',
+    ].join('\n');
+
+    const context = createMockContext({
+      isTestFile: () => true,
+      knownFuncNames: new Set(['bar', 'testsuite__foo']),
+    });
+
+    const diags = lintFile('/project/src/_tests/Foo.test.brs', content, context, DEFAULT_LINTER_CONFIG);
+    const undef = diags.filter(d => d.code === 'identifier/undefined-function');
+    expect(undef).to.be.empty;
+  });
 });
