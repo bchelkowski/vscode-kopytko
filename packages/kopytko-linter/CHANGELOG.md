@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [0.5.2] - 2026-06-12
+
+### Fixed
+- Skip XML attribute access operator @ in identifier checks
+- Resolve @mock imports in function scope, add Cdbl builtin, --fix mode, severity defaults
+
 ## [0.5.1] - 2026-06-12
 
 ### Fixed
