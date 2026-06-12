@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
 import Module from 'module';
 
 const vscodeStub = {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   EventEmitter: class VscodeEventEmitter<T> {
     private emitter = new EventEmitter();
     event = (listener: (e: any) => void) => {

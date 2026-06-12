@@ -8,7 +8,7 @@ import { EcpClient } from '../../../src/client/roku/discovery/ecpClient';
 import { DeviceStore } from '../../../src/client/roku/persistence/deviceStore';
 import { CredentialStore } from '../../../src/client/roku/persistence/credentialStore';
 import { NetworkMonitor } from '../../../src/client/roku/discovery/networkMonitor';
-import { SsdpDeviceFound, RokuDevice } from '../../../src/client/roku/types';
+import { SsdpDeviceFound } from '../../../src/client/roku/types';
 
 // ── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ describe('DeviceManager', () => {
   let credentials: CredentialStore;
   let networkMonitor: NetworkMonitor;
   let manager: DeviceManager;
-  let computeNetworkIdStub: sinon.SinonStub;
+  let _computeNetworkIdStub: sinon.SinonStub;
 
   beforeEach(() => {
     // Stub SsdpClient (EventEmitter)
@@ -83,7 +83,7 @@ describe('DeviceManager', () => {
     (networkMonitor as unknown as Record<string, unknown>).start = sinon.stub();
     (networkMonitor as unknown as Record<string, unknown>).stop = sinon.stub();
 
-    computeNetworkIdStub = sinon.stub(DeviceStore, 'computeNetworkId').returns('test-network-id');
+    _computeNetworkIdStub = sinon.stub(DeviceStore, 'computeNetworkId').returns('test-network-id');
 
     manager = new DeviceManager(ssdp, ecp, deviceStore, credentials, networkMonitor);
   });

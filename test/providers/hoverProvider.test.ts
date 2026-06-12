@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { Hover, MarkupContent, MarkupKind } from 'vscode-languageserver/node';
+import { Hover, MarkupContent } from 'vscode-languageserver/node';
 import fsWrapper from '../../src/server/utils/fsWrapper';
 import { BrightScriptHoverProvider } from '../../src/server/providers/hoverProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';

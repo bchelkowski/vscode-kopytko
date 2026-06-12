@@ -1028,11 +1028,11 @@ describe('BrightScriptCompletionProvider', () => {
 
   describe('user-defined function completions', () => {
     let readFileStub: sinon.SinonStub;
-    let readdirSyncStub: sinon.SinonStub;
+    let _readdirSyncStub: sinon.SinonStub;
 
     beforeEach(() => {
       readFileStub = sinon.stub(fsWrapper, 'readFileSync');
-      readdirSyncStub = sinon.stub(fsWrapper, 'readdirSync').returns([]);
+      _readdirSyncStub = sinon.stub(fsWrapper, 'readdirSync').returns([]);
     });
 
     it('includes user-defined functions from the current file', () => {

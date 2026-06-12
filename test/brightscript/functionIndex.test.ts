@@ -477,6 +477,7 @@ describe('functionIndex', () => {
     let resolveTestedFiles: typeof import('../../src/server/brightscript/functionIndex').resolveTestedFiles;
 
     before(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       resolveTestedFiles = require('../../src/server/brightscript/functionIndex').resolveTestedFiles;
     });
 
@@ -571,6 +572,7 @@ describe('functionIndex', () => {
     let findTestSiblings: typeof import('../../src/server/brightscript/functionIndex').findTestSiblings;
 
     before(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       findTestSiblings = require('../../src/server/brightscript/functionIndex').findTestSiblings;
     });
 

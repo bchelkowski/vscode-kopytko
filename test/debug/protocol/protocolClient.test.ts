@@ -1,5 +1,4 @@
 import { expect } from 'chai';
-import * as sinon from 'sinon';
 import { EventEmitter } from 'events';
 import { BinaryWriter, BinaryReader } from '../../../src/client/debug/protocol/binaryIO';
 import {
@@ -14,6 +13,7 @@ import {
  * Creates a mock net.Socket that behaves like a TCP connection.
  * Provides a `pushData(buf)` method to simulate incoming data.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function createMockSocket() {
   const emitter = new EventEmitter();
   const written: Buffer[] = [];
@@ -200,7 +200,7 @@ describe('Protocol packet building', () => {
     const response = buildResponse(1, ErrorCode.OK, payload);
     const reader = new BinaryReader(response);
 
-    const packetLength = reader.readUint32();
+    const _packetLength = reader.readUint32();
     const reqId = reader.readUint32();
     expect(reqId).to.equal(1);
 
@@ -221,7 +221,7 @@ describe('Protocol packet building', () => {
     const update = buildUpdate(UpdateType.AllThreadsStopped, ErrorCode.OK, payload);
     const reader = new BinaryReader(update);
 
-    const packetLength = reader.readUint32();
+    const _packetLength = reader.readUint32();
     const reqId = reader.readUint32();
     expect(reqId).to.equal(0);
 

@@ -1,7 +1,6 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { DocumentLink } from 'vscode-languageserver/node';
 import fsWrapper from '../../src/server/utils/fsWrapper';
 import { BrightScriptDocumentLinkProvider } from '../../src/server/providers/documentLinkProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';

@@ -319,8 +319,6 @@ describe('BrightScriptRenameProvider', () => {
     });
 
     it('returns empty changes object when no occurrences exist anywhere in scope', () => {
-      const src = 'function foo()\nend function';
-      const doc = makeDocument(src);
       // cursor on 'foo' — which IS a function name, so it goes workspace-wide
       // Let's test a case where there truly are no matches
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
@@ -355,7 +353,7 @@ describe('BrightScriptRenameProvider', () => {
       provider = new BrightScriptRenameProvider(makeResolver(), index);
       const doc = makeDocument('function doWork()\nend function');
       // 'doWork' is recognised as a function → workspace-wide
-      const result = provider.provideRename(doc, { line: 0, character: 12 }, 'runTask');
+      const _result = provider.provideRename(doc, { line: 0, character: 12 }, 'runTask');
       // Should scan workspace files
       expect(readdirStub.called).to.be.true;
     });

@@ -4,7 +4,6 @@ import { BrightScriptFormattingProvider } from '../../src/server/providers/forma
 import { CasingConfig } from '../../src/server/brightscript/casingUtils';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG } from '../../src/server/brightscript/formattingConfig';
 import { FunctionDefinition } from '../../src/server/brightscript/functionIndex';
-import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 const makeDocument = (content: string | string[]): TextDocument => {
   const text = Array.isArray(content) ? content.join('\n') : content;
