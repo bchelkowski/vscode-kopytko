@@ -11,9 +11,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "sourceMap": true,
-    "declaration": true,
-    "declarationMap": true
+    "sourceMap": true
   },
   "include": ["src/server/**/*"],
   "exclude": ["src/client/**/*", "src/extension.ts", "test/**/*", "node_modules"]

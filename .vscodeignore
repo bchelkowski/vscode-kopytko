@@ -13,11 +13,10 @@ tsconfig*.json
 .nyc_output
 coverage/
 node_modules/**
+out-test/**
 out/**/*.d.ts
 out/**/*.d.ts.map
 out/**/*.js.map
 out/client/**
-out/server/brightscript/**
-out/server/kopytko/**
-out/server/providers/**
-out/server/utils/**
+out/server/**
+!out/server/server.js

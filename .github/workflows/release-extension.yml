@@ -41,6 +41,9 @@ jobs:
       - name: Bundle
         run: npm run bundle
 
+      - name: Lint
+        run: npm run lint
+
       - name: Run tests
         run: npm test
 

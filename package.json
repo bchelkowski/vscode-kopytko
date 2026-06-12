@@ -25,10 +25,10 @@
     "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
-    "lint": "eslint \"./src/**/*.ts\"",
+    "lint": "eslint \"./src/**/*.ts\" \"./test/**/*.ts\"",
     "test": "mocha",
     "test:coverage": "nyc mocha",
-    "clean": "node -e \"require('fs').rmSync('out', {recursive: true, force: true})\"",
+    "clean": "node -e \"const fs=require('fs'); fs.rmSync('out',{recursive:true,force:true}); fs.rmSync('out-test',{recursive:true,force:true})\"",
     "package": "vsce package"
   },
   "dependencies": {

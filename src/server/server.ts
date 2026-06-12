@@ -126,6 +126,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     },
     serverInfo: {
       name: 'Kopytko BrightScript Language Server',
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       version: require('../../package.json').version ?? '0.0.0',
     },
   };

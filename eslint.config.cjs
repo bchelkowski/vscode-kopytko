@@ -15,4 +15,10 @@ module.exports = tseslint.config(
       'no-console': 'warn',
     },
   },
+  {
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-expressions': 'off',
+    },
+  },
 );
