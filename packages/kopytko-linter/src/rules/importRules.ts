@@ -37,10 +37,11 @@ export function checkImports(ctx: RuleContext): LintDiagnostic[] {
       const importKey = `${imp.importPath}|${imp.fromModule ?? ''}`;
       if (seenImportKeys.has(importKey)) {
         diagnostics.push({
-          severity: config['import/duplicate'] ?? 'error',
+          severity: config['import/duplicate'] ?? 'warning',
           code: 'import/duplicate',
           message: `Kopytko ${annotationType}: duplicate import "${imp.importPath}"${imp.fromModule ? ` from "${imp.fromModule}"` : ''}.`,
           ...lineRange(lineIndex, filePath),
+          fix: { type: 'delete-line', line: lineIndex, column: 0 },
         });
         continue;
       }

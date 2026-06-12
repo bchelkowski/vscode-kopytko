@@ -32,6 +32,25 @@ describe('importRules — checkImports', () => {
     expect(dups[0].message).to.include('duplicate');
   });
 
+  it('attaches a delete-line fix to import/duplicate diagnostics', () => {
+    const content = [
+      "' @import /utils/Math.brs",
+      "' @import /utils/Math.brs",
+      "' @import /utils/Math.brs",
+      'function test()',
+      'end function',
+    ].join('\n');
+
+    const ctx = createRuleContext(content);
+    const diags = checkImports(ctx);
+
+    const dups = diags.filter(d => d.code === 'import/duplicate');
+    expect(dups).to.have.lengthOf(2);
+    // Each duplicate should have a fix that removes its line (keeping the first)
+    expect(dups[0].fix).to.deep.equal({ type: 'delete-line', line: 1, column: 0 });
+    expect(dups[1].fix).to.deep.equal({ type: 'delete-line', line: 2, column: 0 });
+  });
+
   it('reports import/missing-path when import path is empty', () => {
     const content = "' @import \n";
     const ctx = createRuleContext(content);
