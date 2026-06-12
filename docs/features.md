@@ -69,7 +69,7 @@ This document is the canonical list of extension features. Each feature links to
 |---|---|---|
 | Rename symbol (`textDocument/rename`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Code actions — quick fixes for import diagnostics and unused parameters | ✅ Implemented | [language-server.md](./language-server.md) |
-| Document formatting — multi-pass engine with 12+ configurable rules | ✅ Implemented | [formatting.md](./formatting.md) |
+| Document formatting — multi-pass engine with 60+ configurable rules | ✅ Implemented | [formatting.md](./formatting.md) |
 | Conditional compilation indentation (`#if`/`#else if`/`#else`/`#end if`, `#const`) | ✅ Implemented | [formatting.md](./formatting.md) |
 | Increment (`++`) and decrement (`--`) operators preserved by spacing pass | ✅ Implemented | [formatting.md](./formatting.md) |
 | Comment lines never affect indentation depth (commented-out blocks are inert) | ✅ Implemented | [formatting.md](./formatting.md) |

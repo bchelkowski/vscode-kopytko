@@ -5,12 +5,12 @@ A Visual Studio Code extension providing first-class language support for **Brig
 ## Features
 
 - Syntax highlighting and language configuration for `.brs` files
-- IntelliSense completions for 59 `ro*` components, 76 interfaces, and ~700 methods
+- IntelliSense completions for 60 `ro*` components, 78 interfaces, and ~700 methods
 - Hover documentation for components, methods, built-in functions, and Kopytko exports
 - `CreateObject` type inference — member completions appear automatically after `.`
 - Diagnostics and go-to-definition for `@import` annotations
 - Kopytko module catalog with package name completions
-- **Roku device discovery** — scans the local network and shows available devices in the Explorer sidebar
+- **Roku device discovery** — scans the local network and shows available devices in the **Kopytko** sidebar
 - **BrightScript debugger** — deploy, set breakpoints, inspect variables, step through code on a real Roku device
 
 See [docs/features.md](docs/features.md) for the full feature list.
@@ -103,7 +103,10 @@ npm run test:coverage   # same, with nyc coverage report
 ```
 src/
   extension.ts               Extension entry point
-  client/languageClient.ts   LSP client
+  client/
+    languageClient.ts        LSP client
+    debug/                   Debug adapter and protocol handling
+    roku/                    Device discovery, SSDP, ECP, persistence, views
   server/
     server.ts                Language server entry point
     brightscript/            Component catalog, built-ins, type inference
@@ -121,9 +124,9 @@ snippets/                    VS Code snippets
 
 ## Roku device discovery
 
-The **Roku Devices** panel in the Explorer sidebar scans your local network using SSDP and lists all discovered Roku devices with their model, IP, and firmware version.
+The **Roku Devices** panel in the **Kopytko** sidebar scans your local network using SSDP and lists all discovered Roku devices with their model, IP, and firmware version.
 
-1. Expand **Roku Devices** in the Explorer sidebar.
+1. Expand **Roku Devices** in the **Kopytko** sidebar.
 2. Click **↺** in the panel title to scan.
 3. Right-click a device → **Set as Active Device** to make it the default deploy target.
 
@@ -161,7 +164,7 @@ Press **F5** to start. The extension will:
 1. Build the project using `@dazn/kopytko-packager` (reads `.kopytkorc`, runs plugins, generates manifest)
 2. Inject `stop` statements at your breakpoints
 3. Deploy to the Roku via kopytko-packager's AppDeployer
-4. Connect to the BrightScript Micro Debugger on port 8085
+4. Connect to the BrightScript debug protocol on port 8081
 
 ### What you can do once paused
 
@@ -248,11 +251,13 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `bracketSpacing` | `boolean` | `true` | Spaces inside `{ }` |
+| `aaCommaSpacing` | `string` | `"preserve"` | Spaces around commas in inline `{}` AAs: `preserve`, `after`, `before`, `both`, `none` |
 | `trailingComma` | `string` | `"never"` | `never`, `always`, `multiline` |
 | `arrayCommaStyle` | `string` | `"preserve"` | Multi-line array commas: `always`, `never`, `preserve` |
 | `assocArrayCommaStyle` | `string` | `"preserve"` | Multi-line AA commas: `always`, `never`, `preserve` |
 | `arrayItemAlignment` | `string` | `"off"` | `off`, `align` |
 | `singleLineObjectThreshold` | `number` | `0` | Max keys before forcing multi-line (0 = no limit) |
+| `splitArrayOpenBracket` | `boolean` | `false` | Split `[{` onto separate lines in multi-item arrays |
 
 ### Operators & Expressions
 
@@ -294,6 +299,7 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 |---|---|---|---|
 | `inlineIfThreshold` | `number` | `0` | Max length for single-line if (0 = never) |
 | `parenthesisIfCase` | `string` | `"preserve"` | `preserve`, `always`, `never` |
+| `catchParenStyle` | `string` | `"preserve"` | Catch variable parentheses: `always` (catch (e)), `never` (catch e), `preserve` |
 | `elseOnNewLine` | `boolean` | `true` | else on its own line |
 | `forLoopSpacing` | `boolean` | `true` | Spaces around `to` and `step` |
 
@@ -306,6 +312,16 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | `alignAssignments` | `boolean` | `false` | Align `=` in consecutive assignments |
 | `fieldAccessConsistency` | `string` | `"preserve"` | `dot`, `method`, `preserve` |
 | `stringConcatStyle` | `string` | `"preserve"` | `preserve`, `plus`, `array-join` |
+
+### Casing
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `mathOperatorCasing` | `string` | `"NoChange"` | Casing for math operators (`mod`). Falls back to `keywordCasing` when not set |
+| `methodCasing` | `string` | `"NoChange"` | Casing applied to component method names |
+| `userFunctionCasing` | `string` | `"NoChange"` | Casing applied to user-defined function/sub names |
+| `userMethodCasing` | `string` | `"NoChange"` | Casing applied to user-defined AA method names |
+| `exactCasing` | `object` | `{}` | Per-identifier casing overrides applied after all other casing rules |
 
 ### Miscellaneous
 
@@ -325,6 +341,12 @@ Both packages are released via **GitHub Actions** workflows (Actions tab → Run
 1. Go to **Actions** → **Release kopytko-formatter** → **Run workflow**
 2. Select `patch`, `minor`, or `major`
 3. The workflow runs tests, bumps the version, updates the changelog, tags `kopytko-formatter-v{x.y.z}`, publishes to npm (OIDC provenance), and creates a GitHub Release
+
+### Release kopytko-linter (npm)
+
+1. Go to **Actions** → **Release kopytko-linter** → **Run workflow**
+2. Select `patch`, `minor`, or `major`
+3. The workflow runs tests, bumps the version, updates the changelog, tags `kopytko-linter-v{x.y.z}`, publishes to npm (OIDC provenance), and creates a GitHub Release
 
 ### Release vscode-kopytko (VS Code Marketplace)
 

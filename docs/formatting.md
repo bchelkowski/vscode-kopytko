@@ -917,6 +917,33 @@ Maximum number of keys before forcing an associative array to multi-line. For ex
 
 ---
 
+**`kopytko.format.splitArrayOpenBracket`**
+
+| Type | Values | Default |
+|---|---|---|
+| `boolean` | `true`, `false` | `false` |
+
+When `true`, splits `[{` onto separate lines in multi-item arrays for better readability.
+
+```brightscript
+' true:
+return [
+  {
+    name: "Component",
+  },
+  otherItem()
+]
+
+' false:
+return [{
+    name: "Component",
+  },
+  otherItem()
+]
+```
+
+---
+
 ## Operators & Expressions
 
 ---

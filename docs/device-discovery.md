@@ -77,12 +77,13 @@ CredentialStore (SecretStorage)
 | Copy IP | `kopytko.copyDeviceIp` | Copy the device IP address to the clipboard |
 | Open Web Portal | `kopytko.openDevicePortal` | Open the Roku developer web portal (`http://<ip>`) in a browser |
 | Remove Device | `kopytko.removeDevice` | Remove a manually-added or stale device from the list |
+| Copy to Clipboard | `kopytko.copyToClipboard` | Copy selected text or device info to the clipboard |
 
 ---
 
 ## Sidebar Tree View
 
-The **Roku Devices** panel appears in the Explorer sidebar. Each device entry shows:
+The **Roku Devices** panel appears in the **Kopytko** sidebar (its own activity bar container). Each device entry shows:
 
 - **Model name** — e.g. "Roku Ultra"
 - **IP address** — current network address

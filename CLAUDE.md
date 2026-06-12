@@ -26,7 +26,7 @@ packages/
     │   ├── builtins.ts             BrightScript built-in function catalog
     │   └── types.ts                FunctionDefinition interface
     ├── bin/kopytko-format.ts        CLI entry point
-    └── test/formatter.test.ts       38 formatter tests
+    └── test/formatter.test.ts       140+ test cases covering formatting and JSONC parsing
 src/
 ├── extension.ts                    Extension entry point
 ├── client/                         VS Code client (debug adapter, device discovery, tree views)
@@ -35,7 +35,7 @@ src/
     ├── providers/                  12 LSP providers (one per capability)
     │   └── formattingProvider.ts   Thin LSP adapter → calls kopytko-formatter
     ├── brightscript/               BrightScript catalogs and parsers
-    │   ├── builtins.ts             86 built-in functions
+    │   ├── builtins.ts             58 built-in functions, 53 keywords, keyword categories
     │   ├── components.ts           60 ro* components, 78 interfaces
     │   ├── sgNodes.ts              86 SceneGraph nodes
     │   ├── functionIndex.ts        Function/sub parser + multi-scope collector
@@ -44,10 +44,13 @@ src/
     │   └── ...                     globMatcher, mtopResolver, patternSiblings, xmlScriptParser
     ├── kopytko/
     │   ├── importResolver.ts       @import parser and resolver (with package cache)
-    │   └── moduleCatalog.ts        Dynamic Kopytko module export scanner
+    │   ├── moduleCatalog.ts        Dynamic Kopytko module export scanner
+    │   └── testFramework.ts        Test framework API catalog
     └── utils/
+        ├── brsFileCollector.ts     File walker
         ├── documentCache.ts        Per-document version-keyed results cache
         ├── workspaceFunctionIndex.ts  Built at startup, updated incrementally
+        ├── workspaceUtils.ts       Search-root builder
         ├── fsWrapper.ts            Thin fs wrapper (enables Sinon stubbing in tests)
         └── textUtils.ts            Shared helpers (getWord, escapeRegex, stripStringLiterals)
 test/                               Mirrors src/server/ structure; Mocha + Chai + Sinon
@@ -75,7 +78,7 @@ The formatting engine lives in `packages/kopytko-formatter/` — a standalone np
 ```bash
 cd packages/kopytko-formatter
 npm install              # install package dependencies
-npm test                 # run 38 formatter tests
+npm test                 # run 140+ formatter tests
 npm run build            # compile to dist/
 ```
 
@@ -187,4 +190,4 @@ The formatting engine is extracted into the standalone `packages/kopytko-formatt
 
 **To add a new formatting option:** add the field to `FormattingConfig` in `packages/kopytko-formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
 
-**Duplicate sources:** `builtins.ts`, `casingUtils.ts`, and `formattingConfig.ts` exist in both the extension (`src/server/brightscript/`) and the formatter package (`packages/kopytko-formatter/src/`). The extension copies are used by non-formatting providers (completion, hover, etc.). Keep them in sync when making changes.
+**Duplicate sources:** `builtins.ts`, `casing.ts`, and `config.ts` exist in both the extension (`src/server/brightscript/`) and the formatter package (`packages/kopytko-formatter/src/`). The extension copies are used by non-formatting providers (completion, hover, etc.). Keep them in sync when making changes.

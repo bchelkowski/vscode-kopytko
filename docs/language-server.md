@@ -83,7 +83,7 @@ When the cursor is positioned after `m.top.` in a `.brs` file that belongs to a 
 
 Because all SG nodes ultimately inherit from `Node`, methods like `observeFieldScoped`, `unobserveFieldScoped`, `findNode`, `setFocus`, and `hasFocus` are always offered as long as the component chain terminates in a known native node.
 
-**Catalog:** `src/server/brightscript/sgNodes.ts`. Covers: `Node`, `Group`, `LayoutGroup`, `Rectangle`, `Label`, `ScrollingLabel`, `SimpleLabel`, `Poster`, `Video`, `Audio`, `Button`, `BusySpinner`, `Timer`, `Animation`, `ParallelAnimation`, `SequentialAnimation`, `FloatFieldInterpolator`, `Vector2DFieldInterpolator`, `ColorFieldInterpolator`, `ContentNode`, `Scene`, `LabelList`, `MarkupList`, `MarkupGrid`, `RowList`, `TextEditBox`, `Keyboard`, `MiniKeyboard`, `PinPad`, `StandardMessageDialog`, `StandardProgressDialog`, `Font`.
+**Catalog:** `src/server/brightscript/sgNodes.ts`. Covers: `Animation`, `AnimationBase`, `ArrayGrid`, `Audio`, `BusySpinner`, `Button`, `ButtonGroup`, `ChannelStore`, `CheckList`, `ColorFieldInterpolator`, `ComponentLibrary`, `ContentNode`, `Dialog`, `DynamicCustomKeyboard`, `DynamicKeyGrid`, `DynamicKeyboard`, `DynamicKeyboardBase`, `DynamicMiniKeyboard`, `DynamicPinPad`, `FloatFieldInterpolator`, `Font`, `GridPanel`, `Group`, `InfoPane`, `Keyboard`, `KeyboardDialog`, `Label`, `LabelBase`, `LabelList`, `LayoutGroup`, `ListPanel`, `MarkupGrid`, `MarkupList`, `MaskGroup`, `MiniKeyboard`, `MonospaceLabel`, `MultiStyleLabel`, `Node`, `Overhang`, `OverhangPanelSetScene`, `Panel`, `PanelSet`, `ParallelAnimation`, `PinDialog`, `PinPad`, `Poster`, `PosterGrid`, `ProgressDialog`, `Rectangle`, `RowList`, `Scene`, `ScrollableText`, `ScrollingLabel`, `SequentialAnimation`, `SimpleLabel`, `SoundEffect`, `StandardDialog`, `StandardKeyboardDialog`, `StandardMessageDialog`, `StandardPinPadDialog`, `StandardProgressDialog`, `StdDlgAreaBase`, `StdDlgBulletTextItem`, `StdDlgButton`, `StdDlgButtonArea`, `StdDlgContentArea`, `StdDlgCustomItem`, `StdDlgDeterminateProgressItem`, `StdDlgGraphicItem`, `StdDlgItemBase`, `StdDlgKeyboardItem`, `StdDlgMultiStyleTextItem`, `StdDlgProgressItem`, `StdDlgSideCardArea`, `StdDlgTextItem`, `StdDlgTitleArea`, `TargetGroup`, `TargetList`, `TargetSet`, `TextEditBox`, `TimeGrid`, `Timer`, `Vector2DFieldInterpolator`, `Video`, `VoiceTextEditBox`, `ZoomRowList`.
 
 #### Ask-to-insert `@import` on Kopytko export completion
 
@@ -386,6 +386,23 @@ The client passes the following `initializationOptions` to the server on startup
 | `trace` | `kopytko.languageServer.trace` setting |
 
 After startup the server watches the `kopytko` configuration section for changes and re-fetches casing options and generated-path patterns live.
+
+### Read-only paths
+
+The `kopytko.readOnlyPaths` setting accepts an array of glob patterns for files the extension should treat as read-only. Matched files are excluded from document formatting and code action edits.
+
+```jsonc
+// .vscode/settings.json
+{
+  "kopytko.readOnlyPaths": [
+    "**/node_modules/**",
+    "**/generated/**",
+    "**/vendor/*.brs"
+  ]
+}
+```
+
+Supported wildcards: `*` matches any characters except `/`; `**` matches any characters including `/`.
 
 ## Debugging the Language Server
 
