@@ -37,13 +37,13 @@ describe('BrightScriptDiagnosticsProvider', () => {
     expect(diags).to.be.empty;
   });
 
-  it('produces a warning for an unresolved internal import', async () => {
+  it('produces an error for an unresolved internal import', async () => {
     fsExistsStub.returns(false);
     const doc = makeDocument(`' @import /components/missing.brs\nsub init()\nend sub`);
     const diags = await provider.provideDiagnostics(doc);
 
     expect(diags).to.have.length(1);
-    expect(diags[0].severity).to.equal(DiagnosticSeverity.Warning);
+    expect(diags[0].severity).to.equal(DiagnosticSeverity.Error);
     expect(diags[0].code).to.equal('import/unresolved');
   });
 
@@ -100,7 +100,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(diags.filter((d) => d.code === 'import/duplicate')).to.be.empty;
     });
 
-    it('produces an error on the second occurrence of the same import', async () => {
+    it('produces a warning on the second occurrence of the same import', async () => {
       const doc = makeDocument([
         "' @import /utils.brs",
         "' @import /utils.brs",
@@ -110,7 +110,7 @@ describe('BrightScriptDiagnosticsProvider', () => {
       const diags = await provider.provideDiagnostics(doc);
       const dupes = diags.filter((d) => d.code === 'import/duplicate');
       expect(dupes).to.have.length(1);
-      expect(dupes[0].severity).to.equal(DiagnosticSeverity.Error);
+      expect(dupes[0].severity).to.equal(DiagnosticSeverity.Warning);
     });
 
     it('attaches the duplicate diagnostic to the second occurrence (line index 1)', async () => {
@@ -825,12 +825,12 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(diags[0].message).to.include('/generated/AutoComponent.brs');
     });
 
-    it('still shows Warning for unresolved imports that do not match any pattern', async () => {
+    it('still shows Error for unresolved imports that do not match any pattern', async () => {
       fsExistsStub.returns(false);
       const doc = makeDocument("' @import /missing/RealFile.brs");
       const diags = await provider.provideDiagnostics(doc, ['/generated/**']);
 
-      expect(diags[0].severity).to.equal(DiagnosticSeverity.Warning);
+      expect(diags[0].severity).to.equal(DiagnosticSeverity.Error);
       expect(diags[0].code).to.equal('import/unresolved');
     });
 
@@ -851,12 +851,12 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(diags[0].code).to.equal('import/build-generated');
     });
 
-    it('empty generatedPaths keeps existing Warning behaviour', async () => {
+    it('empty generatedPaths keeps existing Error behaviour', async () => {
       fsExistsStub.returns(false);
       const doc = makeDocument("' @import /missing.brs");
       const diags = await provider.provideDiagnostics(doc, []);
 
-      expect(diags[0].severity).to.equal(DiagnosticSeverity.Warning);
+      expect(diags[0].severity).to.equal(DiagnosticSeverity.Error);
     });
   });
 
@@ -2087,12 +2087,12 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(diags.filter((d) => d.code === 'identifier/unused-parameter')).to.be.empty;
     });
 
-    it('uses Hint severity', async () => {
+    it('uses Warning severity', async () => {
       const doc = makeDocument('sub init(cb as Function)\n  return\nend sub');
       const diags = await provider.provideDiagnostics(doc);
       const unused = diags.filter((d) => d.code === 'identifier/unused-parameter');
       expect(unused).to.have.length(1);
-      expect(unused[0].severity).to.equal(DiagnosticSeverity.Hint);
+      expect(unused[0].severity).to.equal(DiagnosticSeverity.Warning);
     });
   });
 
