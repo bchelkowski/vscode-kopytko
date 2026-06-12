@@ -98,6 +98,22 @@ export function applyCasingWithOverrides(
   return applyCasing(name, option);
 }
 
+import type { KeywordCategory } from './builtins';
+
+/**
+ * Resolves the effective casing option for a keyword sub-category.
+ * Falls back to the general `keywords` casing when the specific setting is not defined.
+ */
+export function resolveKeywordCasing(category: KeywordCategory, config: CasingConfig): CasingOption {
+  switch (category) {
+    case 'type': return config.types ?? config.keywords;
+    case 'literal': return config.literals ?? config.keywords;
+    case 'logicOperator': return config.logicOperators ?? config.keywords;
+    case 'mathOperator': return config.mathOperators ?? config.keywords;
+    case 'keyword': return config.keywords;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

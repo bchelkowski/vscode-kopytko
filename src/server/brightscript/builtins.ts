@@ -118,3 +118,28 @@ export const BRIGHTSCRIPT_KEYWORDS = [
   'to', 'true', 'try', 'void', 'while',
 ];
 
+/** Keyword sub-categories for granular casing control. */
+export type KeywordCategory = 'keyword' | 'type' | 'literal' | 'logicOperator' | 'mathOperator';
+
+const _keywordCategories: Record<string, KeywordCategory> = {};
+
+// Types
+for (const t of ['boolean', 'double', 'dynamic', 'float', 'integer', 'longinteger', 'object', 'string', 'void', 'interface']) {
+  _keywordCategories[t] = 'type';
+}
+// Literals
+for (const l of ['true', 'false', 'invalid']) {
+  _keywordCategories[l] = 'literal';
+}
+// Logic operators
+for (const o of ['and', 'or', 'not']) {
+  _keywordCategories[o] = 'logicOperator';
+}
+// Math operators
+_keywordCategories['mod'] = 'mathOperator';
+
+/** Returns the category of a keyword (lowercase). */
+export function getKeywordCategory(keyword: string): KeywordCategory {
+  return _keywordCategories[keyword] ?? 'keyword';
+}
+
