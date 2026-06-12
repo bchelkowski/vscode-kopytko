@@ -28,7 +28,7 @@ describe('importRules — checkImports', () => {
 
     const dups = diags.filter(d => d.code === 'import/duplicate');
     expect(dups).to.have.lengthOf(1);
-    expect(dups[0].severity).to.equal('error');
+    expect(dups[0].severity).to.equal('warning');
     expect(dups[0].message).to.include('duplicate');
   });
 

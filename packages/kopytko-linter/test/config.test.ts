@@ -74,7 +74,7 @@ describe('config', () => {
         rules: { 'import/duplicate': 'critical' },
       });
       // Should remain the default since 'critical' is not valid
-      expect(config.rules['import/duplicate']).to.equal('error');
+      expect(config.rules['import/duplicate']).to.equal('warning');
     });
 
     it('overrides sourceDir', () => {

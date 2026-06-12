@@ -14,7 +14,7 @@ export interface LinterConfig {
 }
 
 export const DEFAULT_RULE_CONFIG: RuleConfig = {
-  'import/duplicate': 'error',
+  'import/duplicate': 'warning',
   'import/missing-path': 'error',
   'import/path-not-absolute': 'warning',
   'import/wrong-comment-style': 'error',
