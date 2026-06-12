@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [0.2.0] - 2026-06-12
+
+### Added
+- Migrate debugger to socket-based debug protocol (port 8081)
+- Reliable Roku device discovery with SSDP, persistence, and sidebar UI
+
 ## [0.1.8] - 2026-06-11
 
 ### Fixed
