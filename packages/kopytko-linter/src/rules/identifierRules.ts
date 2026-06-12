@@ -11,9 +11,9 @@ import {
   extractParamList,
 } from '../analysis/scopeAnalysis';
 
-const CALL_RE = /(?<![.\w])([a-zA-Z_]\w*)\s*\(/g;
+const CALL_RE = /(?<![.\w@])([a-zA-Z_]\w*)\s*\(/g;
 const DECL_RE = /^\s*(?:function|sub)\s+\w+\s*\(/i;
-const EXPR_IDENT_RE = /(?<![.\w])([a-zA-Z_]\w*)/g;
+const EXPR_IDENT_RE = /(?<![.\w@])([a-zA-Z_]\w*)/g;
 const _alwaysValidVarIdents = new Set(['m']);
 
 function collectLocalNames(lines: string[]): Set<string> {

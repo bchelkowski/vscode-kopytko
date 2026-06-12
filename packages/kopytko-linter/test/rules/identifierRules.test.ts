@@ -125,6 +125,25 @@ describe('identifierRules', () => {
       expect(undef).to.be.empty;
     });
 
+    it('does not flag XML attribute access via @ operator', () => {
+      const content = [
+        'function doWork()',
+        '  name = tracking@event',
+        '  value = node@id',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: {
+          knownFuncNames: new Set(['dowork']),
+        },
+      });
+
+      const diags = checkUndefinedCalls(ctx);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
     it('does not report when the rule is turned off', () => {
       const content = [
         'function doWork()',
@@ -221,6 +240,20 @@ describe('identifierRules', () => {
       const ctx = createRuleContext(content, { config });
       const diags = checkUndefinedVariables(ctx);
       expect(diags).to.be.empty;
+    });
+
+    it('does not flag XML attribute access via @ operator', () => {
+      const content = [
+        'function doWork(tracking)',
+        '  name = tracking@event',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedVariables(ctx);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-variable');
+      const flaggedNames = undef.map(d => d.message);
+      expect(flaggedNames.some(m => m.includes("'event'"))).to.be.false;
     });
   });
 
