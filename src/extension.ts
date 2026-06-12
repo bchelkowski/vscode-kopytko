@@ -46,6 +46,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Roku device discovery ───────────────────────────────────────────────
   const discoveryEnabled = config.get<boolean>('deviceDiscovery.enabled', true);
+  const scanTimeout = config.get<number>('deviceDiscovery.scanTimeout', 5000);
+  const showNotifications = config.get<boolean>('deviceDiscovery.showNotifications', true);
 
   const ssdp = new SsdpClient();
   const ecp = new EcpClient();
@@ -54,7 +56,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const networkMonitor = new NetworkMonitor();
   const discoveryChannel = vscode.window.createOutputChannel('Roku Discovery');
 
-  deviceManager = new DeviceManager(ssdp, ecp, store, credentials, networkMonitor, discoveryChannel);
+  deviceManager = new DeviceManager(ssdp, ecp, store, credentials, networkMonitor, discoveryChannel, {
+    scanTimeout,
+    showNotifications,
+    notify: (msg) => vscode.window.showInformationMessage(msg),
+  });
   treeProvider = new DeviceTreeProvider(deviceManager);
 
   context.subscriptions.push(

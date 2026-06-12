@@ -22,6 +22,12 @@ interface DeviceManagerEvents {
   'scan-ended': [];
 }
 
+export interface DeviceManagerOptions {
+  scanTimeout?: number;
+  showNotifications?: boolean;
+  notify?: (message: string) => void;
+}
+
 /**
  * Central orchestrator for Roku device discovery.
  *
@@ -36,6 +42,9 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
   private networkId = '';
   private activeSerial: string | undefined;
   private log: (message: string) => void;
+  private readonly scanTimeout: number;
+  private readonly showNotifications: boolean;
+  private readonly notify: (message: string) => void;
 
   constructor(
     private readonly ssdp: SsdpClient,
@@ -44,8 +53,12 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     private readonly credentials: CredentialStore,
     private readonly networkMonitor: NetworkMonitor,
     outputChannel?: { appendLine(value: string): void },
+    options?: DeviceManagerOptions,
   ) {
     super();
+    this.scanTimeout = options?.scanTimeout ?? 5000;
+    this.showNotifications = options?.showNotifications ?? true;
+    this.notify = options?.notify ?? (() => {});
     this.log = outputChannel
       ? (msg: string) => outputChannel.appendLine(`[${new Date().toISOString()}] ${msg}`)
       : () => {};
@@ -66,13 +79,13 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     this.networkMonitor.start();
     await this.ssdp.start();
     this.log('SSDP listening — starting initial scan');
-    await this.ssdp.scan();
+    await this.ssdp.scan(this.scanTimeout);
     this.store.cleanup();
   }
 
   /** Trigger an active SSDP scan. */
   async scan(): Promise<void> {
-    await this.ssdp.scan();
+    await this.ssdp.scan(this.scanTimeout);
   }
 
   /** Stop all subsystems and release resources. */
@@ -214,6 +227,9 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
       this.devices.set(found.serialNumber, device);
       this.emit('devices-changed');
       this.healthCheckDevice(found.serialNumber);
+      if (this.showNotifications) {
+        this.notify(`Roku device discovered: ${found.ip}`);
+      }
     }
   }
 
@@ -229,6 +245,9 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
       }
 
       this.emit('devices-changed');
+      if (this.showNotifications) {
+        this.notify(`Roku device went offline: ${device.friendlyName} (${ip})`);
+      }
       return;
     }
   }
@@ -265,7 +284,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     this.emit('devices-changed');
 
     await this.ssdp.restart();
-    await this.ssdp.scan();
+    await this.ssdp.scan(this.scanTimeout);
   }
 
   // ── Health checks ─────────────────────────────────────────
