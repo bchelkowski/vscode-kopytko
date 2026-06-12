@@ -126,7 +126,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     },
     serverInfo: {
       name: 'Kopytko BrightScript Language Server',
-      version: '0.1.0',
+      version: require('../../package.json').version ?? '0.0.0',
     },
   };
 });
