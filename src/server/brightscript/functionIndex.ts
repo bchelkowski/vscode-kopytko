@@ -6,6 +6,16 @@ import { findSiblingFiles } from './patternSiblings';
 import { buildSearchRoots } from '../utils/workspaceUtils';
 import { isTestFile, getTestBaseName } from '../kopytko/testFramework';
 
+/**
+ * Normalizes a file path for use in visited/dedup sets.
+ * On case-insensitive file systems (macOS, Windows) the path is lowercased
+ * so that different casings of the same file are recognized as identical.
+ */
+function normalizePathKey(p: string): string {
+  const n = nodePath.normalize(p);
+  return process.platform === 'linux' ? n : n.toLowerCase();
+}
+
 export interface FunctionDefinition {
   name: string;
   nameLower: string;
@@ -39,7 +49,7 @@ const INNER_COLON_METHOD_RE = /^\s*(\w+)\s*:\s*(?:function|sub)\s*\(/i;
 function deduplicateByLocation<T extends { filePath: string; line: number; column: number }>(defs: T[]): T[] {
   const seen = new Set<string>();
   return defs.filter(d => {
-    const key = `${d.filePath}:${d.line}:${d.column}`;
+    const key = `${normalizePathKey(d.filePath)}:${d.line}:${d.column}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -86,16 +96,16 @@ export function collectFunctionsFromImports(
   importResolver: KopytkoImportResolver,
   visited: Set<string> = new Set(),
 ): FunctionDefinition[] {
-  const normalPath = nodePath.normalize(filePath);
+  const normalPath = normalizePathKey(filePath);
   if (visited.has(normalPath)) return [];
   visited.add(normalPath);
 
-  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, normalPath)];
+  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, nodePath.normalize(filePath))];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
-    const resolved = importResolver.resolveImportPath(imp, normalPath);
-    if (resolved && !visited.has(nodePath.normalize(resolved)) && fsWrapper.existsSync(resolved)) {
+    const resolved = importResolver.resolveImportPath(imp, nodePath.normalize(filePath));
+    if (resolved && !visited.has(normalizePathKey(resolved)) && fsWrapper.existsSync(resolved)) {
       try {
         const text = fsWrapper.readFileSync(resolved, 'utf-8');
         defs.push(...collectFunctionsFromImports(resolved, text, importResolver, visited));
@@ -120,8 +130,9 @@ export function collectAllFunctions(
   siblingPatterns: string[][] = [],
 ): FunctionDefinition[] {
   const normalPath = nodePath.normalize(filePath);
-  if (visited.has(normalPath)) return [];
-  visited.add(normalPath);
+  const pathKey = normalizePathKey(filePath);
+  if (visited.has(pathKey)) return [];
+  visited.add(pathKey);
 
   const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, normalPath)];
 
@@ -129,7 +140,7 @@ export function collectAllFunctions(
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
     const resolved = importResolver.resolveImportPath(imp, normalPath);
-    if (resolved && !visited.has(nodePath.normalize(resolved)) && fsWrapper.existsSync(resolved)) {
+    if (resolved && !visited.has(normalizePathKey(resolved)) && fsWrapper.existsSync(resolved)) {
       try {
         const text = fsWrapper.readFileSync(resolved, 'utf-8');
         defs.push(...collectAllFunctions(resolved, text, importResolver, visited, siblingPatterns));
@@ -142,7 +153,7 @@ export function collectAllFunctions(
   const sourceDir = importResolver.getSourceDir();
   const siblings = getXmlSiblingPaths(normalPath, workspaceFolders, sourceDir);
   for (const sibling of siblings) {
-    if (visited.has(nodePath.normalize(sibling))) continue;
+    if (visited.has(normalizePathKey(sibling))) continue;
     if (!fsWrapper.existsSync(sibling)) continue;
     try {
       const text = fsWrapper.readFileSync(sibling, 'utf-8');
@@ -152,7 +163,7 @@ export function collectAllFunctions(
 
   // 3. Collect from pattern-based sibling files (e.g. *.component.brs ↔ *.template.brs)
   for (const siblingPath of findSiblingFiles(normalPath, siblingPatterns)) {
-    if (visited.has(nodePath.normalize(siblingPath))) continue;
+    if (visited.has(normalizePathKey(siblingPath))) continue;
     if (!fsWrapper.existsSync(siblingPath)) continue;
     try {
       const text = fsWrapper.readFileSync(siblingPath, 'utf-8');
@@ -163,7 +174,7 @@ export function collectAllFunctions(
   // 4. For test files: include tested file scope, extends chain, and test siblings
   if (isTestFile(normalPath)) {
     for (const testedPath of resolveTestedFiles(normalPath)) {
-      if (visited.has(nodePath.normalize(testedPath))) continue;
+      if (visited.has(normalizePathKey(testedPath))) continue;
       if (!fsWrapper.existsSync(testedPath)) continue;
       try {
         const text = fsWrapper.readFileSync(testedPath, 'utf-8');
@@ -174,7 +185,7 @@ export function collectAllFunctions(
 
     // Include sibling test files (e.g. Foo.test.brs ↔ Foo_Bar.test.brs share scope)
     for (const siblingTest of findTestSiblings(normalPath)) {
-      if (visited.has(nodePath.normalize(siblingTest))) continue;
+      if (visited.has(normalizePathKey(siblingTest))) continue;
       if (!fsWrapper.existsSync(siblingTest)) continue;
       try {
         const text = fsWrapper.readFileSync(siblingTest, 'utf-8');
@@ -236,15 +247,16 @@ export function collectAllInnerMethods(
   siblingPatterns: string[][] = [],
 ): InnerMethodDefinition[] {
   const normalPath = nodePath.normalize(filePath);
-  if (visited.has(normalPath)) return [];
-  visited.add(normalPath);
+  const pathKey = normalizePathKey(filePath);
+  if (visited.has(pathKey)) return [];
+  visited.add(pathKey);
 
   const defs: InnerMethodDefinition[] = [...parseInnerMethodDefs(fileText, normalPath)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
     const resolved = importResolver.resolveImportPath(imp, normalPath);
-    if (resolved && !visited.has(nodePath.normalize(resolved)) && fsWrapper.existsSync(resolved)) {
+    if (resolved && !visited.has(normalizePathKey(resolved)) && fsWrapper.existsSync(resolved)) {
       try {
         const importedText = fsWrapper.readFileSync(resolved, 'utf-8');
         defs.push(...collectAllInnerMethods(resolved, importedText, importResolver, visited, siblingPatterns));
@@ -256,7 +268,7 @@ export function collectAllInnerMethods(
   const sourceDir = importResolver.getSourceDir();
   const siblings = getXmlSiblingPaths(normalPath, workspaceFolders, sourceDir);
   for (const sibling of siblings) {
-    if (visited.has(nodePath.normalize(sibling))) continue;
+    if (visited.has(normalizePathKey(sibling))) continue;
     if (!fsWrapper.existsSync(sibling)) continue;
     try {
       const siblingText = fsWrapper.readFileSync(sibling, 'utf-8');
@@ -266,7 +278,7 @@ export function collectAllInnerMethods(
 
   // Collect from pattern-based sibling files
   for (const siblingPath of findSiblingFiles(normalPath, siblingPatterns)) {
-    if (visited.has(nodePath.normalize(siblingPath))) continue;
+    if (visited.has(normalizePathKey(siblingPath))) continue;
     if (!fsWrapper.existsSync(siblingPath)) continue;
     try {
       const siblingText = fsWrapper.readFileSync(siblingPath, 'utf-8');
@@ -274,10 +286,10 @@ export function collectAllInnerMethods(
     } catch { /* skip unreadable files */ }
   }
 
-  // Deduplicate by location
+  // Deduplicate by location (normalize path for case-insensitive FS)
   const seen = new Set<string>();
   return defs.filter(d => {
-    const key = `${d.filePath}:${d.line}:${d.column}`;
+    const key = `${normalizePathKey(d.filePath)}:${d.line}:${d.column}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -493,7 +505,7 @@ export function findTestSiblings(testFilePath: string): string[] {
   const baseName = getTestBaseName(testFilePath);
   if (!baseName) return [];
 
-  const normalizedSelf = nodePath.normalize(testFilePath);
+  const normalizedSelf = normalizePathKey(testFilePath);
   const siblings: string[] = [];
 
   try {
@@ -502,7 +514,7 @@ export function findTestSiblings(testFilePath: string): string[] {
       const entryBase = getTestBaseName(entry);
       if (entryBase.toLowerCase() !== baseName.toLowerCase()) continue;
       const fullPath = nodePath.join(dir, entry);
-      if (nodePath.normalize(fullPath) !== normalizedSelf) {
+      if (normalizePathKey(fullPath) !== normalizedSelf) {
         siblings.push(fullPath);
       }
     }
