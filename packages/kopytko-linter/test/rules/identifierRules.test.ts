@@ -70,6 +70,32 @@ describe('identifierRules', () => {
       expect(wrong).to.be.empty;
     });
 
+    it('does not report wrong-arg-count when argument is an AA literal', () => {
+      const content = [
+        'function doWork()',
+        '  requestResult = FormatJson({ timestamp: "now", platform: "roku" })',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedCalls(ctx);
+      const wrong = diags.filter(d => d.code === 'identifier/wrong-arg-count');
+      expect(wrong).to.be.empty;
+    });
+
+    it('does not report wrong-arg-count when argument is an array literal', () => {
+      const content = [
+        'function doWork()',
+        '  x = Len([1, 2, 3])',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedCalls(ctx);
+      const wrong = diags.filter(d => d.code === 'identifier/wrong-arg-count');
+      expect(wrong).to.be.empty;
+    });
+
     it('skips main.brs files', () => {
       const content = [
         'function main()',

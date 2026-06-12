@@ -198,10 +198,12 @@ export function countCallArgs(stripped: string, openParenPos: number): number | 
       parenDepth--;
       if (parenDepth === 0) return nonEmpty ? topLevelCommas + 1 : 0;
     } else if (ch === '[') {
+      if (parenDepth === 1 && squareDepth === 0 && braceDepth === 0) nonEmpty = true;
       squareDepth++;
     } else if (ch === ']') {
       squareDepth--;
     } else if (ch === '{') {
+      if (parenDepth === 1 && squareDepth === 0 && braceDepth === 0) nonEmpty = true;
       braceDepth++;
     } else if (ch === '}') {
       braceDepth--;
