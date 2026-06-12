@@ -1,6 +1,21 @@
 # Changelog
 
 
+## [0.2.2] - 2026-06-12
+
+### Added
+- Add quick fix for duplicate imports
+
+### Fixed
+- Fix all lint errors in test files
+- Read server version from package.json
+- Wire scanTimeout and showNotifications device discovery settings
+- Normalize paths case-insensitively to fix macOS duplicate definitions
+- Auto-import functions from _mocks/*.mock.brs in test files
+
+### Changed
+- Delete deprecated modules.ts and backport granular keyword casing
+
 ## [0.2.1] - 2026-06-12
 
 ### Fixed
