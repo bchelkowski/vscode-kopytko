@@ -4,7 +4,7 @@
     {
       "label": "compile",
       "type": "shell",
-      "command": "npm run compile",
+      "command": "source ~/.nvm/nvm.sh && npm run compile",
       "group": {
         "kind": "build",
         "isDefault": true
