@@ -22,7 +22,7 @@ This document is the canonical list of extension features. Each feature links to
 | Local variables (function parameters, assignments, for-loop vars) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `as <type>` annotations (primitive types + ro\* components) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `CreateObject("…")` component name completions (inside string only) | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
-| Component member completion via `CreateObject` / typed-param inference | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
+| Component member completion via `CreateObject` / typed-param / numeric literal type inference | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
 | Inner method completion on dot-access (`obj.` and `Constructor().`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `m.top.` member completion (own XML interface, parent components, SG node catalog) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `@import` / `@mock` annotation snippets and path auto-complete | ✅ Implemented | [language-server.md](./language-server.md) |
@@ -36,6 +36,7 @@ This document is the canonical list of extension features. Each feature links to
 | Hover docs for built-in functions, component names, and component methods | ✅ Implemented | [language-server.md](./language-server.md) |
 | Hover docs for user-defined functions (signature, source file) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Hover docs for Kopytko module exports | ✅ Implemented | [language-server.md](./language-server.md) |
+| Hover type info for numeric literals and variables assigned from them | ✅ Implemented | [language-server.md](./language-server.md) |
 | Component catalog with firmware `since`, deprecation, Roku docs links | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
 | Go-to-definition for `@import`/`@mock` paths and user-defined functions | ✅ Implemented | [language-server.md](./language-server.md) |
 | Signature help (`textDocument/signatureHelp`) | ✅ Implemented | [language-server.md](./language-server.md) |

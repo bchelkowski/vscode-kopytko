@@ -27,7 +27,8 @@ VS Code Extension Host
               └── (brightscript/builtins, brightscript/components,
                    brightscript/functionIndex, brightscript/xmlScriptParser,
                    brightscript/globMatcher, brightscript/casingUtils,
-                   brightscript/typeInference, brightscript/patternSiblings,
+                   brightscript/typeInference, brightscript/numericLiterals,
+                   brightscript/patternSiblings,
                    brightscript/sgNodes, brightscript/mtopResolver,
                    utils/documentCache, utils/textUtils)
 ```
@@ -41,6 +42,8 @@ Returns Markdown documentation when the cursor is over:
 - **BrightScript built-in functions** — signature, category badge, description sourced from `src/server/brightscript/builtins.ts`
 - **BrightScript component names** — description, interface list, Roku docs link, catalog last-verified date
 - **BrightScript component methods** — signature, return type, interface attribution, Roku docs link
+- **BrightScript numeric literals** — type identification for all literal formats: hex integers (`&HFF` → Integer), floats (`2.01`, `1.23E+30`, `2!` → Float), doubles (`1.23D-12`, `2.3#` → Double), long integers (`42&`, `&hABCDEF&` → LongInteger)
+- **Variables with inferred primitive types** — when a variable is assigned from a numeric literal (e.g. `flags = &HFF`), hovering the variable shows its inferred type (Integer)
 - **Kopytko module exports** — function name, module name (derived from the source file name), NPM package, and signature; sourced from the dynamic `KopytkoModuleCatalog` (see below)
 - **User-defined functions** — function name, source file path, and full declaration signature with parameter names and types; resolved from the current file, `@import` chain, XML sibling scripts, and pattern-based sibling files
 
@@ -203,6 +206,7 @@ This diagnostic is only emitted for built-ins listed in the catalog. User-define
 - Assignment targets (lvalues) — `x = …` defines a variable, it does not require `x` to pre-exist.
 - Code at file level (outside any function/sub) — not checked.
 - Anything inside a string literal or comment.
+- Numeric literal components — hex digit sequences in `&HFF`-style literals, type-suffix characters (`!`, `#`, `%`, `&`), and exponent markers (`E`, `D`) are stripped before scanning to prevent false positives.
 - Conditional compilation directives (`#if`, `#const`, `#else`, `#end if`) — variables used there are `bs_const` values defined in the manifest, not BrightScript scope.
 
 #### Unused parameter diagnostic
@@ -243,7 +247,7 @@ The checker tracks nesting of `for`, `while`, and other block structures. A flow
 BrightScript allows throwing only strings or associative arrays. When an AA is thrown it should have a `message` field. `throw (expr)` with outer parentheses is valid — they are treated as visual grouping only and are unwrapped before analysis.
 
 **What IS flagged:**
-- Numeric literals (integer, negative, floating-point): `throw 42`, `throw -1`, `throw 3.14`
+- Numeric literals (integer, negative, floating-point, hex, type-suffixed): `throw 42`, `throw -1`, `throw 3.14`, `throw &HFF`, `throw 42&`
 - Array literals: `throw [1, 2]`
 - The `invalid` keyword: `throw invalid`
 - AA literals missing a `message` field: `throw { number: -1 }`
