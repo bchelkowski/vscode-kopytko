@@ -212,6 +212,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
       this.log(`SSDP: new device found — ${found.serialNumber} at ${found.ip}:${found.port}`);
       // New device — add in unknown state and trigger health check
       const device: RokuDevice = {
+        deviceId: '',
         ip: found.ip,
         port: found.port,
         serialNumber: found.serialNumber,
@@ -370,6 +371,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
 
   private async persistDevice(device: RokuDevice): Promise<void> {
     const stored: StoredDevice = {
+      deviceId: device.deviceId,
       serialNumber: device.serialNumber,
       ip: device.ip,
       port: device.port,
@@ -403,10 +405,11 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     source: DeviceSource,
   ): RokuDevice {
     return {
+      deviceId: info['device-id'] || '',
       ip,
       port,
       serialNumber: serial,
-      friendlyName: info['friendly-device-name'] || info['default-device-name'] || `Roku (${ip})`,
+      friendlyName: info['user-device-name'] || info['friendly-device-name'] || info['default-device-name'] || `Roku (${ip})`,
       modelName: info['model-name'] || 'Unknown',
       modelNumber: info['model-number'] || '',
       softwareVersion: info['software-version'] || '',
@@ -423,6 +426,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
   /** Convert a StoredDevice into an offline RokuDevice placeholder. */
   private storedToRokuDevice(stored: StoredDevice): RokuDevice {
     return {
+      deviceId: stored.deviceId || '',
       ip: stored.ip,
       port: stored.port,
       serialNumber: stored.serialNumber,

@@ -9,17 +9,24 @@ export class DeviceTreeItem extends vscode.TreeItem {
   ) {
     super(device.friendlyName, vscode.TreeItemCollapsibleState.Collapsed);
 
-    this.description = `${device.ip}  ·  ${device.modelName}`;
+    this.description = `(${device.ip})`;
     if (isActive) {
       this.description += '  ✓ active';
     }
+
+    const info = device.deviceInfo ?? {};
+    const osLine = device.softwareVersion
+      ? (info['software-build']
+        ? `OS: ${device.softwareVersion} (${info['software-build']})`
+        : `OS: ${device.softwareVersion}`)
+      : '';
 
     this.tooltip = new vscode.MarkdownString(
       `**${device.friendlyName}**\n\n` +
       `IP: \`${device.ip}:${device.port}\`\n\n` +
       `Model: ${device.modelName} (${device.modelNumber})\n\n` +
-      `S/N: ${device.serialNumber}\n\n` +
-      `Firmware: ${device.softwareVersion}`,
+      `Device ID: ${device.deviceId || 'unknown'}\n\n` +
+      (osLine ? `${osLine}\n\n` : ''),
     );
 
     this.iconPath = DeviceTreeItem.getIcon(device, isActive);
@@ -47,8 +54,7 @@ export class DeviceInfoItem extends vscode.TreeItem {
   constructor(key: string, value: string) {
     super(key, vscode.TreeItemCollapsibleState.None);
     this.description = value;
-    this.iconPath = new vscode.ThemeIcon('symbol-field');
-    this.contextValue = 'rokuDeviceInfo';
+    this.contextValue = 'deviceInfo';
     this.tooltip = `Click to copy ${value}`;
     this.command = {
       title: 'Copy to Clipboard',
@@ -63,7 +69,7 @@ export class DeviceActionItem extends vscode.TreeItem {
   constructor(label: string, icon: vscode.ThemeIcon, commandId: string, args?: unknown[]) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.iconPath = icon;
-    this.contextValue = 'rokuDeviceAction';
+    this.contextValue = 'deviceAction';
     this.command = {
       title: label,
       command: commandId,

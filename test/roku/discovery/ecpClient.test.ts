@@ -41,17 +41,29 @@ describe('EcpClient', () => {
 
   describe('queryDeviceInfo', () => {
     const DEVICE_INFO_XML = [
-      '<udn>unique-id</udn>',
-      '<serial-number>YN00AB123456</serial-number>',
-      '<friendly-device-name>Living Room Roku</friendly-device-name>',
-      '<model-name>Roku Ultra</model-name>',
-      '<model-number>4800X</model-number>',
-      '<software-version>12.5.0</software-version>',
-      '<developer-enabled>true</developer-enabled>',
-      '<is-tv>false</is-tv>',
+      '<?xml version="1.0" encoding="UTF-8" ?>',
+      '<device-info>',
+      '  <udn>unique-id</udn>',
+      '  <serial-number>YN00AB123456</serial-number>',
+      '  <device-id>AA:BB:CC:DD:EE:FF</device-id>',
+      '  <friendly-device-name>Living Room Roku</friendly-device-name>',
+      '  <user-device-name>Living Room TV</user-device-name>',
+      '  <model-name>Roku Ultra</model-name>',
+      '  <model-number>4800X</model-number>',
+      '  <software-version>12.5.0</software-version>',
+      '  <software-build>4200.45</software-build>',
+      '  <developer-enabled>true</developer-enabled>',
+      '  <keyed-developer-id>devid-YN00AB123456</keyed-developer-id>',
+      '  <ecp-setting-mode>default</ecp-setting-mode>',
+      '  <ui-resolution>1080p</ui-resolution>',
+      '  <locale>en_US</locale>',
+      '  <time-zone>United States/Eastern</time-zone>',
+      '  <time-zone-offset>-300</time-zone-offset>',
+      '  <is-tv>false</is-tv>',
+      '</device-info>',
     ].join('\n');
 
-    it('parses XML tags into a flat Record', async () => {
+    it('parses XML tags from a wrapped device-info response', async () => {
       const { server, port } = await createTestServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/xml' });
         res.end(DEVICE_INFO_XML);
@@ -61,12 +73,35 @@ describe('EcpClient', () => {
         const info = await client.queryDeviceInfo('127.0.0.1', port);
 
         expect(info['serial-number']).to.equal('YN00AB123456');
+        expect(info['device-id']).to.equal('AA:BB:CC:DD:EE:FF');
         expect(info['friendly-device-name']).to.equal('Living Room Roku');
+        expect(info['user-device-name']).to.equal('Living Room TV');
         expect(info['model-name']).to.equal('Roku Ultra');
         expect(info['model-number']).to.equal('4800X');
         expect(info['software-version']).to.equal('12.5.0');
+        expect(info['software-build']).to.equal('4200.45');
         expect(info['developer-enabled']).to.equal('true');
+        expect(info['keyed-developer-id']).to.equal('devid-YN00AB123456');
+        expect(info['ecp-setting-mode']).to.equal('default');
+        expect(info['ui-resolution']).to.equal('1080p');
+        expect(info['locale']).to.equal('en_US');
+        expect(info['time-zone']).to.equal('United States/Eastern');
+        expect(info['time-zone-offset']).to.equal('-300');
         expect(info['is-tv']).to.equal('false');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('does not include the outer device-info container tag in the result', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/xml' });
+        res.end(DEVICE_INFO_XML);
+      });
+
+      try {
+        const info = await client.queryDeviceInfo('127.0.0.1', port);
+        expect(info['device-info']).to.be.undefined;
       } finally {
         await closeServer(server);
       }

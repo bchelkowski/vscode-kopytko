@@ -7,12 +7,14 @@ const ALIVE_TIMEOUT_MS = 2000;
 const AUTH_TIMEOUT_MS = 5000;
 
 /**
- * Extracts all top-level XML tag values from a flat XML document.
- * Matches `<tag-name>value</tag-name>` pairs, including empty values.
+ * Extracts all leaf XML tag values from a device-info XML document.
+ * Matches `<tag-name>value</tag-name>` pairs where value contains no nested
+ * tags. This correctly skips the outer `<device-info>` container tag that
+ * Roku devices return wrapping all fields.
  */
 function extractXmlTags(xml: string): Record<string, string> {
   const result: Record<string, string> = {};
-  const tagPattern = /<([\w-]+)>([\s\S]*?)<\/\1>/g;
+  const tagPattern = /<([\w-]+)>([^<]*)<\/\1>/g;
   let match: RegExpExecArray | null;
 
   while ((match = tagPattern.exec(xml)) !== null) {
@@ -146,15 +148,6 @@ export class EcpClient {
 
   /**
    * Checks whether a Roku device is reachable and responding.
-   *
-   * Performs a lightweight HTTP GET to `/query/device-info` and returns `true`
-   * if the device responds with a 200 status code. The response body is not
-   * parsed — this is a connectivity check only.
-   *
-   * @param ip - The IP address of the Roku device.
-   * @param port - ECP port (default: 8060).
-   * @param timeoutMs - Request timeout in milliseconds (default: 2000).
-   * @returns `true` if the device responds with HTTP 200, `false` otherwise.
    */
   async checkDeviceAlive(
     ip: string,
@@ -169,6 +162,31 @@ export class EcpClient {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Queries the device registry for a given channel.
+   *
+   * Sends `GET /query/registry/<channelId>` and returns the raw XML body.
+   * Use `channelId = "dev"` for the sideloaded app. Requires developer mode.
+   *
+   * @returns The raw XML response body.
+   * @throws On network errors, timeouts, or non-200 responses.
+   */
+  async queryRegistry(
+    ip: string,
+    channelId: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<string> {
+    const url = `http://${ip}:${port}/query/registry/${encodeURIComponent(channelId)}`;
+    const { statusCode, body } = await httpGet(url, timeoutMs);
+
+    if (statusCode !== 200) {
+      throw new Error(`Registry query failed: status ${statusCode}`);
+    }
+
+    return body;
   }
 
   /**

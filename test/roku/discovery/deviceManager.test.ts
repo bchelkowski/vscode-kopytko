@@ -39,11 +39,21 @@ function createMockSecretStorage(): Record<string, unknown> {
 function makeDeviceInfo(serial: string, name: string): Record<string, string> {
   return {
     'serial-number': serial,
+    'device-id': `AA:BB:CC:DD:EE:${serial.slice(-2)}`,
+    'vendor-name': 'Roku',
+    'user-device-name': name,
     'friendly-device-name': name,
     'model-name': 'Roku Ultra',
     'model-number': '4800X',
     'software-version': '12.5.0',
+    'software-build': '4200.45',
     'developer-enabled': 'true',
+    'keyed-developer-id': `devid-${serial}`,
+    'ecp-setting-mode': 'default',
+    'ui-resolution': '1080p',
+    'locale': 'en_US',
+    'time-zone': 'United States/Eastern',
+    'time-zone-offset': '-300',
     'is-tv': 'false',
   };
 }
@@ -322,6 +332,31 @@ describe('DeviceManager', () => {
 
       expect(changeSpy.called).to.be.true;
     });
+
+    it('populates deviceId from ECP device-id field', async () => {
+      (ecp.queryDeviceInfo as sinon.SinonStub).resolves(makeDeviceInfo('SN100', 'Living Room'));
+
+      ssdp.emit('found', { ip: '192.168.1.20', port: 8060, serialNumber: 'SN100' });
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      const device = manager.getDevice('SN100');
+      expect(device!.deviceId).to.equal('AA:BB:CC:DD:EE:00');
+    });
+
+    it('prefers user-device-name over friendly-device-name for friendlyName', async () => {
+      (ecp.queryDeviceInfo as sinon.SinonStub).resolves({
+        ...makeDeviceInfo('SN100', 'Friendly Name'),
+        'user-device-name': 'My Living Room TV',
+      });
+
+      ssdp.emit('found', { ip: '192.168.1.20', port: 8060, serialNumber: 'SN100' });
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      const device = manager.getDevice('SN100');
+      expect(device!.friendlyName).to.equal('My Living Room TV');
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -339,6 +374,7 @@ describe('DeviceManager', () => {
       const device = await manager.addManualDevice('10.0.0.5');
 
       expect(device.serialNumber).to.equal('SN200');
+      expect(device.deviceId).to.equal('AA:BB:CC:DD:EE:00');
       expect(device.friendlyName).to.equal('Manual Roku');
       expect(device.source).to.equal('manual');
       expect(device.state).to.equal('online');

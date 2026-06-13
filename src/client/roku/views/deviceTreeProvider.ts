@@ -78,20 +78,8 @@ export class DeviceTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
 
   private _getDeviceChildren(parent: DeviceTreeItem): vscode.TreeItem[] {
     const { device } = parent;
+    const info = device.deviceInfo ?? {};
     const children: vscode.TreeItem[] = [];
-
-    children.push(new DeviceInfoItem('IP Address', device.ip));
-    if (device.modelName) children.push(new DeviceInfoItem('Model', device.modelName));
-    if (device.modelNumber) children.push(new DeviceInfoItem('Model Number', device.modelNumber));
-    if (device.serialNumber) children.push(new DeviceInfoItem('Serial Number', device.serialNumber));
-    if (device.softwareVersion) children.push(new DeviceInfoItem('Firmware', device.softwareVersion));
-    if (device.developerEnabled !== undefined) {
-      children.push(new DeviceInfoItem('Developer Mode', device.developerEnabled ? 'Enabled' : 'Disabled'));
-    }
-
-    // Visual separator before action buttons
-    const separator = new vscode.TreeItem('───', vscode.TreeItemCollapsibleState.None);
-    children.push(separator);
 
     children.push(new DeviceActionItem(
       'Open Web Portal',
@@ -99,6 +87,54 @@ export class DeviceTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
       'kopytko.openDevicePortal',
       [device.serialNumber],
     ));
+
+    children.push(new DeviceActionItem(
+      'Read Registry',
+      new vscode.ThemeIcon('database'),
+      'kopytko.readRegistry',
+      [device.serialNumber],
+    ));
+
+    const vendorName = info['vendor-name'];
+    const modelValue = [vendorName, device.modelName].filter(Boolean).join(' ') +
+      (device.modelNumber ? ` (${device.modelNumber})` : '');
+    children.push(new DeviceInfoItem('Model', modelValue));
+
+    if (device.developerEnabled !== undefined) {
+      children.push(new DeviceInfoItem('Developer Mode', device.developerEnabled ? 'Enabled' : 'Disabled'));
+    }
+
+    if (info['ecp-setting-mode']) {
+      children.push(new DeviceInfoItem('ECP Mode', info['ecp-setting-mode']));
+    }
+
+    if (info['keyed-developer-id']) {
+      children.push(new DeviceInfoItem('Developer Keyed ID', info['keyed-developer-id']));
+    }
+
+    if (device.softwareVersion) {
+      const build = info['software-build'];
+      const osValue = build ? `${device.softwareVersion} (${build})` : device.softwareVersion;
+      children.push(new DeviceInfoItem('Roku OS', osValue));
+    }
+
+    if (info['ui-resolution']) {
+      children.push(new DeviceInfoItem('Resolution', info['ui-resolution']));
+    }
+
+    if (info['country']) {
+      children.push(new DeviceInfoItem('Roku Store Region', info['country']));
+    }
+
+    if (info['locale']) {
+      children.push(new DeviceInfoItem('Locale', info['locale']));
+    }
+
+    if (info['time-zone']) {
+      const offset = info['time-zone-offset'];
+      const tzValue = offset ? `${info['time-zone']} (Offset: ${offset})` : info['time-zone'];
+      children.push(new DeviceInfoItem('Time Zone', tzValue));
+    }
 
     return children;
   }

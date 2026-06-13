@@ -2,6 +2,8 @@ export type DeviceState = 'unknown' | 'pending' | 'online' | 'offline';
 export type DeviceSource = 'discovered' | 'manual';
 
 export interface RokuDevice {
+  /** ECP `device-id` field (WiFi MAC address) — primary persistent identifier. */
+  deviceId: string;
   ip: string;
   port: number;
   serialNumber: string;
@@ -19,6 +21,8 @@ export interface RokuDevice {
 }
 
 export interface StoredDevice {
+  /** ECP `device-id` field — primary persistent identifier. */
+  deviceId?: string;
   serialNumber: string;
   ip: string;
   port: number;
