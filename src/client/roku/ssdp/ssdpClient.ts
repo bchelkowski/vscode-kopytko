@@ -254,7 +254,18 @@ export class SsdpClient extends EventEmitter {
         this.emit('error', err);
       });
 
-      socket.bind(0, interfaceAddr, () => resolve(socket));
+      socket.bind(0, interfaceAddr, () => {
+        // Set the multicast outgoing interface so M-SEARCH packets leave through
+        // the correct network interface (e.g. the 192.168.2.x interface for a
+        // device on that subnet). Without this, the OS may route multicast
+        // through the default interface, missing devices on other subnets.
+        try {
+          socket.setMulticastInterface(interfaceAddr);
+        } catch {
+          // Not fatal — some virtual interfaces may not support this
+        }
+        resolve(socket);
+      });
     });
   }
 

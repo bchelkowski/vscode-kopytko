@@ -116,4 +116,53 @@ describe('rokuDeployer — manifest injection', () => {
       expect(fs.existsSync(debugManifest)).to.be.false;
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Command invocation — env must NOT be a positional argument
+  // ---------------------------------------------------------------------------
+
+  describe('command invocation', () => {
+    it('runs the start command without appending env as a positional arg', async () => {
+      // Use a custom startCommand that writes the argv to a file so we can inspect it
+      const argsFile = path.join(tmpDir, 'args.json');
+      const recordCmd = `node -e "require('fs').writeFileSync('${argsFile}', JSON.stringify(process.argv.slice(2)))"`;
+
+      fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({}));
+
+      const { deploy } = await import('../../src/client/roku/rokuDeployer');
+      await deploy({
+        host: '192.168.1.100',
+        password: 'pass',
+        env: 'staging',
+        rootDir: tmpDir,
+        startCommand: recordCmd,
+      });
+
+      const args = JSON.parse(fs.readFileSync(argsFile, 'utf-8')) as string[];
+      // The env value 'staging' must NOT appear as a positional argument
+      expect(args).to.not.include('staging');
+    });
+
+    it('passes ENV, ROKU_IP and ROKU_DEV_PASSWORD as environment variables', async () => {
+      // Use a custom startCommand that writes the process env to a file
+      const envFile = path.join(tmpDir, 'env.json');
+      const recordCmd = `node -e "require('fs').writeFileSync('${envFile}', JSON.stringify({ENV:process.env.ENV,ROKU_IP:process.env.ROKU_IP,ROKU_DEV_PASSWORD:process.env.ROKU_DEV_PASSWORD}))"`;
+
+      fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({}));
+
+      const { deploy } = await import('../../src/client/roku/rokuDeployer');
+      await deploy({
+        host: '192.168.2.2',
+        password: 'rokudev',
+        env: 'dev',
+        rootDir: tmpDir,
+        startCommand: recordCmd,
+      });
+
+      const captured = JSON.parse(fs.readFileSync(envFile, 'utf-8')) as Record<string, string>;
+      expect(captured['ENV']).to.equal('dev');
+      expect(captured['ROKU_IP']).to.equal('192.168.2.2');
+      expect(captured['ROKU_DEV_PASSWORD']).to.equal('rokudev');
+    });
+  });
 });

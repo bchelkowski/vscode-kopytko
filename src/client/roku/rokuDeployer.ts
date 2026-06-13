@@ -222,7 +222,7 @@ function runKopytkoStart(
   log: (msg: string) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = exec(`${command} ${env}`, {
+    const child = exec(command, {
       cwd: rootDir,
       env: {
         ...process.env,
