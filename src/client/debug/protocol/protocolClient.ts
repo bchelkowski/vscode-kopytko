@@ -98,6 +98,12 @@ export class ProtocolClient extends EventEmitter {
               socket.on('error', (err) => this.emit('error', err));
               socket.on('close', () => this._onClose());
 
+              // Process any leftover bytes from the handshake that may contain
+              // the initial AllThreadsStopped update (remotedebug_connect_early).
+              if (this._buffer.length > 0) {
+                this._processBuffer();
+              }
+
               resolve(handshake);
             })
             .catch(reject);
@@ -111,8 +117,9 @@ export class ProtocolClient extends EventEmitter {
   /**
    * Send a command request and wait for the matching response.
    * Returns the raw response payload buffer (after requestId and errorCode).
+   * Rejects after `timeoutMs` if no response is received (default: 5 000 ms).
    */
-  sendRequest(commandCode: number, data?: Buffer): Promise<Buffer> {
+  sendRequest(commandCode: number, data?: Buffer, timeoutMs = 5_000): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       if (!this._socket || !this._connected) {
         reject(new Error('Not connected'));
@@ -135,9 +142,31 @@ export class ProtocolClient extends EventEmitter {
       writer.writeUint32(4 + body.length);
       writer.writeBuffer(body);
 
-      this._pendingRequests.set(requestId, { resolve, reject });
+      const timer = setTimeout(() => {
+        if (this._pendingRequests.has(requestId)) {
+          this._pendingRequests.delete(requestId);
+          reject(new Error(`Request ${commandCode} timed out after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      this._pendingRequests.set(requestId, {
+        resolve: (buf) => { clearTimeout(timer); resolve(buf); },
+        reject: (err) => { clearTimeout(timer); reject(err); },
+      });
       this._socket.write(writer.toBuffer());
     });
+  }
+
+  /**
+   * Reject and discard all pending requests.
+   * Call this before sending continue/step so the device processes the
+   * resume command immediately rather than finishing queued requests first.
+   */
+  cancelPendingRequests(): void {
+    for (const [, pending] of this._pendingRequests) {
+      pending.reject(new Error('Cancelled: device resuming'));
+    }
+    this._pendingRequests.clear();
   }
 
   close(): void {

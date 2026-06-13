@@ -98,28 +98,44 @@ export class DebugCommands {
   // Variables
   // ---------------------------------------------------------------------------
 
+  /**
+   * Request variable information from the device.
+   *
+   * Wire format (per Roku reference implementation):
+   *   uint8   flags           (GET_CHILD_KEYS=0x01)
+   *   uint32  thread_index
+   *   uint32  frame_index
+   *   uint32  variable_path_len  (0 = all locals in frame)
+   *   utf8z   path[]             (repeated path_len times)
+   *
+   * When `getChildren=false` (default): returns a flat list of variables
+   * in the scope/path without child data — fast, suitable for initial display.
+   *
+   * When `getChildren=true`: the response contains the parent variable
+   * (IS_CHILD_KEY=false) followed by its child keys (IS_CHILD_KEY=true).
+   * Use this when expanding a container in the Variables panel.
+   */
   async getVariables(
     threadIndex: number,
     stackFrameIndex: number,
     path: string[] = [],
-    getChildren = true,
-    getVirtualKeys = false,
+    getChildren = false,
   ): Promise<VariableInfo[]> {
     const writer = new BinaryWriter();
+
+    // Flags byte comes FIRST per the Roku protocol spec
+    let flags = 0;
+    if (getChildren) flags |= VariableRequestFlags.GetChildKeys;
+    writer.writeUint8(flags);
+
     writer.writeUint32(threadIndex);
     writer.writeUint32(stackFrameIndex);
 
-    // Variable path
+    // Variable path (empty = all locals in the frame)
     writer.writeUint32(path.length);
     for (const segment of path) {
       writer.writeStringNT(segment);
     }
-
-    // Request flags
-    let flags = 0;
-    if (getChildren) flags |= VariableRequestFlags.GetChildKeys;
-    if (getVirtualKeys) flags |= VariableRequestFlags.GetVirtualKeys;
-    writer.writeUint8(flags);
 
     const payload = await this._client.sendRequest(CommandCode.Variables, writer.toBuffer());
     return DebugCommands._parseVariables(payload);
@@ -137,10 +153,23 @@ export class DebugCommands {
     return variables;
   }
 
+  /**
+   * Parse a single VariableInfo from the binary response.
+   *
+   * Field order per the Roku reference implementation:
+   *   uint8   flags
+   *   uint8   variable_type
+   *   utf8z   name            (if IS_NAME_HERE)
+   *   uint32  ref_count       (if IS_REF_COUNTED)
+   *   uint8   key_type        (if IS_CONTAINER)   ← before value
+   *   uint32  element_count   (if IS_CONTAINER)
+   *   <value>                 (if IS_VALUE_HERE)   ← type-dependent
+   */
   private static _parseOneVariable(reader: BinaryReader): VariableInfo {
     const flags = reader.readUint8();
     const variableType: VariableType = reader.readUint8();
     const isContainer = (flags & VariableFlags.IsContainer) !== 0;
+    const isChildKey = (flags & VariableFlags.IsChildKey) !== 0;
 
     let name = '';
     if (flags & VariableFlags.IsNameHere) {
@@ -152,11 +181,7 @@ export class DebugCommands {
       refCount = reader.readUint32();
     }
 
-    let value = '';
-    if (flags & VariableFlags.IsValueHere) {
-      value = reader.readStringNT();
-    }
-
+    // Container metadata comes BEFORE value per the protocol spec
     let keyType = VariableType.String;
     let childCount = 0;
     if (isContainer) {
@@ -164,13 +189,10 @@ export class DebugCommands {
       childCount = reader.readUint32();
     }
 
-    // If this variable has children inlined, parse them
-    let children: VariableInfo[] | undefined;
-    if ((flags & VariableFlags.IsChildKey) === 0 && isContainer && childCount > 0) {
-      children = [];
-      for (let c = 0; c < childCount; c++) {
-        children.push(DebugCommands._parseOneVariable(reader));
-      }
+    // Value — type-dependent binary encoding
+    let value = '';
+    if (flags & VariableFlags.IsValueHere) {
+      value = DebugCommands._readTypedValue(reader, variableType);
     }
 
     return {
@@ -181,9 +203,50 @@ export class DebugCommands {
       childCount,
       keyType,
       refCount,
-      children,
+      children: undefined,
       isContainer,
+      isChildKey,
     };
+  }
+
+  /**
+   * Read a value from the binary stream based on the variable type.
+   * Container types (AA, Array, List) never have IS_VALUE_HERE set.
+   */
+  private static _readTypedValue(reader: BinaryReader, type: VariableType): string {
+    switch (type) {
+      case VariableType.Boolean:
+        return reader.readUint8() !== 0 ? 'true' : 'false';
+      case VariableType.Integer:
+        return reader.readInt32().toString();
+      case VariableType.Float:
+        return reader.readFloat32().toString();
+      case VariableType.Double:
+        return reader.readFloat64().toString();
+      case VariableType.LongInteger:
+        return reader.readInt64().toString();
+      case VariableType.String:
+        return reader.readStringNT();
+      case VariableType.Function:
+      case VariableType.Subroutine:
+        return reader.readStringNT();
+      case VariableType.Object:
+      case VariableType.Interface:
+        return reader.readStringNT();
+      case VariableType.SubtypedObject: {
+        // Two strings: type name + subtype name
+        const typeName = reader.readStringNT();
+        const subtypeName = reader.readStringNT();
+        return subtypeName ? `${typeName}:${subtypeName}` : typeName;
+      }
+      case VariableType.Invalid:
+      case VariableType.Uninitialized:
+      case VariableType.Unknown:
+        return '';
+      default:
+        // AA, Array, List — should never have IS_VALUE_HERE
+        return '';
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -210,11 +273,12 @@ export class DebugCommands {
       writer.writeUint32(bp.ignoreCount ?? 0);
     }
     const payload = await this._client.sendRequest(CommandCode.AddBreakpoints, writer.toBuffer());
-    return DebugCommands._parseBreakpointResults(payload, breakpoints.length);
+    return DebugCommands._parseBreakpointResults(payload);
   }
 
   async addConditionalBreakpoints(breakpoints: ConditionalBreakpointSpec[]): Promise<BreakpointResult[]> {
     const writer = new BinaryWriter();
+    writer.writeUint32(0); // flags — reserved, always 0
     writer.writeUint32(breakpoints.length);
     for (const bp of breakpoints) {
       writer.writeStringNT(bp.filePath);
@@ -223,10 +287,16 @@ export class DebugCommands {
       writer.writeStringNT(bp.condition);
     }
     const payload = await this._client.sendRequest(CommandCode.AddConditionalBreakpoints, writer.toBuffer());
-    return DebugCommands._parseBreakpointResults(payload, breakpoints.length);
+    return DebugCommands._parseBreakpointResults(payload);
   }
 
-  private static _parseBreakpointResults(payload: Buffer, _count: number): BreakpointResult[] {
+  /**
+   * Parse breakpoint results. Each BreakpointInfo per the spec:
+   *   uint32 breakpoint_id
+   *   uint32 error_code
+   *   uint32 ignore_count
+   */
+  private static _parseBreakpointResults(payload: Buffer): BreakpointResult[] {
     const reader = new BinaryReader(payload);
     const resultCount = reader.readUint32();
     const results: BreakpointResult[] = [];
@@ -234,6 +304,7 @@ export class DebugCommands {
     for (let i = 0; i < resultCount; i++) {
       const id = reader.readUint32();
       const errorCode: ErrorCode = reader.readUint32();
+      reader.readUint32(); // ignore_count — not used by the adapter
       results.push({ id, errorCode });
     }
 
@@ -251,17 +322,7 @@ export class DebugCommands {
 
   async listBreakpoints(): Promise<BreakpointResult[]> {
     const payload = await this._client.sendRequest(CommandCode.ListBreakpoints);
-    const reader = new BinaryReader(payload);
-    const count = reader.readUint32();
-    const results: BreakpointResult[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const id = reader.readUint32();
-      const errorCode: ErrorCode = reader.readUint32();
-      results.push({ id, errorCode });
-    }
-
-    return results;
+    return DebugCommands._parseBreakpointResults(payload);
   }
 
   // ---------------------------------------------------------------------------

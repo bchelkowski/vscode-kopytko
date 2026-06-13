@@ -8,6 +8,7 @@ import {
   UpdateType,
   StopReason,
   ErrorCode,
+  VariableType,
 } from './protocol/constants';
 import type {
   ThreadInfo,
@@ -79,6 +80,22 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
   // Diagnostics for compile errors
   private _diagnostics: vscode.DiagnosticCollection;
+
+  /**
+   * Effective source root used for path mapping between local paths and Roku
+   * pkg:/ paths. Computed as `path.join(rootDir, sourceDir)` during launch so
+   * that e.g. rootDir=/project + sourceDir=app gives /project/app, which maps
+   * to pkg:/ on the device (the packager strips the sourceDir prefix).
+   */
+  private _sourceRoot = '';
+
+  /**
+   * While true, the first AllThreadsStopped update from the device is the
+   * initial remotedebug_connect_early stop — we handle it in
+   * _onConfigurationDone (send breakpoints + continue) and must not fire
+   * a 'stopped' event to VS Code for it.
+   */
+  private _suppressInitialStop = false;
 
   constructor(outputChannel: vscode.OutputChannel) {
     this._outputChannel = outputChannel;
@@ -210,7 +227,13 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     const env = this._launchConfig['env'] as string | undefined ?? 'dev';
     const rootDir = this._launchConfig['rootDir'] as string | undefined
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const sourceDir = this._launchConfig['sourceDir'] as string | undefined ?? 'app';
     const startCommand = this._launchConfig['startCommand'] as string | undefined;
+
+    // Build the effective source root: local files at <rootDir>/<sourceDir>
+    // map to pkg:/ on the device (the packager strips sourceDir).
+    this._sourceRoot = sourceDir ? path.join(rootDir, sourceDir) : rootDir;
+    this._sendOutput('console', `Source root: ${this._sourceRoot}\n`);
 
     if (!host || !password) {
       this._sendOutput('stderr', 'Missing "host" or "password" in launch configuration.\n');
@@ -255,15 +278,19 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       this._sendOutput('console',
         `Debugger connected (protocol ${ver.major}.${ver.minor}.${ver.patch}).\n`);
 
-      // Device stops on first statement (protocol 2.0+). Send breakpoints now.
-      await this._sendAllBreakpoints(rootDir);
+      // With remotedebug_connect_early=1 the device stops immediately on entry
+      // and sends AllThreadsStopped. Suppress that event so VS Code doesn't show
+      // a spurious "paused" state — we handle the initial stop ourselves here.
+      this._suppressInitialStop = true;
+      await this._sendAllBreakpoints();
+      this._suppressInitialStop = false;
 
       if (this._launchConfig['stopOnEntry']) {
-        // Already stopped — fire the event
+        // Stay paused at entry — report the stop to VS Code
         this._stopped = true;
         this._sendEvent('stopped', { reason: 'entry', threadId: 1, allThreadsStopped: true });
       } else {
-        // Continue past the initial stop
+        // Resume past the initial entry stop
         await this._commands.continue();
       }
     } catch (err) {
@@ -304,15 +331,18 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     const threadIndex = threadId - 1;
-    const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
 
     try {
       const frames = await this._commands.getStackTrace(threadIndex);
       this._sendResponse(req.seq, 'stackTrace', true, {
+        // StackTrace returns frames most-recent-first (0 = current function),
+        // but the Variables command uses inverted indexing where 0 = first called
+        // and nframes-1 = most recent. Encode the protocol's frame index directly
+        // so that scopes/variables requests use the correct index.
         stackFrames: frames.map((f, i) => ({
-          id: this._encodeFrameId(threadIndex, i),
+          id: this._encodeFrameId(threadIndex, frames.length - 1 - i),
           name: f.functionName,
-          source: { path: rokuPathToLocal(f.filePath, rootDir) },
+          source: { path: rokuPathToLocal(f.filePath, this._sourceRoot) },
           line: f.lineNumber,
           column: 0,
         })),
@@ -340,7 +370,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private async _onVariables(req: DAPRequest): Promise<void> {
     const ref = (req.arguments?.['variablesReference'] as number | undefined) ?? 0;
 
-    if (!this._commands) {
+    if (!this._commands || !this._stopped) {
       this._sendResponse(req.seq, 'variables', true, { variables: [] });
       return;
     }
@@ -352,24 +382,39 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     }
 
     try {
+      const isExpanding = entry.path.length > 0;
       const vars = await this._commands.getVariables(
         entry.threadIndex,
         entry.stackFrameIndex,
         entry.path,
-        true,
-        true,
+        isExpanding, // getChildren=true when expanding a specific container
       );
 
-      const dapVars = vars.map((v) => this._variableInfoToDAP(v, entry.threadIndex, entry.stackFrameIndex, entry.path));
+      // When expanding a container (getChildren=true with a path), the response
+      // contains: [parent (isChildKey=false), child0, child1, ...].
+      // Show only the child entries. For top-level locals (no path), all entries
+      // are direct variables (isChildKey is irrelevant).
+      const filtered = isExpanding
+        ? vars.filter((v) => v.isChildKey)
+        : vars;
+
+      let arrayIndex = 0;
+      const dapVars = filtered.map((v) => {
+        const name = v.name || String(arrayIndex++);
+        return this._variableInfoToDAP(v, name, entry.threadIndex, entry.stackFrameIndex, entry.path, isExpanding);
+      });
 
       this._sendResponse(req.seq, 'variables', true, { variables: dapVars });
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._sendOutput('stderr', `Variables error: ${msg}\n`);
       this._sendResponse(req.seq, 'variables', true, { variables: [] });
     }
   }
 
   private async _onContinue(req: DAPRequest): Promise<void> {
     this._stopped = false;
+    this._protocolClient?.cancelPendingRequests();
     this._sendResponse(req.seq, 'continue', true, { allThreadsContinued: true });
     try {
       await this._commands?.continue();
@@ -386,6 +431,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private async _onNext(req: DAPRequest): Promise<void> {
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     this._stopped = false;
+    this._protocolClient?.cancelPendingRequests();
     this._sendResponse(req.seq, 'next', true);
     try {
       await this._commands?.step(threadId - 1, StepType.Over);
@@ -395,6 +441,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private async _onStepIn(req: DAPRequest): Promise<void> {
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     this._stopped = false;
+    this._protocolClient?.cancelPendingRequests();
     this._sendResponse(req.seq, 'stepIn', true);
     try {
       await this._commands?.step(threadId - 1, StepType.Line);
@@ -404,6 +451,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   private async _onStepOut(req: DAPRequest): Promise<void> {
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     this._stopped = false;
+    this._protocolClient?.cancelPendingRequests();
     this._sendResponse(req.seq, 'stepOut', true);
     try {
       await this._commands?.step(threadId - 1, StepType.Out);
@@ -436,7 +484,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       } else {
         // Hover or watch — try to get the variable by path
         const pathSegments = expr.split('.');
-        const vars = await this._commands.getVariables(threadIndex, frameIndex, pathSegments, true, false);
+        const vars = await this._commands.getVariables(threadIndex, frameIndex, pathSegments, false);
         if (vars.length > 0) {
           const v = vars[0];
           const varRef = v.isContainer
@@ -497,20 +545,44 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
         this._sendOutput('stderr', 'Fatal protocol error — debug session terminated.\n');
         this._sendEvent('terminated');
         break;
+      case UpdateType.ExceptionBreakpointError:
+        this._onExceptionBreakpointError(payload);
+        break;
     }
   }
 
   private _onAllThreadsStopped(payload: Buffer): void {
     const reader = new BinaryReader(payload);
-    const primaryThreadIndex = reader.readUint32();
-    const stopReason: StopReason = reader.readUint32();
+    const primaryThreadIndex = reader.readInt32();
+    const stopReason: StopReason = reader.readUint8(); // uint8 per spec
     const stopReasonDetail = reader.remaining > 0 ? reader.readStringNT() : '';
+
+    // Suppress the initial remotedebug_connect_early stop — _onConfigurationDone
+    // is already handling it (sending breakpoints + calling continue).
+    if (this._suppressInitialStop) {
+      this._stopped = true;
+      this._primaryThreadIndex = primaryThreadIndex;
+      return;
+    }
+
+    // App exited normally — end the debug session cleanly.
+    if (stopReason === StopReason.NormalExit) {
+      this._sendOutput('console', 'App exited normally.\n');
+      this._sendEvent('terminated');
+      return;
+    }
 
     this._stopped = true;
     this._primaryThreadIndex = primaryThreadIndex;
     this._resetVarRefs();
 
     const reason = this._stopReasonToDAP(stopReason);
+
+    if (stopReason === StopReason.RuntimeError || stopReason === StopReason.CaughtRuntimeError) {
+      const detail = stopReasonDetail ? ` — ${stopReasonDetail}` : '';
+      this._sendOutput('stderr', `Runtime error${detail}\n`);
+    }
+
     this._sendEvent('stopped', {
       reason,
       threadId: primaryThreadIndex + 1,
@@ -521,8 +593,9 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
   private _onThreadAttached(payload: Buffer): void {
     const reader = new BinaryReader(payload);
-    const threadIndex = reader.readUint32();
-    const stopReason: StopReason = reader.readUint32();
+    const threadIndex = reader.readInt32();
+    const stopReason: StopReason = reader.readUint8(); // uint8 per spec
+    const stopReasonDetail = reader.remaining > 0 ? reader.readStringNT() : '';
 
     this._stopped = true;
     this._resetVarRefs();
@@ -530,6 +603,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     this._sendEvent('stopped', {
       reason: this._stopReasonToDAP(stopReason),
       threadId: threadIndex + 1,
+      description: stopReasonDetail || undefined,
       allThreadsStopped: true,
     });
   }
@@ -558,15 +632,16 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
   private _onCompileError(payload: Buffer): void {
     const reader = new BinaryReader(payload);
+    reader.readUint32(); // flags — reserved, always 0
     const errorString = reader.readStringNT();
     const filePath = reader.readStringNT();
     const lineNumber = reader.readUint32();
+    // library_name follows per spec but we don't need it
 
     this._sendOutput('stderr', `Compile error: ${errorString} (${filePath}:${lineNumber})\n`);
 
     // Show as VS Code diagnostic
-    const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
-    const localPath = rokuPathToLocal(filePath, rootDir);
+    const localPath = rokuPathToLocal(filePath, this._sourceRoot);
     const uri = vscode.Uri.file(localPath);
     const range = new vscode.Range(
       Math.max(0, lineNumber - 1), 0,
@@ -580,6 +655,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
   private _onBreakpointVerified(payload: Buffer): void {
     const reader = new BinaryReader(payload);
+    reader.readUint32(); // flags — reserved, always 0
     const count = reader.readUint32();
     for (let i = 0; i < count; i++) {
       const bpId = reader.readUint32();
@@ -591,13 +667,52 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   }
 
   private _onBreakpointError(payload: Buffer): void {
-    // Log breakpoint errors — the breakpoint condition failed to compile
     const reader = new BinaryReader(payload);
+    reader.readUint32(); // flags — reserved, always 0
     const bpId = reader.readUint32();
     const compileErrorCount = reader.readUint32();
     for (let i = 0; i < compileErrorCount; i++) {
       const err = reader.readStringNT();
+      this._sendOutput('stderr', `Breakpoint ${bpId} compile error: ${err}\n`);
+    }
+    const runtimeErrorCount = reader.readUint32();
+    for (let i = 0; i < runtimeErrorCount; i++) {
+      const err = reader.readStringNT();
+      this._sendOutput('stderr', `Breakpoint ${bpId} runtime error: ${err}\n`);
+    }
+    const otherErrorCount = reader.readUint32();
+    for (let i = 0; i < otherErrorCount; i++) {
+      const err = reader.readStringNT();
       this._sendOutput('stderr', `Breakpoint ${bpId} error: ${err}\n`);
+    }
+  }
+
+  private _onExceptionBreakpointError(payload: Buffer): void {
+    const reader = new BinaryReader(payload);
+    reader.readUint32(); // flags — reserved, always 0
+    const filterId = reader.readUint32();
+    const compileErrorCount = reader.readUint32();
+    for (let i = 0; i < compileErrorCount; i++) {
+      const err = reader.readStringNT();
+      this._sendOutput('stderr', `Exception breakpoint ${filterId} compile error: ${err}\n`);
+    }
+    const runtimeErrorCount = reader.readUint32();
+    for (let i = 0; i < runtimeErrorCount; i++) {
+      const err = reader.readStringNT();
+      this._sendOutput('stderr', `Exception breakpoint ${filterId} runtime error: ${err}\n`);
+    }
+    const otherErrorCount = reader.readUint32();
+    for (let i = 0; i < otherErrorCount; i++) {
+      const err = reader.readStringNT();
+      this._sendOutput('stderr', `Exception breakpoint ${filterId} error: ${err}\n`);
+    }
+    // line_number and file_path follow per spec
+    if (reader.remaining >= 4) {
+      const lineNumber = reader.readUint32();
+      const filePath = reader.remaining > 0 ? reader.readStringNT() : '';
+      if (filePath) {
+        this._sendOutput('stderr', `  at ${filePath}:${lineNumber}\n`);
+      }
     }
   }
 
@@ -605,13 +720,26 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   // Breakpoint management
   // ---------------------------------------------------------------------------
 
-  private async _sendAllBreakpoints(_rootDir: string): Promise<void> {
+  private async _sendAllBreakpoints(): Promise<void> {
     if (!this._commands) return;
 
     for (const [filePath, bps] of this._pendingBreakpoints) {
       if (bps.length === 0) continue;
       try {
-        await this._syncBreakpointsForFile(filePath, bps);
+        const results = await this._syncBreakpointsForFile(filePath, bps);
+        // Send verification events to VS Code for breakpoints set before launch
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          if (r.errorCode === ErrorCode.OK) {
+            this._sendEvent('breakpoint', {
+              reason: 'changed',
+              breakpoint: { id: r.id, verified: true, line: bps[i]?.line },
+            });
+          } else {
+            this._sendOutput('stderr',
+              `Breakpoint at ${filePath}:${bps[i]?.line} rejected by device (error ${r.errorCode})\n`);
+          }
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this._sendOutput('stderr', `Failed to set breakpoints in ${filePath}: ${msg}\n`);
@@ -638,8 +766,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       return [];
     }
 
-    const rootDir = (this._launchConfig['rootDir'] as string | undefined) ?? '';
-    const pkgPath = localPathToRoku(filePath, rootDir);
+    const pkgPath = localPathToRoku(filePath, this._sourceRoot);
 
     // Split into conditional and simple breakpoints
     const conditionalBps = bps.filter(bp => bp.condition);
@@ -704,20 +831,37 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
   private _variableInfoToDAP(
     v: VariableInfo,
+    displayName: string,
     threadIndex: number,
     stackFrameIndex: number,
     parentPath: string[],
-  ): { name: string; value: string; type: string; variablesReference: number } {
-    const childPath = [...parentPath, v.name];
+    isProperty: boolean,
+  ): { name: string; value: string; type: string; variablesReference: number; presentationHint?: { kind: string } } {
+    const childPath = [...parentPath, displayName];
     const varRef = v.isContainer && v.childCount > 0
       ? this._allocateVarRef(threadIndex, stackFrameIndex, childPath)
       : 0;
 
+    const typeName = variableTypeName(v.type);
+    let displayValue: string;
+
+    if (v.isContainer) {
+      displayValue = v.value
+        ? `${v.value} (${v.childCount} items)`
+        : `${typeName} (${v.childCount} items)`;
+    } else if (v.value) {
+      displayValue = v.type === VariableType.String ? `"${v.value}"` : v.value;
+    } else {
+      displayValue = typeName;
+    }
+
     return {
-      name: v.name,
-      value: v.value || `<${variableTypeName(v.type)}>`,
-      type: variableTypeName(v.type),
+      name: displayName,
+      value: displayValue,
+      type: typeName,
       variablesReference: varRef,
+      // Properties of containers use ":" separator, top-level locals use "="
+      ...(isProperty ? { presentationHint: { kind: 'property' } } : {}),
     };
   }
 
@@ -746,7 +890,6 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       case StopReason.Break: return 'breakpoint';
       case StopReason.RuntimeError: return 'exception';
       case StopReason.CaughtRuntimeError: return 'exception';
-      case StopReason.NormalExit: return 'exit';
       default: return 'pause';
     }
   }
@@ -793,8 +936,6 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 // Path mapping
 // ---------------------------------------------------------------------------
 
-import { VariableType } from './protocol/constants';
-
 /** Maps a Roku runtime path (pkg:/components/Foo.brs) to a local absolute path. */
 function rokuPathToLocal(rokuPath: string, rootDir: string): string {
   const relative = rokuPath.replace(/^\/pkg:\//i, '').replace(/^pkg:\//i, '');
@@ -807,7 +948,26 @@ function localPathToRoku(localPath: string, rootDir: string): string {
   return `pkg:/${relative}`;
 }
 
-/** Returns a human-readable name for a VariableType enum value. */
+/** Returns the canonical BrightScript type name for a VariableType enum. */
 function variableTypeName(type: VariableType): string {
-  return VariableType[type] ?? 'Unknown';
+  switch (type) {
+    case VariableType.AA: return 'roAssociativeArray';
+    case VariableType.Array: return 'roArray';
+    case VariableType.Boolean: return 'Boolean';
+    case VariableType.Double: return 'Double';
+    case VariableType.Float: return 'Float';
+    case VariableType.Function: return 'Function';
+    case VariableType.Integer: return 'Integer';
+    case VariableType.Interface: return 'Interface';
+    case VariableType.Invalid: return 'Invalid';
+    case VariableType.List: return 'roList';
+    case VariableType.LongInteger: return 'LongInteger';
+    case VariableType.Object: return 'Object';
+    case VariableType.String: return 'String';
+    case VariableType.Subroutine: return 'Function';
+    case VariableType.SubtypedObject: return 'Object';
+    case VariableType.Uninitialized: return 'Uninitialized';
+    case VariableType.Unknown: return 'Unknown';
+    default: return 'Unknown';
+  }
 }

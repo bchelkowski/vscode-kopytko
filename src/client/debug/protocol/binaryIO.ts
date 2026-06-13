@@ -129,6 +129,13 @@ export class BinaryReader {
     return value;
   }
 
+  readInt64(): bigint {
+    this._ensureAvailable(8);
+    const value = this._buffer.readBigInt64LE(this._offset);
+    this._offset += 8;
+    return value;
+  }
+
   readFloat32(): number {
     this._ensureAvailable(4);
     const value = this._buffer.readFloatLE(this._offset);

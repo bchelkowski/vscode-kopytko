@@ -60,6 +60,8 @@ export interface VariableInfo {
   refCount?: number;
   children?: VariableInfo[];
   isContainer: boolean;
+  /** True when this entry is a child key of a parent container. */
+  isChildKey: boolean;
 }
 
 // ---------------------------------------------------------------------------
