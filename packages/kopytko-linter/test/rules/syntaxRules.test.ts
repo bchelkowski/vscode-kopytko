@@ -115,6 +115,34 @@ describe('syntaxRules', () => {
       const diags = checkThrowStatements(ctx);
       expect(diags).to.be.empty;
     });
+
+    it('reports throw/invalid-value for hex literal throw', () => {
+      const content = [
+        'function doWork()',
+        '  throw &HFF',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkThrowStatements(ctx);
+      const invalid = diags.filter(d => d.code === 'throw/invalid-value');
+      expect(invalid).to.have.lengthOf(1);
+      expect(invalid[0].message).to.include('numeric');
+    });
+
+    it('reports throw/invalid-value for type-suffixed numeric throw', () => {
+      const content = [
+        'function doWork()',
+        '  throw 42&',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkThrowStatements(ctx);
+      const invalid = diags.filter(d => d.code === 'throw/invalid-value');
+      expect(invalid).to.have.lengthOf(1);
+      expect(invalid[0].message).to.include('numeric');
+    });
   });
 
   describe('checkCreateObjectArgs', () => {

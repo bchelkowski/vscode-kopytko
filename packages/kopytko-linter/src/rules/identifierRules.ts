@@ -2,6 +2,7 @@ import type { LintDiagnostic, RuleContext } from '../types';
 import { builtinNames, keywordNames, builtinArity } from '../catalog/builtins';
 import { stripStringLiterals } from '../analysis/textUtils';
 import { escapeRegex } from '../analysis/textUtils';
+import { stripNumericLiterals } from '../analysis/numericLiterals';
 import {
   buildFunctionScopes,
   findScopeAtLine,
@@ -72,7 +73,7 @@ export function checkUndefinedCalls(ctx: RuleContext): LintDiagnostic[] {
     if (/^\s*throw\b/i.test(raw)) continue;
     if (inMainBody[lineIdx]) continue;
 
-    const stripped = stripStringLiterals(raw, true);
+    const stripped = stripNumericLiterals(stripStringLiterals(raw, true));
 
     CALL_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -150,7 +151,7 @@ export function checkUndefinedVariables(ctx: RuleContext): LintDiagnostic[] {
     if (!scope) continue;
 
     const scopeVars = new Set([...scope.params, ...scope.vars]);
-    const stripped = stripStringLiterals(raw, true);
+    const stripped = stripNumericLiterals(stripStringLiterals(raw, true));
 
     const LVALUE_RE = /^\s*(?:m\.)?([a-zA-Z_]\w*)[&%!#$]?(?:\s*\[[^\]]*\])?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
     const lvalueMatch = LVALUE_RE.exec(stripped);

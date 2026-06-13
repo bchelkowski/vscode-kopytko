@@ -10,6 +10,7 @@ import {
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 import { resolveReceiverType, getInlineCreateObjectType } from '../brightscript/typeInference';
+import { inferNumericLiteralType } from '../brightscript/numericLiterals';
 import { getWordInfo, getDocumentPath } from '../utils/textUtils';
 import { getCachedTypeMap, getCachedAllFunctions } from '../utils/documentCache';
 import {
@@ -38,6 +39,19 @@ export class BrightScriptHoverProvider {
     const lines = text.split(/\r?\n/);
     const line = lines[position.line];
     if (!line) return null;
+
+    // ── 0. Numeric literal hover (e.g. user hovers over "&HFF" or "2.3#") ────
+    const numLiteral = getNumericLiteralAtPosition(line, position.character);
+    if (numLiteral) {
+      const numType = inferNumericLiteralType(numLiteral.literal);
+      if (numType) {
+        return markdown([
+          `**${numType}** *(BrightScript numeric literal)*`,
+          '',
+          `\`${numLiteral.literal}\` → *${numType}*`,
+        ]);
+      }
+    }
 
     const word = getWordInfo(line, position.character);
     if (!word) return null;
@@ -118,6 +132,14 @@ export class BrightScriptHoverProvider {
           `\`\`\`brightscript\n${userFunc.signature}\n\`\`\``,
         ]);
       }
+    }
+
+    // ── 6. Variable with inferred type (numeric literal assignments) ────────
+    const varType = typeMap.get(word.word.toLowerCase());
+    if (varType && isPrimitiveType(varType)) {
+      return markdown([
+        `**${word.word}**: *${varType}*`,
+      ]);
     }
 
     return null;
@@ -256,4 +278,34 @@ function buildTestApiHover(entry: TestApiEntry): Hover {
       ].join('\n'),
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Numeric literal helpers
+// ---------------------------------------------------------------------------
+
+import { NUMERIC_LITERAL_GLOBAL_RE } from '../brightscript/numericLiterals';
+
+const PRIMITIVE_TYPES = new Set(['Integer', 'Float', 'Double', 'LongInteger', 'Boolean', 'String']);
+
+function isPrimitiveType(typeName: string): boolean {
+  return PRIMITIVE_TYPES.has(typeName);
+}
+
+/**
+ * Finds the numeric literal at the given character position, or null.
+ * Scans the line for all numeric literal occurrences and returns the one
+ * that contains the cursor.
+ */
+function getNumericLiteralAtPosition(line: string, character: number): { literal: string; start: number; end: number } | null {
+  NUMERIC_LITERAL_GLOBAL_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = NUMERIC_LITERAL_GLOBAL_RE.exec(line)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (character >= start && character < end) {
+      return { literal: match[0], start, end };
+    }
+  }
+  return null;
 }

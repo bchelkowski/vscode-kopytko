@@ -26,3 +26,5 @@ export { parseImports, ImportResolver } from './analysis/importParser';
 export { parseFunctionDefs, parseInnerMethodDefs } from './analysis/functionIndex';
 export { isTestFile, isMockFile, isTestRelatedFile, getTestBaseName, findTestSiblings } from './analysis/testUtils';
 export { stripStringLiterals, escapeRegex } from './analysis/textUtils';
+export { inferNumericLiteralType, isNumericLiteral, stripNumericLiterals, NUMERIC_LITERAL_GLOBAL_RE } from './analysis/numericLiterals';
+export type { NumericType } from './analysis/numericLiterals';

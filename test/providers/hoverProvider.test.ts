@@ -191,10 +191,12 @@ describe('BrightScriptHoverProvider', () => {
 
   // ── Null cases ────────────────────────────────────────────────────────────
 
-  it('returns null for an unknown identifier', async () => {
+  it('shows type for a variable assigned a numeric literal', async () => {
     const doc = makeDocument('myLocalVariable = 42');
     const hover = await provider.provideHover(doc, { line: 0, character: 3 });
-    expect(hover).to.be.null;
+    const val = hoverValue(hover);
+    expect(val).to.include('myLocalVariable');
+    expect(val).to.include('Integer');
   });
 
   it('returns null on an empty line', async () => {
@@ -207,6 +209,62 @@ describe('BrightScriptHoverProvider', () => {
     const doc = makeDocument('   Abs(-5)');
     const hover = await provider.provideHover(doc, { line: 0, character: 1 });
     expect(hover).to.be.null;
+  });
+
+  // ── Numeric literal hover ─────────────────────────────────────────────────
+
+  describe('numeric literal hover', () => {
+    it('shows Integer type when hovering over a hex literal', () => {
+      const doc = makeDocument('x = &HFF');
+      const hover = provider.provideHover(doc, { line: 0, character: 5 });
+      const val = hoverValue(hover);
+      expect(val).to.include('Integer');
+      expect(val).to.include('&HFF');
+    });
+
+    it('shows Float type when hovering over a float literal', () => {
+      const doc = makeDocument('x = 2.01');
+      const hover = provider.provideHover(doc, { line: 0, character: 5 });
+      const val = hoverValue(hover);
+      expect(val).to.include('Float');
+    });
+
+    it('shows Double type when hovering over a # suffix literal', () => {
+      const doc = makeDocument('x = 2.3#');
+      const hover = provider.provideHover(doc, { line: 0, character: 5 });
+      const val = hoverValue(hover);
+      expect(val).to.include('Double');
+    });
+
+    it('shows LongInteger type when hovering over an & suffix literal', () => {
+      const doc = makeDocument('x = 42&');
+      const hover = provider.provideHover(doc, { line: 0, character: 5 });
+      const val = hoverValue(hover);
+      expect(val).to.include('LongInteger');
+    });
+
+    it('shows LongInteger for hex with & suffix', () => {
+      const doc = makeDocument('x = &hFEDCBA9876543210&');
+      const hover = provider.provideHover(doc, { line: 0, character: 10 });
+      const val = hoverValue(hover);
+      expect(val).to.include('LongInteger');
+    });
+
+    it('shows type for variable assigned a hex literal', () => {
+      const doc = makeDocument('flags = &HFF');
+      const hover = provider.provideHover(doc, { line: 0, character: 2 });
+      const val = hoverValue(hover);
+      expect(val).to.include('flags');
+      expect(val).to.include('Integer');
+    });
+
+    it('shows type for variable assigned a Double literal', () => {
+      const doc = makeDocument('dist = 1.23456789D-12');
+      const hover = provider.provideHover(doc, { line: 0, character: 2 });
+      const val = hoverValue(hover);
+      expect(val).to.include('dist');
+      expect(val).to.include('Double');
+    });
   });
 
   // ── User-defined function hover ──────────────────────────────────────────
@@ -268,7 +326,7 @@ describe('BrightScriptHoverProvider', () => {
       expect(value).to.include('data as Object');
     });
 
-    it('returns null for unknown identifiers even with importResolver', () => {
+    it('shows type for a variable assigned a numeric literal even with importResolver', () => {
       const resolver = new KopytkoImportResolver({
         workspaceFolders: ['/project'],
         sourceDir: 'app',
@@ -280,7 +338,9 @@ describe('BrightScriptHoverProvider', () => {
         'sub init()\n  unknownThing = 42\nend sub',
       );
       const hover = p.provideHover(doc, { line: 1, character: 4 });
-      expect(hover).to.be.null;
+      const val = hoverValue(hover);
+      expect(val).to.include('unknownThing');
+      expect(val).to.include('Integer');
     });
   });
 });

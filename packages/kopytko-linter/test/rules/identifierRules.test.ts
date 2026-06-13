@@ -172,6 +172,19 @@ describe('identifierRules', () => {
       const diags = checkUndefinedCalls(ctx);
       expect(diags.filter(d => d.code === 'identifier/undefined-function')).to.be.empty;
     });
+
+    it('does not flag hex literal digits as undefined function calls', () => {
+      const content = [
+        'function doWork()',
+        '  x = &HFF',
+        '  y = &hABCDEF',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedCalls(ctx);
+      expect(diags.filter(d => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
   });
 
   describe('checkUndefinedVariables', () => {
@@ -254,6 +267,40 @@ describe('identifierRules', () => {
       const undef = diags.filter(d => d.code === 'identifier/undefined-variable');
       const flaggedNames = undef.map(d => d.message);
       expect(flaggedNames.some(m => m.includes("'event'"))).to.be.false;
+    });
+
+    it('does not flag hex literal digits as undefined variables', () => {
+      const content = [
+        'function doWork()',
+        '  x = &HFF',
+        '  y = &hABCDEF',
+        '  z = &hFEDCBA9876543210&',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedVariables(ctx);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-variable');
+      const flaggedNames = undef.map(d => d.message);
+      expect(flaggedNames.some(m => m.includes("'HFF'"))).to.be.false;
+      expect(flaggedNames.some(m => m.includes("'hABCDEF'"))).to.be.false;
+      expect(flaggedNames.some(m => m.includes("'hFEDCBA9876543210'"))).to.be.false;
+    });
+
+    it('does not flag type-suffixed numeric literals as undefined variables', () => {
+      const content = [
+        'function doWork()',
+        '  a = 2!',
+        '  b = 2.3#',
+        '  c = 42&',
+        '  d = 125%',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedVariables(ctx);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-variable');
+      expect(undef).to.be.empty;
     });
   });
 

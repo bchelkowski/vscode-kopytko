@@ -2,8 +2,8 @@
  * Lightweight static type inference for BrightScript documents.
  *
  * BrightScript is dynamically typed, so full inference is not possible without
- * executing the program. This module focuses on the single most common pattern
- * that is both unambiguous and extremely frequent:
+ * executing the program. This module focuses on patterns that are both
+ * unambiguous and extremely frequent:
  *
  *   varName = CreateObject("roSomething")
  *   varName = CreateObject("roSomething", arg2)
@@ -14,11 +14,25 @@
  * And m. member assignments within a component:
  *   m.transfer = CreateObject("roUrlTransfer")
  *
- * The result is a map of { variableName → componentTypeName } that callers
- * (completion provider, hover provider) can use to look up methods.
+ * And numeric literal assignments:
+ *   x = 255           → Integer
+ *   x = &HFF          → Integer
+ *   x = 2.01          → Float
+ *   x = 1.23456E+30   → Float
+ *   x = 2!            → Float
+ *   x = 1.23456789D-12→ Double
+ *   x = 2.3#          → Double
+ *   x = 9876543210&   → LongInteger
+ *   x = &hABCDEF1234& → LongInteger
+ *
+ * The result is a map of { variableName → typeName } that callers
+ * (completion provider, hover provider) can use to look up methods or
+ * display type information.
  */
 
-/** Maps a local variable name (lowercase) → component name (e.g. "roUrlTransfer") */
+import { inferNumericLiteralType } from './numericLiterals';
+
+/** Maps a local variable name (lowercase) → type name (e.g. "roUrlTransfer" or "Integer") */
 export type TypeMap = Map<string, string>;
 
 /**
@@ -34,6 +48,14 @@ const CREATE_OBJECT_PATTERN =
  */
 const TYPED_PARAM_PATTERN =
   /(\w+)(?:\s*=[^,)]*?)?\s+as\s+(ro[A-Za-z]+)/gi;
+
+/**
+ * Pattern: `varName = <numeric literal>` — numeric literal assignments.
+ * Captures the variable name and the literal value (hex, decimal, float, etc.).
+ * Also handles `m.varName = <literal>` and compound/no-space forms.
+ */
+const NUMERIC_ASSIGN_PATTERN =
+  /(?:^[ \t]*|\bm\.)(\w+)\s*=\s*(-?(?:&[Hh][0-9A-Fa-f]+&?|(?:\d+\.?\d*|\d*\.\d+)(?:[EeDd][+-]?\d+)?[%!#&]?))\s*(?:['\n\r,;)\]]|$)/gm;
 
 /**
  * Scans the entire document text and returns a TypeMap of all variable names
@@ -59,6 +81,18 @@ export function inferTypes(text: string): TypeMap {
     // Don't overwrite a CreateObject binding with a weaker param hint
     if (!map.has(varName)) {
       map.set(varName, typeName);
+    }
+  }
+
+  // Numeric literal assignments
+  NUMERIC_ASSIGN_PATTERN.lastIndex = 0;
+  while ((m = NUMERIC_ASSIGN_PATTERN.exec(text)) !== null) {
+    const varName = m[1].toLowerCase();
+    const literalValue = m[2];
+    const numType = inferNumericLiteralType(literalValue);
+    // Don't overwrite a CreateObject or typed-param binding
+    if (numType && !map.has(varName)) {
+      map.set(varName, numType);
     }
   }
 

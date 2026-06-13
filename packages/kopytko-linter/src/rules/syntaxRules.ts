@@ -1,5 +1,6 @@
 import type { LintDiagnostic, RuleContext } from '../types';
 import { findComponent } from '../catalog/components';
+import { isNumericLiteral } from '../analysis/numericLiterals';
 
 export function checkThrowStatements(ctx: RuleContext): LintDiagnostic[] {
   const { lines, filePath, config } = ctx;
@@ -39,7 +40,7 @@ export function checkThrowStatements(ctx: RuleContext): LintDiagnostic[] {
     };
 
     if (config['throw/invalid-value'] !== 'off') {
-      if (/^-?[\d.]/.test(expr)) {
+      if (isNumericLiteral(expr)) {
         diagnostics.push({
           severity: config['throw/invalid-value'] ?? 'warning',
           code: 'throw/invalid-value',

@@ -73,14 +73,91 @@ describe('typeInference', () => {
       expect(map.get('arr')).to.equal('roArray');
     });
 
-    it('returns an empty map for files with no CreateObject or typed params', () => {
-      const map = inferTypes(`sub foo()\n  x = 1\nend sub`);
+    it('returns an empty map for files with no type-inferable assignments', () => {
+      const map = inferTypes(`sub foo()\n  print "hello"\nend sub`);
       expect(map.size).to.equal(0);
     });
 
     it('handles whitespace variations around =', () => {
       const map = inferTypes(`myVar=CreateObject("roDateTime")`);
       expect(map.get('myvar')).to.equal('roDateTime');
+    });
+
+    // ── Numeric literal assignments ─────────────────────────────────────────
+
+    it('infers Integer from a plain decimal literal', () => {
+      const map = inferTypes(`x = 255`);
+      expect(map.get('x')).to.equal('Integer');
+    });
+
+    it('infers Integer from a hex literal', () => {
+      const map = inferTypes(`x = &HFF`);
+      expect(map.get('x')).to.equal('Integer');
+    });
+
+    it('infers Integer from a lowercase hex literal', () => {
+      const map = inferTypes(`x = &hff`);
+      expect(map.get('x')).to.equal('Integer');
+    });
+
+    it('infers Float from a decimal point literal', () => {
+      const map = inferTypes(`x = 2.01`);
+      expect(map.get('x')).to.equal('Float');
+    });
+
+    it('infers Float from an E exponent literal', () => {
+      const map = inferTypes(`x = 1.23456E+30`);
+      expect(map.get('x')).to.equal('Float');
+    });
+
+    it('infers Float from a ! suffix literal', () => {
+      const map = inferTypes(`x = 2!`);
+      expect(map.get('x')).to.equal('Float');
+    });
+
+    it('infers Double from a D exponent literal', () => {
+      const map = inferTypes(`x = 1.23456789D-12`);
+      expect(map.get('x')).to.equal('Double');
+    });
+
+    it('infers Double from a # suffix literal', () => {
+      const map = inferTypes(`x = 2.3#`);
+      expect(map.get('x')).to.equal('Double');
+    });
+
+    it('infers LongInteger from a decimal with & suffix', () => {
+      const map = inferTypes(`x = 9876543210&`);
+      expect(map.get('x')).to.equal('LongInteger');
+    });
+
+    it('infers LongInteger from a hex with & suffix', () => {
+      const map = inferTypes(`x = &hFEDCBA9876543210&`);
+      expect(map.get('x')).to.equal('LongInteger');
+    });
+
+    it('infers m. member from numeric literal', () => {
+      const map = inferTypes(`m.flags = &HFF`);
+      expect(map.get('flags')).to.equal('Integer');
+    });
+
+    it('CreateObject binding wins over numeric literal for same variable', () => {
+      const src = [
+        `x = 42`,
+        `x = CreateObject("roArray")`,
+      ].join('\n');
+      const map = inferTypes(src);
+      expect(map.get('x')).to.equal('roArray');
+    });
+
+    it('numeric literal does not overwrite typed param', () => {
+      const src = [
+        `sub foo(x as roArray)`,
+        `  x = 42`,
+        `end sub`,
+      ].join('\n');
+      const map = inferTypes(src);
+      // CreateObject/typed-param bindings take precedence
+      expect(map.get('x')).to.equal('roArray');
     });
   });
 
