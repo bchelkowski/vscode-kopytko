@@ -1,6 +1,19 @@
 # Changelog
 
 
+## [0.2.3] - 2026-06-13
+
+### Added
+- Add registry viewer for Roku devices
+- Split toggle commands into state-dependent pairs
+- Redesign device tree view and identification
+- Add BrightScript numeric literal type support
+
+### Fixed
+- Rewrite debug protocol to match Roku spec
+- Roku device discovery and debugging not working at all
+- Roku device discovery and debugging not working at all
+
 ## [0.2.2] - 2026-06-12
 
 ### Added
