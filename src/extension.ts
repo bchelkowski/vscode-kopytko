@@ -10,6 +10,11 @@ import { DeviceStore } from './client/roku/persistence/deviceStore';
 import { CredentialStore } from './client/roku/persistence/credentialStore';
 import { DeviceTreeProvider } from './client/roku/views/deviceTreeProvider';
 import { DeviceTreeItem } from './client/roku/views/deviceTreeItems';
+import {
+  RegistryContentProvider,
+  parseRegistryXml,
+  formatRegistryAsJson,
+} from './client/roku/views/registryProvider';
 import { BrightScriptDebugAdapterFactory } from './client/debug/debugAdapterFactory';
 
 let client: KopytkoLanguageClient | undefined;
@@ -90,6 +95,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('kopytko.unselectDevice', async (item: unknown) => {
+      if (item instanceof DeviceTreeItem) {
+        await deviceManager!.setActiveDevice(undefined);
+        vscode.window.showInformationMessage(
+          `Active device cleared`
+        );
+      }
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('kopytko.addDevice', async () => {
       const ip = await vscode.window.showInputBox({
         prompt: 'Enter the IP address of the Roku device',
@@ -128,14 +144,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('kopytko.toggleFavorite', async (item: unknown) => {
+    vscode.commands.registerCommand('kopytko.addFavorite', async (item: unknown) => {
       if (item instanceof DeviceTreeItem) {
-        const newState = !item.device.isFavorite;
-        await deviceManager!.setFavorite(item.device.serialNumber, newState);
+        await deviceManager!.setFavorite(item.device.serialNumber, true);
         vscode.window.showInformationMessage(
-          newState
-            ? `★ ${item.device.friendlyName} added to favorites`
-            : `☆ ${item.device.friendlyName} removed from favorites`
+          `★ ${item.device.friendlyName} added to favorites`
+        );
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kopytko.removeFavorite', async (item: unknown) => {
+      if (item instanceof DeviceTreeItem) {
+        await deviceManager!.setFavorite(item.device.serialNumber, false);
+        vscode.window.showInformationMessage(
+          `☆ ${item.device.friendlyName} removed from favorites`
         );
       }
     })
@@ -153,8 +177,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (password === undefined) return;
 
       const valid = await ecp.validatePassword(device.ip, password);
+      const deviceKey = device.deviceId || device.serialNumber;
       if (valid) {
-        await credentials.setPassword(device.serialNumber, password);
+        await credentials.setPassword(deviceKey, password);
         vscode.window.showInformationMessage(
           `✓ Password verified and saved for ${device.friendlyName}`
         );
@@ -164,7 +189,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           'Save', 'Cancel'
         );
         if (saveAnyway === 'Save') {
-          await credentials.setPassword(device.serialNumber, password);
+          await credentials.setPassword(deviceKey, password);
         }
       }
     })
@@ -173,9 +198,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('kopytko.clearDevicePassword', async (item: unknown) => {
       if (!(item instanceof DeviceTreeItem)) return;
-      await credentials.deletePassword(item.device.serialNumber);
+      const { device } = item;
+      await credentials.deletePassword(device.deviceId || device.serialNumber);
       vscode.window.showInformationMessage(
-        `Password cleared for ${item.device.friendlyName}`
+        `Password cleared for ${device.friendlyName}`
       );
     })
   );
@@ -226,6 +252,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  // ── Registry viewer ────────────────────────────────────────────────────────
+  const registryProvider = new RegistryContentProvider();
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider('roku-registry', registryProvider)
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kopytko.readRegistry', async (serialOrItem: unknown) => {
+      let serial: string | undefined;
+      if (serialOrItem instanceof DeviceTreeItem) {
+        serial = serialOrItem.device.serialNumber;
+      } else if (typeof serialOrItem === 'string') {
+        serial = serialOrItem;
+      }
+
+      const device = serial ? deviceManager!.getDevice(serial) : undefined;
+      if (!device) {
+        vscode.window.showErrorMessage('No device selected');
+        return;
+      }
+
+      const channelId = 'dev';
+
+      try {
+        const xml = await ecp.queryRegistry(device.ip, channelId);
+        const data = parseRegistryXml(xml);
+
+        if (data.sections.length === 0) {
+          vscode.window.showInformationMessage(
+            `Registry for "${channelId}" on ${device.friendlyName} is empty.`
+          );
+          return;
+        }
+
+        const content = formatRegistryAsJson(data, channelId, device.friendlyName);
+        const uri = vscode.Uri.parse(
+          `roku-registry://registry/${encodeURIComponent(device.friendlyName)}-${channelId}.json`
+        );
+        registryProvider.setContent(uri, content);
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc, { preview: true });
+        await vscode.languages.setTextDocumentLanguage(doc, 'json');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to read registry: ${msg}`);
+      }
+    })
+  );
+
   // ── BrightScript debug adapter ───────────────────────────────────────────
   debugFactory = new BrightScriptDebugAdapterFactory();
   context.subscriptions.push(
@@ -243,12 +318,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (active) {
           if (!debugConfig['host']) debugConfig['host'] = active.ip;
           if (!debugConfig['password']) {
-            const stored = await credentials.getPassword(active.serialNumber);
+            const stored = await credentials.getPassword(active.deviceId || active.serialNumber);
             if (stored) debugConfig['password'] = stored;
           }
         }
         if (!debugConfig['rootDir']) {
           debugConfig['rootDir'] = _folder?.uri.fsPath ?? '';
+        }
+        if (!debugConfig['sourceDir']) {
+          debugConfig['sourceDir'] = vscode.workspace
+            .getConfiguration('kopytko')
+            .get<string>('imports.sourceDir', 'app');
         }
         return debugConfig;
       },

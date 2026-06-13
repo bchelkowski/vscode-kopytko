@@ -954,15 +954,27 @@
         "category": "Kopytko"
       },
       {
+        "command": "kopytko.unselectDevice",
+        "title": "Unset Active Device",
+        "icon": "$(debug-disconnect)",
+        "category": "Kopytko"
+      },
+      {
         "command": "kopytko.addDevice",
         "title": "Add Device by IP",
         "icon": "$(add)",
         "category": "Kopytko"
       },
       {
-        "command": "kopytko.toggleFavorite",
-        "title": "Toggle Favorite",
-        "icon": "$(star)",
+        "command": "kopytko.addFavorite",
+        "title": "Add to Favorites",
+        "icon": "$(star-empty)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.removeFavorite",
+        "title": "Remove from Favorites",
+        "icon": "$(star-full)",
         "category": "Kopytko"
       },
       {
@@ -999,6 +1011,12 @@
         "command": "kopytko.copyToClipboard",
         "title": "Copy to Clipboard",
         "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.readRegistry",
+        "title": "Read Registry",
+        "icon": "$(database)",
+        "category": "Kopytko"
       }
     ],
     "menus": {
@@ -1017,22 +1035,42 @@
       "view/item/context": [
         {
           "command": "kopytko.selectDevice",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-active)/",
           "group": "inline@1"
         },
         {
-          "command": "kopytko.toggleFavorite",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "command": "kopytko.unselectDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-active/",
+          "group": "inline@1"
+        },
+        {
+          "command": "kopytko.addFavorite",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-favorite)/",
+          "group": "inline@2"
+        },
+        {
+          "command": "kopytko.removeFavorite",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
           "group": "inline@2"
         },
         {
           "command": "kopytko.selectDevice",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-active)/",
           "group": "device@1"
         },
         {
-          "command": "kopytko.toggleFavorite",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/",
+          "command": "kopytko.unselectDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-active/",
+          "group": "device@1"
+        },
+        {
+          "command": "kopytko.addFavorite",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-favorite)/",
+          "group": "device@2"
+        },
+        {
+          "command": "kopytko.removeFavorite",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
           "group": "device@2"
         },
         {
