@@ -132,8 +132,9 @@ This document is the canonical list of extension features. Each feature links to
 | Favorite/saved devices (persisted globally) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Manual device entry by IP | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Secure password storage (OS keychain via SecretStorage) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Set as active device for debug/deploy | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Set/unset active device for debug/deploy | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Context menu actions (copy IP, open web portal, set password) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Registry viewer (read device registry via ECP) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Package upload via sidebar UI | ⬜ Planned | — |
 | Device info webview panel | ⬜ Planned | — |
 | Remote control | ⬜ Planned | — |

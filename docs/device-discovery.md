@@ -36,7 +36,7 @@ DeviceStore (globalState)
   └── 30-day expiration
 
 CredentialStore (SecretStorage)
-  └── Passwords keyed by serial number
+  └── Passwords keyed by device ID (ECP device-id / WiFi MAC)
 ```
 
 ### Component files
@@ -48,9 +48,10 @@ CredentialStore (SecretStorage)
 | NetworkMonitor | `src/client/roku/discovery/networkMonitor.ts` | Polls `os.networkInterfaces()` at 15s intervals (1s during alert), detects sleep/wake via timer gap heuristic |
 | DeviceManager | `src/client/roku/discovery/deviceManager.ts` | Orchestrator — wires SSDP, ECP, and network events; manages device state machine and health checks |
 | DeviceStore | `src/client/roku/persistence/deviceStore.ts` | Persists device lists to VS Code `globalState`, scoped by network fingerprint |
-| CredentialStore | `src/client/roku/persistence/credentialStore.ts` | Wraps VS Code `SecretStorage` — passwords keyed by device serial number |
+| CredentialStore | `src/client/roku/persistence/credentialStore.ts` | Wraps VS Code `SecretStorage` — passwords keyed by device ID (ECP `device-id` / WiFi MAC) |
 | DeviceTreeProvider | `src/client/roku/views/deviceTreeProvider.ts` | VS Code `TreeDataProvider` — renders the Roku Devices sidebar panel |
 | DeviceTreeItems | `src/client/roku/views/deviceTreeItems.ts` | TreeItem subclasses for devices, info rows, and action buttons |
+| RegistryProvider | `src/client/roku/views/registryProvider.ts` | Parses ECP registry XML, provides virtual document content for the registry viewer |
 
 ---
 
@@ -69,13 +70,16 @@ CredentialStore (SecretStorage)
 | Command | ID | Description |
 |---|---|---|
 | Refresh Devices | `kopytko.refreshDevices` | Trigger an active SSDP scan and refresh the device list |
-| Select Device | `kopytko.selectDevice` | Set a device as the active target for debug/deploy |
+| Set as Active Device | `kopytko.selectDevice` | Set a device as the active target for debug/deploy |
+| Unset Active Device | `kopytko.unselectDevice` | Clear the active device selection |
 | Add Device | `kopytko.addDevice` | Add a device manually by IP address |
-| Toggle Favorite | `kopytko.toggleFavorite` | Mark or unmark a device as a favorite |
+| Add to Favorites | `kopytko.addFavorite` | Mark a device as a favorite (persists across networks) |
+| Remove from Favorites | `kopytko.removeFavorite` | Unmark a device as a favorite |
 | Set Password | `kopytko.setDevicePassword` | Store the developer password securely for a device |
 | Clear Password | `kopytko.clearDevicePassword` | Remove the stored password for a device |
 | Copy IP | `kopytko.copyDeviceIp` | Copy the device IP address to the clipboard |
 | Open Web Portal | `kopytko.openDevicePortal` | Open the Roku developer web portal (`http://<ip>`) in a browser |
+| Read Registry | `kopytko.readRegistry` | Read and display the device registry for the sideloaded app |
 | Remove Device | `kopytko.removeDevice` | Remove a manually-added or stale device from the list |
 | Copy to Clipboard | `kopytko.copyToClipboard` | Copy selected text or device info to the clipboard |
 
@@ -85,21 +89,37 @@ CredentialStore (SecretStorage)
 
 The **Roku Devices** panel appears in the **Kopytko** sidebar (its own activity bar container). Each device entry shows:
 
-- **Model name** — e.g. "Roku Ultra"
-- **IP address** — current network address
+- **Device name** — user-defined name set on the Roku device (e.g. "Living Room TV")
+- **IP address** — current network address in parentheses, e.g. `(192.168.1.100)`
 - **Status icon** — online (green), offline (grey), pending (spinner)
 - **Active indicator** — plug icon for the currently selected device
 - **Favorite indicator** — star icon for favorited devices
+
+### Device properties (expanded)
+
+Click any device to expand it and see:
+
+| Property | Description |
+|---|---|
+| **Model Name** | Hardware model name (e.g. "Roku Ultra") |
+| **Developer Mode** | Enabled / Disabled — based on the `developer-enabled` ECP field |
+| **ECP Mode** | ECP setting mode (`ecp-setting-mode` field) |
+| **Developer Keyed ID** | Developer key ID used for sideloading (`keyed-developer-id`) |
+| **Roku OS** | Firmware version and build number, e.g. `12.5.0 (4200.45)` |
+| **Resolution** | UI resolution (e.g. `1080p`) |
+| **Locale** | Device locale (e.g. `en_US`) |
+| **Time Zone** | Time zone name and UTC offset, e.g. `United States/Eastern (Offset: -300)` |
 
 ### Context menu actions
 
 Right-click any device to access:
 
-- **Set as Active Device** — use this device for the next debug session
-- **Toggle Favorite** — favorite devices persist across networks
-- **Set Password** / **Clear Password** — manage stored credentials
+- **Set as Active Device** / **Unset Active Device** — toggle the active device for debug/deploy
+- **Add to Favorites** / **Remove from Favorites** — favorite devices persist across networks
+- **Set Password** / **Clear Password** — manage stored developer credentials
 - **Copy IP Address** — copy to clipboard
 - **Open Web Portal** — open the Roku developer dashboard in a browser
+- **Read Registry** — view the device registry for the sideloaded app
 - **Remove Device** — remove from the device list
 
 ### Scanning behaviour
@@ -124,14 +144,15 @@ Device passwords are stored securely via VS Code's `SecretStorage` API, which de
 
 ### How passwords are stored
 
-- Passwords are keyed by **device serial number**, not IP address. This means the password persists even if the device's IP changes via DHCP.
+- Passwords are keyed by **device ID** (the `device-id` ECP field — the device's WiFi MAC address). This means the password persists even if the device's IP changes via DHCP.
+- For devices discovered but not yet queried via ECP, passwords fall back to using the serial number as the key.
 - Passwords **never** appear in `settings.json`, `launch.json`, or any file on disk.
 
 ### Setting a password
 
 1. Right-click a device in the Roku Devices panel → **Set Password**
-2. Enter the developer password in the input box
-3. The extension validates the password via ECP digest authentication
+2. Enter the developer password (set when enabling developer mode on the Roku)
+3. The extension validates the password via ECP digest authentication (username is always `rokudev`)
 
 ### Password and debug integration
 
