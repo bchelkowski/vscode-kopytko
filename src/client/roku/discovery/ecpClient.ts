@@ -75,6 +75,9 @@ function parseDigestChallenge(header: string): Record<string, string> {
 /**
  * Builds an HTTP Digest Authorization header value.
  *
+ * Supports both qop="auth" (RFC 2617 full form with cnonce/nc) and the
+ * legacy form without qop. Roku devices use qop="auth".
+ *
  * @see RFC 2617 — HTTP Digest Access Authentication
  */
 function buildDigestAuthHeader(
@@ -84,11 +87,22 @@ function buildDigestAuthHeader(
   nonce: string,
   method: string,
   uri: string,
+  qop?: string,
 ): string {
   const ha1 = md5(`${username}:${realm}:${password}`);
   const ha2 = md5(`${method}:${uri}`);
-  const response = md5(`${ha1}:${nonce}:${ha2}`);
 
+  if (qop && qop.split(',').map((q) => q.trim()).includes('auth')) {
+    const cnonce = crypto.randomBytes(4).toString('hex');
+    const nc = '00000001';
+    const response = md5(`${ha1}:${nonce}:${nc}:${cnonce}:auth:${ha2}`);
+    return (
+      `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", ` +
+      `qop=auth, nc=${nc}, cnonce="${cnonce}", response="${response}"`
+    );
+  }
+
+  const response = md5(`${ha1}:${nonce}:${ha2}`);
   return `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
 }
 
@@ -194,13 +208,13 @@ export class EcpClient {
         return false;
       }
 
-      const { realm, nonce } = parseDigestChallenge(wwwAuth);
+      const { realm, nonce, qop } = parseDigestChallenge(wwwAuth);
 
       if (!realm || !nonce) {
         return false;
       }
 
-      const authHeader = buildDigestAuthHeader('rokudev', password, realm, nonce, 'GET', uri);
+      const authHeader = buildDigestAuthHeader('rokudev', password, realm, nonce, 'GET', uri, qop);
       const authRes = await httpGet(url, AUTH_TIMEOUT_MS, { Authorization: authHeader });
 
       return authRes.statusCode === 200;

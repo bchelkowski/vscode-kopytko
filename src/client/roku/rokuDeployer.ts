@@ -71,7 +71,7 @@ async function injectDebugManifest(
   const rcPath = path.join(rootDir, '.kopytkorc');
   const rc = readKopytkorc(rcPath);
 
-  if (rc && rc.localManifestOverride) {
+  if (rc && typeof rc.localManifestOverride === 'string') {
     return injectIntoExistingOverride(rootDir, rc.localManifestOverride, env, log);
   }
 

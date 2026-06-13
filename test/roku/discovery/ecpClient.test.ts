@@ -334,5 +334,54 @@ describe('EcpClient', () => {
         await closeServer(server);
       }
     });
+
+    it('handles qop="auth" digest challenge (Roku real-device flow)', async () => {
+      let authHeader = '';
+      let callCount = 0;
+      const { server, port } = await createTestServer((req, res) => {
+        callCount++;
+        if (callCount === 1) {
+          // Real Roku devices send qop="auth" which requires cnonce + nc
+          res.writeHead(401, {
+            'WWW-Authenticate': 'Digest qop="auth", realm="rokudev", nonce="abcdef12"',
+          });
+          res.end();
+        } else {
+          authHeader = req.headers.authorization || '';
+          res.writeHead(200);
+          res.end('OK');
+        }
+      });
+
+      try {
+        const valid = await client.validatePassword('127.0.0.1', 'rokudev', port);
+        expect(valid).to.be.true;
+        expect(callCount).to.equal(2);
+        expect(authHeader).to.include('qop=auth');
+        expect(authHeader).to.include('cnonce=');
+        expect(authHeader).to.include('nc=');
+        expect(authHeader).to.include('username="rokudev"');
+        expect(authHeader).to.include('realm="rokudev"');
+        expect(authHeader).to.include('response=');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false when qop="auth" auth response is 401 (wrong password)', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(401, {
+          'WWW-Authenticate': 'Digest qop="auth", realm="rokudev", nonce="abcdef12"',
+        });
+        res.end();
+      });
+
+      try {
+        const valid = await client.validatePassword('127.0.0.1', 'wrongpassword', port);
+        expect(valid).to.be.false;
+      } finally {
+        await closeServer(server);
+      }
+    });
   });
 });
