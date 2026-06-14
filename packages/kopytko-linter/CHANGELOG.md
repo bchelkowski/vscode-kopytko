@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.0.0] - 2026-06-14
+
+### Fixed
+- Correct column for unused parameter diagnostic
+- Prevent stripNumericLiterals from corrupting identifiers with digits
+
 ## [0.5.6] - 2026-06-14
 
 - Release 0.5.6
