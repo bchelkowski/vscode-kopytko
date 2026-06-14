@@ -931,10 +931,7 @@ function passTrailingCommas(lines: string[], config: FormattingConfig): string[]
     for (let j = i; j >= 0; j--) {
       const jTrimmed = result[j].trim();
 
-      for (let k = jTrimmed.length - 1; k >= 0; k--) {
-        if (jTrimmed[k] === closerChar) depth++;
-        else if (jTrimmed[k] === openerChar) depth--;
-      }
+      depth += netBracketDepthForPair(jTrimmed, openerChar, closerChar);
 
       if (depth <= 0) break;
 
@@ -981,6 +978,24 @@ function passTrailingCommas(lines: string[], config: FormattingConfig): string[]
   }
 
   return result;
+}
+
+/** Count net bracket depth on a line for a specific bracket pair, skipping string literals. */
+function netBracketDepthForPair(line: string, opener: string, closer: string): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inStr && line[i + 1] === '"') { i++; continue; }
+      inStr = !inStr;
+    } else if (!inStr) {
+      if (ch === "'") break;
+      if (ch === closer) depth++;
+      else if (ch === opener) depth--;
+    }
+  }
+  return depth;
 }
 
 function stripTrailingComment(trimmed: string): string {

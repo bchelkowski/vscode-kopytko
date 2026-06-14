@@ -1233,6 +1233,28 @@ describe('kopytko-formatter', () => {
         '}',
       ].join('\n'));
     });
+
+    it('does not add comma when strings contain unbalanced brackets', () => {
+      expect(format([
+        'function test()',
+        '  prototype = {}',
+        '  REGEXP = [',
+        '    "([^:]+ \\]\\[",',
+        '    "?#]+)"',
+        '  ].join("")',
+        '  return prototype',
+        'end function',
+      ], { indentSize: 2, arrayCommaStyle: 'always', trailingComma: 'always' })).to.equal([
+        'function test()',
+        '  prototype = {}',
+        '  REGEXP = [',
+        '    "([^:]+ \\]\\[",',
+        '    "?#]+)",',
+        '  ].join("")',
+        '  return prototype',
+        'end function',
+      ].join('\n'));
+    });
   });
 
   // ── Comments do not affect indentation ───────────────────────────────────
