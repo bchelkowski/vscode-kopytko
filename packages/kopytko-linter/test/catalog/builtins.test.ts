@@ -3,7 +3,7 @@ import {
   BRIGHTSCRIPT_BUILTINS,
   BRIGHTSCRIPT_KEYWORDS,
   findBuiltin,
-} from '../../src/server/brightscript/builtins';
+} from '../../src/catalog/builtins';
 
 describe('BrightScript builtins', () => {
   describe('BRIGHTSCRIPT_BUILTINS', () => {

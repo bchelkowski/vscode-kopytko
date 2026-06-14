@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
-import fsWrapper from '../../src/server/utils/fsWrapper';
-import { matchWildcard, applyWildcard, findSiblingFiles } from '../../src/server/brightscript/patternSiblings';
+import fsWrapper from '../../src/analysis/fsWrapper';
+import { matchWildcard, applyWildcard, findSiblingFiles } from '../../src/analysis/patternSiblings';
 
 describe('patternSiblings', () => {
   // ── matchWildcard ──────────────────────────────────────────────────────────

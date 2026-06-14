@@ -1,6 +1,5 @@
 import { expect } from 'chai';
 import {
-  isTestFile,
   EXPECT_MATCHERS,
   MOCK_FUNCTION_METHODS,
   ALL_TEST_GLOBALS,
@@ -8,24 +7,6 @@ import {
 } from '../../src/server/kopytko/testFramework';
 
 describe('kopytko/testFramework catalog', () => {
-  describe('isTestFile', () => {
-    it('returns true for standard test file paths', () => {
-      expect(isTestFile('/app/components/about/_tests/AboutView.test.brs')).to.be.true;
-      expect(isTestFile('file:///c:/project/app/components/_tests/Foo.test.brs')).to.be.true;
-      expect(isTestFile('/components/_tests/Service_Main.test.brs')).to.be.true;
-    });
-
-    it('returns false for non-test files', () => {
-      expect(isTestFile('/app/components/about/AboutView.brs')).to.be.false;
-      expect(isTestFile('/app/components/about/AboutView.template.brs')).to.be.false;
-      expect(isTestFile('/app/source/main.brs')).to.be.false;
-    });
-
-    it('returns true for .test.brs without _tests directory', () => {
-      expect(isTestFile('/app/MyModule.test.brs')).to.be.true;
-    });
-  });
-
   describe('EXPECT_MATCHERS', () => {
     it('has all core matchers', () => {
       const names = EXPECT_MATCHERS.map(m => m.name);

@@ -2,7 +2,6 @@ import { expect } from 'chai';
 import {
   BRIGHTSCRIPT_COMPONENTS,
   BRIGHTSCRIPT_INTERFACES,
-  findComponent,
   findInterface,
   getComponentMethods,
   findMethodInterface,
@@ -83,25 +82,6 @@ describe('BrightScript component catalog', () => {
           ).to.include(m.name);
         }
       }
-    });
-  });
-
-  // ── findComponent ──────────────────────────────────────────────────────────
-
-  describe('findComponent', () => {
-    it('finds roArray by exact name', () => {
-      const c = findComponent('roArray');
-      expect(c).to.not.be.undefined;
-      expect(c!.name).to.equal('roArray');
-    });
-
-    it('is case-insensitive', () => {
-      expect(findComponent('roarray')).to.not.be.undefined;
-      expect(findComponent('ROARRAY')).to.not.be.undefined;
-    });
-
-    it('returns undefined for an unknown component', () => {
-      expect(findComponent('roNonExistent')).to.be.undefined;
     });
   });
 

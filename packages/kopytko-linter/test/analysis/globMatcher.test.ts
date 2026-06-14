@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { matchesGlob, findMatchingGlob } from '../../src/server/brightscript/globMatcher';
+import { matchesGlob, findMatchingGlob } from '../../src/analysis/globMatcher';
 
 describe('globMatcher', () => {
   describe('matchesGlob', () => {
