@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.2] - 2026-06-14
+
+### Added
+- Validate callback function names in observeField and Kopytko events
+
 ## [1.0.1] - 2026-06-14
 
 ### Fixed
