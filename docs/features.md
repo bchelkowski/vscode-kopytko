@@ -136,7 +136,7 @@ This document is the canonical list of extension features. Each feature links to
 | Per-device environment selection from .kopytkorc | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Package upload via sidebar UI | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Context menu actions (copy IP, open web portal, set password) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Registry viewer (read device registry via ECP) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Registry viewer (read device registry via ECP, all channels) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Package upload via sidebar UI | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Device info webview panel | ⬜ Planned | — |
 | Remote control | ⬜ Planned | — |

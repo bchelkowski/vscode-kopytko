@@ -10,6 +10,8 @@ export interface RegistryData {
   plugins: string;
   spaceAvailable: string;
   sections: RegistrySection[];
+  status?: string;
+  error?: string;
 }
 
 /**
@@ -43,6 +45,8 @@ export function parseRegistryXml(xml: string): RegistryData {
   const devId = leafTag(xml, 'dev-id');
   const plugins = leafTag(xml, 'plugins');
   const spaceAvailable = leafTag(xml, 'space-available');
+  const status = leafTag(xml, 'status') || undefined;
+  const error = leafTag(xml, 'error') || undefined;
 
   const sections: RegistrySection[] = [];
   const sectionPattern = /<section>([\s\S]*?)<\/section>/g;
@@ -67,7 +71,7 @@ export function parseRegistryXml(xml: string): RegistryData {
     sections.push({ name, items });
   }
 
-  return { devId, plugins, spaceAvailable, sections };
+  return { devId, plugins, spaceAvailable, sections, status, error };
 }
 
 /**

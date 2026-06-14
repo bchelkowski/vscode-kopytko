@@ -1,6 +1,8 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 
+import { RokuApp } from '../types';
+
 const DEFAULT_ECP_PORT = 8060;
 const DEFAULT_TIMEOUT_MS = 3000;
 const ALIVE_TIMEOUT_MS = 2000;
@@ -109,6 +111,43 @@ function buildDigestAuthHeader(
 }
 
 /**
+ * Parses the XML response from `GET /query/apps` into an array of installed apps.
+ *
+ * Example response:
+ * ```xml
+ * <apps>
+ *   <app id="12" type="appl" version="1.0.0">Netflix</app>
+ *   <app id="dev" type="appl" version="2.0.0">My App</app>
+ * </apps>
+ * ```
+ */
+export function parseAppsXml(xml: string): RokuApp[] {
+  const apps: RokuApp[] = [];
+  const appPattern = /<app\s+([^>]*)>([^<]*)<\/app>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = appPattern.exec(xml)) !== null) {
+    const attrs = match[1];
+    const name = match[2].trim();
+
+    const idMatch = attrs.match(/id="([^"]*)"/);
+    const typeMatch = attrs.match(/type="([^"]*)"/);
+    const versionMatch = attrs.match(/version="([^"]*)"/);
+
+    if (idMatch) {
+      apps.push({
+        id: idMatch[1],
+        name,
+        type: typeMatch?.[1],
+        version: versionMatch?.[1],
+      });
+    }
+  }
+
+  return apps;
+}
+
+/**
  * ECP (External Control Protocol) client for communicating with Roku devices.
  *
  * Uses the Roku ECP REST API over HTTP (default port 8060) to query device
@@ -165,13 +204,41 @@ export class EcpClient {
   }
 
   /**
+   * Queries the list of installed channels from a Roku device.
+   *
+   * Sends `GET /query/apps` and parses the XML response into a list
+   * of installed applications. The sideloaded app appears as id="dev".
+   *
+   * @returns An array of installed apps.
+   * @throws On network errors, timeouts, or non-200 responses.
+   */
+  async queryApps(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<RokuApp[]> {
+    const url = `http://${ip}:${port}/query/apps`;
+    const { statusCode, body } = await httpGet(url, timeoutMs);
+
+    if (statusCode !== 200) {
+      throw new Error(`Apps query failed: status ${statusCode}`);
+    }
+
+    return parseAppsXml(body);
+  }
+
+  /**
    * Queries the device registry for a given channel.
    *
    * Sends `GET /query/registry/<channelId>` and returns the raw XML body.
    * Use `channelId = "dev"` for the sideloaded app. Requires developer mode.
    *
+   * Returns the XML body for both HTTP 200 (success) and HTTP 202
+   * (failure — e.g. dev ID mismatch). The caller should parse the body
+   * and check the `<status>` tag to distinguish success from failure.
+   *
    * @returns The raw XML response body.
-   * @throws On network errors, timeouts, or non-200 responses.
+   * @throws On network errors, timeouts, or unexpected HTTP status codes.
    */
   async queryRegistry(
     ip: string,
@@ -182,7 +249,7 @@ export class EcpClient {
     const url = `http://${ip}:${port}/query/registry/${encodeURIComponent(channelId)}`;
     const { statusCode, body } = await httpGet(url, timeoutMs);
 
-    if (statusCode !== 200) {
+    if (statusCode !== 200 && statusCode !== 202) {
       throw new Error(`Registry query failed: status ${statusCode}`);
     }
 

@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as http from 'http';
-import { EcpClient } from '../../../src/client/roku/discovery/ecpClient';
+import { EcpClient, parseAppsXml } from '../../../src/client/roku/discovery/ecpClient';
 import { AddressInfo } from 'net';
 
 /**
@@ -418,5 +418,176 @@ describe('EcpClient', () => {
         await closeServer(server);
       }
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryApps
+  // ---------------------------------------------------------------------------
+
+  describe('queryApps', () => {
+    const APPS_XML = [
+      '<?xml version="1.0" encoding="UTF-8" ?>',
+      '<apps>',
+      '  <app id="12" type="appl" version="70.2316.0">Netflix</app>',
+      '  <app id="551012" type="appl" version="16.2.82">Apple TV</app>',
+      '  <app id="dev" type="appl" version="3.30.3">My App</app>',
+      '</apps>',
+    ].join('\n');
+
+    it('queries the correct URL path', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end(APPS_XML);
+      });
+
+      try {
+        await client.queryApps('127.0.0.1', port);
+        expect(requestedUrl).to.equal('/query/apps');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('parses the apps list from XML', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(APPS_XML);
+      });
+
+      try {
+        const apps = await client.queryApps('127.0.0.1', port);
+        expect(apps).to.have.length(3);
+        expect(apps[0]).to.deep.equal({ id: '12', name: 'Netflix', type: 'appl', version: '70.2316.0' });
+        expect(apps[2]).to.deep.equal({ id: 'dev', name: 'My App', type: 'appl', version: '3.30.3' });
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns empty array for no apps', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<apps></apps>');
+      });
+
+      try {
+        const apps = await client.queryApps('127.0.0.1', port);
+        expect(apps).to.have.length(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status code', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(500);
+        res.end('Error');
+      });
+
+      try {
+        await client.queryApps('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryRegistry — HTTP 202 handling
+  // ---------------------------------------------------------------------------
+
+  describe('queryRegistry', () => {
+    it('returns body on HTTP 200 (success)', async () => {
+      const xml = '<plugin-registry><registry><sections></sections></registry></plugin-registry>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryRegistry('127.0.0.1', 'dev', port);
+        expect(body).to.equal(xml);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns body on HTTP 202 (failed — dev ID mismatch)', async () => {
+      const xml = '<plugin-registry><status>FAILED</status><error>Specified dev ID does not match the device key</error></plugin-registry>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(202);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryRegistry('127.0.0.1', '12345', port);
+        expect(body).to.include('FAILED');
+        expect(body).to.include('does not match');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on other non-200/202 status codes', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(500);
+        res.end('Error');
+      });
+
+      try {
+        await client.queryRegistry('127.0.0.1', 'dev', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseAppsXml (standalone)
+// ---------------------------------------------------------------------------
+
+describe('parseAppsXml', () => {
+  it('parses multiple app elements', () => {
+    const xml = [
+      '<apps>',
+      '  <app id="12" type="appl" version="70.2316.0">Netflix</app>',
+      '  <app id="dev" type="appl" version="1.0.0">My App</app>',
+      '</apps>',
+    ].join('\n');
+
+    const apps = parseAppsXml(xml);
+    expect(apps).to.have.length(2);
+    expect(apps[0]).to.deep.equal({ id: '12', name: 'Netflix', type: 'appl', version: '70.2316.0' });
+    expect(apps[1]).to.deep.equal({ id: 'dev', name: 'My App', type: 'appl', version: '1.0.0' });
+  });
+
+  it('handles empty apps list', () => {
+    const apps = parseAppsXml('<apps></apps>');
+    expect(apps).to.have.length(0);
+  });
+
+  it('handles app with no type or version attributes', () => {
+    const xml = '<apps><app id="999">Simple App</app></apps>';
+    const apps = parseAppsXml(xml);
+    expect(apps).to.have.length(1);
+    expect(apps[0].id).to.equal('999');
+    expect(apps[0].name).to.equal('Simple App');
+    expect(apps[0].type).to.be.undefined;
+    expect(apps[0].version).to.be.undefined;
+  });
+
+  it('trims whitespace from app names', () => {
+    const xml = '<apps><app id="1" type="appl" version="1.0">  Spaced Name  </app></apps>';
+    const apps = parseAppsXml(xml);
+    expect(apps[0].name).to.equal('Spaced Name');
   });
 });

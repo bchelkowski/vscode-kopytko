@@ -34,6 +34,13 @@ export interface StoredDevice {
   deviceInfo?: Record<string, string>;
 }
 
+export interface RokuApp {
+  id: string;
+  name: string;
+  type?: string;
+  version?: string;
+}
+
 export interface SsdpDeviceFound {
   ip: string;
   port: number;

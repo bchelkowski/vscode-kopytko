@@ -81,7 +81,7 @@ CredentialStore (SecretStorage)
 | Clear Password | `kopytko.clearDevicePassword` | Remove the stored password for a device |
 | Copy IP | `kopytko.copyDeviceIp` | Copy the device IP address to the clipboard |
 | Open Web Portal | `kopytko.openDevicePortal` | Open the Roku developer web portal (`http://<ip>`) in a browser |
-| Read Registry | `kopytko.readRegistry` | Read and display the device registry for the sideloaded app |
+| Read Registry | `kopytko.readRegistry` | Read and display a channel's device registry — shows a picker with all installed channels |
 | Remove Device | `kopytko.removeDevice` | Remove a manually-added or stale device from the list |
 | Copy to Clipboard | `kopytko.copyToClipboard` | Copy selected text or device info to the clipboard |
 
@@ -149,7 +149,7 @@ Right-click any device to access:
 - **Set Password** / **Clear Password** — manage stored developer credentials
 - **Copy IP Address** — copy to clipboard
 - **Open Web Portal** — open the Roku developer dashboard in a browser
-- **Read Registry** — view the device registry for the sideloaded app
+- **Read Registry** — view the device registry for any installed channel (shows a channel picker)
 - **Remove Device** — remove from the device list
 
 ### Scanning behaviour

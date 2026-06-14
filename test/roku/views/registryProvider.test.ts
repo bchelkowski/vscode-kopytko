@@ -106,6 +106,36 @@ describe('parseRegistryXml', () => {
 
     expect(data.sections[0].items[0]).to.deep.equal({ key: 'token', value: '' });
   });
+
+  it('parses FAILED status from access-denied response', () => {
+    const xml = [
+      '<plugin-registry>',
+      '  <status>FAILED</status>',
+      '  <error>Specified dev ID does not match the device key</error>',
+      '</plugin-registry>',
+    ].join('\n');
+    const data = parseRegistryXml(xml);
+
+    expect(data.status).to.equal('FAILED');
+    expect(data.error).to.equal('Specified dev ID does not match the device key');
+    expect(data.sections).to.have.length(0);
+  });
+
+  it('returns undefined status for successful responses', () => {
+    const xml = '<plugin-registry><registry><sections></sections></registry><status>OK</status></plugin-registry>';
+    const data = parseRegistryXml(xml);
+
+    expect(data.status).to.equal('OK');
+    expect(data.error).to.be.undefined;
+  });
+
+  it('returns undefined status and error when tags are absent', () => {
+    const xml = '<plugin-registry><registry><sections></sections></registry></plugin-registry>';
+    const data = parseRegistryXml(xml);
+
+    expect(data.status).to.be.undefined;
+    expect(data.error).to.be.undefined;
+  });
 });
 
 // ---------------------------------------------------------------------------

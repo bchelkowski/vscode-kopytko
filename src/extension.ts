@@ -15,6 +15,7 @@ import {
   parseRegistryXml,
   formatRegistryAsJson,
 } from './client/roku/views/registryProvider';
+import { parseAppsXml } from './client/roku/discovery/ecpClient';
 import { BrightScriptDebugAdapterFactory } from './client/debug/debugAdapterFactory';
 import { getAvailableEnvironments } from './client/roku/kopytkorc';
 import { upload } from './client/roku/rokuDeployer';
@@ -366,15 +367,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      const channelId = 'dev';
+      let apps: { id: string; name: string }[] = [];
+      try {
+        apps = await ecp.queryApps(device.ip);
+      } catch {
+        // Fall back to just "dev" if app list query fails
+      }
+
+      const devApp = apps.find((a) => a.id === 'dev');
+      const channelApps = apps.filter((a) => a.id !== 'dev');
+
+      const items: vscode.QuickPickItem[] = [
+        {
+          label: 'dev',
+          description: devApp?.name ?? 'Sideloaded App',
+        },
+        ...channelApps.map((app) => ({
+          label: app.id,
+          description: app.name,
+        })),
+      ];
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select a channel to read its registry',
+      });
+      if (!selected) return;
+
+      const channelId = selected.label;
 
       try {
         const xml = await ecp.queryRegistry(device.ip, channelId);
         const data = parseRegistryXml(xml);
 
+        if (data.status === 'FAILED') {
+          vscode.window.showInformationMessage(
+            `Cannot read registry for "${selected.description}" (${channelId}): ${data.error ?? 'access denied'}`
+          );
+          return;
+        }
+
         if (data.sections.length === 0) {
           vscode.window.showInformationMessage(
-            `Registry for "${channelId}" on ${device.friendlyName} is empty.`
+            `Registry for "${selected.description}" (${channelId}) on ${device.friendlyName} is empty.`
           );
           return;
         }
