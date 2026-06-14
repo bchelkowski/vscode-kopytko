@@ -1,146 +1,131 @@
-# vscode-kopytko
+<p align="center">
+  <img src="images/kopytko-logo.png" alt="Kopytko" width="128" />
+</p>
 
-A Visual Studio Code extension providing first-class language support for **BrightScript** (Roku's scripting language) and the **Kopytko Framework** ecosystem.
+<h1 align="center">Kopytko BrightScript</h1>
+
+<p align="center">
+  BrightScript &amp; Kopytko language support for Visual Studio Code — syntax highlighting, IntelliSense, diagnostics, formatting, linting, and a built-in Roku debugger.
+</p>
+
+---
 
 ## Features
 
-- Syntax highlighting and language configuration for `.brs` files
-- IntelliSense completions for 60 `ro*` components, 78 interfaces, and ~700 methods
-- Hover documentation for components, methods, built-in functions, and Kopytko exports
-- `CreateObject` type inference — member completions appear automatically after `.`
-- Diagnostics and go-to-definition for `@import` annotations
-- Kopytko module catalog with package name completions
-- **Roku device discovery** — scans the local network and shows available devices in the **Kopytko** sidebar
-- **BrightScript debugger** — deploy, set breakpoints, inspect variables, step through code on a real Roku device
+- **Syntax highlighting** — full TextMate grammar for `.brs` files including `@import`/`@mock` annotations, `as <type>`, and `m` variable scopes
+- **IntelliSense** — completions for 60+ `ro*` components, 78 interfaces, ~700 methods, built-in functions, keywords, and user-defined functions
+- **`CreateObject` type inference** — member completions appear automatically after typing `.` on a variable created via `CreateObject`
+- **`m.top` member completion** — auto-completes fields from your XML interface, parent components, and the SceneGraph node catalog
+- **Kopytko module support** — module export completions with auto-insert `@import`, `@import`/`@mock` path completions and snippets
+- **Hover documentation** — docs for components, methods, built-in functions, user-defined functions, and Kopytko module exports
+- **Go-to-definition** — jump to `@import`/`@mock` files and user-defined function sources
+- **Signature help** — parameter hints as you type function calls
+- **Find All References** — workspace-wide symbol references
+- **Rename symbol** — safe rename across the workspace
+- **Outline & Workspace Symbols** — navigate functions, subs, AA methods, and test cases via the Outline view or `Ctrl+T`
+- **21 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
+- **Code actions** — quick fixes for import diagnostics and unused parameters
+- **Document formatting** — multi-pass engine with 60+ configurable rules (indentation, spacing, casing, blank lines, keyword style, and more)
+- **Configurable identifier casing** — 10 casing dimensions (builtins, keywords, types, methods, user functions) with per-identifier overrides
+- **Kopytko Unit Testing Framework** — test file detection, `@mock` support, `expect()` matcher completions, test case symbols in Outline
+- **Roku device discovery** — SSDP-based network scanning with auto-rescan, manual entry, password management, and per-device environment selection
+- **BrightScript debugger** — deploy, set breakpoints (conditional, hit-count, exception), inspect variables, step through code, REPL, multi-thread support
 
-See [docs/features.md](docs/features.md) for the full feature list.
+See [docs/features.md](docs/features.md) for the full feature list with status and links to detailed documentation.
 
 ---
 
-## Testing the extension in VS Code
+## Standalone Tools
 
-These steps run the extension in VS Code's **Extension Development Host** — a separate VS Code window where the extension is live and you can interact with it as a real user would.
+The formatting engine and linter are also available as standalone npm packages for use in CI pipelines and build tools:
 
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 24 or later
-- [Visual Studio Code](https://code.visualstudio.com/)
-
-### 1. Install dependencies and compile
-
-```bash
-npm install
-npm run compile
-```
-
-### 2. Open the project in VS Code
-
-```bash
-code .
-```
-
-### 3. Launch the Extension Development Host
-
-Press **F5** (or go to **Run → Start Debugging**).
-
-VS Code will open a second window titled **[Extension Development Host]**. The extension is now active in that window.
-
-### 4. Open or create a BrightScript file
-
-In the Extension Development Host window, open any `.brs` file or create one:
-
-```brightscript
-sub init()
-    transfer = CreateObject("roUrlTransfer")
-    transfer.
-end sub
-```
-
-### 5. Exercise the features
-
-| What to test | How |
+| Package | Description |
 |---|---|
-| **Member completions** | Type `transfer.` — a method list should appear |
-| **Hover on a component** | Hover over `roUrlTransfer` — docs card should appear |
-| **Hover on a method** | Hover over `SetUrl` — signature and interface link should appear |
-| **Built-in completions** | Start typing `Abs` or `Left` in a plain context |
-| **Keyword completions** | Start typing `for` or `function` |
-| **@import diagnostics** | Add `' @import /missing.brs` — a warning underline should appear |
-| **@import go-to-definition** | Ctrl+click a valid `@import` path to jump to the file |
-| **@import completions** | Type `' @import ` — snippet completions appear; add `from ` for module names |
-
-### Reloading after a code change
-
-After editing source files, run `npm run compile` again, then in the Extension Development Host window press **Ctrl+Shift+P** and choose **Developer: Reload Window** (or simply close and re-launch with F5).
-
-For a faster loop, open two terminals and run the watchers in parallel:
-
-```bash
-npm run watch          # watches extension (client)
-npm run watch:server   # watches language server
-```
-
-Changes are picked up automatically; reload the Host window to apply them.
+| [**kopytko-formatter**](packages/kopytko-formatter/README.md) | BrightScript formatter — `kopytko-format --check` / `--write` for CI, plus a library API |
+| [**kopytko-linter**](packages/kopytko-linter/README.md) | BrightScript linter with 21 rules — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
 
 ---
 
-## Running the automated test suite
+## Extension Settings
 
-```bash
-npm test
-```
+All settings use the `kopytko.` prefix in `.vscode/settings.json` or VS Code's user settings.
 
-Runs all unit tests with Mocha. No VS Code instance is needed — tests run in Node.js directly.
+For formatting settings (`kopytko.format.*`) see the [kopytko-formatter README](packages/kopytko-formatter/README.md#vs-code-settings-reference). For linting settings (`kopytko.lint.*`) see the [kopytko-linter README](packages/kopytko-linter/README.md#configuration).
 
-```bash
-npm run test:coverage   # same, with nyc coverage report
-```
+### Language Server
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.languageServer.enabled` | `boolean` | `true` | Enable the Kopytko language server |
+| `kopytko.languageServer.trace` | `string` | `"off"` | Trace LSP communication for debugging |
+
+### Import Resolution
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.imports.resolveModules` | `boolean` | `true` | Resolve `@import` annotations from installed Kopytko npm modules |
+| `kopytko.imports.sourceDir` | `string` | `"app"` | Root source directory for resolving internal `@import` paths (matches `.kopytkorc` `sourceDir`) |
+| `kopytko.imports.generatedPaths` | `array` | `[]` | Glob patterns for build-generated `@import` paths (shown as hints instead of warnings) |
+| `kopytko.imports.generatedModules` | `array` | `[]` | Declarations for build-generated imports with known function names |
+| `kopytko.imports.siblingPatterns` | `array` | `[]` | Groups of file patterns that share import scope for the `import/unused` check |
+
+### Read-only Paths
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.readOnlyPaths` | `array` | `[]` | Glob patterns for read-only files (shared fallback for formatting and linting) |
+| `kopytko.format.readOnlyPaths` | `array` | `[]` | Glob patterns for files the formatter should skip (overrides `readOnlyPaths`) |
+| `kopytko.lint.readOnlyPaths` | `array` | `[]` | Glob patterns for files the linter should skip (overrides `readOnlyPaths`) |
+
+### Casing
+
+Casing settings control identifier casing in completions and formatting. Values: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.casing.builtin` | `string` | `"preserve"` | Casing for built-in function names |
+| `kopytko.casing.keyword` | `string` | `"preserve"` | Casing for keywords (fallback for sub-categories below) |
+| `kopytko.casing.type` | `string` | — | Casing for type names (`boolean`, `integer`, etc.); falls back to `keyword` |
+| `kopytko.casing.literal` | `string` | — | Casing for `true`, `false`, `invalid`; falls back to `keyword` |
+| `kopytko.casing.logicOperator` | `string` | — | Casing for `and`, `or`, `not`; falls back to `keyword` |
+| `kopytko.casing.mathOperator` | `string` | — | Casing for `mod`; falls back to `keyword` |
+| `kopytko.casing.method` | `string` | `"preserve"` | Casing for component method names |
+| `kopytko.casing.userFunction` | `string` | `"preserve"` | Casing for user-defined function/sub names |
+| `kopytko.casing.userMethod` | `string` | `"preserve"` | Casing for user-defined AA method names |
+| `kopytko.casing.exact` | `object` | `{}` | Per-identifier casing overrides (e.g. `{ "getglobalaa": "GetGlobalAA" }`) |
+
+### Device Discovery
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.deviceDiscovery.enabled` | `boolean` | `true` | Enable automatic Roku device discovery via SSDP |
+| `kopytko.deviceDiscovery.scanTimeout` | `number` | `5000` | Timeout in milliseconds for active SSDP device scans |
+| `kopytko.deviceDiscovery.showNotifications` | `boolean` | `true` | Show notifications when devices come online or go offline |
 
 ---
 
-## Project layout
+## Roku Device Discovery
 
-```
-src/
-  extension.ts               Extension entry point
-  client/
-    languageClient.ts        LSP client
-    debug/                   Debug adapter and protocol handling
-    roku/                    Device discovery, SSDP, ECP, persistence, views
-  server/
-    server.ts                Language server entry point
-    brightscript/            Component catalog, built-ins, type inference
-    kopytko/                 @import resolver, module catalog
-    providers/               Completion, hover, diagnostics, definition
-test/                        Mocha unit tests (mirrors src/server/)
-docs/                        Feature and reference documentation
-syntaxes/                    TextMate grammar
-snippets/                    VS Code snippets
-```
+The **Roku Devices** panel in the **Kopytko** sidebar automatically discovers Roku devices on your local network using SSDP. Devices are listed with their model, serial number, and firmware version.
+
+- **Auto-scan** — rescans on network changes and wake from sleep
+- **Manual entry** — add a device by IP if not discovered automatically
+- **Secure passwords** — stored in your OS keychain via VS Code's SecretStorage
+- **Active device** — right-click → **Set as Active Device** to set the default deploy target
+- **Environment selection** — choose a `.kopytkorc` environment per device
+- **Context menu** — copy IP, open web portal, set password, view registry, upload package
 
 ---
 
----
-
-## Roku device discovery
-
-The **Roku Devices** panel in the **Kopytko** sidebar scans your local network using SSDP and lists all discovered Roku devices with their model, IP, and firmware version.
-
-1. Expand **Roku Devices** in the **Kopytko** sidebar.
-2. Click **↺** in the panel title to scan.
-3. Right-click a device → **Set as Active Device** to make it the default deploy target.
-
-The active device's IP is automatically injected into your `launch.json` when you start a debug session.
-
----
-
-## Debugging on a Roku device
+## Debugging on a Roku Device
 
 ### Prerequisites
 
 Enable **developer mode** on the Roku: on the remote press Home × 3, Up, Right, Left, Right, Left, Right. Note the device IP and set a developer password.
 
-### `launch.json` configuration
+### `launch.json` Configuration
+
+Create `.vscode/launch.json` (or use **Run → Add Configuration**):
 
 ```json
 {
@@ -150,179 +135,61 @@ Enable **developer mode** on the Roku: on the remote press Home × 3, Up, Right,
       "type": "kopytko",
       "request": "launch",
       "name": "Run on Roku",
-      "host": "192.168.1.100",
-      "password": "rokudev",
-      "rootDir": "${workspaceFolder}",
-      "env": "dev"
+      "rootDir": "${workspaceFolder}"
     }
   ]
 }
 ```
 
-Press **F5** to start. The extension will:
+> **Tip:** If you have an active device selected in the Roku Devices panel with a stored password and environment, `host`, `password`, and `env` are all filled in automatically. A minimal config only needs `type`, `request`, `name`, and `rootDir`.
 
-1. Build the project using `@dazn/kopytko-packager` (reads `.kopytkorc`, runs plugins, generates manifest)
-2. Inject `stop` statements at your breakpoints
-3. Deploy to the Roku via kopytko-packager's AppDeployer
-4. Connect to the BrightScript debug protocol on port 8081
+| Property | Required | Default | Description |
+|---|---|---|---|
+| `host` | No | — | IP address of the Roku device. Auto-filled from the active device if omitted. |
+| `password` | No | — | Developer password. Auto-filled from the active device's stored credentials if omitted. |
+| `rootDir` | No | `${workspaceFolder}` | Project root where `.kopytkorc` lives. |
+| `env` | No | — | Kopytko environment to build (matches `.kopytkorc` `environments` key). Auto-filled from the active device's environment selection if omitted. |
+| `stopOnEntry` | No | `false` | Pause execution at the first line of `main` on launch. |
+| `startCommand` | No | `npx kopytko start` | Command to build and deploy. Must accept env as a positional argument and `ROKU_IP`, `ROKU_DEV_PASSWORD`, `ENV` as environment variables. |
 
-### What you can do once paused
+### What Happens When You Press F5
+
+1. Injects `remotedebug=1` into the manifest (enables socket-based debug protocol)
+2. Runs `kopytko start` to build and deploy the app to the Roku
+3. Restores the original manifest
+4. Connects to the debug protocol on TCP port 8081
+
+### Debugging Capabilities
 
 | Capability | How |
 |---|---|
-| Inspect variables | Variables panel — **Local** and **Global** scopes |
-| View call stack | Call Stack panel — click any frame to switch context |
-| Step over | F10 |
-| Step into | F11 |
-| Step out | Shift+F11 |
-| Continue | F5 |
-| Evaluate expression | Hover over a variable, or use the Debug Console |
+| Inspect variables | Variables panel — **Local** scope with typed, expandable containers |
+| View call stack | Call Stack panel — multi-thread support (SceneGraph threads) |
+| Set breakpoints | Click the gutter — conditional, hit-count, and exception breakpoints supported |
+| Step over / into / out | F10 / F11 / Shift+F11 |
+| Continue / Pause | F5 / F6 |
+| Evaluate expressions | Hover over a variable, or use the Debug Console (REPL) |
 | See `print` output | Debug Console — stdout forwarded in real time |
-| See compilation errors | Debug Console — session terminates on compile failure |
+| See compilation errors | Shown as VS Code diagnostics with file and line info |
 
-See [docs/roku-debug.md](docs/roku-debug.md) for full details and architecture notes.
+See [docs/roku-debug.md](docs/roku-debug.md) for full architecture and troubleshooting.
 
 ---
 
-## Further reading
+## Further Reading
 
 - [Feature overview](docs/features.md)
 - [Roku device management and debugging](docs/roku-debug.md)
 - [BrightScript component catalog](docs/brightscript-components.md)
 - [Kopytko @import annotations](docs/kopytko-imports.md)
 - [Language server architecture](docs/language-server.md)
+- [Document formatting rules](docs/formatting.md)
 
 ---
 
-## Formatting Settings Reference
+## Contributing
 
-The formatter is configured in `.vscode/settings.json` (workspace) or VS Code's user settings. Formatting settings use the `kopytko.format.` prefix; casing settings use `kopytko.casing.`.
-
-See [docs/formatting.md](docs/formatting.md) for the complete reference with before/after examples.
-
-### Indentation & Whitespace
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `indentSize` | `number` | `4` | Spaces per indent level |
-| `useTabs` | `boolean` | `false` | Use tabs instead of spaces |
-| `lineEnding` | `string` | `"auto"` | Line ending: `lf`, `crlf`, `auto` |
-| `trimTrailingWhitespace` | `boolean` | `true` | Strip trailing spaces |
-| `insertFinalNewline` | `boolean` | `true` | Ensure newline at EOF |
-| `maxEmptyLines` | `number` | `2` | Max consecutive blank lines (0 = no limit) |
-| `emptyLinesBetweenFunctions` | `number` | `1` | Blank lines between function/sub declarations |
-| `emptyLinesBetweenMethods` | `number` | `1` | Blank lines between AA method definitions |
-| `emptyLinesAtBlockBoundaries` | `string` | `"preserve"` | `strip`, `enforce`, `preserve` |
-
-### Compound Keywords
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `endKeywordStyle` | `string` | `"preserve"` | `spaced` (end if), `compact` (endif), `preserve` |
-| `thenStyle` | `string` | `"preserve"` | `always`, `never`, `multiline-only`, `singleline-only`, `preserve` |
-
-### Functions & Subs
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `functionVsSubForVoid` | `string` | `"preserve"` | `function`, `sub`, `allow-void`, `preserve` |
-| `spaceBeforeNamedFunctionParens` | `boolean` | `false` | Space before `(` in named definitions |
-| `spaceBeforeAnonymousFunctionParens` | `boolean` | `false` | Space before `(` in anonymous functions |
-| `spaceBeforeCallParens` | `boolean` | `false` | Space before `(` in calls |
-| `spaceInsideParens` | `string` | `"never"` | `never`, `always` |
-| `paramAlignmentStyle` | `string` | `"preserve"` | `preserve`, `indent`, `align-to-paren` |
-
-### Strings
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `wrapLongStrings` | `string` | `"preserve"` | `preserve`, `plus`, `array-join` |
-| `stringConcatStyle` | `string` | `"preserve"` | `preserve`, `plus`, `array-join` |
-
-### Arrays & Associative Arrays
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `associativeArrayBracketSpacing` | `boolean` | `true` | Spaces inside `{ }` |
-| `associativeArrayCommaSpacing` | `string` | `"preserve"` | Spaces around commas in inline `{}` AAs: `preserve`, `after`, `before`, `both`, `none` |
-| `trailingComma` | `string` | `"never"` | `never`, `always`, `multiline` |
-| `arrayCommaStyle` | `string` | `"preserve"` | Multi-line array commas: `always`, `never`, `preserve` |
-| `associativeArrayCommaStyle` | `string` | `"preserve"` | Multi-line AA commas: `always`, `never`, `preserve` |
-| `associativeArraySingleLineThreshold` | `number` | `0` | Max keys before forcing multi-line (0 = no limit) |
-| `arraySplitOpenBracket` | `boolean` | `false` | Split `[{` onto separate lines in multi-item arrays |
-
-### Operators & Expressions
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `spaceAroundOperators` | `boolean` | `true` | Spaces around `+`, `-`, `*`, `/`, `<>`, etc. (preserves `+=`, `-=`) |
-| `spaceAroundAssignment` | `boolean` | `true` | Spaces around `=` in assignments (not `+=`, `-=`) |
-| `unarySpacing` | `boolean` | `true` | Space after `not` |
-
-### Comments
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `commentStyle` | `string` | `"preserve"` | `'`, `rem`, `preserve` |
-| `spaceAfterCommentMarker` | `boolean` | `true` | `' comment` vs `'comment` |
-| `commentWidth` | `number` | `0` | Max comment line length (0 = no limit) |
-
-### Imports
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `sortImports` | `boolean` | `false` | Sort `@import` and `@mock` lines alphabetically (mocks placed after imports) |
-| `emptyLineAfterImports` | `boolean` | `false` | Blank line after last `@import`/`@mock` annotation |
-
-### Blank Lines
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `emptyLineAfterFunctionOpen` | `boolean` | `false` | Blank line after function/sub opening |
-| `emptyLineBeforeFunctionClose` | `boolean` | `false` | Blank line before end function/sub |
-| `emptyLineBeforeReturn` | `string\|boolean` | `false` | `"always"`, `"not-alone"`, `false` |
-| `emptyLineBeforeComment` | `boolean` | `false` | Blank line before comment blocks |
-
-### Control Flow
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `parenthesisIfCase` | `string` | `"preserve"` | `preserve`, `always`, `never` |
-| `elseOnNewLine` | `boolean` | `true` | else on its own line |
-| `forLoopSpacing` | `boolean` | `true` | Spaces around `to` and `step` |
-
-### BrightScript Patterns
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `observeFieldStyle` | `string` | `"preserve"` | `always-scoped`, `warn`, `preserve` |
-| `mPrefixStyle` | `string` | `"preserve"` | `dot`, `bracket`, `preserve` |
-| `alignAssignments` | `boolean` | `false` | Align `=` in consecutive assignments |
-| `fieldAccessConsistency` | `string` | `"preserve"` | `dot`, `method`, `preserve` |
-
-### Casing (`kopytko.casing.*`)
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `builtin` | `string` | `"preserve"` | Casing for built-in functions |
-| `keyword` | `string` | `"preserve"` | Casing for keywords (fallback for sub-categories) |
-| `type` | `string` | — | Casing for type names; falls back to `keyword` |
-| `literal` | `string` | — | Casing for `true`, `false`, `invalid`; falls back to `keyword` |
-| `logicOperator` | `string` | — | Casing for `and`, `or`, `not`; falls back to `keyword` |
-| `mathOperator` | `string` | — | Casing for `mod`; falls back to `keyword` |
-| `method` | `string` | `"preserve"` | Casing for component method names |
-| `userFunction` | `string` | `"preserve"` | Casing for user-defined functions |
-| `userMethod` | `string` | `"preserve"` | Casing for user-defined AA methods |
-| `exact` | `object` | `{}` | Per-identifier casing overrides |
-
-Casing values: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
-
-### Miscellaneous
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `printStatement` | `string` | `"preserve"` | `warn`, `remove`, `preserve` |
-| `lineCommentPosition` | `string` | `"preserve"` | `above`, `inline`, `preserve` |
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, building, testing, and project layout.
 
 ---
 

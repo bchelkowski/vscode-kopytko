@@ -111,9 +111,13 @@ Add `kopytko.lint.*` keys to `.vscode/settings.json`:
 {
   "kopytko.lint.sourceDir": "src",
   "kopytko.lint.rules.import/unused": "off",
-  "kopytko.lint.rules.identifier/shadows-builtin": "warning"
+  "kopytko.lint.rules.identifier/shadows-builtin": "warning",
+  "kopytko.lint.rules.type/missing-return-type": "error",
+  "kopytko.lint.rules.type/missing-param-type": "error"
 }
 ```
+
+> **Shared read-only paths:** You can also set `kopytko.readOnlyPaths` as a shared fallback that applies to both formatting and linting. The linter uses `kopytko.lint.readOnlyPaths` when set, otherwise it falls back to `kopytko.readOnlyPaths`.
 
 ### Read-only Paths
 
