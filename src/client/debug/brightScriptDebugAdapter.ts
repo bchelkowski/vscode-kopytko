@@ -9,7 +9,6 @@ import {
   StopReason,
   ErrorCode,
   VariableType,
-  VariableFlags,
 } from './protocol/constants';
 import type {
   ThreadInfo,

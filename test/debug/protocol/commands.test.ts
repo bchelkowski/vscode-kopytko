@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { BinaryWriter, BinaryReader } from '../../../src/client/debug/protocol/binaryIO';
+import { BinaryWriter } from '../../../src/client/debug/protocol/binaryIO';
 import { VariableFlags, VariableType, VariableRequestFlags } from '../../../src/client/debug/protocol/constants';
 
 /**
