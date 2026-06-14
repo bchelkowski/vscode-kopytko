@@ -4,6 +4,7 @@ import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, ch
 import { checkThrowStatements, checkCreateObjectArgs, checkTrailingCommaSyntaxErrors, checkLoopFlowControl } from './syntaxRules';
 import { checkTestFileStructure } from './testRules';
 import { checkMissingTypeAnnotations } from './typeAnnotationRules';
+import { checkObserverCallbacks, checkEventCallbacks } from './callbackRules';
 
 /** All rule groups as single functions that check multiple codes internally. */
 export const ALL_RULE_GROUPS: RuleDefinition[] = [
@@ -18,4 +19,6 @@ export const ALL_RULE_GROUPS: RuleDefinition[] = [
   { code: 'syntax/flow-outside-loop', defaultSeverity: 'error', fn: checkLoopFlowControl },
   { code: 'test/*', defaultSeverity: 'warning', fn: checkTestFileStructure },
   { code: 'type/*', defaultSeverity: 'warning', fn: checkMissingTypeAnnotations },
+  { code: 'callback/undefined-observer-callback', defaultSeverity: 'error', fn: checkObserverCallbacks },
+  { code: 'callback/undefined-event-callback', defaultSeverity: 'error', fn: checkEventCallbacks },
 ];

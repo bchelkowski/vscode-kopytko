@@ -35,6 +35,8 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'test/missing-return-ts': 'warning',
   'type/missing-return-type': 'warning',
   'type/missing-param-type': 'warning',
+  'callback/undefined-observer-callback': 'error',
+  'callback/undefined-event-callback': 'error',
 };
 
 export const DEFAULT_LINTER_CONFIG: LinterConfig = {

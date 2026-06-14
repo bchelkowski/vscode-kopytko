@@ -2487,4 +2487,93 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(diags.filter((d) => d.code === 'throw/invalid-value')).to.have.length(1);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Callback validation — observeField / observeFieldScoped
+  // ---------------------------------------------------------------------------
+
+  describe('callback/undefined-observer-callback', () => {
+    it('reports an error when observer callback function is not defined', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  m.top.observeFieldScoped("focusedChild", "onFocusChanged")',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const found = diags.filter((d) => d.code === 'callback/undefined-observer-callback');
+      expect(found).to.have.length(1);
+      expect(found[0].message).to.include('onFocusChanged');
+    });
+
+    it('does not report when callback is defined in the same file', async () => {
+      const doc = makeDocument([
+        'sub init()',
+        '  m.top.observeFieldScoped("focusedChild", "onFocusChanged")',
+        'end sub',
+        '',
+        'sub onFocusChanged()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'callback/undefined-observer-callback')).to.be.empty;
+    });
+
+    it('does not report when callback is available via @import', async () => {
+      const importedFile = '/workspace/app/components/utils.brs';
+      fsExistsStub.withArgs(importedFile).returns(true);
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs(importedFile, 'utf-8')
+        .returns('sub onFocusChanged()\nend sub');
+
+      const doc = makeDocument([
+        "' @import /components/utils.brs",
+        'sub init()',
+        '  m.top.observeFieldScoped("focusedChild", "onFocusChanged")',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'callback/undefined-observer-callback')).to.be.empty;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Callback validation — Kopytko events field
+  // ---------------------------------------------------------------------------
+
+  describe('callback/undefined-event-callback', () => {
+    it('reports an error when event callback function is not defined', async () => {
+      const doc = makeDocument([
+        'function render() as Object',
+        '  return {',
+        '    name: "Button",',
+        '    events: {',
+        '      buttonSelected: "_onButtonSelected",',
+        '    },',
+        '  }',
+        'end function',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      const found = diags.filter((d) => d.code === 'callback/undefined-event-callback');
+      expect(found).to.have.length(1);
+      expect(found[0].message).to.include('_onButtonSelected');
+    });
+
+    it('does not report when event callback is defined in the same file', async () => {
+      const doc = makeDocument([
+        'function render() as Object',
+        '  return {',
+        '    name: "Button",',
+        '    events: {',
+        '      buttonSelected: "_onButtonSelected",',
+        '    },',
+        '  }',
+        'end function',
+        '',
+        'sub _onButtonSelected()',
+        'end sub',
+      ].join('\n'));
+      const diags = await provider.provideDiagnostics(doc);
+      expect(diags.filter((d) => d.code === 'callback/undefined-event-callback')).to.be.empty;
+    });
+  });
 });

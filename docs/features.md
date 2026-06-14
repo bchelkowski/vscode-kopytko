@@ -63,6 +63,8 @@ This document is the canonical list of extension features. Each feature links to
 | SceneGraph `extends` inheritance in diagnostic scope | ✅ Implemented | [language-server.md](./language-server.md) |
 | XML sibling scope and pattern sibling scope for diagnostics | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
 | Component name lookup by `<component name>` attribute (handles dotted filenames) | ✅ Implemented | [language-server.md](./language-server.md) |
+| Observer callback validation (`callback/undefined-observer-callback`) — verifies `observeField`/`observeFieldScoped` 2nd argument names a reachable function | ✅ Implemented | [language-server.md](./language-server.md) |
+| Kopytko events callback validation (`callback/undefined-event-callback`) — verifies `events: {}` values in template render objects name reachable functions | ✅ Implemented | [language-server.md](./language-server.md) |
 
 ## Refactoring & Formatting
 

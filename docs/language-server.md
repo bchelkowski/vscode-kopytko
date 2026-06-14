@@ -257,6 +257,24 @@ BrightScript allows throwing only strings or associative arrays. When an AA is t
 - Variable/expression references: `throw myError` — cannot be statically validated
 - AA literals with a `message` field: `throw { message: "oops", number: -1 }` — valid
 
+#### Observer callback validation
+
+| Code | Severity | Description |
+|---|---|---|
+| `callback/undefined-observer-callback` | Error | The second argument of `observeField()` or `observeFieldScoped()` is a string that does not match any function defined in this file or any reachable `@import`. |
+
+BrightScript's `observeField(fieldName, callbackName)` and `observeFieldScoped(fieldName, callbackName)` register a callback by **string name**. If the named function does not exist in scope, the observer fires at runtime but the callback silently fails. This diagnostic catches such mismatches at edit time.
+
+The check applies to any node variable (not just `m.top`), including `unobserveField` and `unobserveFieldScoped` which are excluded (they only remove observers, not register them).
+
+#### Kopytko events callback validation
+
+| Code | Severity | Description |
+|---|---|---|
+| `callback/undefined-event-callback` | Error | A string value inside an `events: { ... }` block in a Kopytko template render object does not match any function defined in this file or any reachable `@import`. |
+
+Kopytko framework components use `render()` methods that return element descriptors with an `events` field. Each key is a field name on the child node, and each value is a **string naming a callback function**. The framework's `KopytkoDOM` wires these up via `element.observeFieldScoped(eventKey, events[eventKey])` at runtime. This diagnostic ensures the named callback functions actually exist in scope.
+
 ### Code Actions (`textDocument/codeAction`)
 
 Quick-fix light-bulb actions are offered on `@import` diagnostic lines. The server registers `codeActionProvider` with kind `QuickFix` only.
