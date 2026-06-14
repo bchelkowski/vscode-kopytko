@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [0.2.4] - 2026-06-14
+
+### Added
+- Add per-device environment selection and upload
+
+### Fixed
+- Replace numeric literals with zeros instead of spaces
+
 ## [0.2.3] - 2026-06-13
 
 ### Added
