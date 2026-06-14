@@ -1272,26 +1272,19 @@ else if name = "test" then
 
 | Type | Values | Default |
 |---|---|---|
-| `string` | `"preserve"`, `"always"`, `"never"` | `"preserve"` |
+| `string` | `"never"`, `"preserve"` | `"never"` |
 
-Controls whether the variable in a `catch` clause is wrapped in parentheses.
+Controls whether parentheses around the `catch` variable are removed. BrightScript does not allow parentheses around the catch variable — `catch (e)` is a compilation error.
 
 ```brightscript
-' "always" — adds parentheses:
-' Before:
-catch e
-
-' After:
-catch (e)
-
-' "never" — removes parentheses:
+' "never" — removes parentheses (default):
 ' Before:
 catch (err)
 
 ' After:
 catch err
 
-' "preserve" — leaves as written (default)
+' "preserve" — leaves as written
 ```
 
 Trailing comments on the `catch` line are preserved unchanged.

@@ -405,7 +405,7 @@ function hasReturnWithValue(lines: string[], startIdx: number, endIdx: number): 
 
     if (depth > 0) continue;
 
-    if (/^return\s+\S/i.test(trimmed)) return true;
+    if (/^return(?:\s+\S|\{|\[|\()/i.test(trimmed)) return true;
   }
   return false;
 }
@@ -483,11 +483,7 @@ function passCatchParenStyle(lines: string[], config: FormattingConfig): string[
     const varName = m[2];
     const trailing = m[3];
 
-    if (config.catchParenStyle === 'always') {
-      return indent + 'catch (' + varName + ')' + trailing;
-    } else {
-      return indent + 'catch ' + varName + trailing;
-    }
+    return indent + 'catch ' + varName + trailing;
   });
 }
 
@@ -949,7 +945,7 @@ function passTrailingCommas(lines: string[], config: FormattingConfig): string[]
       if (depth <= 0) break;
 
       if (j < i && j > 0 && jTrimmed !== '' && !jTrimmed.startsWith("'") && !/^rem\b/i.test(jTrimmed)) {
-        if (/\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*$/i.test(jTrimmed)) continue;
+        if (/\b(?:function|sub)(?:\s+\w+)?\s*\(.*\)(?:\s+as\s+\w+)?\s*$/i.test(jTrimmed)) continue;
         if (jTrimmed === '{' || jTrimmed === '[') continue;
         if (/^return\b/i.test(jTrimmed)) continue;
         if (/^(?:if|else|elseif|else\s+if|end\s*if|end\s*sub|end\s*function|end\s*for|end\s*while|end\s*try|for|while|try|catch|next|exit|throw|dim|print|\?)\b/i.test(jTrimmed)) continue;
@@ -1089,7 +1085,7 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
     if (trailingOpens !== 0) indentLevel = Math.max(0, indentLevel + trailingOpens);
 
     // Anonymous function expressions: trailing comment after return type is allowed.
-    if (/\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
+    if (/\b(?:function|sub)(?:\s+\w+)?\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
       indentLevel++;
     }
 

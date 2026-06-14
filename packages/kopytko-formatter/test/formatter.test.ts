@@ -530,6 +530,34 @@ describe('kopytko-formatter', () => {
       expect(result).to.not.include('sub getData()');
     });
 
+    it('does not convert function to sub when return has no space before brace', () => {
+      const result = format(
+        ['function _renderPlaceholder()', '  return{', '    name: "Rectangle"', '  }', 'end function'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('function _renderPlaceholder()');
+      expect(result).to.include('end function');
+      expect(result).to.not.include('sub _renderPlaceholder()');
+    });
+
+    it('does not convert function to sub when return has no space before bracket', () => {
+      const result = format(
+        ['function getItems()', '  return[1, 2, 3]', 'end function'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('function getItems()');
+      expect(result).to.not.include('sub getItems()');
+    });
+
+    it('does not convert function to sub when return has no space before paren', () => {
+      const result = format(
+        ['function getValue()', '  return(x + y)', 'end function'],
+        { indentSize: 2, functionVsSubForVoid: 'sub' },
+      );
+      expect(result).to.include('function getValue()');
+      expect(result).to.not.include('sub getValue()');
+    });
+
     it('converts anonymous function() as Void to sub() when functionVsSubForVoid is sub', () => {
       const result = format(
         ['sub main()', '  callback = function() as Void', '    print "hello"', '  end function', 'end sub'],
@@ -1123,6 +1151,90 @@ describe('kopytko-formatter', () => {
     });
   });
 
+  // ── Named functions inside AAs should not get spurious commas ───────────
+
+  describe('named functions in AAs', () => {
+    it('does not add comma to named function declaration in AA (associativeArrayCommaStyle=always)', () => {
+      expect(format([
+        'm = {',
+        '  key: function UrlUtils()',
+        '    prototype = {}',
+        '  end function',
+        '}',
+      ], { indentSize: 2, associativeArrayCommaStyle: 'always' })).to.equal([
+        'm = {',
+        '  key: function UrlUtils()',
+        '    prototype = {}',
+        '  end function',
+        '}',
+      ].join('\n'));
+    });
+
+    it('does not add comma to named function with args in AA', () => {
+      expect(format([
+        'm = {',
+        '  key: function UrlUtils(arg1 as String)',
+        '    prototype = {}',
+        '  end function',
+        '}',
+      ], { indentSize: 2, associativeArrayCommaStyle: 'always' })).to.equal([
+        'm = {',
+        '  key: function UrlUtils(arg1 as String)',
+        '    prototype = {}',
+        '  end function',
+        '}',
+      ].join('\n'));
+    });
+
+    it('does not add comma to named function with return type in AA', () => {
+      expect(format([
+        'm = {',
+        '  key: function UrlUtils() as Object',
+        '    prototype = {}',
+        '  end function',
+        '}',
+      ], { indentSize: 2, associativeArrayCommaStyle: 'always' })).to.equal([
+        'm = {',
+        '  key: function UrlUtils() as Object',
+        '    prototype = {}',
+        '  end function',
+        '}',
+      ].join('\n'));
+    });
+
+    it('does not add comma to named sub in AA', () => {
+      expect(format([
+        'm = {',
+        '  key: sub doWork()',
+        '    x = 1',
+        '  end sub',
+        '}',
+      ], { indentSize: 2, associativeArrayCommaStyle: 'always' })).to.equal([
+        'm = {',
+        '  key: sub doWork()',
+        '    x = 1',
+        '  end sub',
+        '}',
+      ].join('\n'));
+    });
+
+    it('still handles anonymous functions in AA correctly', () => {
+      expect(format([
+        'm = {',
+        '  key: function()',
+        '    x = 1',
+        '  end function',
+        '}',
+      ], { indentSize: 2, associativeArrayCommaStyle: 'always' })).to.equal([
+        'm = {',
+        '  key: function()',
+        '    x = 1',
+        '  end function',
+        '}',
+      ].join('\n'));
+    });
+  });
+
   // ── Comments do not affect indentation ───────────────────────────────────
 
   describe('commented-out code does not affect indentation', () => {
@@ -1284,46 +1396,6 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
-    it('always: wraps bare catch variable in parens', () => {
-      expect(format([
-        'sub test()',
-        'try',
-        '  doWork()',
-        'catch e',
-        '  print e.message',
-        'end try',
-        'end sub',
-      ], { indentSize: 2, catchParenStyle: 'always' })).to.equal([
-        'sub test()',
-        '  try',
-        '    doWork()',
-        '  catch (e)',
-        '    print e.message',
-        '  end try',
-        'end sub',
-      ].join('\n'));
-    });
-
-    it('always: leaves already-parenthesised catch unchanged', () => {
-      expect(format([
-        'sub test()',
-        '  try',
-        '    doWork()',
-        '  catch (err)',
-        '    print err.message',
-        '  end try',
-        'end sub',
-      ], { indentSize: 2, catchParenStyle: 'always' })).to.equal([
-        'sub test()',
-        '  try',
-        '    doWork()',
-        '  catch (err)',
-        '    print err.message',
-        '  end try',
-        'end sub',
-      ].join('\n'));
-    });
-
     it('never: removes parens from catch variable', () => {
       expect(format([
         'sub test()',
@@ -1364,19 +1436,19 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
-    it('always: preserves trailing comment on catch line', () => {
+    it('default (never): strips catch parentheses', () => {
       expect(format([
         'sub test()',
         '  try',
         '    doWork()',
-        "  catch e ' handle error",
+        "  catch (e) ' handle error",
         '  end try',
         'end sub',
-      ], { indentSize: 2, catchParenStyle: 'always' })).to.equal([
+      ], { indentSize: 2 })).to.equal([
         'sub test()',
         '  try',
         '    doWork()',
-        "  catch (e) ' handle error",
+        "  catch e ' handle error",
         '  end try',
         'end sub',
       ].join('\n'));
