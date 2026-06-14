@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.3] - 2026-06-14
+
+### Fixed
+- Remove invalid catchParenStyle always option
+
 ## [1.0.2] - 2026-06-14
 
 ### Fixed
