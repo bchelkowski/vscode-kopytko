@@ -3,6 +3,7 @@ import { DeviceManager } from '../discovery/deviceManager';
 import {
   DeviceTreeItem,
   DeviceInfoItem,
+  DeviceEnvironmentItem,
   DeviceActionItem,
   ScanningItem,
   EmptyItem,
@@ -20,7 +21,10 @@ export class DeviceTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
   private readonly _onScanStarted = () => { this._scanning = true; this._fireChange(); };
   private readonly _onScanEnded = () => { this._scanning = false; this._fireChange(); };
 
-  constructor(private readonly manager: DeviceManager) {
+  constructor(
+    private readonly manager: DeviceManager,
+    private readonly getAvailableEnvironments: () => string[],
+  ) {
     manager.on('devices-changed', this._onDevicesChanged);
     manager.on('scan-started', this._onScanStarted);
     manager.on('scan-ended', this._onScanEnded);
@@ -94,6 +98,10 @@ export class DeviceTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
       'kopytko.readRegistry',
       [device.serialNumber],
     ));
+
+    const availableEnvs = this.getAvailableEnvironments();
+    const effectiveEnv = this.manager.getEffectiveEnvironment(device.serialNumber, availableEnvs);
+    children.push(new DeviceEnvironmentItem(device.serialNumber, effectiveEnv));
 
     const vendorName = info['vendor-name'];
     const modelValue = [vendorName, device.modelName].filter(Boolean).join(' ') +

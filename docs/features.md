@@ -133,9 +133,11 @@ This document is the canonical list of extension features. Each feature links to
 | Manual device entry by IP | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Secure password storage (OS keychain via SecretStorage) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Set/unset active device for debug/deploy | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Per-device environment selection from .kopytkorc | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Package upload via sidebar UI | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Context menu actions (copy IP, open web portal, set password) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Registry viewer (read device registry via ECP) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Package upload via sidebar UI | ⬜ Planned | — |
+| Package upload via sidebar UI | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Device info webview panel | ⬜ Planned | — |
 | Remote control | ⬜ Planned | — |
 
@@ -172,7 +174,6 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Notes |
 |---|---|
-| Package upload via sidebar UI | Upload a channel package to the active device directly from the Roku Devices panel. |
 | Device info webview panel | Detailed device information in a dedicated webview panel. |
 | Remote control | Send key presses to the active Roku from the command palette or a webview panel. |
 | Channel screenshot | Capture a screenshot via ECP and open in VS Code. |

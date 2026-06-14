@@ -30,6 +30,28 @@ const vscodeStub = {
   Disposable: class {
     dispose() {}
   },
+  TreeItem: class TreeItem {
+    label: string | undefined;
+    collapsibleState: number | undefined;
+    description?: string;
+    tooltip?: any;
+    iconPath?: any;
+    contextValue?: string;
+    command?: any;
+    constructor(label: string | { label: string }, collapsibleState?: number) {
+      this.label = typeof label === 'string' ? label : label.label;
+      this.collapsibleState = collapsibleState;
+    }
+  },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  ThemeIcon: class ThemeIcon {
+    id: string;
+    constructor(id: string) { this.id = id; }
+  },
+  MarkdownString: class MarkdownString {
+    value: string;
+    constructor(value?: string) { this.value = value ?? ''; }
+  },
 };
 
 // Inject into Node's require cache so `require('vscode')` resolves

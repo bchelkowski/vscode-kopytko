@@ -7,6 +7,8 @@ export interface DeployOptions {
   host: string;
   password: string;
   env?: string;
+  /** Skip debug manifest injection (remotedebug=1). Default: false. */
+  debugMode?: boolean;
   /** Command to run for build+deploy. Default: 'npx kopytko start'. */
   startCommand?: string;
   onOutput?: (message: string) => void;
@@ -41,8 +43,16 @@ const DEFAULT_START_COMMAND = 'npx kopytko start';
  */
 export async function deploy(options: DeployOptions): Promise<void> {
   const { rootDir, host, password, env = 'dev', onOutput } = options;
+  const debugMode = options.debugMode !== false;
   const startCommand = options.startCommand || DEFAULT_START_COMMAND;
   const log = onOutput ?? (() => {});
+
+  if (!debugMode) {
+    log(`Running: ${startCommand}`);
+    await runKopytkoStart(rootDir, startCommand, host, password, env, log);
+    log('Build and deploy successful.');
+    return;
+  }
 
   const backup = await injectDebugManifest(rootDir, env, log);
 
@@ -53,6 +63,13 @@ export async function deploy(options: DeployOptions): Promise<void> {
   } finally {
     await restoreManifest(backup, log);
   }
+}
+
+/**
+ * Non-debug deploy — builds and uploads the project without debug manifest injection.
+ */
+export async function upload(options: Omit<DeployOptions, 'debugMode'>): Promise<void> {
+  return deploy({ ...options, debugMode: false });
 }
 
 /**

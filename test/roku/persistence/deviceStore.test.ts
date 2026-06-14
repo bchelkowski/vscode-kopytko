@@ -240,6 +240,41 @@ describe('DeviceStore', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Device environment
+  // ---------------------------------------------------------------------------
+
+  describe('device environment', () => {
+    it('returns undefined for device with no environment set', () => {
+      expect(deviceStore.getDeviceEnvironment('SN001')).to.be.undefined;
+    });
+
+    it('sets and retrieves an environment', async () => {
+      await deviceStore.setDeviceEnvironment('SN001', 'staging');
+      expect(deviceStore.getDeviceEnvironment('SN001')).to.equal('staging');
+    });
+
+    it('overwrites existing environment', async () => {
+      await deviceStore.setDeviceEnvironment('SN001', 'dev');
+      await deviceStore.setDeviceEnvironment('SN001', 'production');
+      expect(deviceStore.getDeviceEnvironment('SN001')).to.equal('production');
+    });
+
+    it('clears an environment', async () => {
+      await deviceStore.setDeviceEnvironment('SN001', 'staging');
+      await deviceStore.clearDeviceEnvironment('SN001');
+      expect(deviceStore.getDeviceEnvironment('SN001')).to.be.undefined;
+    });
+
+    it('isolates environments between devices', async () => {
+      await deviceStore.setDeviceEnvironment('SN001', 'dev');
+      await deviceStore.setDeviceEnvironment('SN002', 'production');
+
+      expect(deviceStore.getDeviceEnvironment('SN001')).to.equal('dev');
+      expect(deviceStore.getDeviceEnvironment('SN002')).to.equal('production');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Cleanup
   // ---------------------------------------------------------------------------
 

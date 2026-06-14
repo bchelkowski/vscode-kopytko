@@ -9,13 +9,15 @@ import { NetworkMonitor } from './client/roku/discovery/networkMonitor';
 import { DeviceStore } from './client/roku/persistence/deviceStore';
 import { CredentialStore } from './client/roku/persistence/credentialStore';
 import { DeviceTreeProvider } from './client/roku/views/deviceTreeProvider';
-import { DeviceTreeItem } from './client/roku/views/deviceTreeItems';
+import { DeviceTreeItem, DeviceEnvironmentItem } from './client/roku/views/deviceTreeItems';
 import {
   RegistryContentProvider,
   parseRegistryXml,
   formatRegistryAsJson,
 } from './client/roku/views/registryProvider';
 import { BrightScriptDebugAdapterFactory } from './client/debug/debugAdapterFactory';
+import { getAvailableEnvironments } from './client/roku/kopytkorc';
+import { upload } from './client/roku/rokuDeployer';
 
 let client: KopytkoLanguageClient | undefined;
 let deviceManager: DeviceManager | undefined;
@@ -66,7 +68,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showNotifications,
     notify: (msg) => vscode.window.showInformationMessage(msg),
   });
-  treeProvider = new DeviceTreeProvider(deviceManager);
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+
+  treeProvider = new DeviceTreeProvider(deviceManager, () => getAvailableEnvironments(workspaceRoot));
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('kopytko.rokuDevices', treeProvider)
@@ -252,6 +256,95 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  // ── Environment selection ──────────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kopytko.setDeviceEnvironment', async (serialOrItem: unknown) => {
+      let serial: string | undefined;
+      if (serialOrItem instanceof DeviceEnvironmentItem) {
+        serial = serialOrItem.serialNumber;
+      } else if (typeof serialOrItem === 'string') {
+        serial = serialOrItem;
+      } else if (serialOrItem instanceof DeviceTreeItem) {
+        serial = serialOrItem.device.serialNumber;
+      }
+      if (!serial) return;
+
+      const envs = getAvailableEnvironments(workspaceRoot);
+      if (envs.length === 0) {
+        vscode.window.showWarningMessage(
+          'No environments found in .kopytkorc. Add an "environments" section to your .kopytkorc file.'
+        );
+        return;
+      }
+
+      const currentEnv = deviceManager!.getDeviceEnvironment(serial);
+      const selected = await vscode.window.showQuickPick(
+        envs.map(e => ({
+          label: e,
+          description: e === currentEnv ? '(current)' : undefined,
+        })),
+        { placeHolder: 'Select environment for this device' },
+      );
+      if (!selected) return;
+
+      await deviceManager!.setDeviceEnvironment(serial, selected.label);
+      vscode.window.showInformationMessage(
+        `Environment set to "${selected.label}" for ${deviceManager!.getDevice(serial)?.friendlyName ?? serial}`
+      );
+    })
+  );
+
+  // ── Upload to device ───────────────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kopytko.uploadToDevice', async (item: unknown) => {
+      if (!(item instanceof DeviceTreeItem)) return;
+      const { device } = item;
+
+      const deviceKey = device.deviceId || device.serialNumber;
+      const password = await credentials.getPassword(deviceKey);
+
+      if (!password) {
+        vscode.window.showErrorMessage(
+          `No password stored for ${device.friendlyName}. Set a password first (right-click → Set Password).`
+        );
+        return;
+      }
+
+      const availableEnvs = getAvailableEnvironments(workspaceRoot);
+      const env = deviceManager!.getEffectiveEnvironment(device.serialNumber, availableEnvs);
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Uploading to ${device.friendlyName}…`,
+          cancellable: false,
+        },
+        async (progress) => {
+          try {
+            await upload({
+              rootDir: workspaceRoot,
+              host: device.ip,
+              password,
+              env,
+              onOutput: (msg) => {
+                progress.report({ message: msg });
+                discoveryChannel.appendLine(`[Upload] ${msg}`);
+              },
+            });
+            vscode.window.showInformationMessage(
+              `Successfully uploaded to ${device.friendlyName}` +
+              (env ? ` (env: ${env})` : '')
+            );
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            discoveryChannel.appendLine(`[Upload] Failed: ${msg}`);
+            vscode.window.showErrorMessage(`Upload failed: ${msg}`);
+          }
+        },
+      );
+    })
+  );
+
   // ── Registry viewer ────────────────────────────────────────────────────────
   const registryProvider = new RegistryContentProvider();
   context.subscriptions.push(
@@ -307,7 +400,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.debug.registerDebugAdapterDescriptorFactory('kopytko', debugFactory)
   );
 
-  // Auto-fill host/password from the active device when launching
+  // Auto-fill host/password/env from the active device when launching
   context.subscriptions.push(
     vscode.debug.registerDebugConfigurationProvider('kopytko', {
       async resolveDebugConfiguration(
@@ -320,6 +413,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           if (!debugConfig['password']) {
             const stored = await credentials.getPassword(active.deviceId || active.serialNumber);
             if (stored) debugConfig['password'] = stored;
+          }
+          if (!debugConfig['env']) {
+            const availableEnvs = getAvailableEnvironments(workspaceRoot);
+            const env = deviceManager!.getEffectiveEnvironment(active.serialNumber, availableEnvs);
+            if (env) debugConfig['env'] = env;
           }
         }
         if (!debugConfig['rootDir']) {

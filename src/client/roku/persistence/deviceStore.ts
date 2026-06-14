@@ -10,6 +10,7 @@ const KEYS = {
   favorites: `${KEY_PREFIX}favorites`,
   ipToSerial: `${KEY_PREFIX}ipToSerial`,
   activeDevice: `${KEY_PREFIX}activeDevice`,
+  environments: `${KEY_PREFIX}environments`,
 } as const;
 
 /** Max age (30 days in ms) before cleanup removes stale entries. */
@@ -136,6 +137,28 @@ export class DeviceStore {
   /** Sets (or clears) the active device used for debug/deploy. */
   async setActiveDeviceSerial(serial: string | undefined): Promise<void> {
     await this.globalState.update(KEYS.activeDevice, serial);
+  }
+
+  // ── Device environment ──────────────────────────────────
+
+  /** Returns the stored environment for a device, or undefined. */
+  getDeviceEnvironment(serial: string): string | undefined {
+    const map = this.globalState.get<Record<string, string>>(KEYS.environments, {});
+    return map[serial];
+  }
+
+  /** Sets the environment for a device. */
+  async setDeviceEnvironment(serial: string, env: string): Promise<void> {
+    const map = this.globalState.get<Record<string, string>>(KEYS.environments, {});
+    map[serial] = env;
+    await this.globalState.update(KEYS.environments, map);
+  }
+
+  /** Clears the stored environment for a device. */
+  async clearDeviceEnvironment(serial: string): Promise<void> {
+    const map = this.globalState.get<Record<string, string>>(KEYS.environments, {});
+    delete map[serial];
+    await this.globalState.update(KEYS.environments, map);
   }
 
   // ── Cleanup ────────────────────────────────────────────────

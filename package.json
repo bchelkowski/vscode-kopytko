@@ -860,18 +860,14 @@
         ],
         "configurationAttributes": {
           "launch": {
-            "required": [
-              "host",
-              "password"
-            ],
             "properties": {
               "host": {
                 "type": "string",
-                "description": "IP address of the Roku device (e.g. 192.168.1.100)."
+                "description": "IP address of the Roku device. Auto-filled from the active device in the Roku Devices panel if omitted."
               },
               "password": {
                 "type": "string",
-                "description": "Developer password set on the Roku device."
+                "description": "Developer password. Auto-filled from the active device's stored credentials if omitted."
               },
               "rootDir": {
                 "type": "string",
@@ -880,8 +876,7 @@
               },
               "env": {
                 "type": "string",
-                "description": "Kopytko environment to build (matches .kopytkorc environments key).",
-                "default": "dev"
+                "description": "Kopytko environment to build (matches .kopytkorc environments key). Auto-filled from the active device's environment selection if omitted."
               },
               "stopOnEntry": {
                 "type": "boolean",
@@ -901,21 +896,17 @@
             "type": "kopytko",
             "request": "launch",
             "name": "Run on Roku",
-            "host": "192.168.1.100",
-            "password": "rokudev",
             "rootDir": "${workspaceFolder}"
           }
         ],
         "configurationSnippets": [
           {
             "label": "BrightScript: Launch on Roku",
-            "description": "Package and deploy the current project to a Roku device.",
+            "description": "Package and deploy the current project to a Roku device. Host, password, and env are auto-filled from the active device if omitted.",
             "body": {
               "type": "kopytko",
               "request": "launch",
               "name": "Run on Roku",
-              "host": "^\"${1:192.168.1.100}\"",
-              "password": "^\"${2:rokudev}\"",
               "rootDir": "^\"${workspaceFolder}\""
             }
           }
@@ -1017,6 +1008,18 @@
         "title": "Read Registry",
         "icon": "$(database)",
         "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.setDeviceEnvironment",
+        "title": "Set Environment",
+        "icon": "$(symbol-namespace)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.uploadToDevice",
+        "title": "Upload to Device",
+        "icon": "$(cloud-upload)",
+        "category": "Kopytko"
       }
     ],
     "menus": {
@@ -1044,14 +1047,19 @@
           "group": "inline@1"
         },
         {
+          "command": "kopytko.uploadToDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "group": "inline@2"
+        },
+        {
           "command": "kopytko.addFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-favorite)/",
-          "group": "inline@2"
+          "group": "inline@3"
         },
         {
           "command": "kopytko.removeFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
-          "group": "inline@2"
+          "group": "inline@3"
         },
         {
           "command": "kopytko.selectDevice",
@@ -1064,14 +1072,19 @@
           "group": "device@1"
         },
         {
+          "command": "kopytko.uploadToDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "group": "device@2"
+        },
+        {
           "command": "kopytko.addFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-favorite)/",
-          "group": "device@2"
+          "group": "device@3"
         },
         {
           "command": "kopytko.removeFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
-          "group": "device@2"
+          "group": "device@3"
         },
         {
           "command": "kopytko.setDevicePassword",
@@ -1097,6 +1110,16 @@
           "command": "kopytko.removeDevice",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
           "group": "danger@1"
+        },
+        {
+          "command": "kopytko.setDeviceEnvironment",
+          "when": "view == kopytko.rokuDevices && viewItem == deviceEnvironment",
+          "group": "inline@1"
+        },
+        {
+          "command": "kopytko.setDeviceEnvironment",
+          "when": "view == kopytko.rokuDevices && viewItem == deviceEnvironment",
+          "group": "environment@1"
         }
       ]
     }

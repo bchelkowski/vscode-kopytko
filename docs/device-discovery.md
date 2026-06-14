@@ -72,6 +72,8 @@ CredentialStore (SecretStorage)
 | Refresh Devices | `kopytko.refreshDevices` | Trigger an active SSDP scan and refresh the device list |
 | Set as Active Device | `kopytko.selectDevice` | Set a device as the active target for debug/deploy |
 | Unset Active Device | `kopytko.unselectDevice` | Clear the active device selection |
+| Set Environment | `kopytko.setDeviceEnvironment` | Choose a Kopytko environment for a device |
+| Upload to Device | `kopytko.uploadToDevice` | Build and upload the project to a device |
 | Add Device | `kopytko.addDevice` | Add a device manually by IP address |
 | Add to Favorites | `kopytko.addFavorite` | Mark a device as a favorite (persists across networks) |
 | Remove from Favorites | `kopytko.removeFavorite` | Unmark a device as a favorite |
@@ -110,11 +112,39 @@ Click any device to expand it and see:
 | **Locale** | Device locale (e.g. `en_US`) |
 | **Time Zone** | Time zone name and UTC offset, e.g. `United States/Eastern (Offset: -300)` |
 
+### Environment selection
+
+Each device can have a **Kopytko environment** assigned (from the `environments` section of `.kopytkorc`). The environment is shown as a child item under each device:
+
+- **Environment** — displays the selected environment name (e.g. "staging"), or "(not set)" if none
+- Click the environment item or right-click → **Set Environment** to open a picker with all environments defined in `.kopytkorc`
+- If no environment is explicitly selected, the first environment from `.kopytkorc` is automatically preselected
+- Environment selections are persisted per-device in VS Code's global state
+
+The selected environment is used by:
+- **Upload to Device** — builds and deploys with the selected environment
+- **Debug sessions** — auto-fills the `env` launch config property (see [roku-debug.md](./roku-debug.md))
+
+### Upload to device
+
+The **Upload to Device** button (☁↑ cloud-upload icon) appears as an inline button on each online device, between the active device toggle and the favorite toggle. Clicking it:
+
+1. Reads the device's IP, stored password, and selected environment
+2. Runs `kopytko start` to build and deploy the project to the device
+3. Shows progress in a notification and logs output to the **Roku Discovery** output channel
+
+This is a **non-debug deploy** — it does not inject `remotedebug=1` into the manifest, so the app runs normally on the device without debug protocol support.
+
+**Requirements:**
+- The device must have a **stored password** (right-click → Set Password)
+- A workspace with a `.kopytkorc` file must be open
+
 ### Context menu actions
 
 Right-click any device to access:
 
 - **Set as Active Device** / **Unset Active Device** — toggle the active device for debug/deploy
+- **Upload to Device** — build and deploy the project to this device
 - **Add to Favorites** / **Remove from Favorites** — favorite devices persist across networks
 - **Set Password** / **Clear Password** — manage stored developer credentials
 - **Copy IP Address** — copy to clipboard

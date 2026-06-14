@@ -165,4 +165,60 @@ describe('rokuDeployer — manifest injection', () => {
       expect(captured['ROKU_DEV_PASSWORD']).to.equal('rokudev');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Non-debug deploy (debugMode: false / upload)
+  // ---------------------------------------------------------------------------
+
+  describe('non-debug deploy (debugMode: false)', () => {
+    it('does not create a debug manifest when debugMode is false', async () => {
+      const manifestPath = path.join(tmpDir, 'manifest', 'local.dev.js');
+      const original = 'module.exports = { title: "My App" };';
+
+      fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({
+        baseManifest: '/manifest/base.js',
+        localManifestOverride: '/manifest/local.dev.js',
+      }));
+      fs.writeFileSync(manifestPath, original);
+
+      // Use a harmless command that will succeed
+      const markerFile = path.join(tmpDir, 'deployed.txt');
+      const successCmd = `node -e "require('fs').writeFileSync('${markerFile}', 'ok')"`;
+
+      const { deploy } = await import('../../src/client/roku/rokuDeployer');
+      await deploy({
+        host: '192.168.1.100',
+        password: 'pass',
+        env: 'dev',
+        rootDir: tmpDir,
+        startCommand: successCmd,
+        debugMode: false,
+      });
+
+      // Manifest should not have been modified
+      const content = fs.readFileSync(manifestPath, 'utf-8');
+      expect(content).to.equal(original);
+
+      // Command should have run
+      expect(fs.existsSync(markerFile)).to.be.true;
+    });
+
+    it('upload function calls deploy with debugMode false', async () => {
+      const markerFile = path.join(tmpDir, 'uploaded.txt');
+      const successCmd = `node -e "require('fs').writeFileSync('${markerFile}', 'ok')"`;
+
+      fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({}));
+
+      const { upload } = await import('../../src/client/roku/rokuDeployer');
+      await upload({
+        host: '192.168.1.100',
+        password: 'pass',
+        env: 'dev',
+        rootDir: tmpDir,
+        startCommand: successCmd,
+      });
+
+      expect(fs.existsSync(markerFile)).to.be.true;
+    });
+  });
 });

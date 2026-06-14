@@ -158,6 +158,27 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     this.emit('devices-changed');
   }
 
+  /** Set the environment for a specific device. */
+  async setDeviceEnvironment(serial: string, env: string): Promise<void> {
+    await this.store.setDeviceEnvironment(serial, env);
+    this.emit('devices-changed');
+  }
+
+  /** Get the stored environment for a device. */
+  getDeviceEnvironment(serial: string): string | undefined {
+    return this.store.getDeviceEnvironment(serial);
+  }
+
+  /**
+   * Returns the effective environment for a device: the stored env,
+   * or the first available env from .kopytkorc, or undefined.
+   */
+  getEffectiveEnvironment(serial: string, availableEnvs: string[]): string | undefined {
+    const stored = this.store.getDeviceEnvironment(serial);
+    if (stored) return stored;
+    return availableEnvs.length > 0 ? availableEnvs[0] : undefined;
+  }
+
   // ── Queries ───────────────────────────────────────────────
 
   /** Returns the currently active device, if any. */

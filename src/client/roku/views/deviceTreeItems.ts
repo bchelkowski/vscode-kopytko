@@ -64,6 +64,27 @@ export class DeviceInfoItem extends vscode.TreeItem {
   }
 }
 
+/** Child item showing and allowing selection of the device environment. */
+export class DeviceEnvironmentItem extends vscode.TreeItem {
+  constructor(
+    public readonly serialNumber: string,
+    environment: string | undefined,
+  ) {
+    super('Environment', vscode.TreeItemCollapsibleState.None);
+    this.description = environment ?? '(not set)';
+    this.iconPath = new vscode.ThemeIcon('symbol-namespace');
+    this.contextValue = 'deviceEnvironment';
+    this.tooltip = environment
+      ? `Environment: ${environment} — click to change`
+      : 'No environment set — click to select';
+    this.command = {
+      title: 'Set Environment',
+      command: 'kopytko.setDeviceEnvironment',
+      arguments: [serialNumber],
+    };
+  }
+}
+
 /** Child action button (e.g. "Open Web Portal"). */
 export class DeviceActionItem extends vscode.TreeItem {
   constructor(label: string, icon: vscode.ThemeIcon, commandId: string, args?: unknown[]) {

@@ -724,4 +724,50 @@ describe('DeviceManager', () => {
       loggedManager.dispose();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Device environment
+  // ---------------------------------------------------------------------------
+
+  describe('device environment', () => {
+    beforeEach(async () => {
+      await manager.initialize();
+    });
+
+    it('returns undefined when no environment is set', () => {
+      expect(manager.getDeviceEnvironment('SN001')).to.be.undefined;
+    });
+
+    it('sets and retrieves an environment', async () => {
+      await manager.setDeviceEnvironment('SN001', 'staging');
+      expect(manager.getDeviceEnvironment('SN001')).to.equal('staging');
+    });
+
+    it('emits devices-changed when environment is set', async () => {
+      const changeSpy = sinon.spy();
+      manager.on('devices-changed', changeSpy);
+
+      await manager.setDeviceEnvironment('SN001', 'dev');
+      expect(changeSpy.called).to.be.true;
+    });
+
+    describe('getEffectiveEnvironment', () => {
+      it('returns stored env when set', async () => {
+        await manager.setDeviceEnvironment('SN001', 'production');
+
+        const env = manager.getEffectiveEnvironment('SN001', ['dev', 'staging', 'production']);
+        expect(env).to.equal('production');
+      });
+
+      it('returns first available env when no stored env', () => {
+        const env = manager.getEffectiveEnvironment('SN001', ['dev', 'staging']);
+        expect(env).to.equal('dev');
+      });
+
+      it('returns undefined when no stored env and no available envs', () => {
+        const env = manager.getEffectiveEnvironment('SN001', []);
+        expect(env).to.be.undefined;
+      });
+    });
+  });
 });

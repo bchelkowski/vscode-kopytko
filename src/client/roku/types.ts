@@ -47,5 +47,6 @@ export interface RokuLaunchConfig {
   host: string;
   password: string;
   rootDir: string;
+  env?: string;
   stopOnEntry?: boolean;
 }

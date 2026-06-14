@@ -66,25 +66,22 @@ Add a configuration via **Run → Add Configuration** or create `.vscode/launch.
       "type": "kopytko",
       "request": "launch",
       "name": "Run on Roku",
-      "host": "192.168.1.100",
-      "password": "rokudev",
-      "rootDir": "${workspaceFolder}",
-      "env": "dev"
+      "rootDir": "${workspaceFolder}"
     }
   ]
 }
 ```
 
+> **Tip:** If you have an active device selected in the Roku Devices panel with a stored password and an environment set, `host`, `password`, and `env` are all filled in automatically. A minimal launch config only needs `type`, `request`, `name`, and `rootDir`.
+
 | Property | Required | Description |
 |---|---|---|
-| `host` | No\* | IP address of the Roku device (\*auto-filled from active device if omitted) |
-| `password` | No\* | Developer password (\*auto-filled from SecretStorage if omitted) |
+| `host` | No | IP address of the Roku device. Auto-filled from the active device in the Roku Devices panel if omitted. |
+| `password` | No | Developer password. Auto-filled from the active device's stored credentials if omitted. |
 | `rootDir` | No | Project root where `.kopytkorc` lives (default: `${workspaceFolder}`) |
-| `env` | No | Kopytko environment to build — matches `.kopytkorc` environments key (default: `dev`) |
+| `env` | No | Kopytko environment to build — matches `.kopytkorc` environments key. Auto-filled from the active device's environment selection if omitted. |
 | `stopOnEntry` | No | If `true`, pause at the first line of `main` on launch |
 | `startCommand` | No | Command to build and deploy (default: `npx kopytko start`). Must accept env as a positional argument and `ROKU_IP`, `ROKU_DEV_PASSWORD`, `ENV` as environment variables. |
-
-> **Tip:** If you have an active device selected in the Roku Devices panel with a stored password, both `host` and `password` are filled in automatically and can be omitted from `launch.json`. See [device-discovery.md](./device-discovery.md) for details.
 
 ### Starting a debug session
 
