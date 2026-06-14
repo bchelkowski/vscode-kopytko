@@ -9,6 +9,7 @@ import {
   StopReason,
   ErrorCode,
   VariableType,
+  VariableFlags,
 } from './protocol/constants';
 import type {
   ThreadInfo,
@@ -39,6 +40,8 @@ interface VarRefEntry {
   threadIndex: number;
   stackFrameIndex: number;
   path: string[];
+  /** True when the path contains virtual key segments (e.g. SceneGraph node fields). */
+  hasVirtualPath: boolean;
 }
 
 /**
@@ -388,6 +391,8 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
         entry.stackFrameIndex,
         entry.path,
         isExpanding, // getChildren=true when expanding a specific container
+        isExpanding, // includeVirtualKeys — always request virtual keys when expanding
+        entry.hasVirtualPath, // virtualPathIncluded — set when path contains virtual segments
       );
 
       // When expanding a container (getChildren=true with a path), the response
@@ -401,7 +406,7 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       let arrayIndex = 0;
       const dapVars = filtered.map((v) => {
         const name = v.name || String(arrayIndex++);
-        return this._variableInfoToDAP(v, name, entry.threadIndex, entry.stackFrameIndex, entry.path, isExpanding);
+        return this._variableInfoToDAP(v, name, entry.threadIndex, entry.stackFrameIndex, entry.path, isExpanding, entry.hasVirtualPath);
       });
 
       this._sendResponse(req.seq, 'variables', true, { variables: dapVars });
@@ -484,11 +489,17 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
       } else {
         // Hover or watch — try to get the variable by path
         const pathSegments = expr.split('.');
-        const vars = await this._commands.getVariables(threadIndex, frameIndex, pathSegments, false);
+        // Multi-segment paths may traverse virtual keys (e.g. node fields),
+        // so set virtual flags to allow the device to resolve them.
+        const hasVirtualSegments = pathSegments.length > 1;
+        const vars = await this._commands.getVariables(
+          threadIndex, frameIndex, pathSegments, false,
+          hasVirtualSegments, hasVirtualSegments,
+        );
         if (vars.length > 0) {
           const v = vars[0];
           const varRef = v.isContainer
-            ? this._allocateVarRef(threadIndex, frameIndex, pathSegments)
+            ? this._allocateVarRef(threadIndex, frameIndex, pathSegments, hasVirtualSegments)
             : 0;
           this._sendResponse(req.seq, 'evaluate', true, {
             result: v.value || `<${v.type}>`,
@@ -818,9 +829,9 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   // Variable reference management
   // ---------------------------------------------------------------------------
 
-  private _allocateVarRef(threadIndex: number, stackFrameIndex: number, path: string[]): number {
+  private _allocateVarRef(threadIndex: number, stackFrameIndex: number, path: string[], hasVirtualPath = false): number {
     const ref = this._nextVarRef++;
-    this._varRefs.set(ref, { threadIndex, stackFrameIndex, path });
+    this._varRefs.set(ref, { threadIndex, stackFrameIndex, path, hasVirtualPath });
     return ref;
   }
 
@@ -836,10 +847,14 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     stackFrameIndex: number,
     parentPath: string[],
     isProperty: boolean,
+    parentHasVirtualPath: boolean,
   ): { name: string; value: string; type: string; variablesReference: number; presentationHint?: { kind: string } } {
     const childPath = [...parentPath, displayName];
+    // A child has virtual path segments if the parent already does, or if this
+    // variable itself is a virtual key (e.g. a SceneGraph node field).
+    const childHasVirtualPath = parentHasVirtualPath || v.isVirtual;
     const varRef = v.isContainer && v.childCount > 0
-      ? this._allocateVarRef(threadIndex, stackFrameIndex, childPath)
+      ? this._allocateVarRef(threadIndex, stackFrameIndex, childPath, childHasVirtualPath)
       : 0;
 
     const typeName = variableTypeName(v.type);

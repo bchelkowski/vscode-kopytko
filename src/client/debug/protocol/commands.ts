@@ -114,19 +114,29 @@ export class DebugCommands {
    * When `getChildren=true`: the response contains the parent variable
    * (IS_CHILD_KEY=false) followed by its child keys (IS_CHILD_KEY=true).
    * Use this when expanding a container in the Variables panel.
-   */
+  *
+  * When `includeVirtualKeys=true`: also returns virtual keys (SceneGraph
+  * node fields, `$children`, `$parent`, `$count`, etc.).
+  *
+  * When `virtualPathIncluded=true`: tells the device that the variable
+  * path contains virtual key segments that must be resolved accordingly.
+  */
   async getVariables(
-    threadIndex: number,
-    stackFrameIndex: number,
-    path: string[] = [],
-    getChildren = false,
+   threadIndex: number,
+   stackFrameIndex: number,
+   path: string[] = [],
+   getChildren = false,
+   includeVirtualKeys = false,
+   virtualPathIncluded = false,
   ): Promise<VariableInfo[]> {
-    const writer = new BinaryWriter();
+   const writer = new BinaryWriter();
 
-    // Flags byte comes FIRST per the Roku protocol spec
-    let flags = 0;
-    if (getChildren) flags |= VariableRequestFlags.GetChildKeys;
-    writer.writeUint8(flags);
+   // Flags byte comes FIRST per the Roku protocol spec
+   let flags = 0;
+   if (getChildren) flags |= VariableRequestFlags.GetChildKeys;
+   if (includeVirtualKeys) flags |= VariableRequestFlags.GetVirtualKeys;
+   if (virtualPathIncluded) flags |= VariableRequestFlags.VirtualPathIncluded;
+   writer.writeUint8(flags);
 
     writer.writeUint32(threadIndex);
     writer.writeUint32(stackFrameIndex);
@@ -170,6 +180,7 @@ export class DebugCommands {
     const variableType: VariableType = reader.readUint8();
     const isContainer = (flags & VariableFlags.IsContainer) !== 0;
     const isChildKey = (flags & VariableFlags.IsChildKey) !== 0;
+    const isVirtual = (flags & VariableFlags.IsVirtual) !== 0;
 
     let name = '';
     if (flags & VariableFlags.IsNameHere) {
@@ -206,6 +217,7 @@ export class DebugCommands {
       children: undefined,
       isContainer,
       isChildKey,
+      isVirtual,
     };
   }
 

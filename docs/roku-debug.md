@@ -119,6 +119,7 @@ When execution pauses, the **Variables** panel shows:
 
 - **Local** — variables in the current function scope, with full type information
 - Container types (`roAssociativeArray`, `roArray`, `roList`) can be expanded to inspect their contents
+- SceneGraph nodes (`roSGNode`) can be expanded to browse their fields (custom and built-in), just like associative arrays
 - Virtual variables (`$children`, `$parent`, `$count`) are available for SceneGraph nodes and collections
 
 Hover over a variable in the editor to evaluate it inline.

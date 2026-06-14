@@ -62,6 +62,8 @@ export interface VariableInfo {
   isContainer: boolean;
   /** True when this entry is a child key of a parent container. */
   isChildKey: boolean;
+  /** True when this entry is a virtual key (e.g. SceneGraph node field). */
+  isVirtual: boolean;
 }
 
 // ---------------------------------------------------------------------------
