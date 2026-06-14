@@ -153,7 +153,7 @@ describe('BrightScript component catalog', () => {
     it('returns methods for roRenderThreadQueue', () => {
       const methods = getComponentMethods('roRenderThreadQueue');
       const names = methods.map((m) => m.name);
-      expect(names).to.include.members(['RegisterMessageHandler', 'PostMessage', 'CopyMessage', 'GetCopyCount']);
+      expect(names).to.include.members(['AddMessageHandler', 'PostMessage', 'CopyMessage', 'NumCopies']);
     });
 
     it('returns empty array for unknown component', () => {

@@ -521,10 +521,22 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
     description: 'Queues messages for handlers on the render thread, enabling async communication from Task nodes without blocking.',
     docsUrl: 'https://developer.roku.com/dev/docs/ifrenderthreadqueue',
     methods: [
-      { name: 'RegisterMessageHandler', signature: 'RegisterMessageHandler(message_id as String, handler as String) as Object', returnType: 'Object', description: 'Registers a handler for messages on the given ID. Called on the render thread. Returns an object to unregister the handler.', since: '15.0' },
+      { name: 'AddMessageHandler', signature: 'AddMessageHandler(message_id as String, handler as String) as Object', returnType: 'Object', description: 'Registers a handler for messages on the given ID. Called on the render thread. Returns an object to unregister the handler.', since: '15.0' },
       { name: 'PostMessage', signature: 'PostMessage(message_id as String, data as Object) as Void', returnType: 'Void', description: 'Posts a message to the queue. Data is moved and becomes unavailable to the calling thread. May be called from any thread.', since: '15.0' },
       { name: 'CopyMessage', signature: 'CopyMessage(message_id as String, data as Object) as Void', returnType: 'Void', description: 'Posts a message to the queue. Data is copied instead of moved. May be called from any thread.', since: '15.0' },
-      { name: 'GetCopyCount', signature: 'GetCopyCount() as Integer', returnType: 'Integer', description: 'Returns the total number of objects that were copied by PostMessage() instead of being moved.', since: '15.0' },
+      { name: 'NumCopies', signature: 'NumCopies() as Integer', returnType: 'Integer', description: 'Returns the total number of objects that were copied by PostMessage() instead of being moved.', since: '15.0' },
+    ],
+  },
+
+  // ── ifUtils ───────────────────────────────────────────────────────────────
+  ifUtils: {
+    name: 'ifUtils',
+    description: 'Utility functions for deep copying and object identity comparison.',
+    docsUrl: 'https://developer.roku.com/dev/docs/ifutils',
+    methods: [
+      { name: 'DeepCopy', signature: 'DeepCopy(data as Object) as Object', returnType: 'Object', description: 'Performs a deep copy of an object and all nested objects. Non-copyable items are skipped.', since: '15.0' },
+      { name: 'IsSameObject', signature: 'IsSameObject(data1 as Object, data2 as Object) as Boolean', returnType: 'Boolean', description: 'Returns true if both arguments reference the same object instance.', since: '15.0' },
+      { name: 'IsComponentRegistered', signature: 'IsComponentRegistered(componentName as String) as Boolean', returnType: 'Boolean', description: 'Returns true if the specified component name is already registered.', since: '15.2' },
     ],
   },
 
@@ -1565,6 +1577,13 @@ export const BRIGHTSCRIPT_COMPONENTS: BrightScriptComponent[] = [
     description: 'Queues messages for render-thread handlers. Enables async communication from Task nodes without blocking via rendezvous.',
     docsUrl: 'https://developer.roku.com/dev/docs/rorenderthreadqueue',
     interfaces: ['ifRenderThreadQueue'],
+  },
+  {
+    name: 'roUtils',
+    description: 'Utility functions including deep copy and object identity comparison.',
+    docsUrl: 'https://developer.roku.com/dev/docs/routils',
+    interfaces: ['ifUtils'],
+    since: '15.0',
   },
   {
     name: 'roFileSystem',
