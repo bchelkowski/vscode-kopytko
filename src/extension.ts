@@ -15,7 +15,6 @@ import {
   parseRegistryXml,
   formatRegistryAsJson,
 } from './client/roku/views/registryProvider';
-import { parseAppsXml } from './client/roku/discovery/ecpClient';
 import { BrightScriptDebugAdapterFactory } from './client/debug/debugAdapterFactory';
 import { getAvailableEnvironments } from './client/roku/kopytkorc';
 import { upload } from './client/roku/rokuDeployer';
