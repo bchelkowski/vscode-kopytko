@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.5] - 2026-06-14
+
+### Fixed
+- Make bracket depth tracking string-aware
+
 ## [1.0.4] - 2026-06-14
 
 ### Breaking Changes
