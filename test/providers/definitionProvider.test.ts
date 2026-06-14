@@ -410,4 +410,139 @@ describe('BrightScriptDefinitionProvider', () => {
       expect(loc.range.start.line).to.equal(2);
     });
   });
+
+  // ── deduplication: same function via @import + XML sibling ───────────────
+
+  describe('deduplication via multiple resolution paths', () => {
+    it('returns a single result when a function is reachable via both @import and XML sibling', async () => {
+      // Foo.view.brs imports helper.brs AND Foo.view.xml lists helper.brs as a sibling script
+      const doc = makeDocument(
+        [
+          "' @import /utils/helper.brs",
+          '',
+          'helperFn()',
+        ].join('\n'),
+        'file:///project/app/components/Foo/Foo.view.brs',
+      );
+
+      existsStub.withArgs('/project/app/utils/helper.brs').returns(true);
+      readFileStub.withArgs('/project/app/utils/helper.brs', 'utf-8').returns(
+        'function helperFn()\nend function'
+      );
+
+      // XML sibling: Foo.view.xml lists both Foo.view.brs and helper.brs
+      readdirStub.withArgs('/project/app/components/Foo').returns(['Foo.view.xml']);
+      readFileStub.withArgs('/project/app/components/Foo/Foo.view.xml', 'utf-8').returns(
+        '<script type="text/brightscript" uri="Foo.view.brs" />\n' +
+        '<script type="text/brightscript" uri="pkg:/utils/helper.brs" />'
+      );
+      existsStub.withArgs('/project/app/components/Foo/Foo.view.brs').returns(true);
+
+      const p = new BrightScriptDefinitionProvider(makeResolver());
+      const result = await p.provideDefinition(doc, { line: 2, character: 4 });
+
+      expect(result).to.not.be.null;
+      const loc = result as Location;
+      expect(loc.uri).to.include('helper.brs');
+      // Must return a single Location, not an array
+      expect(result).to.not.be.an('array');
+    });
+
+    it('returns a single result when an inner method is reachable via both @import and XML sibling', async () => {
+      // Foo.view.brs imports counter.brs AND Foo.view.xml lists counter.brs as a sibling
+      const doc = makeDocument(
+        [
+          "' @import /utils/counter.brs",
+          '',
+          'counter.increment()',
+        ].join('\n'),
+        'file:///project/app/components/Foo/Foo.view.brs',
+      );
+
+      const counterText = [
+        'function createCounter() as Object',
+        '  this = {}',
+        '  this.increment = function()',
+        '  end function',
+        '  return this',
+        'end function',
+      ].join('\n');
+
+      existsStub.withArgs('/project/app/utils/counter.brs').returns(true);
+      readFileStub.withArgs('/project/app/utils/counter.brs', 'utf-8').returns(counterText);
+
+      readdirStub.withArgs('/project/app/components/Foo').returns(['Foo.view.xml']);
+      readFileStub.withArgs('/project/app/components/Foo/Foo.view.xml', 'utf-8').returns(
+        '<script type="text/brightscript" uri="Foo.view.brs" />\n' +
+        '<script type="text/brightscript" uri="pkg:/utils/counter.brs" />'
+      );
+      existsStub.withArgs('/project/app/components/Foo/Foo.view.brs').returns(true);
+
+      const p = new BrightScriptDefinitionProvider(makeResolver());
+      const result = await p.provideDefinition(doc, { line: 2, character: 10 });
+
+      expect(result).to.not.be.null;
+      const loc = result as Location;
+      expect(loc.uri).to.include('counter.brs');
+      expect(loc.range.start.line).to.equal(2);
+      // Must be a single Location, not duplicated
+      expect(result).to.not.be.an('array');
+    });
+
+    it('returns a single result when a function is reachable via both @import and pattern sibling', async () => {
+      const doc = makeDocument(
+        [
+          "' @import /utils/helper.brs",
+          '',
+          'helperFn()',
+        ].join('\n'),
+        'file:///dir/Foo.component.brs',
+      );
+
+      existsStub.withArgs('/project/app/utils/helper.brs').returns(true);
+      readFileStub.withArgs('/project/app/utils/helper.brs', 'utf-8').returns(
+        'function helperFn()\nend function'
+      );
+
+      // Pattern sibling: Foo.template.brs also imports helper.brs
+      existsStub.withArgs('/dir/Foo.template.brs').returns(true);
+      readFileStub.withArgs('/dir/Foo.template.brs', 'utf-8').returns(
+        "' @import /utils/helper.brs\n"
+      );
+      readdirStub.returns([]);
+
+      const p = new BrightScriptDefinitionProvider(makeResolver());
+      const siblingPatterns = [['*.component.brs', '*.template.brs']];
+      const result = await p.provideDefinition(doc, { line: 2, character: 4 }, siblingPatterns);
+
+      expect(result).to.not.be.null;
+      const loc = result as Location;
+      expect(loc.uri).to.include('helper.brs');
+      expect(result).to.not.be.an('array');
+    });
+
+    it('deduplicates inner method locations returned for dot-preceded calls', async () => {
+      // Simulates the case where the same inner method is found via multiple resolution paths
+      // The definition provider's deduplicateLocations ensures a single Location is returned
+      const doc = makeDocument([
+        'function ClassA() as Object',           // line 0
+        '  this = {}',                            // line 1
+        '  this.run = function() as Boolean',    // line 2
+        '  end function',
+        '  return this',
+        'end function',
+        '',
+        'sub init()',
+        '  a.run()',                              // line 8 — cursor on "run"
+        'end sub',
+      ].join('\n'));
+
+      const result = await provider.provideDefinition(doc, { line: 8, character: 4 });
+      expect(result).to.not.be.null;
+      const loc = result as Location;
+      expect(loc.range.start.line).to.equal(2);
+      // Should be a single Location, not an array
+      expect(result).to.not.be.an('array');
+    });
+  });
 });

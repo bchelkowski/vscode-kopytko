@@ -65,10 +65,11 @@ export class BrightScriptDefinitionProvider {
             return candidates;
           })();
 
-          if (selected.length === 1) {
-            return toMethodLocation(selected[0]);
+          const locations = deduplicateLocations(selected.map(toMethodLocation));
+          if (locations.length === 1) {
+            return locations[0];
           }
-          return selected.map(toMethodLocation);
+          return locations;
         }
       }
 
@@ -92,6 +93,17 @@ function toMethodLocation(m: InnerMethodDefinition): Location {
     uri: URI.file(m.filePath).toString(),
     range: Range.create(m.line, m.column, m.line, m.column + m.name.length),
   };
+}
+
+/** Removes duplicate Locations that share the same uri, start line, and start character. */
+function deduplicateLocations(locations: Location[]): Location[] {
+  const seen = new Set<string>();
+  return locations.filter((loc) => {
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**
