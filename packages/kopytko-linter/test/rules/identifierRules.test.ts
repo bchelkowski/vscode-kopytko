@@ -96,6 +96,45 @@ describe('identifierRules', () => {
       expect(wrong).to.be.empty;
     });
 
+    it('does not report wrong-arg-count when argument is a numeric literal', () => {
+      const content = [
+        'function doWork()',
+        '  x = Rnd(2)',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedCalls(ctx);
+      const wrong = diags.filter(d => d.code === 'identifier/wrong-arg-count');
+      expect(wrong).to.be.empty;
+    });
+
+    it('does not report wrong-arg-count when arguments include numeric literals', () => {
+      const content = [
+        'function doWork(s)',
+        '  x = Mid(s, 2, 3)',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedCalls(ctx);
+      const wrong = diags.filter(d => d.code === 'identifier/wrong-arg-count');
+      expect(wrong).to.be.empty;
+    });
+
+    it('does not report wrong-arg-count when argument is a hex literal', () => {
+      const content = [
+        'function doWork()',
+        '  x = Rnd(&HFF)',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUndefinedCalls(ctx);
+      const wrong = diags.filter(d => d.code === 'identifier/wrong-arg-count');
+      expect(wrong).to.be.empty;
+    });
+
     it('skips main.brs files', () => {
       const content = [
         'function main()',

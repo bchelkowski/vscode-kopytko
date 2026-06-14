@@ -157,32 +157,32 @@ describe('numericLiterals', () => {
   // ── stripNumericLiterals ───────────────────────────────────────────────────
 
   describe('stripNumericLiterals', () => {
-    it('replaces hex literals with spaces', () => {
+    it('replaces hex literals with zeros', () => {
       const result = stripNumericLiterals('x = &HFF');
-      expect(result).to.equal('x =     ');
+      expect(result).to.equal('x = 0000');
     });
 
-    it('replaces decimal integers with spaces', () => {
+    it('replaces decimal integers with zeros', () => {
       const result = stripNumericLiterals('x = 255');
-      expect(result).to.equal('x =    ');
+      expect(result).to.equal('x = 000');
     });
 
-    it('replaces hex LongInteger with spaces', () => {
+    it('replaces hex LongInteger with zeros', () => {
       const input = 'x = &hFEDCBA9876543210&';
       const result = stripNumericLiterals(input);
       expect(result.length).to.equal(input.length);
       expect(result).to.not.include('&h');
-      expect(result.trim()).to.equal('x =');
+      expect(result).to.equal('x = ' + '0'.repeat(input.length - 4));
     });
 
-    it('replaces float literals with spaces', () => {
+    it('replaces float literals with zeros', () => {
       const result = stripNumericLiterals('x = 2.01');
-      expect(result).to.equal('x =     ');
+      expect(result).to.equal('x = 0000');
     });
 
-    it('replaces type-suffixed numbers with spaces', () => {
+    it('replaces type-suffixed numbers with zeros', () => {
       const result = stripNumericLiterals('x = 2!');
-      expect(result).to.equal('x =   ');
+      expect(result).to.equal('x = 00');
     });
 
     it('preserves character offsets', () => {
@@ -193,7 +193,6 @@ describe('numericLiterals', () => {
 
     it('handles multiple numeric literals on one line', () => {
       const result = stripNumericLiterals('arr = [1, &HFF, 2.3]');
-      // 1, &HFF, and 2.3 should all be replaced
       expect(result).to.not.include('&HFF');
     });
   });

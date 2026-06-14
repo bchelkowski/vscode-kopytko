@@ -100,5 +100,5 @@ export function isNumericLiteral(value: string): boolean {
  * mistaken for identifiers during analysis.
  */
 export function stripNumericLiterals(line: string): string {
-  return line.replace(NUMERIC_LITERAL_GLOBAL_RE, (match) => ' '.repeat(match.length));
+  return line.replace(NUMERIC_LITERAL_GLOBAL_RE, (match) => '0'.repeat(match.length));
 }

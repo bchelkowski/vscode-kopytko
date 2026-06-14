@@ -65,9 +65,9 @@ describe('numericLiterals', () => {
   });
 
   describe('stripNumericLiterals', () => {
-    it('replaces hex literals with spaces', () => {
+    it('replaces hex literals with zeros', () => {
       const result = stripNumericLiterals('x = &HFF');
-      expect(result).to.equal('x =     ');
+      expect(result).to.equal('x = 0000');
     });
 
     it('preserves character offsets', () => {
