@@ -1353,19 +1353,19 @@ describe('kopytko-formatter', () => {
     });
   });
 
-  // ── catchParenStyle ───────────────────────────────────────────────────────
+  // ── Catch parentheses (always stripped) ──────────────────────────────────
 
-  describe('catchParenStyle', () => {
-    it('preserve: leaves catch e unchanged', () => {
+  describe('catch parentheses', () => {
+    it('strips parentheses from catch variable', () => {
       expect(format([
         'sub test()',
-        'try',
-        '  doWork()',
-        'catch e',
-        '  print e.message',
-        'end try',
+        '  try',
+        '    doWork()',
+        '  catch (e)',
+        '    print e.message',
+        '  end try',
         'end sub',
-      ], { indentSize: 2, catchParenStyle: 'preserve' })).to.equal([
+      ], { indentSize: 2 })).to.equal([
         'sub test()',
         '  try',
         '    doWork()',
@@ -1376,47 +1376,7 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
-    it('preserve: leaves catch (e) unchanged', () => {
-      expect(format([
-        'sub test()',
-        'try',
-        '  doWork()',
-        'catch (e)',
-        '  print e.message',
-        'end try',
-        'end sub',
-      ], { indentSize: 2, catchParenStyle: 'preserve' })).to.equal([
-        'sub test()',
-        '  try',
-        '    doWork()',
-        '  catch (e)',
-        '    print e.message',
-        '  end try',
-        'end sub',
-      ].join('\n'));
-    });
-
-    it('never: removes parens from catch variable', () => {
-      expect(format([
-        'sub test()',
-        '  try',
-        '    doWork()',
-        '  catch (e)',
-        '    print e.message',
-        '  end try',
-        'end sub',
-      ], { indentSize: 2, catchParenStyle: 'never' })).to.equal([
-        'sub test()',
-        '  try',
-        '    doWork()',
-        '  catch e',
-        '    print e.message',
-        '  end try',
-        'end sub',
-      ].join('\n'));
-    });
-
-    it('never: leaves bare catch variable unchanged', () => {
+    it('leaves bare catch variable unchanged', () => {
       expect(format([
         'sub test()',
         '  try',
@@ -1425,7 +1385,7 @@ describe('kopytko-formatter', () => {
         '    print err.message',
         '  end try',
         'end sub',
-      ], { indentSize: 2, catchParenStyle: 'never' })).to.equal([
+      ], { indentSize: 2 })).to.equal([
         'sub test()',
         '  try',
         '    doWork()',
@@ -1436,7 +1396,7 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
-    it('default (never): strips catch parentheses', () => {
+    it('preserves trailing comment when stripping parens', () => {
       expect(format([
         'sub test()',
         '  try',

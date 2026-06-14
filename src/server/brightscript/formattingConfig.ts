@@ -106,8 +106,6 @@ export interface FormattingConfig {
   // ── Control Flow ─────────────────────────────────────────────────────────
   /** 'always' wraps if condition in parens, 'never' removes them. */
   parenthesisIfCase: 'preserve' | 'always' | 'never';
-  /** Controls parentheses around the catch variable. BrightScript does not allow parentheses around the catch variable, so `'always'` is not supported. */
-  catchParenStyle: 'never' | 'preserve';
   /** else on its own line (true) vs same line as end if. */
   elseOnNewLine: boolean;
   /** Enforce spaces around `to` and `step` in for loops. */
@@ -191,7 +189,6 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
 
   // Control Flow
   parenthesisIfCase: 'preserve',
-  catchParenStyle: 'never',
   elseOnNewLine: true,
   forLoopSpacing: true,
 
@@ -279,7 +276,6 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     emptyLineBeforeComment: bool('emptyLineBeforeComment', d.emptyLineBeforeComment),
 
     parenthesisIfCase: str('parenthesisIfCase', d.parenthesisIfCase) as FormattingConfig['parenthesisIfCase'],
-    catchParenStyle: str('catchParenStyle', d.catchParenStyle) as FormattingConfig['catchParenStyle'],
     elseOnNewLine: bool('elseOnNewLine', d.elseOnNewLine),
     forLoopSpacing: bool('forLoopSpacing', d.forLoopSpacing),
 

@@ -62,10 +62,10 @@ export function formatText(
   lines = passEndKeywordStyle(lines, config);
   lines = passFunctionVsSub(lines, config);
 
-  // Pass 4 — Then style + parenthesis if case + catch paren style
+  // Pass 4 — Then style + parenthesis if case + catch paren strip
   lines = passThenStyle(lines, config);
   lines = passParenthesisIfCase(lines, config);
-  lines = passCatchParenStyle(lines, config);
+  lines = passStripCatchParens(lines);
 
   // Pass 4c — Else on new line
   lines = passElseOnNewLine(lines, config);
@@ -467,23 +467,17 @@ function passThenStyle(lines: string[], config: FormattingConfig): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 4b — Parenthesis if case
+// Pass 4b — Strip catch parentheses (always — BrightScript does not allow them)
 // ---------------------------------------------------------------------------
 
-function passCatchParenStyle(lines: string[], config: FormattingConfig): string[] {
-  if (config.catchParenStyle === 'preserve') return lines;
-
+function passStripCatchParens(lines: string[]): string[] {
   return lines.map(line => {
     const trimmed = line.trim();
-    // Match `catch varname` or `catch (varname)` with optional trailing comment
     const m = /^(catch)\s+\(?([a-zA-Z_]\w*)\)?((?:\s*'.*)?)$/i.exec(trimmed);
     if (!m) return line;
 
     const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    const varName = m[2];
-    const trailing = m[3];
-
-    return indent + 'catch ' + varName + trailing;
+    return indent + 'catch ' + m[2] + m[3];
   });
 }
 

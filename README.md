@@ -288,7 +288,6 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `parenthesisIfCase` | `string` | `"preserve"` | `preserve`, `always`, `never` |
-| `catchParenStyle` | `string` | `"preserve"` | Catch variable parentheses: `always` (catch (e)), `never` (catch e), `preserve` |
 | `elseOnNewLine` | `boolean` | `true` | else on its own line |
 | `forLoopSpacing` | `boolean` | `true` | Spaces around `to` and `step` |
 

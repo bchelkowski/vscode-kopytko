@@ -1268,23 +1268,16 @@ else if name = "test" then
 
 ---
 
-**`kopytko.format.catchParenStyle`**
+**Catch parentheses**
 
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"never"`, `"preserve"` | `"never"` |
-
-Controls whether parentheses around the `catch` variable are removed. BrightScript does not allow parentheses around the catch variable — `catch (e)` is a compilation error.
+The formatter always strips parentheses from the `catch` variable because BrightScript does not allow them — `catch (e)` is a compilation error.
 
 ```brightscript
-' "never" — removes parentheses (default):
 ' Before:
 catch (err)
 
 ' After:
 catch err
-
-' "preserve" — leaves as written
 ```
 
 Trailing comments on the `catch` line are preserved unchanged.

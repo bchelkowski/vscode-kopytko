@@ -688,19 +688,6 @@
           "default": "preserve",
           "description": "Wrap if-condition in parentheses: 'always' adds them, 'never' removes them."
         },
-        "kopytko.format.catchParenStyle": {
-          "type": "string",
-          "enum": [
-            "never",
-            "preserve"
-          ],
-          "enumDescriptions": [
-            "Always remove parentheses: catch e",
-            "Leave catch variable parentheses as-is"
-          ],
-          "default": "never",
-          "markdownDescription": "Controls whether parentheses around the catch variable are removed. BrightScript does not allow parentheses around the catch variable (`catch (e)` is a compilation error).\n\n- `never` → `catch e` (default)\n- `preserve` → leave as written"
-        },
         "kopytko.format.elseOnNewLine": {
           "type": "boolean",
           "default": true,

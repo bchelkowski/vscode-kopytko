@@ -81,7 +81,7 @@ This document is the canonical list of extension features. Each feature links to
 | Granular identifier casing with exact-casing overrides | ✅ Implemented | [language-server.md](./language-server.md) |
 | `Function` after `as` uses type casing, not keyword casing | ✅ Implemented | [language-server.md](./language-server.md) |
 | `@import` / `@mock` sorting and `emptyLineAfterImports` | ✅ Implemented | [formatting.md](./formatting.md) |
-| `catchParenStyle` — strip invalid `catch (e)` parentheses | ✅ Implemented | [formatting.md](./formatting.md) |
+| Catch parentheses always stripped (`catch (e)` → `catch e`) | ✅ Implemented | [formatting.md](./formatting.md) |
 | `associativeArrayCommaSpacing` — control spaces around commas in inline `{}` associative arrays | ✅ Implemented | [formatting.md](./formatting.md) |
 
 ## Standalone Linter (CI)
