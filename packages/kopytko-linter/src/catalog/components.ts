@@ -18,6 +18,7 @@ const COMPONENT_NAMES: string[] = [
   'roMessagePort',
   'roPath',
   'roRSA', 'roRegex', 'roRegion', 'roRegistry', 'roRegistrySection', 'roRemoteInfo',
+  'roRenderThreadQueue',
   'roSGNode', 'roSGScreen', 'roScreen', 'roSocketAddress', 'roSprite',
   'roStreamSocket', 'roString', 'roSystemLog',
   'roTextToSpeech', 'roTextureManager', 'roTextureRequest', 'roTimespan',
