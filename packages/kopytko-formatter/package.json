@@ -1,6 +1,6 @@
 {
   "name": "kopytko-formatter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "BrightScript formatter and code style checker for the Kopytko ecosystem. Use as a CLI tool or import as a library.",
   "license": "MIT",
   "author": "bchelkowski",
