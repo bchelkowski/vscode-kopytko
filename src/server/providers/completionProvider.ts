@@ -56,7 +56,7 @@ import {
  *  6. Default             → Built-in functions + language keywords + CreateObject component names
  *
  * The optional `casing` parameter controls how identifier names are formatted
- * in the inserted text. Defaults to NoChange for all categories.
+ * in the inserted text. Defaults to preserve for all categories.
  */
 export class BrightScriptCompletionProvider {
   constructor(
@@ -212,8 +212,8 @@ export class BrightScriptCompletionProvider {
           ? `${method.returnType} — ${iface.name}`
           : method.returnType;
 
-        const label = applyCasingWithOverrides(method.name, casing.methods, casing.exactCasing);
-        const snippet = applySnippetCasing(buildMethodSnippet(method.signature), casing.methods);
+        const label = applyCasingWithOverrides(method.name, casing.method, casing.exact);
+        const snippet = applySnippetCasing(buildMethodSnippet(method.signature), casing.method);
 
         return {
           label,
@@ -258,7 +258,7 @@ export class BrightScriptCompletionProvider {
     ];
 
     const primitives: CompletionItem[] = primitiveTypes.map((t) => {
-      const label = applyCasing(t, casing.keywords);
+      const label = applyCasing(t, casing.keyword);
       return {
         label,
         kind: CompletionItemKind.TypeParameter,
@@ -492,7 +492,7 @@ export class BrightScriptCompletionProvider {
 
   private builtinCompletions(casing: CasingConfig = DEFAULT_CASING_CONFIG): CompletionItem[] {
     return BRIGHTSCRIPT_BUILTINS.map((b) => {
-      const label = applyCasingWithOverrides(b.name, casing.builtins, casing.exactCasing);
+      const label = applyCasingWithOverrides(b.name, casing.builtin, casing.exact);
       return {
         label,
         kind: CompletionItemKind.Function,
@@ -509,7 +509,7 @@ export class BrightScriptCompletionProvider {
 
   private keywordCompletions(casing: CasingConfig = DEFAULT_CASING_CONFIG): CompletionItem[] {
     return BRIGHTSCRIPT_KEYWORDS.map((kw) => {
-      const label = applyCasingWithOverrides(kw, casing.keywords, casing.exactCasing);
+      const label = applyCasingWithOverrides(kw, casing.keyword, casing.exact);
       return {
         label,
         kind: CompletionItemKind.Keyword,
@@ -905,8 +905,8 @@ function buildMtopFieldItem(f: MtopField): CompletionItem {
 }
 
 function buildMtopMethodItem(m: MtopMethod, casing: CasingConfig): CompletionItem {
-  const label = applyCasingWithOverrides(m.name, casing.methods, casing.exactCasing);
-  const snippet = applySnippetCasing(buildMethodSnippet(m.signature), casing.methods);
+  const label = applyCasingWithOverrides(m.name, casing.method, casing.exact);
+  const snippet = applySnippetCasing(buildMethodSnippet(m.signature), casing.method);
   const ifaceLine = m.interface ? `*Interface: ${m.interface}*\n\n` : '';
   return {
     label,

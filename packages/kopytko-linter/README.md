@@ -115,6 +115,31 @@ Add `kopytko.lint.*` keys to `.vscode/settings.json`:
 }
 ```
 
+### Read-only Paths
+
+Files matching read-only path patterns are excluded from linting. The linter checks `kopytko.lint.readOnlyPaths` first, falling back to `kopytko.readOnlyPaths` if the linter-specific setting is not configured.
+
+```json
+{
+  "kopytko.lint.readOnlyPaths": [
+    "**/node_modules/**",
+    "**/generated/**",
+    "**/legacy/**"
+  ]
+}
+```
+
+In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
+
+```json
+{
+  "readOnlyPaths": [
+    "**/node_modules/**",
+    "**/generated/**"
+  ]
+}
+```
+
 ## Rules
 
 ### Import Rules

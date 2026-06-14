@@ -4,16 +4,16 @@ import { FormattingConfig, DEFAULT_FORMATTING_CONFIG } from '../src/config';
 import { CasingConfig, DEFAULT_CASING_CONFIG } from '../src/casing';
 import { FunctionDefinition } from '../src/types';
 
-const NO_CASING: CasingConfig = { builtins: 'NoChange', keywords: 'NoChange', methods: 'NoChange' };
+const NO_CASING: CasingConfig = { builtin: 'preserve', keyword: 'preserve', method: 'preserve' };
 
 function format(
   lines: string[],
   overrides: Partial<FormattingConfig> = {},
   casing: CasingConfig = NO_CASING,
-  userFunctions: FunctionDefinition[] = [],
+  userFunction: FunctionDefinition[] = [],
 ): string {
   const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, insertFinalNewline: false, ...overrides };
-  return formatText(lines.join('\n'), config, casing, userFunctions);
+  return formatText(lines.join('\n'), config, casing, userFunction);
 }
 
 describe('kopytko-formatter', () => {
@@ -148,11 +148,11 @@ describe('kopytko-formatter', () => {
   // ── Keyword casing ───────────────────────────────────────────────────────
 
   describe('keyword casing', () => {
-    it('lowercases keywords', () => {
+    it('lowercases keyword', () => {
       const result = format(
         ['Function Main()', '  IF TRUE THEN', '    RETURN', '  END IF', 'End Function'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange' },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve' },
       );
       expect(result).to.include('function');
       expect(result).to.include('if');
@@ -162,11 +162,11 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('end function');
     });
 
-    it('uppercases keywords', () => {
+    it('uppercases keyword', () => {
       const result = format(
         ['function main()', '  if true then', '    return', '  end if', 'end function'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' },
+        { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' },
       );
       expect(result).to.include('FUNCTION');
       expect(result).to.include('IF');
@@ -174,11 +174,11 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('RETURN');
     });
 
-    it('does not change keywords inside strings', () => {
+    it('does not change keyword inside strings', () => {
       const result = format(
         ['sub init()', '  x = "if then else"', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' },
+        { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' },
       );
       expect(result).to.include('"if then else"');
     });
@@ -187,7 +187,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', "  x = 1 ' this is if then", 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' },
+        { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' },
       );
       expect(result).to.include("' this is if then");
     });
@@ -200,16 +200,16 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', '  x = LEN("hello")', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'LowerCase', keywords: 'NoChange', methods: 'NoChange' },
+        { builtin: 'lower-case', keyword: 'preserve', method: 'preserve' },
       );
       expect(result).to.include('len(');
     });
 
-    it('PascalCases builtin function names from lowercase input', () => {
+    it('pascal-cases builtin function names from lowercase input', () => {
       const result = format(
         ['sub init()', '  x = createobject("roArray")', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'PascalCase', keywords: 'NoChange', methods: 'NoChange' },
+        { builtin: 'pascal-case', keyword: 'preserve', method: 'preserve' },
       );
       expect(result).to.include('CreateObject(');
     });
@@ -218,7 +218,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', '  myFunction()', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'UpperCase', keywords: 'NoChange', methods: 'NoChange' },
+        { builtin: 'upper-case', keyword: 'preserve', method: 'preserve' },
       );
       expect(result).to.include('myFunction()');
     });
@@ -231,7 +231,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['FUNCTION main()', 'IF TRUE THEN', 'x = len("hello")', 'END IF', 'END FUNCTION'],
         { indentSize: 4 },
-        { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'NoChange' },
+        { builtin: 'pascal-case', keyword: 'lower-case', method: 'preserve' },
       );
       expect(result).to.equal([
         'function main()',
@@ -250,7 +250,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', '  x = getglobalaa()', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'LowerCase', keywords: 'NoChange', methods: 'NoChange', exactCasing: { 'getglobalaa': 'GetGlobalAA' } },
+        { builtin: 'lower-case', keyword: 'preserve', method: 'preserve', exact: { 'getglobalaa': 'GetGlobalAA' } },
       );
       expect(result).to.include('GetGlobalAA()');
     });
@@ -259,7 +259,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', '  x = invalid', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'invalid': 'Invalid' } },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', exact: { 'invalid': 'Invalid' } },
       );
       expect(result).to.include('Invalid');
       expect(result).to.match(/^sub/);
@@ -291,7 +291,7 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('getData()');
     });
 
-    it('normalizes builtins to catalog casing even with NoChange', () => {
+    it('normalizes builtin to catalog casing even with preserve', () => {
       const result = format(
         ['sub init()', '  x = createobject("roArray")', 'end sub'],
         { indentSize: 2 },
@@ -303,7 +303,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', '  SomeFunction({ a: "asd" }, function (str as String) as Boolean', '    print str', '    return true', '  end function)', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'PascalCase', keywords: 'NoChange', methods: 'NoChange' },
+        { builtin: 'pascal-case', keyword: 'preserve', method: 'preserve' },
       );
       expect(result).to.include('function (str as');
       expect(result).to.include('print str');
@@ -318,7 +318,7 @@ describe('kopytko-formatter', () => {
       expect(checkFormatting('', config, NO_CASING)).to.be.true;
     });
 
-    it('handles compound end keywords', () => {
+    it('handles compound end keyword', () => {
       expect(format([
         'sub test()',
         'if true then',
@@ -338,7 +338,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub init()', '  x = "say ""hello"""', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' },
+        { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' },
       );
       expect(result).to.include('"say ""hello"""');
     });
@@ -361,43 +361,43 @@ describe('kopytko-formatter', () => {
   // ── Granular keyword category casing ─────────────────────────────────────
 
   describe('granular keyword category casing', () => {
-    it('applies typeCasing independently of keywordCasing', () => {
+    it('applies type casing independently of keyword casing', () => {
       const result = format(
         ['function main(x as integer) as boolean', 'end function'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', types: 'Capitalize' },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', type: 'capitalize' },
       );
       expect(result).to.include('as Integer');
       expect(result).to.include('as Boolean');
       expect(result).to.include('function');
     });
 
-    it('applies typeCasing to "function" when used as a type (after as)', () => {
+    it('applies type casing to "function" when used as a type (after as)', () => {
       const result = format(
         ['function main(callback as function) as function', 'end function'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', types: 'Capitalize' },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', type: 'capitalize' },
       );
       expect(result).to.include('as Function) as Function');
       expect(result).to.match(/^function main/);
     });
 
-    it('applies literalCasing independently', () => {
+    it('applies literal casing independently', () => {
       const result = format(
         ['sub init()', '  x = TRUE', '  y = FALSE', '  z = INVALID', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'NoChange', methods: 'NoChange', literals: 'LowerCase' },
+        { builtin: 'preserve', keyword: 'preserve', method: 'preserve', literal: 'lower-case' },
       );
       expect(result).to.include('true');
       expect(result).to.include('false');
       expect(result).to.include('invalid');
     });
 
-    it('applies logicOperatorCasing independently', () => {
+    it('applies logicOperator casing independently', () => {
       const result = format(
         ['sub init()', '  if a and b or not c then', '    return', '  end if', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', logicOperators: 'UpperCase' },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', logicOperator: 'upper-case' },
       );
       expect(result).to.include('AND');
       expect(result).to.include('OR');
@@ -405,32 +405,32 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('if');
     });
 
-    it('applies mathOperatorCasing independently', () => {
+    it('applies mathOperator casing independently', () => {
       const result = format(
         ['sub init()', '  x = a mod b', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', mathOperators: 'UpperCase' },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', mathOperator: 'upper-case' },
       );
       expect(result).to.include('MOD');
       expect(result).to.include('sub');
     });
 
-    it('exactCasing overrides mathOperatorCasing for mod', () => {
+    it('exact overrides mathOperator casing for mod', () => {
       const result = format(
         ['sub init()', '  x = a mod b', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', mathOperators: 'LowerCase', exactCasing: { 'mod': 'Mod' } },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', mathOperator: 'lower-case', exact: { 'mod': 'Mod' } },
       );
       expect(result).to.include('Mod');
       expect(result).not.to.include(' mod ');
       expect(result).not.to.include(' MOD ');
     });
 
-    it('exactCasing applies to logic operators (and, or, not)', () => {
+    it('exact applies to logic operators (and, or, not)', () => {
       const result = format(
         ['sub init()', '  if a and b or not c then', '    return', '  end if', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'and': 'AND', 'or': 'OR', 'not': 'NOT' } },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', exact: { 'and': 'AND', 'or': 'OR', 'not': 'NOT' } },
       );
       expect(result).to.include('AND');
       expect(result).to.include('OR');
@@ -438,11 +438,11 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('if');
     });
 
-    it('exactCasing applies to literals (true, false, invalid)', () => {
+    it('exact applies to literal (true, false, invalid)', () => {
       const result = format(
         ['sub init()', '  x = true', '  y = false', '  z = invalid', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'true': 'True', 'false': 'False', 'invalid': 'Invalid' } },
+        { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', exact: { 'true': 'True', 'false': 'False', 'invalid': 'Invalid' } },
       );
       expect(result).to.include('True');
       expect(result).to.include('False');
@@ -510,11 +510,11 @@ describe('kopytko-formatter', () => {
   // ── Regression tests ────────────────────────────────────────────────────
 
   describe('regression tests', () => {
-    it('does not corrupt identifier "constructor" via exactCasing prototype leak', () => {
+    it('does not corrupt identifier "constructor" via exact prototype leak', () => {
       const result = format(
         ['sub constructor()', '  m.x = 1', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'invalid': 'Invalid' } },
+        { builtin: 'pascal-case', keyword: 'lower-case', method: 'preserve', exact: { 'invalid': 'Invalid' } },
       );
       expect(result).to.include('sub constructor()');
       expect(result).to.not.include('[native code]');
@@ -593,7 +593,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub t()', '  obj = {', '    ObjectUtils: m._objectUtils,', '    content: content,', '  }', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'CamelCase', userFunctions: 'CamelCase', exactCasing: {} },
+        { builtin: 'pascal-case', keyword: 'lower-case', method: 'camel-case', userFunction: 'camel-case', exact: {} },
         [{ name: 'objectUtils', nameLower: 'objectutils' }],
       );
       expect(result).to.include('ObjectUtils:');
@@ -604,7 +604,7 @@ describe('kopytko-formatter', () => {
       const result = format(
         ['sub t()', '  result = context.arrayUtils.filter(items)', 'end sub'],
         { indentSize: 2 },
-        { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'CamelCase', userFunctions: 'PascalCase', exactCasing: {} },
+        { builtin: 'pascal-case', keyword: 'lower-case', method: 'camel-case', userFunction: 'pascal-case', exact: {} },
         [{ name: 'ArrayUtils', nameLower: 'arrayutils' }],
       );
       expect(result).to.include('context.arrayUtils.filter');
@@ -612,9 +612,9 @@ describe('kopytko-formatter', () => {
     });
   });
 
-  // ── blankLineBeforeReturn fixes ─────────────────────────────────────────
+  // ── emptyLineBeforeReturn fixes ─────────────────────────────────────────
 
-  describe('blankLineBeforeReturn', () => {
+  describe('emptyLineBeforeReturn', () => {
     it('not-alone: does not add blank line between a comment and the return below it', () => {
       expect(format([
         'SomeFunction(function () as Object',
@@ -622,7 +622,7 @@ describe('kopytko-formatter', () => {
         "  ' Some comment above return",
         '  return { someVariable: someVariable }',
         'end function)',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'SomeFunction(function () as Object',
         '  someVariable = "hello"',
         "  ' Some comment above return",
@@ -636,7 +636,7 @@ describe('kopytko-formatter', () => {
         'SomeFunction(function () as Boolean',
         '  return true',
         'end function)',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'SomeFunction(function () as Boolean',
         '  return true',
         'end function)',
@@ -656,7 +656,7 @@ describe('kopytko-formatter', () => {
         '  end if',
         '  return invalid',
         'end function',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'function test() as Object',
         '  if (condition)',
         '    return {',
@@ -679,7 +679,7 @@ describe('kopytko-formatter', () => {
         '    return m._utils.slice(data, 0, 5)',
         '  end function, Invalid, m)',
         'end function',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'prototype.getLogos = function() as Object',
         '  return m._service.fetch().then(function(data as Object, m as Object) as Object',
         '    return m._utils.slice(data, 0, 5)',
@@ -694,7 +694,7 @@ describe('kopytko-formatter', () => {
         '  someVariable = "hello"',
         '  return { someVariable: someVariable }',
         'end function)',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'SomeFunction(function () as Object',
         '  someVariable = "hello"',
         '',
@@ -709,7 +709,7 @@ describe('kopytko-formatter', () => {
         '',
         '  return m._service.fetch()',
         'end function',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'function getLogos() as Object',
         '  return m._service.fetch()',
         'end function',
@@ -725,7 +725,7 @@ describe('kopytko-formatter', () => {
         '    return m._utils.slice(data, 0, 5)',
         '  end function, Invalid, m)',
         'end function',
-      ], { indentSize: 2, blankLineBeforeReturn: 'not-alone' })).to.equal([
+      ], { indentSize: 2, emptyLineBeforeReturn: 'not-alone' })).to.equal([
         'prototype.getLogos = function() as Object',
         '  return m._service.fetch().then(function(data as Object, m as Object) as Object',
         '    return m._utils.slice(data, 0, 5)',
@@ -1139,86 +1139,86 @@ describe('kopytko-formatter', () => {
     });
   });
 
-  // ── bracketSpacing ────────────────────────────────────────────────────────
+  // ── associativeArrayBracketSpacing ────────────────────────────────────────────────────────
 
-  describe('bracketSpacing', () => {
+  describe('associativeArrayBracketSpacing', () => {
     it('adds space after { and before } for a plain code value', () => {
-      const result = format(['sub init()', '  x = {key: value}', 'end sub'], { bracketSpacing: true });
+      const result = format(['sub init()', '  x = {key: value}', 'end sub'], { associativeArrayBracketSpacing: true });
       expect(result).to.include('{ key: value }');
     });
 
     it('adds space after { when key is a string literal', () => {
-      const result = format(['sub init()', '  x = {"key": value}', 'end sub'], { bracketSpacing: true });
+      const result = format(['sub init()', '  x = {"key": value}', 'end sub'], { associativeArrayBracketSpacing: true });
       expect(result).to.include('{ "key": value }');
     });
 
     it('adds space before } when last value is a string literal', () => {
-      const result = format(['sub init()', '  x = {key: "value"}', 'end sub'], { bracketSpacing: true });
+      const result = format(['sub init()', '  x = {key: "value"}', 'end sub'], { associativeArrayBracketSpacing: true });
       expect(result).to.include('{ key: "value" }');
     });
 
-    it('adds spaces on both sides when both key and value are string literals', () => {
-      const result = format(['sub init()', '  x = {"key": "value"}', 'end sub'], { bracketSpacing: true });
+    it('adds spaces on both sides when both key and value are string literal', () => {
+      const result = format(['sub init()', '  x = {"key": "value"}', 'end sub'], { associativeArrayBracketSpacing: true });
       expect(result).to.include('{ "key": "value" }');
     });
 
     it('removes spaces after { and before } when false', () => {
-      const result = format(['sub init()', '  x = { key: "value" }', 'end sub'], { bracketSpacing: false });
+      const result = format(['sub init()', '  x = { key: "value" }', 'end sub'], { associativeArrayBracketSpacing: false });
       expect(result).to.include('{key: "value"}');
     });
 
     it('does not add space inside empty {}', () => {
-      const result = format(['sub init()', '  x = {}', 'end sub'], { bracketSpacing: true });
+      const result = format(['sub init()', '  x = {}', 'end sub'], { associativeArrayBracketSpacing: true });
       expect(result).to.include('x = {}');
     });
 
-    it('does not modify { or } inside string literals', () => {
-      const result = format(['sub init()', '  x = "{key: value}"', 'end sub'], { bracketSpacing: true });
+    it('does not modify { or } inside string literal', () => {
+      const result = format(['sub init()', '  x = "{key: value}"', 'end sub'], { associativeArrayBracketSpacing: true });
       expect(result).to.include('"{key: value}"');
     });
   });
 
-  // ── aaCommaSpacing ────────────────────────────────────────────────────────
+  // ── associativeArrayCommaSpacing ────────────────────────────────────────────────────────
 
-  describe('aaCommaSpacing', () => {
+  describe('associativeArrayCommaSpacing', () => {
     it("'after' adds space after commas and removes space before", () => {
-      const result = format(['sub init()', '  x = { a: 1 , b: 2 , c: 3 }', 'end sub'], { aaCommaSpacing: 'after' });
+      const result = format(['sub init()', '  x = { a: 1 , b: 2 , c: 3 }', 'end sub'], { associativeArrayCommaSpacing: 'after' });
       expect(result).to.include('{ a: 1, b: 2, c: 3 }');
     });
 
     it("'before' adds space before commas and removes space after", () => {
-      const result = format(['sub init()', '  x = { a: 1, b: 2, c: 3 }', 'end sub'], { aaCommaSpacing: 'before' });
+      const result = format(['sub init()', '  x = { a: 1, b: 2, c: 3 }', 'end sub'], { associativeArrayCommaSpacing: 'before' });
       expect(result).to.include('{ a: 1 ,b: 2 ,c: 3 }');
     });
 
     it("'both' adds spaces on both sides", () => {
-      const result = format(['sub init()', '  x = { a: 1, b: 2 }', 'end sub'], { aaCommaSpacing: 'both' });
+      const result = format(['sub init()', '  x = { a: 1, b: 2 }', 'end sub'], { associativeArrayCommaSpacing: 'both' });
       expect(result).to.include('{ a: 1 , b: 2 }');
     });
 
     it("'none' removes spaces on both sides", () => {
-      const result = format(['sub init()', '  x = { a: 1 , b: 2 }', 'end sub'], { aaCommaSpacing: 'none' });
+      const result = format(['sub init()', '  x = { a: 1 , b: 2 }', 'end sub'], { associativeArrayCommaSpacing: 'none' });
       expect(result).to.include('{ a: 1,b: 2 }');
     });
 
     it("'preserve' leaves existing spacing unchanged", () => {
-      const result = format(['sub init()', '  x = { a: 1 , b: 2, c: 3 }', 'end sub'], { aaCommaSpacing: 'preserve' });
+      const result = format(['sub init()', '  x = { a: 1 , b: 2, c: 3 }', 'end sub'], { associativeArrayCommaSpacing: 'preserve' });
       expect(result).to.include('{ a: 1 , b: 2, c: 3 }');
     });
 
     it('does not affect commas inside function call arguments within the AA', () => {
-      const result = format(['sub init()', '  x = { fn: doWork(a, b), key: 1 }', 'end sub'], { aaCommaSpacing: 'none' });
+      const result = format(['sub init()', '  x = { fn: doWork(a, b), key: 1 }', 'end sub'], { associativeArrayCommaSpacing: 'none' });
       // AA comma between fn and key → removed; function-arg commas inside () → untouched
       expect(result).to.include('doWork(a, b),key:');
     });
 
     it('does not affect commas in non-AA context', () => {
-      const result = format(['sub init()', '  doWork(a, b)', 'end sub'], { aaCommaSpacing: 'none' });
+      const result = format(['sub init()', '  doWork(a, b)', 'end sub'], { associativeArrayCommaSpacing: 'none' });
       expect(result).to.include('doWork(a, b)');
     });
 
     it('works when value is a string literal (space before } preserved)', () => {
-      const result = format(['sub init()', '  x = { a: 1, b: "str" }', 'end sub'], { aaCommaSpacing: 'after' });
+      const result = format(['sub init()', '  x = { a: 1, b: "str" }', 'end sub'], { associativeArrayCommaSpacing: 'after' });
       expect(result).to.include('{ a: 1, b: "str" }');
     });
   });
@@ -1362,6 +1362,559 @@ describe('kopytko-formatter', () => {
         '  end try',
         'end sub',
       ].join('\n'));
+    });
+  });
+
+  // ── New formatter passes ────────────────────────────────────────────────
+
+  describe('emptyLinesBetweenMethods', () => {
+    it('inserts blank lines between prototype method definitions', () => {
+      expect(format([
+        'proto.init = sub()',
+        '    x = 1',
+        'end sub',
+        'proto.update = function()',
+        '    y = 2',
+        'end function',
+      ], { emptyLinesBetweenMethods: 1 })).to.equal([
+        'proto.init = sub()',
+        '    x = 1',
+        'end sub',
+        '',
+        'proto.update = function()',
+        '    y = 2',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('no change when methods already have correct spacing', () => {
+      const input = [
+        'proto.init = sub()',
+        '    x = 1',
+        'end sub',
+        '',
+        'proto.update = function()',
+        '    y = 2',
+        'end function',
+      ];
+      expect(format(input, { emptyLinesBetweenMethods: 1 })).to.equal(input.join('\n'));
+    });
+
+    it('handles emptyLinesBetweenMethods: 0 (no blank lines)', () => {
+      const input = [
+        'proto.init = sub()',
+        '    x = 1',
+        'end sub',
+        '',
+        'proto.update = function()',
+        '    y = 2',
+        'end function',
+      ];
+      // 0 means no-op — pass is skipped entirely
+      expect(format(input, { emptyLinesBetweenMethods: 0 })).to.equal(input.join('\n'));
+    });
+
+    it('replaces wrong number of blank lines with correct count', () => {
+      expect(format([
+        'proto.a = function()',
+        '    x = 1',
+        'end function',
+        '',
+        '',
+        '',
+        'proto.b = function()',
+        '    y = 2',
+        'end function',
+      ], { emptyLinesBetweenMethods: 1 })).to.equal([
+        'proto.a = function()',
+        '    x = 1',
+        'end function',
+        '',
+        'proto.b = function()',
+        '    y = 2',
+        'end function',
+      ].join('\n'));
+    });
+  });
+
+  describe('elseOnNewLine', () => {
+    it('false: collapses simple if/else to single line', () => {
+      expect(format([
+        'sub test()',
+        '  if a then',
+        '    x = 1',
+        '  else',
+        '    x = 2',
+        '  end if',
+        'end sub',
+      ], { indentSize: 2, elseOnNewLine: false })).to.equal([
+        'sub test()',
+        '  if a then x = 1 else x = 2',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('true: leaves multi-line if/else as-is (default)', () => {
+      const input = [
+        'sub test()',
+        '  if a then',
+        '    x = 1',
+        '  else',
+        '    x = 2',
+        '  end if',
+        'end sub',
+      ];
+      expect(format(input, { indentSize: 2, elseOnNewLine: true })).to.equal(input.join('\n'));
+    });
+
+    it('does not collapse when branches have comments', () => {
+      const input = [
+        'sub test()',
+        "  if a then ' check a",
+        '    x = 1',
+        '  else',
+        '    x = 2',
+        '  end if',
+        'end sub',
+      ];
+      expect(format(input, { indentSize: 2, elseOnNewLine: false })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('lineCommentPosition', () => {
+    it('above: moves trailing comments to line above', () => {
+      expect(format([
+        'sub init()',
+        "  x = 1 ' set x",
+        'end sub',
+      ], { indentSize: 2, lineCommentPosition: 'above' })).to.equal([
+        'sub init()',
+        "  ' set x",
+        '  x = 1',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('inline: leaves trailing comments unchanged', () => {
+      const input = [
+        'sub init()',
+        "  x = 1 ' set x",
+        'end sub',
+      ];
+      expect(format(input, { indentSize: 2, lineCommentPosition: 'inline' })).to.equal(input.join('\n'));
+    });
+
+    it('preserve: no changes', () => {
+      const input = [
+        'sub init()',
+        "  x = 1 ' set x",
+        'end sub',
+      ];
+      expect(format(input, { indentSize: 2, lineCommentPosition: 'preserve' })).to.equal(input.join('\n'));
+    });
+
+    it('does not move pure comment lines', () => {
+      const input = [
+        'sub init()',
+        "  ' this is a comment",
+        '  x = 1',
+        'end sub',
+      ];
+      expect(format(input, { indentSize: 2, lineCommentPosition: 'above' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('alignAssignments', () => {
+    it('true: aligns = in consecutive assignments', () => {
+      expect(format([
+        'sub init()',
+        '  x = 1',
+        '  longVar = 2',
+        '  ab = 3',
+        'end sub',
+      ], { indentSize: 2, alignAssignments: true })).to.equal([
+        'sub init()',
+        '  x       = 1',
+        '  longVar = 2',
+        '  ab      = 3',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('breaks alignment group on blank line', () => {
+      expect(format([
+        'sub init()',
+        '  x = 1',
+        '  longVar = 2',
+        '',
+        '  ab = 3',
+        'end sub',
+      ], { indentSize: 2, alignAssignments: true })).to.equal([
+        'sub init()',
+        '  x       = 1',
+        '  longVar = 2',
+        '',
+        '  ab = 3',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('does not affect non-assignment lines', () => {
+      const input = [
+        'sub init()',
+        '  print "hello"',
+        '  doWork()',
+        'end sub',
+      ];
+      expect(format(input, { indentSize: 2, alignAssignments: true })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('returnTypeAnnotations', () => {
+    it('always: adds as Dynamic to functions without type', () => {
+      expect(format([
+        'function getData()',
+        '    return 1',
+        'end function',
+      ], { returnTypeAnnotations: 'always' })).to.equal([
+        'function getData() as Dynamic',
+        '    return 1',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('always: does NOT touch subs', () => {
+      const input = [
+        'sub init()',
+        '    x = 1',
+        'end sub',
+      ];
+      expect(format(input, { returnTypeAnnotations: 'always' })).to.equal(input.join('\n'));
+    });
+
+    it('never: removes type annotations', () => {
+      expect(format([
+        'function getData() as String',
+        '    return "hi"',
+        'end function',
+      ], { returnTypeAnnotations: 'never' })).to.equal([
+        'function getData()',
+        '    return "hi"',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('preserve: no changes', () => {
+      const input = [
+        'function getData() as String',
+        '    return "hi"',
+        'end function',
+      ];
+      expect(format(input, { returnTypeAnnotations: 'preserve' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('paramTypeAnnotations', () => {
+    it('always: adds as Dynamic to untyped params', () => {
+      expect(format([
+        'function work(x, y)',
+        '    return x',
+        'end function',
+      ], { paramTypeAnnotations: 'always' })).to.equal([
+        'function work(x as Dynamic, y as Dynamic)',
+        '    return x',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('never: removes param type annotations', () => {
+      expect(format([
+        'function work(x as String, y as Integer)',
+        '    return x',
+        'end function',
+      ], { paramTypeAnnotations: 'never' })).to.equal([
+        'function work(x, y)',
+        '    return x',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('preserve: no changes', () => {
+      const input = [
+        'function work(x as String, y)',
+        '    return x',
+        'end function',
+      ];
+      expect(format(input, { paramTypeAnnotations: 'preserve' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('paramAlignmentStyle', () => {
+    it('indent: uses one indent level for wrapped params', () => {
+      expect(format([
+        'function work(',
+        '                 x as String,',
+        '                 y as Integer)',
+        '    return x',
+        'end function',
+      ], { indentSize: 4, paramAlignmentStyle: 'indent' })).to.equal([
+        'function work(',
+        '    x as String,',
+        '    y as Integer)',
+        '    return x',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('align-to-paren: aligns to opening paren', () => {
+      expect(format([
+        'function work(',
+        '    x as String,',
+        '    y as Integer)',
+        '    return x',
+        'end function',
+      ], { indentSize: 4, paramAlignmentStyle: 'align-to-paren' })).to.equal([
+        'function work(',
+        '              x as String,',
+        '              y as Integer)',
+        '    return x',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('preserve: no changes to multi-line params', () => {
+      const input = [
+        'function work(',
+        '    x as String,',
+        '    y as Integer)',
+        '    return x',
+        'end function',
+      ];
+      expect(format(input, { indentSize: 4, paramAlignmentStyle: 'preserve' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('wrapLongStrings', () => {
+    it('plus: breaks long string with + concatenation', () => {
+      const longStr = 'A'.repeat(120);
+      const result = format([
+        'sub init()',
+        `    x = "${longStr}"`,
+        'end sub',
+      ], { wrapLongStrings: 'plus' });
+      expect(result).to.include(' + _');
+      expect(result).to.not.include(longStr);
+    });
+
+    it('preserve: leaves long strings as-is', () => {
+      const longStr = 'A'.repeat(120);
+      const input = [
+        'sub init()',
+        `    x = "${longStr}"`,
+        'end sub',
+      ];
+      expect(format(input, { wrapLongStrings: 'preserve' })).to.equal(input.join('\n'));
+    });
+
+    it('does not wrap short strings', () => {
+      const input = [
+        'sub init()',
+        '    x = "short string"',
+        'end sub',
+      ];
+      expect(format(input, { wrapLongStrings: 'plus' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('stringConcatStyle', () => {
+    it('plus: converts [].join("") to +', () => {
+      expect(format([
+        'sub init()',
+        '    x = ["hello", " ", "world"].join("")',
+        'end sub',
+      ], { stringConcatStyle: 'plus' })).to.equal([
+        'sub init()',
+        '    x = "hello" + " " + "world"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('array-join: does not convert when no string literals in concatenation', () => {
+      const input = [
+        'sub init()',
+        '    x = a + b + c',
+        'end sub',
+      ];
+      expect(format(input, { stringConcatStyle: 'array-join' })).to.equal(input.join('\n'));
+    });
+
+    it('preserve: no changes', () => {
+      const input = [
+        'sub init()',
+        '    x = "hello" + " " + "world"',
+        'end sub',
+      ];
+      expect(format(input, { stringConcatStyle: 'preserve' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('associativeArraySingleLineThreshold', () => {
+    it('expands inline AA exceeding threshold', () => {
+      const result = format([
+        'sub init()',
+        '    x = { a: 1, b: 2, c: 3, d: 4 }',
+        'end sub',
+      ], { associativeArraySingleLineThreshold: 10 });
+      expect(result).to.include('{\n');
+      expect(result).to.include('a: 1');
+    });
+
+    it('short AAs stay inline', () => {
+      const input = [
+        'sub init()',
+        '    x = { a: 1 }',
+        'end sub',
+      ];
+      expect(format(input, { associativeArraySingleLineThreshold: 50 })).to.equal(input.join('\n'));
+    });
+
+    it('0: no change (pass skipped)', () => {
+      const input = [
+        'sub init()',
+        '    x = { a: 1, b: 2, c: 3, d: 4 }',
+        'end sub',
+      ];
+      expect(format(input, { associativeArraySingleLineThreshold: 0 })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('observeFieldStyle', () => {
+    it('always-scoped: converts observeField to observeFieldScoped', () => {
+      expect(format([
+        'sub init()',
+        '    m.top.observeField("visible", "onVisibleChange")',
+        'end sub',
+      ], { observeFieldStyle: 'always-scoped' })).to.equal([
+        'sub init()',
+        '    m.top.observeFieldScoped("visible", "onVisibleChange")',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('warn: adds TODO comment', () => {
+      const result = format([
+        'sub init()',
+        '    m.top.observeField("visible", "onVisibleChange")',
+        'end sub',
+      ], { observeFieldStyle: 'warn' });
+      expect(result).to.include("' TODO: consider using observeFieldScoped");
+    });
+
+    it('does not touch already-scoped calls', () => {
+      const input = [
+        'sub init()',
+        '    m.top.observeFieldScoped("visible", "onVisibleChange")',
+        'end sub',
+      ];
+      expect(format(input, { observeFieldStyle: 'always-scoped' })).to.equal(input.join('\n'));
+    });
+
+    it('preserve: no changes', () => {
+      const input = [
+        'sub init()',
+        '    m.top.observeField("visible", "onVisibleChange")',
+        'end sub',
+      ];
+      expect(format(input, { observeFieldStyle: 'preserve' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('mPrefixStyle', () => {
+    it('dot: converts m["field"] to m.field', () => {
+      expect(format([
+        'sub init()',
+        '    x = m["myField"]',
+        'end sub',
+      ], { mPrefixStyle: 'dot' })).to.equal([
+        'sub init()',
+        '    x = m.myField',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('bracket: converts m.field to m["field"]', () => {
+      expect(format([
+        'sub init()',
+        '    x = m.myField',
+        'end sub',
+      ], { mPrefixStyle: 'bracket' })).to.equal([
+        'sub init()',
+        '    x = m["myField"]',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('does not touch m.top or m.global', () => {
+      const input = [
+        'sub init()',
+        '    x = m.top',
+        '    y = m.global',
+        'end sub',
+      ];
+      expect(format(input, { mPrefixStyle: 'bracket' })).to.equal(input.join('\n'));
+    });
+
+    it('does not convert method calls to bracket', () => {
+      const input = [
+        'sub init()',
+        '    m.doWork()',
+        'end sub',
+      ];
+      expect(format(input, { mPrefixStyle: 'bracket' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('fieldAccessConsistency', () => {
+    it('dot: converts m.top.getField("x") to m.top.x', () => {
+      expect(format([
+        'sub init()',
+        '    x = m.top.getField("visible")',
+        'end sub',
+      ], { fieldAccessConsistency: 'dot' })).to.equal([
+        'sub init()',
+        '    x = m.top.visible',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('method: converts m.top.x to m.top.getField("x")', () => {
+      expect(format([
+        'sub init()',
+        '    x = m.top.visible',
+        'end sub',
+      ], { fieldAccessConsistency: 'method' })).to.equal([
+        'sub init()',
+        '    x = m.top.getField("visible")',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('does not convert known methods like findNode', () => {
+      const input = [
+        'sub init()',
+        '    node = m.top.findNode("myNode")',
+        'end sub',
+      ];
+      expect(format(input, { fieldAccessConsistency: 'method' })).to.equal(input.join('\n'));
+    });
+
+    it('preserve: no changes', () => {
+      const input = [
+        'sub init()',
+        '    x = m.top.visible',
+        'end sub',
+      ];
+      expect(format(input, { fieldAccessConsistency: 'preserve' })).to.equal(input.join('\n'));
     });
   });
 });

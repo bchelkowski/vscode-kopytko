@@ -62,16 +62,34 @@ export function formatText(
   lines = passEndKeywordStyle(lines, config);
   lines = passFunctionVsSub(lines, config);
 
+  // Pass 3b — Return type annotations
+  lines = passReturnTypeAnnotations(lines, config);
+
+  // Pass 3c — Param type annotations
+  lines = passParamTypeAnnotations(lines, config);
+
   // Pass 4 — Then style + parenthesis if case + catch paren style
   lines = passThenStyle(lines, config);
   lines = passParenthesisIfCase(lines, config);
   lines = passCatchParenStyle(lines, config);
 
+  // Pass 4c — Else on new line
+  lines = passElseOnNewLine(lines, config);
+
   // Pass 5 — Print statement handling
   lines = passPrintStatement(lines, config);
 
+  // Pass 5b — Line comment position
+  lines = passLineCommentPosition(lines, config);
+
   // Pass 6 — Spacing rules
   lines = passSpacing(lines, config);
+
+  // Pass 6b — Wrap long strings
+  lines = passWrapLongStrings(lines, config);
+
+  // Pass 6c — String concatenation style
+  lines = passStringConcatStyle(lines, config);
 
   // Pass 7 — Casing
   lines = passCasing(lines, casing, userFuncMap);
@@ -79,20 +97,41 @@ export function formatText(
   // Pass 7b — Split array open bracket
   lines = passSplitArrayOpenBracket(lines, config);
 
+  // Pass 7c — Associative array single-line threshold
+  lines = passAAThreshold(lines, config);
+
   // Pass 8 — Indentation
   lines = passIndentation(lines, config);
 
   // Pass 8b — Trailing commas
   lines = passTrailingCommas(lines, config);
 
+  // Pass 8c — Align assignments
+  lines = passAlignAssignments(lines, config);
+
+  // Pass 8d — Multi-line param alignment
+  lines = passParamAlignment(lines, config);
+
   // Pass 9 — Blank line rules
   lines = passBlankLines(lines, config);
+
+  // Pass 9b — Empty lines between methods
+  lines = passEmptyLinesBetweenMethods(lines, config);
 
   // Pass 10 — Trailing whitespace
   lines = passTrimTrailing(lines, config);
 
   // Pass 11 — Comment width
   lines = passCommentWidth(lines, config);
+
+  // Pass 12 — observeField style
+  lines = passObserveFieldStyle(lines, config);
+
+  // Pass 13 — m prefix style
+  lines = passMPrefixStyle(lines, config);
+
+  // Pass 14 — Field access consistency
+  lines = passFieldAccessConsistency(lines, config);
 
   // Assemble result
   let newText = lines.join(lineEndStr);
@@ -390,6 +429,127 @@ function findMatchingEnd(lines: string[], startIdx: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 3b — Return type annotations
+// ---------------------------------------------------------------------------
+
+function passReturnTypeAnnotations(lines: string[], config: FormattingConfig): string[] {
+  if (config.returnTypeAnnotations === 'preserve') return lines;
+
+  const result = [...lines];
+  // Matches: optional whitespace, `function`, name, `(params)`, optional `as Type`, optional comment
+  const declRegex = /^(\s*function\s+\w+\s*\([^)]*\))(\s+as\s+\w+)?(\s*(?:'.*)?)?$/i;
+
+  for (let i = 0; i < result.length; i++) {
+    const m = declRegex.exec(result[i]);
+    if (!m) continue;
+
+    const [, before, asClause, trailing] = m;
+    const comment = trailing ?? '';
+
+    if (config.returnTypeAnnotations === 'always') {
+      if (!asClause) {
+        result[i] = before + ' as Dynamic' + comment;
+      }
+    } else {
+      // 'never' — remove the as Type clause
+      if (asClause) {
+        result[i] = before + comment;
+      }
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Pass 3c — Param type annotations
+// ---------------------------------------------------------------------------
+
+function passParamTypeAnnotations(lines: string[], config: FormattingConfig): string[] {
+  if (config.paramTypeAnnotations === 'preserve') return lines;
+
+  const result = [...lines];
+  // Match function/sub declaration lines (single-line params)
+  const declRegex = /^(\s*(?:function|sub)\s+\w*\s*)\(([^)]*)\)(.*)$/i;
+
+  for (let i = 0; i < result.length; i++) {
+    const m = declRegex.exec(result[i]);
+    if (!m) continue;
+    const [, prefix, paramStr, suffix] = m;
+    if (paramStr.trim() === '') continue;
+
+    const newParams = transformParams(paramStr, config.paramTypeAnnotations);
+    result[i] = prefix + '(' + newParams + ')' + suffix;
+  }
+
+  // Handle multi-line params: continuation lines between `(` and `)`
+  for (let i = 0; i < result.length; i++) {
+    const openMatch = /^(\s*(?:function|sub)\s+\w*\s*)\([^)]*$/i.exec(result[i]);
+    if (!openMatch) continue;
+
+    // Transform params in the opening line after `(`
+    const parenIdx = result[i].indexOf('(');
+    const afterParen = result[i].substring(parenIdx + 1);
+    if (afterParen.trim() !== '') {
+      result[i] = result[i].substring(0, parenIdx + 1) + transformParams(afterParen, config.paramTypeAnnotations);
+    }
+
+    // Transform continuation lines
+    for (let j = i + 1; j < result.length; j++) {
+      const line = result[j];
+      const closeIdx = line.indexOf(')');
+      if (closeIdx >= 0) {
+        // Line with closing paren — transform params before `)`
+        const beforeClose = line.substring(0, closeIdx);
+        if (beforeClose.trim() !== '') {
+          result[j] = transformParams(beforeClose, config.paramTypeAnnotations) + line.substring(closeIdx);
+        }
+        break;
+      }
+      // Pure continuation line — transform entire line preserving indent
+      const indentMatch = line.match(/^(\s*)/);
+      const indent = indentMatch ? indentMatch[1] : '';
+      const content = line.trim();
+      if (content !== '') {
+        result[j] = indent + transformParams(content, config.paramTypeAnnotations);
+      }
+    }
+  }
+
+  return result;
+}
+
+function transformParams(paramStr: string, mode: 'always' | 'never'): string {
+  // Split on commas (respecting that param names/types don't contain commas)
+  const parts = paramStr.split(',');
+  const transformed = parts.map(part => {
+    const trimmed = part.trim();
+    if (trimmed === '') return part;
+
+    // Pattern: name [as Type] [= default]
+    const paramRegex = /^(\w+)(\s+as\s+\w+)?(\s*=\s*.*)?$/i;
+    const m = paramRegex.exec(trimmed);
+    if (!m) return part;
+
+    const [, name, asClause, defaultVal] = m;
+    const preservedLeading = part.match(/^(\s*)/)?.[1] ?? '';
+    const trailingCommaSpace = part.match(/(\s*)$/)?.[1] ?? '';
+
+    if (mode === 'always') {
+      if (!asClause) {
+        return preservedLeading + name + ' as Dynamic' + (defaultVal ?? '') + trailingCommaSpace;
+      }
+    } else {
+      // 'never' — remove as Type
+      if (asClause) {
+        return preservedLeading + name + (defaultVal ?? '') + trailingCommaSpace;
+      }
+    }
+    return part;
+  });
+  return transformed.join(',');
+}
+
+// ---------------------------------------------------------------------------
 // Pass 4 — Then style
 // ---------------------------------------------------------------------------
 
@@ -531,12 +691,97 @@ function splitTrailingComment(s: string): { code: string; comment: string } {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 4c — Else on new line
+// ---------------------------------------------------------------------------
+
+function passElseOnNewLine(lines: string[], config: FormattingConfig): string[] {
+  // true = keep else on its own line (default, no-op)
+  if (config.elseOnNewLine) return lines;
+
+  const result: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+
+    // Only match `if ...` (not `else if`)
+    if (/^if\b/i.test(trimmed) && i + 4 < lines.length) {
+      const { code, comment: ifComment } = splitTrailingComment(trimmed);
+      const codeClean = code.trimEnd();
+      const endsWithThen = /\bthen\s*$/i.test(codeClean);
+      const hasInlineThen = /\bthen\b/i.test(codeClean) && !endsWithThen;
+
+      // Multi-line if: ends with `then` or has no `then` at all (no code after then)
+      if (!hasInlineThen && !ifComment) {
+        const thenStmt = lines[i + 1].trim();
+        const elseLine = lines[i + 2].trim();
+        const elseStmt = lines[i + 3].trim();
+        const endIfLine = lines[i + 4].trim();
+
+        const isSimpleStmt = (s: string): boolean => {
+          if (s === '' || s.startsWith("'") || /^rem\b/i.test(s)) return false;
+          return !splitTrailingComment(s).comment;
+        };
+
+        if (
+          isSimpleStmt(thenStmt) &&
+          /^else\s*$/i.test(elseLine) &&
+          isSimpleStmt(elseStmt) &&
+          /^(?:end\s*if|endif)\s*$/i.test(endIfLine)
+        ) {
+          const indent = lines[i].match(/^(\s*)/)?.[1] ?? '';
+          let condPart = codeClean;
+          if (!endsWithThen) condPart += ' then';
+          result.push(indent + condPart + ' ' + thenStmt + ' else ' + elseStmt);
+          i += 5;
+          continue;
+        }
+      }
+    }
+
+    result.push(lines[i]);
+    i++;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Pass 5 — Print statement handling
 // ---------------------------------------------------------------------------
 
 function passPrintStatement(lines: string[], config: FormattingConfig): string[] {
   if (config.printStatement !== 'remove') return lines;
   return lines.filter(line => !/^\s*(?:print|\?)\b/i.test(line));
+}
+
+// ---------------------------------------------------------------------------
+// Pass 5b — Line comment position
+// ---------------------------------------------------------------------------
+
+function passLineCommentPosition(lines: string[], config: FormattingConfig): string[] {
+  if (config.lineCommentPosition !== 'above') return lines;
+
+  const result: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip pure comment lines and blank lines
+    if (trimmed === '' || trimmed.startsWith("'") || /^rem\b/i.test(trimmed)) {
+      result.push(line);
+      continue;
+    }
+
+    const { code, comment } = splitTrailingComment(trimmed);
+    if (!comment) {
+      result.push(line);
+      continue;
+    }
+
+    // Move trailing comment to the line above, preserving indentation
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    result.push(indent + comment);
+    result.push(indent + code);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -641,7 +886,7 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
 }
 
 /**
- * Applies `bracketSpacing` and `aaCommaSpacing` to a fully-assembled line
+ * Applies `associativeArrayBracketSpacing` and `associativeArrayCommaSpacing` to a fully-assembled line
  * (code + string-literal segments joined together).
  *
  * This runs after all code segments are assembled so that the rules work
@@ -651,8 +896,8 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
  * String literal contents are never modified.
  */
 function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): string {
-  const addBracket = config.bracketSpacing;
-  const commaMode = config.aaCommaSpacing ?? 'preserve';
+  const addBracket = config.associativeArrayBracketSpacing;
+  const commaMode = config.associativeArrayCommaSpacing ?? 'preserve';
   // Fast path: nothing to process if the line has no braces at all
   if (!line.includes('{') && !line.includes('}')) return line;
 
@@ -766,7 +1011,7 @@ function passCasing(lines: string[], casing: CasingConfig, userFuncMap: Map<stri
 // ---------------------------------------------------------------------------
 
 function passSplitArrayOpenBracket(lines: string[], config: FormattingConfig): string[] {
-  if (!config.splitArrayOpenBracket) return lines;
+  if (!config.arraySplitOpenBracket) return lines;
 
   const result: string[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -816,7 +1061,7 @@ function passTrailingCommas(lines: string[], config: FormattingConfig): string[]
     const isArray = closerChar === ']';
     const isAA = closerChar === '}';
 
-    const itemStyle = isArray ? config.arrayCommaStyle : isAA ? config.assocArrayCommaStyle : 'preserve';
+    const itemStyle = isArray ? config.arrayCommaStyle : isAA ? config.associativeArrayCommaStyle : 'preserve';
 
     const openerChar = isArray ? '[' : '{';
     let depth = 0;
@@ -980,6 +1225,106 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 8c — Align assignments
+// ---------------------------------------------------------------------------
+
+function passAlignAssignments(lines: string[], config: FormattingConfig): string[] {
+  if (!config.alignAssignments) return lines;
+
+  const result: string[] = [];
+  let group: { idx: number; before: string; after: string; indent: string }[] = [];
+  let containerDepth = 0;
+
+  const flushGroup = (): void => {
+    if (group.length <= 1) {
+      for (const g of group) result.push(lines[g.idx]);
+    } else {
+      const maxLen = Math.max(...group.map(g => g.before.length));
+      for (const g of group) {
+        const padding = ' '.repeat(maxLen - g.before.length);
+        result.push(g.indent + g.before + padding + ' = ' + g.after);
+      }
+    }
+    group = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    if (trimmed === '') {
+      flushGroup();
+      result.push(lines[i]);
+      continue;
+    }
+
+    if (trimmed.startsWith("'") || /^rem\b/i.test(trimmed)) {
+      flushGroup();
+      result.push(lines[i]);
+      continue;
+    }
+
+    const prevDepth = containerDepth;
+    containerDepth += netContainerDepth(trimmed);
+
+    // Inside a multi-line container — not an independent assignment
+    if (prevDepth > 0) {
+      flushGroup();
+      result.push(lines[i]);
+      continue;
+    }
+
+    const assignInfo = findSimpleAssignment(trimmed);
+    if (!assignInfo) {
+      flushGroup();
+      result.push(lines[i]);
+      continue;
+    }
+
+    const indent = lines[i].match(/^(\s*)/)?.[1] ?? '';
+    group.push({ idx: i, before: assignInfo.before, after: assignInfo.after, indent });
+  }
+
+  flushGroup();
+  return result;
+}
+
+/** Find a simple `=` assignment in a trimmed line, returning the parts before and after `=`. */
+function findSimpleAssignment(trimmed: string): { before: string; after: string } | null {
+  if (!/^[a-zA-Z_]/.test(trimmed)) return null;
+  if (/^(?:if|else|elseif|for|while|end|return|function|sub|print|next|try|catch|throw|exit|stop|dim|goto)\b/i.test(trimmed)) return null;
+
+  let inStr = false;
+  let bracketDepth = 0;
+  let eqPos = -1;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '"') {
+      if (inStr && trimmed[i + 1] === '"') { i++; continue; }
+      inStr = !inStr;
+    } else if (!inStr) {
+      if (ch === "'") break;
+      if (ch === '(' || ch === '[' || ch === '{') bracketDepth++;
+      else if (ch === ')' || ch === ']' || ch === '}') bracketDepth--;
+      else if (ch === '=' && bracketDepth === 0 && i > 0) {
+        const prev = trimmed[i - 1];
+        const next = i + 1 < trimmed.length ? trimmed[i + 1] : '';
+        if (next === '=') { i++; continue; }
+        if (prev === '<' || prev === '>' || prev === '!' || prev === '+' || prev === '-') continue;
+        if (eqPos !== -1) return null;
+        eqPos = i;
+      }
+    }
+  }
+
+  if (eqPos < 0) return null;
+  return {
+    before: trimmed.substring(0, eqPos).trimEnd(),
+    after: trimmed.substring(eqPos + 1).trimStart(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Pass 9 — Blank line rules
 // ---------------------------------------------------------------------------
 
@@ -1019,7 +1364,7 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
     result = out;
   }
 
-  if (config.blankLineAfterFunctionOpen) {
+  if (config.emptyLineAfterFunctionOpen) {
     const out: string[] = [];
     for (let i = 0; i < result.length; i++) {
       out.push(result[i]);
@@ -1030,7 +1375,7 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
     result = out;
   }
 
-  if (config.blankLineBeforeFunctionClose) {
+  if (config.emptyLineBeforeFunctionClose) {
     const out: string[] = [];
     for (let i = 0; i < result.length; i++) {
       if (/^\s*(?:end\s*function|end\s*sub|endfunction|endsub)\b/i.test(result[i])) {
@@ -1041,13 +1386,13 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
     result = out;
   }
 
-  if (config.blankLineBeforeReturn) {
+  if (config.emptyLineBeforeReturn) {
     const out: string[] = [];
     for (let i = 0; i < result.length; i++) {
       if (/^\s*return\b/i.test(result[i])) {
         const isAlone = isReturnAloneInBlock(result, i);
-        const shouldAdd = config.blankLineBeforeReturn === 'always' ||
-          (config.blankLineBeforeReturn === 'not-alone' && !isAlone);
+        const shouldAdd = config.emptyLineBeforeReturn === 'always' ||
+          (config.emptyLineBeforeReturn === 'not-alone' && !isAlone);
         if (shouldAdd && out.length > 0) {
           const prevTrimmed = out[out.length - 1].trim();
           // Skip when the preceding line is a comment — the blank line belongs before the comment.
@@ -1056,7 +1401,7 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
           }
         }
         // With 'not-alone', actively remove blank lines before return when it IS alone in its block.
-        if (config.blankLineBeforeReturn === 'not-alone' && isAlone) {
+        if (config.emptyLineBeforeReturn === 'not-alone' && isAlone) {
           while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
         }
       }
@@ -1065,7 +1410,7 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
     result = out;
   }
 
-  if (config.blankLineBeforeComment) {
+  if (config.emptyLineBeforeComment) {
     const out: string[] = [];
     for (let i = 0; i < result.length; i++) {
       const trimmed = result[i].trim();
@@ -1094,6 +1439,39 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Pass 9b — Empty lines between methods
+// ---------------------------------------------------------------------------
+
+function passEmptyLinesBetweenMethods(lines: string[], config: FormattingConfig): string[] {
+  if (config.emptyLinesBetweenMethods <= 0) return lines;
+
+  const methodDefPattern = /^\w+\.\w+\s*=\s*(?:function|sub)\s*\(/i;
+  const endPattern = /^(?:end\s*function|end\s*sub|endfunction|endsub)\b/i;
+
+  const out: string[] = [];
+  let prevWasEndMethod = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const isMethodDef = methodDefPattern.test(trimmed);
+
+    if (isMethodDef && prevWasEndMethod) {
+      while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
+      for (let n = 0; n < config.emptyLinesBetweenMethods; n++) out.push('');
+    }
+
+    out.push(lines[i]);
+
+    // Blank lines don't reset the flag
+    if (trimmed !== '') {
+      prevWasEndMethod = endPattern.test(trimmed);
+    }
+  }
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1145,8 +1523,394 @@ function passCommentWidth(lines: string[], config: FormattingConfig): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Indent tracking helpers
+// Pass 12 — observeField style
 // ---------------------------------------------------------------------------
+
+function passObserveFieldStyle(lines: string[], config: FormattingConfig): string[] {
+  if (config.observeFieldStyle === 'preserve') return lines;
+  return lines.map(line => {
+    const { code, comment } = splitTrailingComment(line);
+    if (comment && /\.observeField\s*\(/i.test(comment)) return line;
+    if (!/\.observeField\s*\(/i.test(code)) return line;
+    if (/\.observeFieldScoped\s*\(/i.test(code)) return line;
+
+    if (config.observeFieldStyle === 'always-scoped') {
+      const newCode = code.replace(/\.observeField\s*\(/gi, '.observeFieldScoped(');
+      return comment ? newCode + ' ' + comment : newCode;
+    }
+    // 'warn'
+    if (comment && /TODO:.*observeFieldScoped/i.test(comment)) return line;
+    return line + " ' TODO: consider using observeFieldScoped";
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pass 13 — m prefix style
+// ---------------------------------------------------------------------------
+
+const M_KNOWN_PROPS = new Set(['top', 'global']);
+
+function passMPrefixStyle(lines: string[], config: FormattingConfig): string[] {
+  if (config.mPrefixStyle === 'preserve') return lines;
+  return lines.map(line => {
+    const { code, comment } = splitTrailingComment(line);
+    let newCode = code;
+
+    if (config.mPrefixStyle === 'dot') {
+      // m["field"] → m.field
+      newCode = newCode.replace(/\bm\["([a-zA-Z_]\w*)"\]/g, (_match, field) => {
+        return `m.${field}`;
+      });
+    } else {
+      // m.field → m["field"], but not m.top, m.global, or method calls m.func()
+      newCode = newCode.replace(/\bm\.([a-zA-Z_]\w*)/g, (match, field, offset) => {
+        if (M_KNOWN_PROPS.has(field.toLowerCase())) return match;
+        const afterField = newCode.slice(offset + match.length);
+        if (/^\s*\(/.test(afterField)) return match;
+        return `m["${field}"]`;
+      });
+    }
+
+    return comment ? newCode + ' ' + comment : newCode;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pass 14 — Field access consistency
+// ---------------------------------------------------------------------------
+
+const FIELD_ACCESS_SKIP_METHODS = new Set([
+  'observefield', 'observefieldscoped', 'unobservefield', 'unobservefieldscoped',
+  'update', 'getchild', 'getchildren', 'getparent', 'findnode',
+  'createchild', 'removechild', 'appendchild', 'getfield', 'setfield',
+  'hasfield', 'addfield', 'addfields', 'removechildindex', 'removechildren',
+  'getchildcount', 'replacechild', 'insertchild', 'createobject',
+]);
+
+function passFieldAccessConsistency(lines: string[], config: FormattingConfig): string[] {
+  if (config.fieldAccessConsistency === 'preserve') return lines;
+
+  if (config.fieldAccessConsistency === 'dot') {
+    return lines.map(line => {
+      const { code, comment } = splitTrailingComment(line);
+      let newCode = code;
+
+      // m.top.getField("x") → m.top.x
+      newCode = newCode.replace(
+        /\bm\.top\.getField\s*\(\s*"([a-zA-Z_]\w*)"\s*\)/gi,
+        (_m, field) => `m.top.${field}`,
+      );
+
+      // m.top.setField("x", val) → m.top.x = val
+      newCode = newCode.replace(
+        /\bm\.top\.setField\s*\(\s*"([a-zA-Z_]\w*)"\s*,\s*/gi,
+        (_m, field) => `m.top.${field} = `,
+      );
+      // Remove trailing ) from setField conversion
+      if (newCode !== code && /\bm\.top\.\w+\s*=\s*.+\)/.test(newCode)) {
+        const lastParen = newCode.lastIndexOf(')');
+        if (lastParen > -1) newCode = newCode.slice(0, lastParen) + newCode.slice(lastParen + 1);
+      }
+
+      return comment ? newCode + ' ' + comment : newCode;
+    });
+  }
+
+  // 'method' — convert dot access to method calls
+  return lines.map(line => {
+    const { code, comment } = splitTrailingComment(line);
+    const trimmed = code.trim();
+    let newCode = code;
+
+    // Assignment: m.top.field = value → m.top.setField("field", value)
+    const assignMatch = trimmed.match(/^(\s*)m\.top\.([a-zA-Z_]\w*)\s*=\s*(.+)$/i);
+    if (assignMatch) {
+      const [, indent, field, value] = assignMatch;
+      if (!FIELD_ACCESS_SKIP_METHODS.has(field.toLowerCase())) {
+        newCode = `${indent}m.top.setField("${field}", ${value})`;
+        return comment ? newCode + ' ' + comment : newCode;
+      }
+    }
+
+    // Read: m.top.field (not a method call, not assignment target)
+    newCode = newCode.replace(/\bm\.top\.([a-zA-Z_]\w*)/gi, (match, field, offset) => {
+      if (FIELD_ACCESS_SKIP_METHODS.has(field.toLowerCase())) return match;
+      const afterField = newCode.slice(offset + match.length);
+      if (/^\s*\(/.test(afterField)) return match;
+      if (/^\s*=/.test(afterField)) return match;
+      return `m.top.getField("${field}")`;
+    });
+
+    return comment ? newCode + ' ' + comment : newCode;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pass 6b — Wrap long strings
+// ---------------------------------------------------------------------------
+
+const WRAP_LONG_STRINGS_WIDTH = 120;
+
+function passWrapLongStrings(lines: string[], config: FormattingConfig): string[] {
+  if (config.wrapLongStrings === 'preserve') return lines;
+
+  const result: string[] = [];
+  for (const line of lines) {
+    if (line.length <= WRAP_LONG_STRINGS_WIDTH) { result.push(line); continue; }
+
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const { code, comment } = splitTrailingComment(line);
+
+    // Find a long string literal in the line
+    const stringMatch = code.match(/"([^"]{40,})"/);
+    if (!stringMatch) { result.push(line); continue; }
+
+    const fullStr = stringMatch[0];
+    const strContent = stringMatch[1];
+    const strStart = code.indexOf(fullStr);
+    const before = code.slice(0, strStart);
+    const after = code.slice(strStart + fullStr.length);
+
+    const childIndent = indent + ' '.repeat(4);
+    const maxChunk = WRAP_LONG_STRINGS_WIDTH - childIndent.length - 6;
+    if (maxChunk <= 10) { result.push(line); continue; }
+
+    const chunks: string[] = [];
+    let remaining = strContent;
+    while (remaining.length > 0) {
+      if (remaining.length <= maxChunk) { chunks.push(remaining); break; }
+      let breakAt = remaining.lastIndexOf(' ', maxChunk);
+      if (breakAt <= 0) breakAt = maxChunk;
+      chunks.push(remaining.slice(0, breakAt + 1));
+      remaining = remaining.slice(breakAt + 1);
+    }
+
+    if (chunks.length <= 1) { result.push(line); continue; }
+
+    if (config.wrapLongStrings === 'plus') {
+      for (let i = 0; i < chunks.length; i++) {
+        const piece = `"${chunks[i]}"`;
+        if (i === 0) {
+          const suffix = i < chunks.length - 1 ? ' + _' : '';
+          result.push(before + piece + suffix);
+        } else if (i < chunks.length - 1) {
+          result.push(childIndent + piece + ' + _');
+        } else {
+          result.push(childIndent + piece + after + (comment ? ' ' + comment : ''));
+        }
+      }
+    } else {
+      // array-join
+      result.push(before + '[');
+      for (const chunk of chunks) {
+        result.push(childIndent + `"${chunk}"`);
+      }
+      result.push(indent + '].join("")' + after + (comment ? ' ' + comment : ''));
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Pass 6c — String concatenation style
+// ---------------------------------------------------------------------------
+
+function passStringConcatStyle(lines: string[], config: FormattingConfig): string[] {
+  if (config.stringConcatStyle === 'preserve') return lines;
+
+  if (config.stringConcatStyle === 'plus') {
+    // Convert [a, b, c].join("") → a + b + c
+    const result: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const trimmed = lines[i].trim();
+      // Single-line: [a, b, c].join("")
+      const singleMatch = trimmed.match(/^(.*)(\[.+\])\.join\s*\(\s*""\s*\)(.*)$/);
+      if (singleMatch) {
+        const indent = lines[i].match(/^(\s*)/)?.[1] ?? '';
+        const before = singleMatch[1];
+        const arrContent = singleMatch[2];
+        const after = singleMatch[3];
+        // Extract items from [...]
+        const inner = arrContent.slice(1, -1);
+        const items = splitArrayItems(inner);
+        if (items.length > 0) {
+          result.push(indent + before + items.join(' + ') + after);
+          i++;
+          continue;
+        }
+      }
+      result.push(lines[i]);
+      i++;
+    }
+    return result;
+  }
+
+  // 'array-join': Convert a + b + c → [a, b, c].join("") when at least one is a string
+  return lines.map(line => {
+    const { code, comment } = splitTrailingComment(line);
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    // Match: expr + expr + expr (with at least one string literal)
+    const plusParts = splitPlusParts(code.trim());
+    if (plusParts.length < 2) return line;
+    const hasString = plusParts.some(p => /^".*"$/.test(p.trim()));
+    if (!hasString) return line;
+
+    // Find the assignment prefix
+    const assignMatch = code.match(/^(\s*\S+\s*=\s*)/);
+    const prefix = assignMatch ? assignMatch[1] : indent;
+    const items = plusParts.map(p => p.trim()).join(', ');
+    const newCode = prefix + `[${items}].join("")`;
+    return comment ? newCode + ' ' + comment : newCode;
+  });
+}
+
+function splitArrayItems(inner: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let current = '';
+  let inStr = false;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '"' && (i === 0 || inner[i - 1] !== '\\')) inStr = !inStr;
+    if (!inStr) {
+      if (ch === '[' || ch === '{' || ch === '(') depth++;
+      if (ch === ']' || ch === '}' || ch === ')') depth--;
+      if (ch === ',' && depth === 0) {
+        items.push(current.trim());
+        current = '';
+        continue;
+      }
+    }
+    current += ch;
+  }
+  if (current.trim()) items.push(current.trim());
+  return items;
+}
+
+function splitPlusParts(code: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  let inStr = false;
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    if (ch === '"' && (i === 0 || code[i - 1] !== '\\')) inStr = !inStr;
+    if (!inStr) {
+      if (ch === '[' || ch === '{' || ch === '(') depth++;
+      if (ch === ']' || ch === '}' || ch === ')') depth--;
+      if (ch === '+' && depth === 0 && !inStr) {
+        // Check it's not += 
+        if (i > 0 && code[i - 1] === ' ' || i + 1 < code.length) {
+          const before = code.slice(0, i).trim();
+          if (!before.endsWith('=')) {
+            parts.push(current.trim());
+            current = '';
+            continue;
+          }
+        }
+      }
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts.length > 1 ? parts : [];
+}
+
+// ---------------------------------------------------------------------------
+// Pass 7c — Associative array single-line threshold
+// ---------------------------------------------------------------------------
+
+function passAAThreshold(lines: string[], config: FormattingConfig): string[] {
+  if (config.associativeArraySingleLineThreshold <= 0) return lines;
+  const threshold = config.associativeArraySingleLineThreshold;
+  const indentStr = config.useTabs ? '\t' : ' '.repeat(config.indentSize);
+
+  const result: string[] = [];
+  for (const line of lines) {
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const trimmed = line.trim();
+    const { code, comment } = splitTrailingComment(line);
+    const codeT = code.trim();
+
+    // Find single-line AA: { key: val, key: val }
+    const aaMatch = codeT.match(/^(.*?)(\{[^{}]+\})(.*)$/);
+    if (!aaMatch) { result.push(line); continue; }
+
+    const [, before, aaBlock, after] = aaMatch;
+    if (aaBlock.length <= threshold) { result.push(line); continue; }
+
+    // Extract key-value pairs
+    const inner = aaBlock.slice(1, -1).trim();
+    const pairs = splitArrayItems(inner);
+    if (pairs.length === 0) { result.push(line); continue; }
+
+    const childIndent = indent + indentStr;
+    result.push(indent + before + '{');
+    for (const pair of pairs) {
+      result.push(childIndent + pair.trim());
+    }
+    result.push(indent + '}' + after + (comment ? ' ' + comment : ''));
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Pass 8d — Multi-line param alignment
+// ---------------------------------------------------------------------------
+
+function passParamAlignment(lines: string[], config: FormattingConfig): string[] {
+  if (config.paramAlignmentStyle === 'preserve') return lines;
+  const indentStr = config.useTabs ? '\t' : ' '.repeat(config.indentSize);
+
+  const result: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = lines[i].trim().toLowerCase();
+    // Detect function/sub declaration with ( but no closing )
+    const isFuncLine = /^(?:function|sub)\s+/i.test(trimmed) || /^\s*(?:function|sub)\s+/i.test(lines[i]);
+    if (!isFuncLine || !lines[i].includes('(') || lines[i].includes(')')) {
+      result.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    // Multi-line params: collect lines until we find )
+    const funcLine = lines[i];
+    const funcIndent = funcLine.match(/^(\s*)/)?.[1] ?? '';
+    const parenCol = funcLine.indexOf('(');
+    const paramLines: string[] = [funcLine];
+    let j = i + 1;
+    while (j < lines.length) {
+      paramLines.push(lines[j]);
+      if (lines[j].includes(')')) break;
+      j++;
+    }
+
+    if (paramLines.length <= 1) {
+      result.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    if (config.paramAlignmentStyle === 'indent') {
+      result.push(paramLines[0]);
+      const paramIndent = funcIndent + indentStr;
+      for (let k = 1; k < paramLines.length; k++) {
+        result.push(paramIndent + paramLines[k].trim());
+      }
+    } else {
+      // align-to-paren
+      result.push(paramLines[0]);
+      const alignStr = ' '.repeat(parenCol + 1);
+      for (let k = 1; k < paramLines.length; k++) {
+        result.push(alignStr + paramLines[k].trim());
+      }
+    }
+    i = j + 1;
+  }
+  return result;
+}
 
 function isIndentLine(trimmed: string): boolean {
   const lower = trimmed.toLowerCase();
@@ -1351,8 +2115,8 @@ function splitCodeSegments(line: string): Segment[] {
 }
 
 function transformCodeSegment(code: string, casing: CasingConfig, userFuncMap: Map<string, string>): string {
-  const exactMap = casing.exactCasing ?? {};
-  const userFuncCasing = casing.userFunctions ?? 'NoChange';
+  const exactMap = casing.exact ?? {};
+  const userFuncCasing = casing.userFunction ?? 'preserve';
 
   return code.replace(/\b([a-zA-Z_]\w*)\b/g, (match, _group, offset) => {
     const afterIdx = offset + match.length;
@@ -1375,7 +2139,7 @@ function transformCodeSegment(code: string, casing: CasingConfig, userFuncMap: M
         }
       }
       const effectiveCasing = resolveKeywordCasing(category, casing);
-      if (effectiveCasing !== 'NoChange') {
+      if (effectiveCasing !== 'preserve') {
         return applyCasingWithOverrides(match, effectiveCasing, exactMap);
       }
       return match;
@@ -1387,15 +2151,15 @@ function transformCodeSegment(code: string, casing: CasingConfig, userFuncMap: M
       // parameter named `str`) should not be re-cased.
       if (!/^\s*\(/.test(restAfter)) return match;
       const canonical = _builtinMap.get(lower)!;
-      if (casing.builtins !== 'NoChange') {
-        return applyCasingWithOverrides(canonical, casing.builtins, exactMap);
+      if (casing.builtin !== 'preserve') {
+        return applyCasingWithOverrides(canonical, casing.builtin, exactMap);
       }
       return canonical;
     }
 
     if (userFuncMap.has(lower)) {
       const definitionName = userFuncMap.get(lower)!;
-      if (userFuncCasing !== 'NoChange') {
+      if (userFuncCasing !== 'preserve') {
         return applyCasing(definitionName, userFuncCasing);
       }
       return definitionName;

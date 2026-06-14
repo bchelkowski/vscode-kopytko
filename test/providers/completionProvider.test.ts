@@ -524,7 +524,7 @@ describe('BrightScriptCompletionProvider', () => {
       expect(labels).to.include('LongInteger');
     });
 
-    it('includes ro* component names as valid parameter types', async () => {
+    it('includes ro* component names as valid parameter type', async () => {
       const doc = makeDocument(`sub bar(arr as `);
       const items = await provider.provideCompletions(doc, { line: 0, character: 15 });
       const labels = items.map((i) => i.label);
@@ -538,7 +538,7 @@ describe('BrightScriptCompletionProvider', () => {
       expect(labels).to.include('Integer');
     });
 
-    it('primitive types sort before component names', async () => {
+    it('primitive type sort before component names', async () => {
       const doc = makeDocument(`function foo() as `);
       const items = await provider.provideCompletions(doc, { line: 0, character: 18 });
       const boolItem = items.find((i) => i.label === 'Boolean');
@@ -553,7 +553,7 @@ describe('BrightScriptCompletionProvider', () => {
       const items = await provider.provideCompletions(
         doc,
         { line: 0, character: 18 },
-        { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' }
+        { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' }
       );
       const labels = items.map((i) => i.label);
       expect(labels).to.include('BOOLEAN');
@@ -910,60 +910,60 @@ describe('BrightScriptCompletionProvider', () => {
   });
 
   describe('casing configuration', () => {
-    it('UpperCase applies to method labels and insert text', async () => {
+    it('upper-case applies to method labels and insert text', async () => {
       const doc = makeDocument(['arr = CreateObject("roArray")', 'arr.'].join('\n'));
       const items = await provider.provideCompletions(
         doc, { line: 1, character: 4 },
-        { builtins: 'NoChange', keywords: 'NoChange', methods: 'UpperCase' }
+        { builtin: 'preserve', keyword: 'preserve', method: 'upper-case' }
       );
       const pushItem = items.find((i) => i.label === 'PUSH');
       expect(pushItem).to.not.be.undefined;
       expect(pushItem!.insertText).to.match(/^PUSH/);
     });
 
-    it('LowerCase applies to method labels and insert text', async () => {
+    it('lower-case applies to method labels and insert text', async () => {
       const doc = makeDocument(['arr = CreateObject("roArray")', 'arr.'].join('\n'));
       const items = await provider.provideCompletions(
         doc, { line: 1, character: 4 },
-        { builtins: 'NoChange', keywords: 'NoChange', methods: 'LowerCase' }
+        { builtin: 'preserve', keyword: 'preserve', method: 'lower-case' }
       );
       const pushItem = items.find((i) => i.label === 'push');
       expect(pushItem).to.not.be.undefined;
       expect(pushItem!.insertText).to.match(/^push/);
     });
 
-    it('LowerCase on method preserves snippet parameter syntax', async () => {
+    it('lower-case on method preserves snippet parameter syntax', async () => {
       const doc = makeDocument(['arr = CreateObject("roArray")', 'arr.'].join('\n'));
       const items = await provider.provideCompletions(
         doc, { line: 1, character: 4 },
-        { builtins: 'NoChange', keywords: 'NoChange', methods: 'LowerCase' }
+        { builtin: 'preserve', keyword: 'preserve', method: 'lower-case' }
       );
       const pushItem = items.find((i) => i.label === 'push');
       expect(pushItem!.insertText).to.equal('push(${1:a as Dynamic})');
     });
 
-    it('UpperCase applies to built-in labels', async () => {
+    it('upper-case applies to built-in labels', async () => {
       const doc = makeDocument(`Ab`);
       const items = await provider.provideCompletions(
         doc, { line: 0, character: 2 },
-        { builtins: 'UpperCase', keywords: 'NoChange', methods: 'NoChange' }
+        { builtin: 'upper-case', keyword: 'preserve', method: 'preserve' }
       );
       const labels = items.map((i) => i.label);
       expect(labels).to.include('ABS');
       expect(labels).not.to.include('Abs');
     });
 
-    it('LowerCase applies to keyword labels', async () => {
+    it('lower-case applies to keyword labels', async () => {
       const doc = makeDocument(`fo`);
       const items = await provider.provideCompletions(
         doc, { line: 0, character: 2 },
-        { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' }
+        { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' }
       );
       const labels = items.map((i) => i.label);
       expect(labels).to.include('FOR');
     });
 
-    it('NoChange (default) preserves catalog casing', async () => {
+    it('preserve (default) preserves catalog casing', async () => {
       const doc = makeDocument(`Ab`);
       const items = await provider.provideCompletions(doc, { line: 0, character: 2 });
       const labels = items.map((i) => i.label);

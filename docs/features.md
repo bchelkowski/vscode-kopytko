@@ -75,14 +75,14 @@ This document is the canonical list of extension features. Each feature links to
 | Increment (`++`) and decrement (`--`) operators preserved by spacing pass | ✅ Implemented | [formatting.md](./formatting.md) |
 | Comment lines never affect indentation depth (commented-out blocks are inert) | ✅ Implemented | [formatting.md](./formatting.md) |
 | Method-chain continuation (`.method(…)`) lines indent one level deeper than the chain start | ✅ Implemented | [formatting.md](./formatting.md) |
-| `blankLineBeforeReturn` skips blank between a comment and its following return | ✅ Implemented | [formatting.md](./formatting.md) |
+| `emptyLineBeforeReturn` skips blank between a comment and its following return | ✅ Implemented | [formatting.md](./formatting.md) |
 | Standalone formatter CLI (`kopytko-format --check`, `--write`) | ✅ Implemented | [kopytko-formatter README](../packages/kopytko-formatter/README.md) |
 | CLI ignore patterns (`--ignore`, config `ignore` array) | ✅ Implemented | [formatting.md](./formatting.md#cli--ci-usage) |
 | Granular identifier casing with exact-casing overrides | ✅ Implemented | [language-server.md](./language-server.md) |
 | `Function` after `as` uses type casing, not keyword casing | ✅ Implemented | [language-server.md](./language-server.md) |
 | `@import` / `@mock` sorting and `emptyLineAfterImports` | ✅ Implemented | [formatting.md](./formatting.md) |
 | `catchParenStyle` — normalise `catch e` ↔ `catch (e)` | ✅ Implemented | [formatting.md](./formatting.md) |
-| `aaCommaSpacing` — control spaces around commas in inline `{}` associative arrays | ✅ Implemented | [formatting.md](./formatting.md) |
+| `associativeArrayCommaSpacing` — control spaces around commas in inline `{}` associative arrays | ✅ Implemented | [formatting.md](./formatting.md) |
 
 ## Standalone Linter (CI)
 

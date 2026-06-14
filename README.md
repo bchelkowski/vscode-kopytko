@@ -196,7 +196,7 @@ See [docs/roku-debug.md](docs/roku-debug.md) for full details and architecture n
 
 ## Formatting Settings Reference
 
-The formatter is configured in `.vscode/settings.json` (workspace) or VS Code's user settings. All settings use the `kopytko.format.` prefix.
+The formatter is configured in `.vscode/settings.json` (workspace) or VS Code's user settings. Formatting settings use the `kopytko.format.` prefix; casing settings use `kopytko.casing.`.
 
 See [docs/formatting.md](docs/formatting.md) for the complete reference with before/after examples.
 
@@ -232,32 +232,26 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | `spaceInsideParens` | `string` | `"never"` | `never`, `always` |
 | `returnTypeAnnotations` | `string` | `"preserve"` | `always`, `never`, `preserve` |
 | `paramTypeAnnotations` | `string` | `"preserve"` | `always`, `never`, `preserve` |
-| `paramAlignmentStyle` | `string` | `"indent"` | `indent`, `align-to-paren` |
-| `wrapParamsThreshold` | `number` | `0` | Wrap params at this line length (0 = never) |
+| `paramAlignmentStyle` | `string` | `"preserve"` | `preserve`, `indent`, `align-to-paren` |
 
-### Line Length & Wrapping
+### Strings
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `printWidth` | `number` | `160` | Max desired line length |
 | `wrapLongStrings` | `string` | `"preserve"` | `preserve`, `plus`, `array-join` |
 | `stringConcatStyle` | `string` | `"preserve"` | `preserve`, `plus`, `array-join` |
-| `wrapLongChains` | `boolean` | `false` | Break long method chains |
-| `wrapArrays` | `string` | `"never"` | `auto`, `always`, `never` |
-| `wrapAssocArrays` | `string` | `"never"` | `auto`, `always`, `never` |
 
 ### Arrays & Associative Arrays
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `bracketSpacing` | `boolean` | `true` | Spaces inside `{ }` |
-| `aaCommaSpacing` | `string` | `"preserve"` | Spaces around commas in inline `{}` AAs: `preserve`, `after`, `before`, `both`, `none` |
+| `associativeArrayBracketSpacing` | `boolean` | `true` | Spaces inside `{ }` |
+| `associativeArrayCommaSpacing` | `string` | `"preserve"` | Spaces around commas in inline `{}` AAs: `preserve`, `after`, `before`, `both`, `none` |
 | `trailingComma` | `string` | `"never"` | `never`, `always`, `multiline` |
 | `arrayCommaStyle` | `string` | `"preserve"` | Multi-line array commas: `always`, `never`, `preserve` |
-| `assocArrayCommaStyle` | `string` | `"preserve"` | Multi-line AA commas: `always`, `never`, `preserve` |
-| `arrayItemAlignment` | `string` | `"off"` | `off`, `align` |
-| `singleLineObjectThreshold` | `number` | `0` | Max keys before forcing multi-line (0 = no limit) |
-| `splitArrayOpenBracket` | `boolean` | `false` | Split `[{` onto separate lines in multi-item arrays |
+| `associativeArrayCommaStyle` | `string` | `"preserve"` | Multi-line AA commas: `always`, `never`, `preserve` |
+| `associativeArraySingleLineThreshold` | `number` | `0` | Max keys before forcing multi-line (0 = no limit) |
+| `arraySplitOpenBracket` | `boolean` | `false` | Split `[{` onto separate lines in multi-item arrays |
 
 ### Operators & Expressions
 
@@ -266,7 +260,6 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | `spaceAroundOperators` | `boolean` | `true` | Spaces around `+`, `-`, `*`, `/`, `<>`, etc. (preserves `+=`, `-=`) |
 | `spaceAroundAssignment` | `boolean` | `true` | Spaces around `=` in assignments (not `+=`, `-=`) |
 | `unarySpacing` | `boolean` | `true` | Space after `not` |
-| `operatorLineBreakStyle` | `string` | `"before"` | `before`, `after` |
 
 ### Comments
 
@@ -287,17 +280,15 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `blankLineAfterFunctionOpen` | `boolean` | `false` | Blank line after function/sub opening |
-| `blankLineBeforeFunctionClose` | `boolean` | `false` | Blank line before end function/sub |
-| `blankLineBeforeReturn` | `string\|boolean` | `false` | `"always"`, `"not-alone"`, `false` |
-| `blankLineBeforeComment` | `boolean` | `false` | Blank line before comment blocks |
-| `separateLogicBlocks` | `boolean` | `false` | Blank lines between logic groups |
+| `emptyLineAfterFunctionOpen` | `boolean` | `false` | Blank line after function/sub opening |
+| `emptyLineBeforeFunctionClose` | `boolean` | `false` | Blank line before end function/sub |
+| `emptyLineBeforeReturn` | `string\|boolean` | `false` | `"always"`, `"not-alone"`, `false` |
+| `emptyLineBeforeComment` | `boolean` | `false` | Blank line before comment blocks |
 
 ### Control Flow
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `inlineIfThreshold` | `number` | `0` | Max length for single-line if (0 = never) |
 | `parenthesisIfCase` | `string` | `"preserve"` | `preserve`, `always`, `never` |
 | `catchParenStyle` | `string` | `"preserve"` | Catch variable parentheses: `always` (catch (e)), `never` (catch e), `preserve` |
 | `elseOnNewLine` | `boolean` | `true` | else on its own line |
@@ -311,17 +302,23 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | `mPrefixStyle` | `string` | `"preserve"` | `dot`, `bracket`, `preserve` |
 | `alignAssignments` | `boolean` | `false` | Align `=` in consecutive assignments |
 | `fieldAccessConsistency` | `string` | `"preserve"` | `dot`, `method`, `preserve` |
-| `stringConcatStyle` | `string` | `"preserve"` | `preserve`, `plus`, `array-join` |
 
-### Casing
+### Casing (`kopytko.casing.*`)
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `mathOperatorCasing` | `string` | `"NoChange"` | Casing for math operators (`mod`). Falls back to `keywordCasing` when not set |
-| `methodCasing` | `string` | `"NoChange"` | Casing applied to component method names |
-| `userFunctionCasing` | `string` | `"NoChange"` | Casing applied to user-defined function/sub names |
-| `userMethodCasing` | `string` | `"NoChange"` | Casing applied to user-defined AA method names |
-| `exactCasing` | `object` | `{}` | Per-identifier casing overrides applied after all other casing rules |
+| `builtin` | `string` | `"preserve"` | Casing for built-in functions |
+| `keyword` | `string` | `"preserve"` | Casing for keywords (fallback for sub-categories) |
+| `type` | `string` | — | Casing for type names; falls back to `keyword` |
+| `literal` | `string` | — | Casing for `true`, `false`, `invalid`; falls back to `keyword` |
+| `logicOperator` | `string` | — | Casing for `and`, `or`, `not`; falls back to `keyword` |
+| `mathOperator` | `string` | — | Casing for `mod`; falls back to `keyword` |
+| `method` | `string` | `"preserve"` | Casing for component method names |
+| `userFunction` | `string` | `"preserve"` | Casing for user-defined functions |
+| `userMethod` | `string` | `"preserve"` | Casing for user-defined AA methods |
+| `exact` | `object` | `{}` | Per-identifier casing overrides |
+
+Casing values: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
 
 ### Miscellaneous
 

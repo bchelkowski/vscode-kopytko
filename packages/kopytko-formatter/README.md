@@ -62,9 +62,9 @@ The formatter reads config from (in priority order):
 
 1. `--config <file>` CLI flag
 2. `kopytko-formatter.json` in the current directory
-3. `.vscode/settings.json` — reads `kopytko.format.*` keys automatically (supports JSONC: inline `//` comments, block `/* */` comments, and trailing commas)
+3. `.vscode/settings.json` — reads `kopytko.format.*` and `kopytko.casing.*` keys automatically (supports JSONC: inline `//` comments, block `/* */` comments, and trailing commas)
 
-Config keys match the VS Code extension settings without the `kopytko.format.` prefix.
+Config keys match the VS Code extension settings without the `kopytko.format.` prefix (for formatting rules) or `kopytko.casing.` prefix (for casing settings).
 
 ### Example `kopytko-formatter.json`
 
@@ -82,11 +82,11 @@ The config file can contain both formatting rules and casing settings:
   "emptyLineAfterImports": true,
   "maxEmptyLines": 1,
   "emptyLinesBetweenFunctions": 1,
-  "keywordCasing": "LowerCase",
-  "builtinCasing": "PascalCase",
-  "typeCasing": "PascalCase",
-  "literalCasing": "LowerCase",
-  "logicOperatorCasing": "UpperCase",
+  "keywordCasing": "lower-case",
+  "builtinCasing": "pascal-case",
+  "typeCasing": "pascal-case",
+  "literalCasing": "lower-case",
+  "logicOperatorCasing": "upper-case",
   "ignore": [
     "**/node_modules/**",
     "**/dist/**",
@@ -95,7 +95,7 @@ The config file can contain both formatting rules and casing settings:
 }
 ```
 
-> **Note:** `keywordCasing`, `builtinCasing`, `typeCasing`, `literalCasing`, and `logicOperatorCasing` are casing settings (see `CasingConfig`). All other keys are formatting rules (see `FormattingConfig`).
+> **Note:** `keywordCasing`, `builtinCasing`, `typeCasing`, `literalCasing`, and `logicOperatorCasing` are casing settings (see `CasingConfig`). All other keys are formatting rules (see `FormattingConfig`). Casing values use kebab-case: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
 
 If your project already has formatting settings in `.vscode/settings.json`, no extra config file is needed — the CLI reads them directly.
 
@@ -163,36 +163,6 @@ jobs:
 ```
 
 > This assumes `format:check` is defined in your `package.json` scripts (see [Recommended npm Scripts](#recommended-npm-scripts) above).
-
-## Planned Features (Not Yet Implemented)
-
-The following `FormattingConfig` fields are defined and accepted in config files but
-**do not affect formatting output yet**. They are reserved for future implementation:
-
-| Category | Field | Description |
-|---|---|---|
-| Whitespace | `emptyLinesBetweenMethods` | Blank lines between AA method definitions |
-| Functions | `returnTypeAnnotations` | Enforce/remove `as Type` return annotations |
-| Functions | `paramTypeAnnotations` | Enforce/remove `as Type` param annotations |
-| Functions | `paramAlignmentStyle` | Multi-line parameter alignment style |
-| Functions | `wrapParamsThreshold` | Line length to trigger parameter wrapping |
-| Line Length | `printWidth` | Maximum desired line length |
-| Line Length | `wrapLongStrings` | Long string handling strategy |
-| Line Length | `stringConcatStyle` | String concatenation normalization |
-| Line Length | `wrapLongChains` | Break long method/field chains |
-| Line Length | `wrapArrays` | Multi-line array literals |
-| Line Length | `wrapAssocArrays` | Multi-line AA literals |
-| Arrays & AAs | `arrayItemAlignment` | Align values in multi-line AAs |
-| Arrays & AAs | `singleLineObjectThreshold` | Max keys before forcing multi-line |
-| Operators | `operatorLineBreakStyle` | Operator placement on wrapped lines |
-| Blank Lines | `separateLogicBlocks` | Blank lines between logic groups |
-| Control Flow | `inlineIfThreshold` | Max length for single-line if/then |
-| Control Flow | `elseOnNewLine` | Else on its own line |
-| Miscellaneous | `lineCommentPosition` | Move trailing comments above |
-| BrightScript | `observeFieldStyle` | Enforce observeFieldScoped |
-| BrightScript | `mPrefixStyle` | m-prefix field access style |
-| BrightScript | `alignAssignments` | Align = signs in assignments |
-| BrightScript | `fieldAccessConsistency` | Dot vs method field access |
 
 ## License
 

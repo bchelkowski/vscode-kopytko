@@ -42,17 +42,17 @@ CONFIG
   The formatter reads config from (in priority order):
     1. --config <file>            explicit path
     2. kopytko-formatter.json     in the current directory
-    3. .vscode/settings.json      "kopytko.format.*" keys
+   3. .vscode/settings.json      "kopytko.format.*" + "kopytko.casing.*" keys
 
-  Config keys match VS Code settings without the "kopytko.format." prefix.
+  Config keys match VS Code settings without the prefix.
   Example kopytko-formatter.json:
     {
       "indentSize": 2,
       "endKeywordStyle": "spaced",
       "trimTrailingWhitespace": true,
       "insertFinalNewline": true,
-      "keywordCasing": "LowerCase",
-      "builtinCasing": "PascalCase",
+      "keyword": "lower-case",
+      "builtin": "pascal-case",
       "ignore": [
         "**/node_modules/**",
         "**/dist/**",
@@ -126,17 +126,17 @@ function findRawConfig(configPath: string | null): RawConfig | null {
 }
 
 /**
- * Extracts kopytko.format.* keys from a VS Code settings.json object.
- * Strips the "kopytko.format." prefix from each key.
+ * Extracts kopytko.format.* and kopytko.casing.* keys from a VS Code settings.json object.
+ * Strips the "kopytko.format." / "kopytko.casing." prefix from each key.
  *
- * Also extracts kopytko.readOnlyPaths — it lives under "kopytko.*" (not
- * "kopytko.format.*") but the CLI must respect it the same way the extension
- * does: files matching any readOnlyPaths pattern are skipped entirely.
+ * Also extracts kopytko.readOnlyPaths and kopytko.format.readOnlyPaths — the CLI
+ * skips files matching any readOnlyPaths pattern (format-specific takes priority).
  *
  * Returns null if no relevant kopytko keys are found.
  */
 function extractVscodeSettings(raw: Record<string, unknown>): Record<string, unknown> | null {
   const FORMAT_PREFIX = 'kopytko.format.';
+  const CASING_PREFIX = 'kopytko.casing.';
   const result: Record<string, unknown> = {};
   let found = false;
 
@@ -144,11 +144,18 @@ function extractVscodeSettings(raw: Record<string, unknown>): Record<string, unk
     if (key.startsWith(FORMAT_PREFIX)) {
       result[key.slice(FORMAT_PREFIX.length)] = value;
       found = true;
+    } else if (key.startsWith(CASING_PREFIX)) {
+      // Store casing keys under their direct name (builtin, keyword, etc.)
+      result[key.slice(CASING_PREFIX.length)] = value;
+      found = true;
     }
   }
 
-  // readOnlyPaths is under "kopytko.*", not "kopytko.format.*"
-  if ('kopytko.readOnlyPaths' in raw) {
+  // readOnlyPaths: format-specific > shared fallback
+  if ('kopytko.format.readOnlyPaths' in raw) {
+    result['readOnlyPaths'] = raw['kopytko.format.readOnlyPaths'];
+    found = true;
+  } else if ('kopytko.readOnlyPaths' in raw) {
     result['readOnlyPaths'] = raw['kopytko.readOnlyPaths'];
     found = true;
   }
@@ -156,18 +163,18 @@ function extractVscodeSettings(raw: Record<string, unknown>): Record<string, unk
   return found ? result : null;
 }
 
-/** Maps VS Code casing key names to CasingConfig field names. */
+/** Maps config key names to CasingConfig field names. */
 const CASING_KEY_MAP: Record<string, keyof CasingConfig> = {
-  'keywordCasing': 'keywords',
-  'builtinCasing': 'builtins',
-  'methodCasing': 'methods',
-  'typeCasing': 'types',
-  'literalCasing': 'literals',
-  'logicOperatorCasing': 'logicOperators',
-  'mathOperatorCasing': 'mathOperators',
-  'userFunctionCasing': 'userFunctions',
-  'userMethodCasing': 'userMethods',
-  'exactCasing': 'exactCasing',
+  'keyword': 'keyword',
+  'builtin': 'builtin',
+  'method': 'method',
+  'type': 'type',
+  'literal': 'literal',
+  'logicOperator': 'logicOperator',
+  'mathOperator': 'mathOperator',
+  'userFunction': 'userFunction',
+  'userMethod': 'userMethod',
+  'exact': 'exact',
 };
 
 function loadConfig(configPath: string | null): FormattingConfig {
@@ -236,22 +243,21 @@ function loadCasingConfig(configPath: string | null): CasingConfig {
   const result: Record<string, unknown> = {};
 
   for (const [srcKey, destKey] of Object.entries(CASING_KEY_MAP)) {
-    // Support both VS Code key names (keywordCasing) and direct names (keywords)
     if (s[srcKey] !== undefined) result[destKey] = s[srcKey];
     else if (s[destKey] !== undefined) result[destKey] = s[destKey];
   }
 
   return {
-    builtins: (result.builtins as CasingConfig['builtins']) ?? 'NoChange',
-    keywords: (result.keywords as CasingConfig['keywords']) ?? 'NoChange',
-    methods: (result.methods as CasingConfig['methods']) ?? 'NoChange',
-    types: result.types as CasingConfig['types'],
-    literals: result.literals as CasingConfig['literals'],
-    logicOperators: result.logicOperators as CasingConfig['logicOperators'],
-    mathOperators: result.mathOperators as CasingConfig['mathOperators'],
-    userFunctions: result.userFunctions as CasingConfig['userFunctions'],
-    userMethods: result.userMethods as CasingConfig['userMethods'],
-    exactCasing: normalizeExactCasing(result.exactCasing),
+    builtin: (result.builtin as CasingConfig['builtin']) ?? 'preserve',
+    keyword: (result.keyword as CasingConfig['keyword']) ?? 'preserve',
+    method: (result.method as CasingConfig['method']) ?? 'preserve',
+    type: result.type as CasingConfig['type'],
+    literal: result.literal as CasingConfig['literal'],
+    logicOperator: result.logicOperator as CasingConfig['logicOperator'],
+    mathOperator: result.mathOperator as CasingConfig['mathOperator'],
+    userFunction: result.userFunction as CasingConfig['userFunction'],
+    userMethod: result.userMethod as CasingConfig['userMethod'],
+    exact: normalizeExactCasing(result.exact),
   };
 }
 
@@ -307,8 +313,8 @@ function resolveGlob(pattern: string): string[] {
   return [];
 }
 
-/** Normalizes exactCasing keys to lowercase so lookups are case-insensitive (matches VS Code extension behaviour). */
-function normalizeExactCasing(raw: unknown): CasingConfig['exactCasing'] {
+/** Normalizes exact casing keys to lowercase so lookups are case-insensitive (matches VS Code extension behaviour). */
+function normalizeExactCasing(raw: unknown): CasingConfig['exact'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   return Object.fromEntries(
     Object.entries(raw as Record<string, unknown>)

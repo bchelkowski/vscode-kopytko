@@ -100,7 +100,7 @@ When consuming the package, add npm scripts to your `package.json` instead of us
 }
 ```
 
-Config resolution (priority order): `--config <file>` → `kopytko-formatter.json` → `.vscode/settings.json` (`kopytko.format.*` keys).
+Config resolution (priority order): `--config <file>` → `kopytko-formatter.json` → `.vscode/settings.json` (`kopytko.format.*` and `kopytko.casing.*` keys).
 
 ### Windows + WSL
 
@@ -201,4 +201,4 @@ The formatting engine is extracted into the standalone `packages/kopytko-formatt
 
 **To add a new formatting option:** add the field to `FormattingConfig` in `packages/kopytko-formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
 
-**Duplicate sources:** `builtins.ts`, `casing.ts`, and `config.ts` exist in both the extension (`src/server/brightscript/`) and the formatter package (`packages/kopytko-formatter/src/`). The extension copies are used by non-formatting providers (completion, hover, etc.). Keep them in sync when making changes.
+**Duplicate sources:** `builtins.ts`, `casing.ts`, and `config.ts` exist in both the extension (`src/server/brightscript/`) and the formatter package (`packages/kopytko-formatter/src/`). The extension copies are used by non-formatting providers (completion, hover, etc.). Keep them in sync when making changes. Note: casing settings use `kopytko.casing.*` keys (e.g. `kopytko.casing.builtin`, `kopytko.casing.keyword`) while formatting settings use `kopytko.format.*` keys. Casing values are kebab-case: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.

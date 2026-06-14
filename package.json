@@ -181,17 +181,33 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Glob patterns for files that the extension should treat as read-only. Matched files will not be modified by document formatting or code action edits.\n\n**Supported wildcards:** `*` matches any characters except `/`; `**` matches any characters including `/`.\n\n**Examples:**\n```json\n[\n  \"**/node_modules/**\",\n  \"**/generated/**\",\n  \"**/vendor/*.brs\"\n]\n```"
+          "markdownDescription": "Glob patterns for files that the extension should treat as read-only. Acts as a shared fallback — applies to both formatting and linting unless overridden by `kopytko.format.readOnlyPaths` or `kopytko.lint.readOnlyPaths`.\n\n**Supported wildcards:** `*` matches any characters except `/`; `**` matches any characters including `/`.\n\n**Examples:**\n```json\n[\n  \"**/node_modules/**\",\n  \"**/generated/**\",\n  \"**/vendor/*.brs\"\n]\n```"
         },
-        "kopytko.format.builtinCasing": {
+        "kopytko.format.readOnlyPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Glob patterns for files that the formatter should skip. When set, overrides `kopytko.readOnlyPaths` for formatting. When empty, falls back to `kopytko.readOnlyPaths`."
+        },
+        "kopytko.lint.readOnlyPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Glob patterns for files that the linter should skip. When set, overrides `kopytko.readOnlyPaths` for linting. When empty, falls back to `kopytko.readOnlyPaths`."
+        },
+        "kopytko.casing.builtin": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
           "enumDescriptions": [
             "Keep the catalog casing (e.g. Abs, CreateObject)",
@@ -201,18 +217,18 @@
             "Each word capitalised (e.g. Abs, CreateObject)",
             "First word lowercase, subsequent words capitalised (e.g. abs, createObject)"
           ],
-          "default": "NoChange",
+          "default": "preserve",
           "description": "Casing applied to BrightScript built-in function names when a completion is inserted."
         },
-        "kopytko.format.keywordCasing": {
+        "kopytko.casing.keyword": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
           "enumDescriptions": [
             "Keep the catalog casing (e.g. for, end sub)",
@@ -222,70 +238,70 @@
             "Each word capitalised (e.g. For, End Sub)",
             "First word lowercase, subsequent words capitalised (e.g. for, end Sub)"
           ],
-          "default": "NoChange",
+          "default": "preserve",
           "description": "Casing applied to BrightScript keywords when a completion is inserted. Acts as fallback for type, literal, and operator casing when those are not set."
         },
-        "kopytko.format.typeCasing": {
+        "kopytko.casing.type": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
-          "default": "NoChange",
-          "markdownDescription": "Casing for BrightScript type names (`boolean`, `integer`, `string`, `void`, …). Falls back to `keywordCasing` when not set."
+          "default": "preserve",
+          "markdownDescription": "Casing for BrightScript type names (`boolean`, `integer`, `string`, `void`, …). Falls back to `kopytko.casing.keyword` when not set."
         },
-        "kopytko.format.literalCasing": {
+        "kopytko.casing.literal": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
-          "default": "NoChange",
-          "markdownDescription": "Casing for literal values (`true`, `false`, `invalid`). Falls back to `keywordCasing` when not set."
+          "default": "preserve",
+          "markdownDescription": "Casing for literal values (`true`, `false`, `invalid`). Falls back to `kopytko.casing.keyword` when not set."
         },
-        "kopytko.format.logicOperatorCasing": {
+        "kopytko.casing.logicOperator": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
-          "default": "NoChange",
-          "markdownDescription": "Casing for logic operators (`and`, `or`, `not`). Falls back to `keywordCasing` when not set."
+          "default": "preserve",
+          "markdownDescription": "Casing for logic operators (`and`, `or`, `not`). Falls back to `kopytko.casing.keyword` when not set."
         },
-        "kopytko.format.mathOperatorCasing": {
+        "kopytko.casing.mathOperator": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
-          "default": "NoChange",
-          "markdownDescription": "Casing for math operators (`mod`). Falls back to `keywordCasing` when not set."
+          "default": "preserve",
+          "markdownDescription": "Casing for math operators (`mod`). Falls back to `kopytko.casing.keyword` when not set."
         },
-        "kopytko.format.methodCasing": {
+        "kopytko.casing.method": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
           "enumDescriptions": [
             "Keep the catalog casing (e.g. Push, SetUrl)",
@@ -295,18 +311,18 @@
             "Each word capitalised (e.g. Push, SetUrl)",
             "First word lowercase, subsequent words capitalised (e.g. push, setUrl)"
           ],
-          "default": "NoChange",
+          "default": "preserve",
           "description": "Casing applied to component method names when a completion is inserted."
         },
-        "kopytko.format.userFunctionCasing": {
+        "kopytko.casing.userFunction": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
           "enumDescriptions": [
             "Keep the original casing",
@@ -316,18 +332,18 @@
             "Each word capitalised",
             "First word lowercase, subsequent words capitalised"
           ],
-          "default": "NoChange",
+          "default": "preserve",
           "description": "Casing applied to user-defined function/sub names in completions and formatting."
         },
-        "kopytko.format.userMethodCasing": {
+        "kopytko.casing.userMethod": {
           "type": "string",
           "enum": [
-            "NoChange",
-            "UpperCase",
-            "LowerCase",
-            "Capitalize",
-            "PascalCase",
-            "CamelCase"
+            "preserve",
+            "upper-case",
+            "lower-case",
+            "capitalize",
+            "pascal-case",
+            "camel-case"
           ],
           "enumDescriptions": [
             "Keep the original casing",
@@ -337,10 +353,10 @@
             "Each word capitalised",
             "First word lowercase, subsequent words capitalised"
           ],
-          "default": "NoChange",
+          "default": "preserve",
           "description": "Casing applied to user-defined associative array method names in completions."
         },
-        "kopytko.format.exactCasing": {
+        "kopytko.casing.exact": {
           "type": "object",
           "default": {},
           "markdownDescription": "Per-identifier casing overrides applied after all other casing rules. Keys are identifier names (case-insensitive), values are the exact output string.\n\n**Example:**\n```json\n{\n  \"invalid\": \"Invalid\",\n  \"getglobalaa\": \"GetGlobalAA\"\n}\n```"
@@ -492,22 +508,11 @@
           "type": "string",
           "enum": [
             "indent",
-            "align-to-paren"
+            "align-to-paren",
+            "preserve"
           ],
-          "default": "indent",
+          "default": "preserve",
           "description": "Multi-line parameter alignment style."
-        },
-        "kopytko.format.wrapParamsThreshold": {
-          "type": "integer",
-          "default": 0,
-          "minimum": 0,
-          "description": "Line length at which to wrap parameters to multiple lines. 0 = never."
-        },
-        "kopytko.format.printWidth": {
-          "type": "integer",
-          "default": 160,
-          "minimum": 40,
-          "description": "Maximum desired line length."
         },
         "kopytko.format.wrapLongStrings": {
           "type": "string",
@@ -517,39 +522,14 @@
             "array-join"
           ],
           "default": "preserve",
-          "markdownDescription": "How to break long string literals that exceed `printWidth`.\n\n- `plus`: break with `+` concatenation\n- `array-join`: break with `[..., ...].join(\"\")`"
+          "markdownDescription": "How to break long string literals.\n\n- `plus`: break with `+` concatenation\n- `array-join`: break with `[..., ...].join(\"\")`"
         },
-        "kopytko.format.wrapLongChains": {
-          "type": "boolean",
-          "default": false,
-          "description": "Break long method/field chains onto new lines."
-        },
-        "kopytko.format.wrapArrays": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "always",
-            "never"
-          ],
-          "default": "never",
-          "description": "Multi-line array literals. 'auto' = multi-line when exceeding printWidth."
-        },
-        "kopytko.format.wrapAssocArrays": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "always",
-            "never"
-          ],
-          "default": "never",
-          "description": "Multi-line associative array literals {}."
-        },
-        "kopytko.format.bracketSpacing": {
+        "kopytko.format.associativeArrayBracketSpacing": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Spaces inside `{}`: `{ key: value }` (true) vs `{key: value}` (false)."
         },
-        "kopytko.format.aaCommaSpacing": {
+        "kopytko.format.associativeArrayCommaSpacing": {
           "type": "string",
           "enum": [
             "preserve",
@@ -588,7 +568,7 @@
           "default": "preserve",
           "markdownDescription": "Comma separators in multi-line arrays. BrightScript allows omitting commas when items are on separate lines.\n\n```brightscript\n' \"always\":\narr = [\n  1,\n  2,\n  3,\n]\n\n' \"never\":\narr = [\n  1\n  2\n  3\n]\n```"
         },
-        "kopytko.format.assocArrayCommaStyle": {
+        "kopytko.format.associativeArrayCommaStyle": {
           "type": "string",
           "enum": [
             "always",
@@ -598,22 +578,13 @@
           "default": "preserve",
           "markdownDescription": "Comma separators in multi-line associative arrays. BrightScript allows omitting commas when entries are on separate lines.\n\n```brightscript\n' \"always\":\nobj = {\n  name: \"foo\",\n  value: 42,\n}\n\n' \"never\":\nobj = {\n  name: \"foo\"\n  value: 42\n}\n```"
         },
-        "kopytko.format.arrayItemAlignment": {
-          "type": "string",
-          "enum": [
-            "off",
-            "align"
-          ],
-          "default": "off",
-          "description": "Align values in multi-line associative arrays."
-        },
-        "kopytko.format.singleLineObjectThreshold": {
+        "kopytko.format.associativeArraySingleLineThreshold": {
           "type": "integer",
           "default": 0,
           "minimum": 0,
           "description": "Max number of keys before forcing an AA to multi-line. 0 = no limit."
         },
-        "kopytko.format.splitArrayOpenBracket": {
+        "kopytko.format.arraySplitOpenBracket": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "When `true`, splits `[{` onto separate lines in multi-item arrays for better readability.\n\n```brightscript\n' true:\nreturn [\n  {\n    name: \"Component\",\n  },\n  otherItem()\n]\n\n' false:\nreturn [{\n    name: \"Component\",\n  },\n  otherItem()\n]\n```"
@@ -632,15 +603,6 @@
           "type": "boolean",
           "default": true,
           "description": "Space after unary 'not'."
-        },
-        "kopytko.format.operatorLineBreakStyle": {
-          "type": "string",
-          "enum": [
-            "before",
-            "after"
-          ],
-          "default": "before",
-          "description": "Where to put operators on wrapped lines."
         },
         "kopytko.format.commentStyle": {
           "type": "string",
@@ -673,17 +635,17 @@
           "default": false,
           "description": "Insert blank line after the last @import line, before code starts."
         },
-        "kopytko.format.blankLineAfterFunctionOpen": {
+        "kopytko.format.emptyLineAfterFunctionOpen": {
           "type": "boolean",
           "default": false,
-          "description": "Insert blank line after function/sub opening line."
+          "description": "Insert empty line after function/sub opening line."
         },
-        "kopytko.format.blankLineBeforeFunctionClose": {
+        "kopytko.format.emptyLineBeforeFunctionClose": {
           "type": "boolean",
           "default": false,
-          "description": "Insert blank line before end function/sub."
+          "description": "Insert empty line before end function/sub."
         },
-        "kopytko.format.blankLineBeforeReturn": {
+        "kopytko.format.emptyLineBeforeReturn": {
           "type": [
             "string",
             "boolean"
@@ -694,28 +656,17 @@
             false
           ],
           "enumDescriptions": [
-            "Always add a blank line before return",
-            "Add a blank line only when return is NOT the sole statement in a block",
-            "Do not enforce blank lines before return"
+            "Always add an empty line before return",
+            "Add an empty line only when return is NOT the sole statement in a block",
+            "Do not enforce empty lines before return"
           ],
           "default": false,
-          "markdownDescription": "Blank line before `return` statements. `not-alone` skips the blank line when `return` is the only statement in its block (e.g. a guard clause like `if x then return`)."
+          "markdownDescription": "Empty line before `return` statements. `not-alone` skips the empty line when `return` is the only statement in its block (e.g. a guard clause like `if x then return`)."
         },
-        "kopytko.format.blankLineBeforeComment": {
+        "kopytko.format.emptyLineBeforeComment": {
           "type": "boolean",
           "default": false,
-          "description": "Enforce blank line before stand-alone comment blocks."
-        },
-        "kopytko.format.separateLogicBlocks": {
-          "type": "boolean",
-          "default": false,
-          "description": "Insert blank lines between visually distinct statement groups."
-        },
-        "kopytko.format.inlineIfThreshold": {
-          "type": "integer",
-          "default": 0,
-          "minimum": 0,
-          "description": "Max expression length for single-line if/then. 0 = never inline."
+          "description": "Enforce empty line before stand-alone comment blocks."
         },
         "kopytko.format.parenthesisIfCase": {
           "type": "string",

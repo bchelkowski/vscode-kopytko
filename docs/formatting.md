@@ -60,7 +60,7 @@ For stricter teams:
   "kopytko.format.spaceAfterCommentMarker": true,
   "kopytko.format.sortImports": true,
   "kopytko.format.emptyLineAfterImports": true,
-  "kopytko.format.blankLineBeforeReturn": "not-alone",
+  "kopytko.format.emptyLineBeforeReturn": "not-alone",
   "kopytko.format.parenthesisIfCase": "always",
   "kopytko.format.printStatement": "remove"
 }
@@ -609,9 +609,13 @@ Enforce or remove `as Type` parameter annotations.
 
 | Type | Values | Default |
 |---|---|---|
-| `string` | `"indent"`, `"align-to-paren"` | `"indent"` |
+| `string` | `"preserve"`, `"indent"`, `"align-to-paren"` | `"preserve"` |
 
 Multi-line parameter alignment style.
+
+- **`"preserve"`** — leaves parameter alignment as written (default).
+- **`"indent"`** — one indent level from the function keyword.
+- **`"align-to-paren"`** — aligns to the opening parenthesis.
 
 ```brightscript
 ' "indent" — one indent level from the function keyword:
@@ -629,43 +633,7 @@ function createUser(name as string,
 
 ---
 
-**`kopytko.format.wrapParamsThreshold`**
-
-| Type | Values | Default |
-|---|---|---|
-| `number` | `0` = never wrap, any positive integer | `0` |
-
-Line length at which to wrap function parameters to multiple lines.
-
-```brightscript
-' wrapParamsThreshold: 60
-' Before — line exceeds 60 characters:
-function createUser(name as string, age as integer, email as string) as object
-
-' After — params wrapped to separate lines:
-function createUser(
-    name as string,
-    age as integer,
-    email as string
-) as object
-
-' wrapParamsThreshold: 0 (never wrap) — always keeps params on one line:
-function createUser(name as string, age as integer, email as string) as object
-```
-
----
-
-## Line Length & Wrapping
-
----
-
-**`kopytko.format.printWidth`**
-
-| Type | Values | Default |
-|---|---|---|
-| `number` | Any positive integer | `160` |
-
-Maximum desired line length. Used by wrapping rules (`wrapArrays`, `wrapAssocArrays`, `wrapLongStrings`, `wrapLongChains`, `wrapParamsThreshold`) to decide when to break lines. This setting does not hard-wrap lines on its own — it serves as the target width that other wrapping rules reference.
+## Strings
 
 ---
 
@@ -675,14 +643,14 @@ Maximum desired line length. Used by wrapping rules (`wrapArrays`, `wrapAssocArr
 |---|---|---|
 | `string` | `"preserve"`, `"plus"`, `"array-join"` | `"preserve"` |
 
-How to break long string literals that exceed `printWidth`.
+How to break long string literals.
 
 - **`"preserve"`** — leaves long strings as-is.
 - **`"plus"`** — breaks with `+` concatenation.
 - **`"array-join"`** — breaks with `[..., ...].join("")`.
 
 ```brightscript
-' "preserve" — long string stays on one line regardless of printWidth:
+' "preserve" — long string stays on one line:
 message = "This is a very long string that exceeds the configured print width but is left unchanged"
 
 ' "plus" — breaks with + concatenation:
@@ -698,57 +666,20 @@ message = ["This is a very long string that exceeds ", _
 
 ---
 
-**`kopytko.format.wrapLongChains`**
+**`kopytko.format.stringConcatStyle`**
 
 | Type | Values | Default |
 |---|---|---|
-| `boolean` | `true`, `false` | `false` |
+| `string` | `"preserve"`, `"plus"`, `"array-join"` | `"preserve"` |
 
-Break long method/field chains onto new lines when they exceed `printWidth`.
-
----
-
-**`kopytko.format.wrapArrays`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"auto"`, `"always"`, `"never"` | `"never"` |
-
-Multi-line array literal formatting. `"auto"` switches to multi-line when the array exceeds `printWidth`.
+Normalizes string concatenation style.
 
 ```brightscript
-' "never" — keep arrays on one line:
-items = [1, 2, 3, 4, 5]
+' "plus":
+result = "Hello" + " " + name + "!"
 
-' "always" — always expand to multi-line:
-items = [
-    1,
-    2,
-    3,
-    4,
-    5
-]
-```
-
----
-
-**`kopytko.format.wrapAssocArrays`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"auto"`, `"always"`, `"never"` | `"never"` |
-
-Multi-line associative array literal formatting. `"auto"` switches to multi-line when the AA exceeds `printWidth`.
-
-```brightscript
-' "never" — keep on one line:
-config = { name: "app", version: "1.0" }
-
-' "always" — always expand to multi-line:
-config = {
-    name: "app",
-    version: "1.0"
-}
+' "array-join":
+result = ["Hello", " ", name, "!"].join("")
 ```
 
 ---
@@ -757,7 +688,7 @@ config = {
 
 ---
 
-**`kopytko.format.bracketSpacing`**
+**`kopytko.format.associativeArrayBracketSpacing`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -775,7 +706,7 @@ config = {name: "app", version: "1.0"}
 
 ---
 
-**`kopytko.format.aaCommaSpacing`**
+**`kopytko.format.associativeArrayCommaSpacing`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -853,7 +784,7 @@ arr = [
 
 ---
 
-**`kopytko.format.assocArrayCommaStyle`**
+**`kopytko.format.associativeArrayCommaStyle`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -881,33 +812,7 @@ config = {
 
 ---
 
-**`kopytko.format.arrayItemAlignment`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"off"`, `"align"` | `"off"` |
-
-Align values in multi-line associative arrays.
-
-```brightscript
-' "off":
-config = {
-    name: "app",
-    version: "1.0",
-    description: "My application"
-}
-
-' "align":
-config = {
-    name:        "app",
-    version:     "1.0",
-    description: "My application"
-}
-```
-
----
-
-**`kopytko.format.singleLineObjectThreshold`**
+**`kopytko.format.associativeArraySingleLineThreshold`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -917,7 +822,7 @@ Maximum number of keys before forcing an associative array to multi-line. For ex
 
 ---
 
-**`kopytko.format.splitArrayOpenBracket`**
+**`kopytko.format.arraySplitOpenBracket`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -1019,28 +924,6 @@ if not(valid) then
 
 ' After:
 if not (valid) then
-```
-
----
-
-**`kopytko.format.operatorLineBreakStyle`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"before"`, `"after"` | `"before"` |
-
-Controls where operators are placed on wrapped lines.
-
-```brightscript
-' "before" — operator starts the continuation line:
-result = longVariableName
-    + anotherLongVariable
-    + yetAnotherVariable
-
-' "after" — operator ends the broken line:
-result = longVariableName +
-    anotherLongVariable +
-    yetAnotherVariable
 ```
 
 ---
@@ -1207,7 +1090,7 @@ end sub
 
 ---
 
-**`kopytko.format.blankLineAfterFunctionOpen`**
+**`kopytko.format.emptyLineAfterFunctionOpen`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -1232,7 +1115,7 @@ end function
 
 ---
 
-**`kopytko.format.blankLineBeforeFunctionClose`**
+**`kopytko.format.emptyLineBeforeFunctionClose`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -1257,7 +1140,7 @@ end function
 
 ---
 
-**`kopytko.format.blankLineBeforeReturn`**
+**`kopytko.format.emptyLineBeforeReturn`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -1269,7 +1152,7 @@ Controls whether a blank line is inserted before `return` statements.
 - **`"always"`** — always insert a blank line before every `return`, regardless of context.
 - **`"not-alone"`** — insert a blank line only when the `return` is **not** the only statement in its block. When a block contains nothing but a `return` (including anonymous function bodies), no blank line is added.
 
-In both `"always"` and `"not-alone"` modes, **no blank line is inserted between a comment and the `return` directly below it** — the comment is considered part of the return statement. Any separation should be placed before the comment (e.g. via `blankLineBeforeComment`).
+In both `"always"` and `"not-alone"` modes, **no blank line is inserted between a comment and the `return` directly below it** — the comment is considered part of the return statement. Any separation should be placed before the comment (e.g. via `emptyLineBeforeComment`).
 
 ```brightscript
 ' "always" — blank line before every return:
@@ -1318,7 +1201,7 @@ end function
 
 ---
 
-**`kopytko.format.blankLineBeforeComment`**
+**`kopytko.format.emptyLineBeforeComment`**
 
 | Type | Values | Default |
 |---|---|---|
@@ -1341,27 +1224,7 @@ name = "default"
 
 ---
 
-**`kopytko.format.separateLogicBlocks`**
-
-| Type | Values | Default |
-|---|---|---|
-| `boolean` | `true`, `false` | `false` |
-
-Insert blank lines between visually distinct statement groups to improve readability.
-
----
-
 ## Control Flow
-
----
-
-**`kopytko.format.inlineIfThreshold`**
-
-| Type | Values | Default |
-|---|---|---|
-| `number` | `0` = never inline, any positive integer | `0` |
-
-Maximum expression length for single-line `if`/`then`. When the total length of the `if` line is within this threshold, the statement is kept on one line.
 
 ---
 
@@ -1645,24 +1508,6 @@ m.top.setField("title", "Hello")
 
 ---
 
-**`kopytko.format.stringConcatStyle`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"preserve"`, `"plus"`, `"array-join"` | `"preserve"` |
-
-Normalizes string concatenation style.
-
-```brightscript
-' "plus":
-result = "Hello" + " " + name + "!"
-
-' "array-join":
-result = ["Hello", " ", name, "!"].join("")
-```
-
----
-
 ## CLI & CI Usage
 
 The formatting engine is available as a standalone CLI tool via the `kopytko-formatter` npm package, independent of VS Code.
@@ -1712,7 +1557,7 @@ The CLI reads config from (in priority order):
 
 1. `--config <file>` — explicit path
 2. `kopytko-formatter.json` — in the current directory
-3. `.vscode/settings.json` — reads `kopytko.format.*` keys automatically
+3. `.vscode/settings.json` — reads `kopytko.format.*` and `kopytko.casing.*` keys automatically
 
 If your project already has formatting settings in `.vscode/settings.json`, the CLI picks them up with no extra config.
 

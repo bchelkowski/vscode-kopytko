@@ -4,40 +4,40 @@ import { applyCasing, applyCasingWithOverrides, CasingOption } from '../src/casi
 describe('casing', () => {
   describe('applyCasing', () => {
     const cases: Array<[CasingOption, string, string]> = [
-      // NoChange — identity
-      ['NoChange',   'CreateObject',  'CreateObject'],
-      ['NoChange',   'push',          'push'],
-      ['NoChange',   'for',           'for'],
+      // preserve — identity
+      ['preserve',   'CreateObject',  'CreateObject'],
+      ['preserve',   'push',          'push'],
+      ['preserve',   'for',           'for'],
 
-      // UpperCase
-      ['UpperCase',  'CreateObject',  'CREATEOBJECT'],
-      ['UpperCase',  'push',          'PUSH'],
-      ['UpperCase',  'for',           'FOR'],
+      // upper-case
+      ['upper-case',  'CreateObject',  'CREATEOBJECT'],
+      ['upper-case',  'push',          'PUSH'],
+      ['upper-case',  'for',           'FOR'],
 
-      // LowerCase
-      ['LowerCase',  'CreateObject',  'createobject'],
-      ['LowerCase',  'PUSH',          'push'],
-      ['LowerCase',  'for',           'for'],
+      // lower-case
+      ['lower-case',  'CreateObject',  'createobject'],
+      ['lower-case',  'PUSH',          'push'],
+      ['lower-case',  'for',           'for'],
 
       // Capitalize — first letter up, everything else down (no word splitting)
-      ['Capitalize', 'CreateObject',  'Createobject'],
-      ['Capitalize', 'push',          'Push'],
-      ['Capitalize', 'for',           'For'],
-      ['Capitalize', 'PUSH',          'Push'],
+      ['capitalize', 'CreateObject',  'Createobject'],
+      ['capitalize', 'push',          'Push'],
+      ['capitalize', 'for',           'For'],
+      ['capitalize', 'PUSH',          'Push'],
 
-      // PascalCase — split on uppercase boundaries, capitalise each word
-      ['PascalCase', 'CreateObject',  'CreateObject'],
-      ['PascalCase', 'setUrl',        'SetUrl'],
-      ['PascalCase', 'push',          'Push'],
-      ['PascalCase', 'for',           'For'],
-      ['PascalCase', 'GetToString',   'GetToString'],
+      // pascal-case — split on uppercase boundaries, capitalise each word
+      ['pascal-case', 'CreateObject',  'CreateObject'],
+      ['pascal-case', 'setUrl',        'SetUrl'],
+      ['pascal-case', 'push',          'Push'],
+      ['pascal-case', 'for',           'For'],
+      ['pascal-case', 'GetToString',   'GetToString'],
 
-      // CamelCase — split on uppercase boundaries, first word lowercase
-      ['CamelCase',  'CreateObject',  'createObject'],
-      ['CamelCase',  'SetUrl',        'setUrl'],
-      ['CamelCase',  'Push',          'push'],
-      ['CamelCase',  'for',           'for'],
-      ['CamelCase',  'GetToString',   'getToString'],
+      // camel-case — split on uppercase boundaries, first word lowercase
+      ['camel-case',  'CreateObject',  'createObject'],
+      ['camel-case',  'SetUrl',        'setUrl'],
+      ['camel-case',  'Push',          'push'],
+      ['camel-case',  'for',           'for'],
+      ['camel-case',  'GetToString',   'getToString'],
     ];
 
     for (const [option, input, expected] of cases) {
@@ -47,23 +47,23 @@ describe('casing', () => {
     }
 
     it('handles empty string without throwing', () => {
-      for (const opt of ['NoChange', 'UpperCase', 'LowerCase', 'Capitalize', 'PascalCase', 'CamelCase'] as CasingOption[]) {
+      for (const opt of ['preserve', 'upper-case', 'lower-case', 'capitalize', 'pascal-case', 'camel-case'] as CasingOption[]) {
         expect(() => applyCasing('', opt)).not.to.throw();
         expect(applyCasing('', opt)).to.equal('');
       }
     });
 
     it('handles single character', () => {
-      expect(applyCasing('a', 'UpperCase')).to.equal('A');
-      expect(applyCasing('A', 'LowerCase')).to.equal('a');
-      expect(applyCasing('a', 'Capitalize')).to.equal('A');
-      expect(applyCasing('a', 'PascalCase')).to.equal('A');
-      expect(applyCasing('A', 'CamelCase')).to.equal('a');
+      expect(applyCasing('a', 'upper-case')).to.equal('A');
+      expect(applyCasing('A', 'lower-case')).to.equal('a');
+      expect(applyCasing('a', 'capitalize')).to.equal('A');
+      expect(applyCasing('a', 'pascal-case')).to.equal('A');
+      expect(applyCasing('A', 'camel-case')).to.equal('a');
     });
 
-    it('PascalCase and CamelCase differ only on the first word', () => {
-      expect(applyCasing('GetToString', 'PascalCase')).to.equal('GetToString');
-      expect(applyCasing('GetToString', 'CamelCase')).to.equal('getToString');
+    it('pascal-case and camel-case differ only on the first word', () => {
+      expect(applyCasing('GetToString', 'pascal-case')).to.equal('GetToString');
+      expect(applyCasing('GetToString', 'camel-case')).to.equal('getToString');
     });
   });
 
@@ -72,27 +72,27 @@ describe('casing', () => {
   describe('applyCasingWithOverrides', () => {
     it('returns exact override when match found', () => {
       const exact = { 'invalid': 'Invalid', 'getglobalaa': 'GetGlobalAA' };
-      expect(applyCasingWithOverrides('invalid', 'LowerCase', exact)).to.equal('Invalid');
-      expect(applyCasingWithOverrides('GETGLOBALAA', 'LowerCase', exact)).to.equal('GetGlobalAA');
+      expect(applyCasingWithOverrides('invalid', 'lower-case', exact)).to.equal('Invalid');
+      expect(applyCasingWithOverrides('GETGLOBALAA', 'lower-case', exact)).to.equal('GetGlobalAA');
     });
 
     it('falls back to casing rule when no exact match', () => {
       const exact = { 'invalid': 'Invalid' };
-      expect(applyCasingWithOverrides('createobject', 'PascalCase', exact)).to.equal('Createobject');
+      expect(applyCasingWithOverrides('createobject', 'pascal-case', exact)).to.equal('Createobject');
     });
 
     it('works with empty exact map', () => {
-      expect(applyCasingWithOverrides('push', 'UpperCase', {})).to.equal('PUSH');
+      expect(applyCasingWithOverrides('push', 'upper-case', {})).to.equal('PUSH');
     });
 
     it('works with undefined exact map', () => {
-      expect(applyCasingWithOverrides('push', 'UpperCase')).to.equal('PUSH');
+      expect(applyCasingWithOverrides('push', 'upper-case')).to.equal('PUSH');
     });
 
     it('exact override key matching is case-insensitive', () => {
       const exact = { 'myfunction': 'myFunction' };
-      expect(applyCasingWithOverrides('MyFunction', 'LowerCase', exact)).to.equal('myFunction');
-      expect(applyCasingWithOverrides('MYFUNCTION', 'LowerCase', exact)).to.equal('myFunction');
+      expect(applyCasingWithOverrides('MyFunction', 'lower-case', exact)).to.equal('myFunction');
+      expect(applyCasingWithOverrides('MYFUNCTION', 'lower-case', exact)).to.equal('myFunction');
     });
   });
 });

@@ -47,42 +47,30 @@ export interface FormattingConfig {
   returnTypeAnnotations: 'always' | 'never' | 'preserve';
   /** Enforce or remove `as Type` param annotations. */
   paramTypeAnnotations: 'always' | 'never' | 'preserve';
-  /** Multi-line parameter alignment: 'indent' uses one level, 'align-to-paren' aligns to opening paren. */
-  paramAlignmentStyle: 'indent' | 'align-to-paren';
-  /** Line length at which to wrap parameters to multiple lines. 0 = never wrap. */
-  wrapParamsThreshold: number;
+  /** Multi-line parameter alignment: 'indent' uses one level, 'align-to-paren' aligns to opening paren, 'preserve' leaves as-is. */
+  paramAlignmentStyle: 'indent' | 'align-to-paren' | 'preserve';
 
   // ── Line Length & Wrapping ───────────────────────────────────────────────
-  /** Maximum desired line length. */
-  printWidth: number;
   /** Long string handling: 'plus' breaks with + concatenation, 'array-join' breaks with [...].join(""), 'preserve' leaves as-is. */
   wrapLongStrings: 'preserve' | 'plus' | 'array-join';
   /** String concatenation style normalization: 'plus' enforces +, 'array-join' enforces [...].join(""), 'preserve' leaves as-is. */
   stringConcatStyle: 'preserve' | 'plus' | 'array-join';
-  /** Break long method/field chains onto new lines. */
-  wrapLongChains: boolean;
-  /** Multi-line array literals. 'auto' = multi-line when exceeding printWidth. */
-  wrapArrays: 'auto' | 'always' | 'never';
-  /** Multi-line AA literals {}. 'auto' = multi-line when exceeding printWidth. */
-  wrapAssocArrays: 'auto' | 'always' | 'never';
 
   // ── Arrays & Associative Arrays ──────────────────────────────────────────
   /** Spaces inside `{}`: `{ key: value }` vs `{key: value}`. */
-  bracketSpacing: boolean;
+  associativeArrayBracketSpacing: boolean;
   /** Spaces around commas separating key-value pairs inside inline `{}`. 'after' = `{a: 1, b: 2}`, 'before' = `{a: 1 ,b: 2}`, 'both' = `{a: 1 , b: 2}`, 'none' = `{a: 1,b: 2}`. Only applied to commas inside `{}` on the same line (not multi-line AAs). */
-  aaCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
+  associativeArrayCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
   /** Trailing comma after the last item in multi-line arrays/AAs. */
   trailingComma: 'never' | 'always' | 'multiline';
   /** Comma separators between items in multi-line arrays. BrightScript allows omitting commas when items are on separate lines. */
   arrayCommaStyle: 'always' | 'never' | 'preserve';
   /** Comma separators between entries in multi-line AAs. BrightScript allows omitting commas when entries are on separate lines. */
-  assocArrayCommaStyle: 'always' | 'never' | 'preserve';
+  associativeArrayCommaStyle: 'always' | 'never' | 'preserve';
   /** When true, splits `[{` onto separate lines in multi-item arrays (improves readability). */
-  splitArrayOpenBracket: boolean;
-  /** Align values in multi-line AAs. */
-  arrayItemAlignment: 'off' | 'align';
+  arraySplitOpenBracket: boolean;
   /** Max number of keys before forcing an AA to multi-line. 0 = no limit. */
-  singleLineObjectThreshold: number;
+  associativeArraySingleLineThreshold: number;
 
   // ── Operators & Expressions ──────────────────────────────────────────────
   /** Spaces around binary operators (+, -, *, /, <>, <, >, and, or, mod). */
@@ -91,8 +79,6 @@ export interface FormattingConfig {
   spaceAroundAssignment: boolean;
   /** Space after unary `not`. */
   unarySpacing: boolean;
-  /** Where to put operators on wrapped lines: 'before' or 'after' the break. */
-  operatorLineBreakStyle: 'before' | 'after';
 
   // ── Comments ─────────────────────────────────────────────────────────────
   /** Normalize comment markers: `'` or `rem`, or preserve. */
@@ -109,21 +95,17 @@ export interface FormattingConfig {
   /** Insert blank line after the last @import line (before code starts). */
   emptyLineAfterImports: boolean;
 
-  // ── Blank Line Rules ─────────────────────────────────────────────────────
-  /** Insert blank line after function/sub opening line. */
-  blankLineAfterFunctionOpen: boolean;
-  /** Insert blank line before end function/sub. */
-  blankLineBeforeFunctionClose: boolean;
-  /** Blank line before return: 'always', 'not-alone' (skip when return is only statement in block), or false. */
-  blankLineBeforeReturn: 'always' | 'not-alone' | false;
-  /** Enforce blank line before stand-alone comment blocks. */
-  blankLineBeforeComment: boolean;
-  /** Insert blank lines between visually distinct statement groups. */
-  separateLogicBlocks: boolean;
+  // ── Empty Line Rules ───────────────────────────────────────────────────
+  /** Insert empty line after function/sub opening line. */
+  emptyLineAfterFunctionOpen: boolean;
+  /** Insert empty line before end function/sub. */
+  emptyLineBeforeFunctionClose: boolean;
+  /** Empty line before return: 'always', 'not-alone' (skip when return is only statement in block), or false. */
+  emptyLineBeforeReturn: 'always' | 'not-alone' | false;
+  /** Enforce empty line before stand-alone comment blocks. */
+  emptyLineBeforeComment: boolean;
 
   // ── Control Flow ─────────────────────────────────────────────────────────
-  /** Max expression length for single-line if/then. 0 = never inline. */
-  inlineIfThreshold: number;
   /** 'always' wraps if condition in parens, 'never' removes them. */
   parenthesisIfCase: 'preserve' | 'always' | 'never';
   /** Controls parentheses around the catch variable: `catch e` vs `catch (e)`. */
@@ -175,32 +157,25 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   spaceInsideParens: 'never',
   returnTypeAnnotations: 'preserve',
   paramTypeAnnotations: 'preserve',
-  paramAlignmentStyle: 'indent',
-  wrapParamsThreshold: 0,
+  paramAlignmentStyle: 'preserve',
 
   // Line Length & Wrapping
-  printWidth: 160,
   wrapLongStrings: 'preserve',
   stringConcatStyle: 'preserve',
-  wrapLongChains: false,
-  wrapArrays: 'never',
-  wrapAssocArrays: 'never',
 
   // Arrays & AAs
-  bracketSpacing: true,
-  aaCommaSpacing: 'preserve',
+  associativeArrayBracketSpacing: true,
+  associativeArrayCommaSpacing: 'preserve',
   trailingComma: 'never',
   arrayCommaStyle: 'preserve',
-  assocArrayCommaStyle: 'preserve',
-  splitArrayOpenBracket: false,
-  arrayItemAlignment: 'off',
-  singleLineObjectThreshold: 0,
+  associativeArrayCommaStyle: 'preserve',
+  arraySplitOpenBracket: false,
+  associativeArraySingleLineThreshold: 0,
 
   // Operators & Expressions
   spaceAroundOperators: true,
   spaceAroundAssignment: true,
   unarySpacing: true,
-  operatorLineBreakStyle: 'before',
 
   // Comments
   commentStyle: 'preserve',
@@ -211,15 +186,13 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   sortImports: false,
   emptyLineAfterImports: false,
 
-  // Blank Lines
-  blankLineAfterFunctionOpen: false,
-  blankLineBeforeFunctionClose: false,
-  blankLineBeforeReturn: false,
-  blankLineBeforeComment: false,
-  separateLogicBlocks: false,
+  // Empty Lines
+  emptyLineAfterFunctionOpen: false,
+  emptyLineBeforeFunctionClose: false,
+  emptyLineBeforeReturn: false,
+  emptyLineBeforeComment: false,
 
   // Control Flow
-  inlineIfThreshold: 0,
   parenthesisIfCase: 'preserve',
   catchParenStyle: 'preserve',
   elseOnNewLine: true,
@@ -276,28 +249,21 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     returnTypeAnnotations: str('returnTypeAnnotations', d.returnTypeAnnotations) as FormattingConfig['returnTypeAnnotations'],
     paramTypeAnnotations: str('paramTypeAnnotations', d.paramTypeAnnotations) as FormattingConfig['paramTypeAnnotations'],
     paramAlignmentStyle: str('paramAlignmentStyle', d.paramAlignmentStyle) as FormattingConfig['paramAlignmentStyle'],
-    wrapParamsThreshold: num('wrapParamsThreshold', d.wrapParamsThreshold),
 
-    printWidth: num('printWidth', d.printWidth),
     wrapLongStrings: str('wrapLongStrings', d.wrapLongStrings) as FormattingConfig['wrapLongStrings'],
     stringConcatStyle: str('stringConcatStyle', d.stringConcatStyle) as FormattingConfig['stringConcatStyle'],
-    wrapLongChains: bool('wrapLongChains', d.wrapLongChains),
-    wrapArrays: str('wrapArrays', d.wrapArrays) as FormattingConfig['wrapArrays'],
-    wrapAssocArrays: str('wrapAssocArrays', d.wrapAssocArrays) as FormattingConfig['wrapAssocArrays'],
 
-    bracketSpacing: bool('bracketSpacing', d.bracketSpacing),
-    aaCommaSpacing: str('aaCommaSpacing', d.aaCommaSpacing) as FormattingConfig['aaCommaSpacing'],
+    associativeArrayBracketSpacing: bool('associativeArrayBracketSpacing', d.associativeArrayBracketSpacing),
+    associativeArrayCommaSpacing: str('associativeArrayCommaSpacing', d.associativeArrayCommaSpacing) as FormattingConfig['associativeArrayCommaSpacing'],
     trailingComma: str('trailingComma', d.trailingComma) as FormattingConfig['trailingComma'],
     arrayCommaStyle: str('arrayCommaStyle', d.arrayCommaStyle) as FormattingConfig['arrayCommaStyle'],
-    assocArrayCommaStyle: str('assocArrayCommaStyle', d.assocArrayCommaStyle) as FormattingConfig['assocArrayCommaStyle'],
-    splitArrayOpenBracket: bool('splitArrayOpenBracket', d.splitArrayOpenBracket),
-    arrayItemAlignment: str('arrayItemAlignment', d.arrayItemAlignment) as FormattingConfig['arrayItemAlignment'],
-    singleLineObjectThreshold: num('singleLineObjectThreshold', d.singleLineObjectThreshold),
+    associativeArrayCommaStyle: str('associativeArrayCommaStyle', d.associativeArrayCommaStyle) as FormattingConfig['associativeArrayCommaStyle'],
+    arraySplitOpenBracket: bool('arraySplitOpenBracket', d.arraySplitOpenBracket),
+    associativeArraySingleLineThreshold: num('associativeArraySingleLineThreshold', d.associativeArraySingleLineThreshold),
 
     spaceAroundOperators: bool('spaceAroundOperators', d.spaceAroundOperators),
     spaceAroundAssignment: bool('spaceAroundAssignment', d.spaceAroundAssignment),
     unarySpacing: bool('unarySpacing', d.unarySpacing),
-    operatorLineBreakStyle: str('operatorLineBreakStyle', d.operatorLineBreakStyle) as FormattingConfig['operatorLineBreakStyle'],
 
     commentStyle: str('commentStyle', d.commentStyle) as FormattingConfig['commentStyle'],
     spaceAfterCommentMarker: bool('spaceAfterCommentMarker', d.spaceAfterCommentMarker),
@@ -306,18 +272,16 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     sortImports: bool('sortImports', d.sortImports),
     emptyLineAfterImports: bool('emptyLineAfterImports', d.emptyLineAfterImports),
 
-    blankLineAfterFunctionOpen: bool('blankLineAfterFunctionOpen', d.blankLineAfterFunctionOpen),
-    blankLineBeforeFunctionClose: bool('blankLineBeforeFunctionClose', d.blankLineBeforeFunctionClose),
-    blankLineBeforeReturn: (() => {
-      const v = cfg['blankLineBeforeReturn'];
+    emptyLineAfterFunctionOpen: bool('emptyLineAfterFunctionOpen', d.emptyLineAfterFunctionOpen),
+    emptyLineBeforeFunctionClose: bool('emptyLineBeforeFunctionClose', d.emptyLineBeforeFunctionClose),
+    emptyLineBeforeReturn: (() => {
+      const v = cfg['emptyLineBeforeReturn'];
       if (v === 'always' || v === 'not-alone') return v;
       if (v === true) return 'always';
       return false;
     })(),
-    blankLineBeforeComment: bool('blankLineBeforeComment', d.blankLineBeforeComment),
-    separateLogicBlocks: bool('separateLogicBlocks', d.separateLogicBlocks),
+    emptyLineBeforeComment: bool('emptyLineBeforeComment', d.emptyLineBeforeComment),
 
-    inlineIfThreshold: num('inlineIfThreshold', d.inlineIfThreshold),
     parenthesisIfCase: str('parenthesisIfCase', d.parenthesisIfCase) as FormattingConfig['parenthesisIfCase'],
     catchParenStyle: str('catchParenStyle', d.catchParenStyle) as FormattingConfig['catchParenStyle'],
     elseOnNewLine: bool('elseOnNewLine', d.elseOnNewLine),

@@ -58,7 +58,7 @@ Completion contexts (evaluated in priority order):
    - `@import … from <package>` — one item per **installed** Kopytko NPM package found in `node_modules`; inserts `' @import /${1:path/to/file.brs} from <package>` with the package pre-filled and the path as the only tab stop
    
    In both cases a `textEdit` replaces the whole annotation prefix typed so far (from the apostrophe or `@` to the cursor), preserving any leading indentation. Uninstalled packages are never offered in this context.
-4. **Type annotation context** — when the cursor follows `as ` (e.g. `function foo(x as ` or `function foo() as `), offers all 11 BrightScript primitive/special types (`Boolean`, `Double`, `Dynamic`, `Float`, `Function`, `Integer`, `Interface`, `LongInteger`, `Object`, `String`, `Void`) plus all ro\* component names as valid parameter types. Primitive types sort above component names. Primitive type names respect the `keywordCasing` setting; component names are never re-cased.
+4. **Type annotation context** — when the cursor follows `as ` (e.g. `function foo(x as ` or `function foo() as `), offers all 11 BrightScript primitive/special types (`Boolean`, `Double`, `Dynamic`, `Float`, `Function`, `Integer`, `Interface`, `LongInteger`, `Object`, `String`, `Void`) plus all ro\* component names as valid parameter types. Primitive types sort above component names. Primitive type names respect the `kopytko.casing.keyword` setting; component names are never re-cased.
 5. **`CreateObject("…")` string context** — when the cursor is inside the first string argument of `CreateObject("…")`, suggests all known BrightScript component names (e.g. `roArray`, `roUrlTransfer`). Component names only appear in this context, not in general completions.
 6. **Inline constructor call** — after `FunctionName().`, resolves the function as the owner and suggests its inner methods (AA method assignments like `prototype.doWork = function()`).
 7. **`m.top.` context** — when the cursor is after `m.top.` (with optional partial identifier already typed), offers all members accessible through the SceneGraph component's node reference. See [m.top member completion](#mtop-member-completion) below.
@@ -292,29 +292,29 @@ The extension can reformat identifier names when a completion is inserted. Three
 
 | Setting | Applies to | Default |
 |---|---|---|
-| `kopytko.format.builtinCasing` | BrightScript built-in functions | `NoChange` |
-| `kopytko.format.keywordCasing` | BrightScript keywords (fallback for categories below) | `NoChange` |
-| `kopytko.format.typeCasing` | Type names in `as <type>` annotations (including `Function` when used as a type) | Falls back to `keywordCasing` |
-| `kopytko.format.literalCasing` | `true`, `false`, `invalid` | Falls back to `keywordCasing` |
-| `kopytko.format.logicOperatorCasing` | `and`, `or`, `not` | Falls back to `keywordCasing` |
-| `kopytko.format.mathOperatorCasing` | `mod` | Falls back to `keywordCasing` |
-| `kopytko.format.methodCasing` | Component method names | `NoChange` |
-| `kopytko.format.userFunctionCasing` | User-defined function/sub names | `NoChange` |
-| `kopytko.format.userMethodCasing` | User-defined AA method names | `NoChange` |
-| `kopytko.format.exactCasing` | Per-identifier overrides (see below) | `{}` |
+| `kopytko.casing.builtin` | BrightScript built-in functions | `preserve` |
+| `kopytko.casing.keyword` | BrightScript keywords (fallback for categories below) | `preserve` |
+| `kopytko.casing.type` | Type names in `as <type>` annotations (including `Function` when used as a type) | Falls back to `keyword` |
+| `kopytko.casing.literal` | `true`, `false`, `invalid` | Falls back to `keyword` |
+| `kopytko.casing.logicOperator` | `and`, `or`, `not` | Falls back to `keyword` |
+| `kopytko.casing.mathOperator` | `mod` | Falls back to `keyword` |
+| `kopytko.casing.method` | Component method names | `preserve` |
+| `kopytko.casing.userFunction` | User-defined function/sub names | `preserve` |
+| `kopytko.casing.userMethod` | User-defined AA method names | `preserve` |
+| `kopytko.casing.exact` | Per-identifier overrides (see below) | `{}` |
 
-**Note on `function` keyword:** `function` is dual-purpose — it is a keyword in declarations (`function myFunc()`, `end function`) and a type in annotations (`param as Function`). When `typeCasing` is set, `function` after `as` uses type casing; elsewhere it uses keyword casing. For example, with `typeCasing: "Capitalize"` and `keywordCasing: "LowerCase"`:
+**Note on `function` keyword:** `function` is dual-purpose — it is a keyword in declarations (`function myFunc()`, `end function`) and a type in annotations (`param as Function`). When `type` casing is set, `function` after `as` uses type casing; elsewhere it uses keyword casing. For example, with `kopytko.casing.type: "capitalize"` and `kopytko.casing.keyword: "lower-case"`:
 
 ```brightscript
 function myFunc(callback as Function) as Function
 end function
 ```
 
-The `exactCasing` setting is a JSON object mapping lowercase identifier names to the exact output string. It is applied **after** all other casing rules, allowing one-off overrides for identifiers that don't fit the general pattern:
+The `exact` setting is a JSON object mapping lowercase identifier names to the exact output string. It is applied **after** all other casing rules, allowing one-off overrides for identifiers that don't fit the general pattern:
 
 ```json
 {
-  "kopytko.format.exactCasing": {
+  "kopytko.casing.exact": {
     "invalid": "Invalid",
     "getglobalaa": "GetGlobalAA"
   }
@@ -325,14 +325,14 @@ Available options for each setting:
 
 | Option | Example (input `CreateObject`) | Example (input `setUrl`) |
 |---|---|---|
-| `NoChange` | `CreateObject` | `setUrl` |
-| `UpperCase` | `CREATEOBJECT` | `SETURL` |
-| `LowerCase` | `createobject` | `seturl` |
-| `Capitalize` | `Createobject` | `Seturl` |
-| `PascalCase` | `CreateObject` | `SetUrl` |
-| `CamelCase` | `createObject` | `setUrl` |
+| `preserve` | `CreateObject` | `setUrl` |
+| `upper-case` | `CREATEOBJECT` | `SETURL` |
+| `lower-case` | `createobject` | `seturl` |
+| `capitalize` | `Createobject` | `Seturl` |
+| `pascal-case` | `CreateObject` | `SetUrl` |
+| `camel-case` | `createObject` | `setUrl` |
 
-`PascalCase` and `CamelCase` split identifiers on uppercase letter boundaries so that `CreateObject` → `["Create", "Object"]` and `GetToString` → `["Get", "To", "String"]`. This preserves existing word boundaries in catalog-cased names.
+`pascal-case` and `camel-case` split identifiers on uppercase letter boundaries so that `CreateObject` → `["Create", "Object"]` and `GetToString` → `["Get", "To", "String"]`. This preserves existing word boundaries in catalog-cased names.
 
 Component names passed to `CreateObject()` (e.g. `"roArray"`) are **never** re-cased — the Roku runtime is case-sensitive for string literals and re-casing them would break the code.
 
@@ -393,15 +393,37 @@ After startup the server watches the `kopytko` configuration section for changes
 
 ### Read-only paths
 
-The `kopytko.readOnlyPaths` setting accepts an array of glob patterns for files the extension should treat as read-only. Matched files are excluded from document formatting and code action edits.
+The extension supports three levels of read-only path configuration:
+
+| Setting | Applies to |
+|---|---|
+| `kopytko.readOnlyPaths` | Shared fallback — applies to both formatting and linting when tool-specific settings are not set |
+| `kopytko.format.readOnlyPaths` | Formatter-specific — files excluded from document formatting |
+| `kopytko.lint.readOnlyPaths` | Linter-specific — files excluded from diagnostics |
+
+Each setting accepts an array of glob patterns. When a tool-specific setting is configured, it takes precedence over the shared `kopytko.readOnlyPaths` for that tool.
 
 ```jsonc
 // .vscode/settings.json
 {
+  // Shared fallback — applies to both formatter and linter
   "kopytko.readOnlyPaths": [
+    "**/node_modules/**",
+    "**/generated/**"
+  ],
+
+  // Formatter-specific override
+  "kopytko.format.readOnlyPaths": [
     "**/node_modules/**",
     "**/generated/**",
     "**/vendor/*.brs"
+  ],
+
+  // Linter-specific override
+  "kopytko.lint.readOnlyPaths": [
+    "**/node_modules/**",
+    "**/generated/**",
+    "**/legacy/**"
   ]
 }
 ```
@@ -526,8 +548,8 @@ Formats the entire `.brs` file. Two operations are applied:
 1. **Indentation normalisation** — adjusts leading whitespace to the configured number of spaces per level (`kopytko.format.indentSize`, default `4`). Indent depth is tracked across `function`/`sub`, `if…then`, `for`, `while`, and `try…catch` blocks. `else`/`elseif`/`catch` deindent to the same level as their opening keyword. Single-line `if … then <statement>` does not increase indent.
 
 2. **Casing normalisation** — applies the configured casing rules to:
-   - **Keywords** (controlled by `kopytko.format.keywordCasing`): `function`, `sub`, `if`, `then`, `end`, `for`, `while`, `return`, etc.
-   - **Built-in function names** (controlled by `kopytko.format.builtinCasing`): `CreateObject`, `Len`, `UCase`, etc. The canonical catalog name is used as the base for casing transforms.
+   - **Keywords** (controlled by `kopytko.casing.keyword`): `function`, `sub`, `if`, `then`, `end`, `for`, `while`, `return`, etc.
+   - **Built-in function names** (controlled by `kopytko.casing.builtin`): `CreateObject`, `Len`, `UCase`, etc. The canonical catalog name is used as the base for casing transforms.
 
 String literal contents and trailing comments (`'…`) are preserved verbatim — casing rules are only applied to the code portion of each line.
 

@@ -225,6 +225,13 @@ async function fetchImportConfig(): Promise<{ generatedPaths: string[]; generate
 
 async function fetchReadOnlyPaths(): Promise<string[]> {
   try {
+    // Format-specific takes priority over shared fallback
+    const formatCfg = await connection.workspace.getConfiguration('kopytko.format');
+    const formatPaths = formatCfg?.readOnlyPaths;
+    if (Array.isArray(formatPaths) && formatPaths.length > 0) {
+      return formatPaths.filter((p: unknown) => typeof p === 'string');
+    }
+    // Shared fallback
     const cfg = await connection.workspace.getConfiguration('kopytko');
     const paths = cfg?.readOnlyPaths;
     return Array.isArray(paths) ? paths.filter((p: unknown) => typeof p === 'string') : [];
@@ -235,19 +242,19 @@ async function fetchReadOnlyPaths(): Promise<string[]> {
 
 async function fetchCasingConfig(): Promise<CasingConfig> {
   try {
-    const cfg = await connection.workspace.getConfiguration('kopytko.format');
-    const exact = cfg?.exactCasing;
+    const cfg = await connection.workspace.getConfiguration('kopytko.casing');
+    const exact = cfg?.exact;
     return {
-      builtins: (cfg?.builtinCasing ?? 'NoChange') as CasingOption,
-      keywords: (cfg?.keywordCasing ?? 'NoChange') as CasingOption,
-      methods:  (cfg?.methodCasing  ?? 'NoChange') as CasingOption,
-      types: (cfg?.typeCasing ?? undefined) as CasingOption | undefined,
-      literals: (cfg?.literalCasing ?? undefined) as CasingOption | undefined,
-      logicOperators: (cfg?.logicOperatorCasing ?? undefined) as CasingOption | undefined,
-      mathOperators: (cfg?.mathOperatorCasing ?? undefined) as CasingOption | undefined,
-      userFunctions: (cfg?.userFunctionCasing ?? 'NoChange') as CasingOption,
-      userMethods: (cfg?.userMethodCasing ?? 'NoChange') as CasingOption,
-      exactCasing: (exact && typeof exact === 'object' && !Array.isArray(exact))
+      builtin: (cfg?.builtin ?? 'preserve') as CasingOption,
+      keyword: (cfg?.keyword ?? 'preserve') as CasingOption,
+      method:  (cfg?.method  ?? 'preserve') as CasingOption,
+      type: (cfg?.type ?? undefined) as CasingOption | undefined,
+      literal: (cfg?.literal ?? undefined) as CasingOption | undefined,
+      logicOperator: (cfg?.logicOperator ?? undefined) as CasingOption | undefined,
+      mathOperator: (cfg?.mathOperator ?? undefined) as CasingOption | undefined,
+      userFunction: (cfg?.userFunction ?? 'preserve') as CasingOption,
+      userMethod: (cfg?.userMethod ?? 'preserve') as CasingOption,
+      exact: (exact && typeof exact === 'object' && !Array.isArray(exact))
         ? Object.fromEntries(
             Object.entries(exact as Record<string, unknown>)
               .filter(([, v]) => typeof v === 'string')

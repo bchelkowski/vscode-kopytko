@@ -149,7 +149,11 @@ function extractVscodeSettings(settings: Record<string, unknown>): LinterConfig 
         (group): group is string[] => Array.isArray(group),
       );
       found = true;
-    } else if (key === 'kopytko.readOnlyPaths' && Array.isArray(value)) {
+    } else if (key === 'kopytko.lint.readOnlyPaths' && Array.isArray(value)) {
+      config.readOnlyPaths = value.filter((p): p is string => typeof p === 'string');
+      found = true;
+    } else if (key === 'kopytko.readOnlyPaths' && Array.isArray(value) && config.readOnlyPaths.length === 0) {
+      // Shared fallback — only if lint-specific not already set
       config.readOnlyPaths = value.filter((p): p is string => typeof p === 'string');
       found = true;
     }

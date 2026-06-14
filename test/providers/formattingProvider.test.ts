@@ -10,9 +10,9 @@ const makeDocument = (content: string | string[]): TextDocument => {
   return TextDocument.create('file:///test.brs', 'brightscript', 1, text);
 };
 
-function applyEdits(doc: TextDocument, provider: BrightScriptFormattingProvider, indent: number, casing: CasingConfig, userFunctions: FunctionDefinition[] = []): string {
+function applyEdits(doc: TextDocument, provider: BrightScriptFormattingProvider, indent: number, casing: CasingConfig, userFunction: FunctionDefinition[] = []): string {
   const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: indent, insertFinalNewline: false };
-  const edits = provider.provideDocumentFormatting(doc, config, casing, userFunctions);
+  const edits = provider.provideDocumentFormatting(doc, config, casing, userFunction);
   if (edits.length === 0) return doc.getText();
 
   let text = doc.getText();
@@ -29,7 +29,7 @@ function applyEdits(doc: TextDocument, provider: BrightScriptFormattingProvider,
   return text;
 }
 
-const NO_CASING: CasingConfig = { builtins: 'NoChange', keywords: 'NoChange', methods: 'NoChange' };
+const NO_CASING: CasingConfig = { builtin: 'preserve', keyword: 'preserve', method: 'preserve' };
 
 describe('BrightScriptFormattingProvider', () => {
   let provider: BrightScriptFormattingProvider;
@@ -188,9 +188,9 @@ describe('BrightScriptFormattingProvider', () => {
   // ── Keyword casing ───────────────────────────────────────────────────────
 
   describe('keyword casing', () => {
-    it('lowercases keywords', () => {
+    it('lowercases keyword', () => {
       const doc = makeDocument('Function Main()\n  IF TRUE THEN\n    RETURN\n  END IF\nEnd Function');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'lower-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('function');
       expect(result).to.include('if');
@@ -200,9 +200,9 @@ describe('BrightScriptFormattingProvider', () => {
       expect(result).to.include('end function');
     });
 
-    it('uppercases keywords', () => {
+    it('uppercases keyword', () => {
       const doc = makeDocument('function main()\n  if true then\n    return\n  end if\nend function');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('FUNCTION');
       expect(result).to.include('IF');
@@ -210,16 +210,16 @@ describe('BrightScriptFormattingProvider', () => {
       expect(result).to.include('RETURN');
     });
 
-    it('does not change keywords inside strings', () => {
+    it('does not change keyword inside strings', () => {
       const doc = makeDocument('sub init()\n  x = "if then else"\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('"if then else"');
     });
 
     it('does not change text after comment marker', () => {
       const doc = makeDocument("sub init()\n  x = 1 ' this is if then\nend sub");
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include("' this is if then");
     });
@@ -230,21 +230,21 @@ describe('BrightScriptFormattingProvider', () => {
   describe('builtin function casing', () => {
     it('lowercases builtin function names', () => {
       const doc = makeDocument('sub init()\n  x = LEN("hello")\nend sub');
-      const casing: CasingConfig = { builtins: 'LowerCase', keywords: 'NoChange', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'lower-case', keyword: 'preserve', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('len(');
     });
 
-    it('PascalCases builtin function names from lowercase input', () => {
+    it('pascal-cases builtin function names from lowercase input', () => {
       const doc = makeDocument('sub init()\n  x = createobject("roArray")\nend sub');
-      const casing: CasingConfig = { builtins: 'PascalCase', keywords: 'NoChange', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'pascal-case', keyword: 'preserve', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('CreateObject(');
     });
 
     it('does not change user-defined function names', () => {
       const doc = makeDocument('sub init()\n  myFunction()\nend sub');
-      const casing: CasingConfig = { builtins: 'UpperCase', keywords: 'NoChange', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'upper-case', keyword: 'preserve', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('myFunction()');
     });
@@ -261,7 +261,7 @@ describe('BrightScriptFormattingProvider', () => {
         'END IF',
         'END FUNCTION',
       ]);
-      const casing: CasingConfig = { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'pascal-case', keyword: 'lower-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 4, casing);
       expect(result).to.equal([
         'function main()',
@@ -279,8 +279,8 @@ describe('BrightScriptFormattingProvider', () => {
     it('applies exact override for a builtin', () => {
       const doc = makeDocument('sub init()\n  x = getglobalaa()\nend sub');
       const casing: CasingConfig = {
-        builtins: 'LowerCase', keywords: 'NoChange', methods: 'NoChange',
-        exactCasing: { 'getglobalaa': 'GetGlobalAA' },
+        builtin: 'lower-case', keyword: 'preserve', method: 'preserve',
+        exact: { 'getglobalaa': 'GetGlobalAA' },
       };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('GetGlobalAA()');
@@ -289,8 +289,8 @@ describe('BrightScriptFormattingProvider', () => {
     it('applies exact override for a keyword', () => {
       const doc = makeDocument('sub init()\n  x = invalid\nend sub');
       const casing: CasingConfig = {
-        builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange',
-        exactCasing: { 'invalid': 'Invalid' },
+        builtin: 'preserve', keyword: 'lower-case', method: 'preserve',
+        exact: { 'invalid': 'Invalid' },
       };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('Invalid');
@@ -325,9 +325,9 @@ describe('BrightScriptFormattingProvider', () => {
       expect(result).to.include('getData()');
     });
 
-    it('applies userFunctionCasing when set to a non-NoChange value', () => {
+    it('applies userFunction casing when set to a non-preserve value', () => {
       const doc = makeDocument('sub init()\n  myHelper()\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'NoChange', methods: 'NoChange', userFunctions: 'LowerCase' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'preserve', method: 'preserve', userFunction: 'lower-case' };
       const funcs = [makeFuncDef('myHelper')];
       const result = applyEdits(doc, provider, 2, casing, funcs);
       expect(result).to.include('myhelper()');
@@ -340,7 +340,7 @@ describe('BrightScriptFormattingProvider', () => {
       expect(result).to.include('localVar');
     });
 
-    it('normalizes builtins to catalog casing even with NoChange', () => {
+    it('normalizes builtin to catalog casing even with preserve', () => {
       const doc = makeDocument('sub init()\n  x = createobject("roArray")\nend sub');
       const result = applyEdits(doc, provider, 2, NO_CASING);
       expect(result).to.include('CreateObject(');
@@ -357,7 +357,7 @@ describe('BrightScriptFormattingProvider', () => {
       expect(edits).to.be.empty;
     });
 
-    it('handles compound end keywords (endif, endsub, etc.)', () => {
+    it('handles compound end keyword (endif, endsub, etc.)', () => {
       const doc = makeDocument([
         'sub test()',
         'if true then',
@@ -377,7 +377,7 @@ describe('BrightScriptFormattingProvider', () => {
 
     it('preserves escaped quotes inside strings', () => {
       const doc = makeDocument('sub init()\n  x = "say ""hello"""\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('"say ""hello"""');
     });
@@ -402,18 +402,18 @@ describe('BrightScriptFormattingProvider', () => {
   // ── Granular keyword category casing ─────────────────────────────────────
 
   describe('granular keyword category casing', () => {
-    it('applies typeCasing independently of keywordCasing', () => {
+    it('applies type casing independently of keyword casing', () => {
       const doc = makeDocument('function main(x as integer) as boolean\nend function');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', types: 'Capitalize' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', type: 'capitalize' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('as Integer');
       expect(result).to.include('as Boolean');
       expect(result).to.include('function'); // keyword still lowercase
     });
 
-    it('applies typeCasing to "function" when used as a type (after as)', () => {
+    it('applies type casing to "function" when used as a type (after as)', () => {
       const doc = makeDocument('function main(callback as function) as function\nend function');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', types: 'Capitalize' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', type: 'capitalize' };
       const result = applyEdits(doc, provider, 2, casing);
       // "function" after "as" should use type casing (Capitalize)
       expect(result).to.include('as Function) as Function');
@@ -421,18 +421,18 @@ describe('BrightScriptFormattingProvider', () => {
       expect(result).to.match(/^function main/);
     });
 
-    it('applies literalCasing independently', () => {
+    it('applies literal casing independently', () => {
       const doc = makeDocument('sub init()\n  x = TRUE\n  y = FALSE\n  z = INVALID\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'NoChange', methods: 'NoChange', literals: 'LowerCase' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'preserve', method: 'preserve', literal: 'lower-case' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('true');
       expect(result).to.include('false');
       expect(result).to.include('invalid');
     });
 
-    it('applies logicOperatorCasing independently', () => {
+    it('applies logicOperator casing independently', () => {
       const doc = makeDocument('sub init()\n  if a and b or not c then\n    return\n  end if\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', logicOperators: 'UpperCase' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', logicOperator: 'upper-case' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('AND');
       expect(result).to.include('OR');
@@ -440,45 +440,45 @@ describe('BrightScriptFormattingProvider', () => {
       expect(result).to.include('if'); // keyword stays lowercase
     });
 
-    it('applies mathOperatorCasing independently', () => {
+    it('applies mathOperator casing independently', () => {
       const doc = makeDocument('sub init()\n  x = 10 mod 3\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'LowerCase', methods: 'NoChange', mathOperators: 'UpperCase' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'lower-case', method: 'preserve', mathOperator: 'upper-case' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('MOD');
       expect(result).to.include('sub'); // keyword stays lowercase
     });
 
-    it('falls back to keywordCasing when category is not set', () => {
+    it('falls back to keyword casing when category is not set', () => {
       const doc = makeDocument('sub init()\n  x = true\n  y = 10 mod 3\nend sub');
-      const casing: CasingConfig = { builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'preserve', keyword: 'upper-case', method: 'preserve' };
       const result = applyEdits(doc, provider, 2, casing);
       expect(result).to.include('TRUE');
       expect(result).to.include('MOD');
       expect(result).to.include('SUB');
     });
 
-    it('exactCasing overrides category casing', () => {
+    it('exact overrides category casing', () => {
       const doc = makeDocument('sub init()\n  x = true\nend sub');
       const casing: CasingConfig = {
-        builtins: 'NoChange', keywords: 'UpperCase', methods: 'NoChange',
-        literals: 'UpperCase',
-        exactCasing: { 'true': 'True' },
+        builtin: 'preserve', keyword: 'upper-case', method: 'preserve',
+        literal: 'upper-case',
+        exact: { 'true': 'True' },
       };
       const result = applyEdits(doc, provider, 2, casing);
-      expect(result).to.include('True'); // exact override wins over literals: UpperCase
+      expect(result).to.include('True'); // exact override wins over literal: upper-case
     });
   });
 
-  // ── blankLineBeforeReturn context-aware ──────────────────────────────────
+  // ── emptyLineBeforeReturn context-aware ──────────────────────────────────
 
-  describe('blankLineBeforeReturn context-aware', () => {
+  describe('emptyLineBeforeReturn context-aware', () => {
     function formatWithReturn(content: string[], mode: 'always' | 'not-alone'): string {
       const doc = makeDocument(content);
       const config: FormattingConfig = {
         ...DEFAULT_FORMATTING_CONFIG,
         indentSize: 2,
         insertFinalNewline: false,
-        blankLineBeforeReturn: mode,
+        emptyLineBeforeReturn: mode,
       };
       const edits = provider.provideDocumentFormatting(doc, config, NO_CASING);
       if (edits.length === 0) return doc.getText();
@@ -668,10 +668,10 @@ describe('BrightScriptFormattingProvider', () => {
   // ── Formatter Bug Regression Tests ──────────────────────────────────────────
 
   describe('formatter bug regression tests', () => {
-    it('does not corrupt identifier "constructor" via exactCasing prototype leak', () => {
+    it('does not corrupt identifier "constructor" via exact prototype leak', () => {
       const doc = makeDocument('sub constructor()\n  m.x = 1\nend sub');
       const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false };
-      const casing: CasingConfig = { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'NoChange', exactCasing: { 'invalid': 'Invalid' } };
+      const casing: CasingConfig = { builtin: 'pascal-case', keyword: 'lower-case', method: 'preserve', exact: { 'invalid': 'Invalid' } };
       const edits = provider.provideDocumentFormatting(doc, config, casing, []);
       let text = doc.getText();
       const sorted = [...edits].sort((a, b) => {
@@ -803,7 +803,7 @@ describe('BrightScriptFormattingProvider', () => {
 
     it('does not add duplicate comma when line already has comma before comment', () => {
       const doc = makeDocument("sub t()\n  x = {\n    items: [1, 0], ' comment\n  }\nend sub");
-      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false, assocArrayCommaStyle: 'always' };
+      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false, associativeArrayCommaStyle: 'always' };
       const edits = provider.provideDocumentFormatting(doc, config, NO_CASING, []);
       let text = doc.getText();
       const sorted = [...edits].sort((a, b) => {
@@ -831,7 +831,7 @@ describe('BrightScriptFormattingProvider', () => {
         '  }',
         'end sub',
       ]);
-      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false, assocArrayCommaStyle: 'always' };
+      const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false, associativeArrayCommaStyle: 'always' };
       const edits = provider.provideDocumentFormatting(doc, config, NO_CASING, []);
       let text = doc.getText();
       const sorted = [...edits].sort((a, b) => {
@@ -852,7 +852,7 @@ describe('BrightScriptFormattingProvider', () => {
     it('treats Type as a builtin function, not a keyword', () => {
       const doc = makeDocument('sub t()\n  x = type(y)\nend sub');
       const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false };
-      const casing: CasingConfig = { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'NoChange' };
+      const casing: CasingConfig = { builtin: 'pascal-case', keyword: 'lower-case', method: 'preserve' };
       const edits = provider.provideDocumentFormatting(doc, config, casing, []);
       let text = doc.getText();
       const sorted = [...edits].sort((a, b) => {
@@ -916,7 +916,7 @@ describe('BrightScriptFormattingProvider', () => {
     it('does not apply casing to associative array keys', () => {
       const doc = makeDocument('sub t()\n  obj = {\n    ObjectUtils: m._objectUtils,\n    content: content,\n  }\nend sub');
       const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false };
-      const casing: CasingConfig = { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'CamelCase', userFunctions: 'CamelCase', exactCasing: {} };
+      const casing: CasingConfig = { builtin: 'pascal-case', keyword: 'lower-case', method: 'camel-case', userFunction: 'camel-case', exact: {} };
       const userFuncs: FunctionDefinition[] = [{ name: 'objectUtils', nameLower: 'objectutils', signature: 'function objectUtils()', line: 0, column: 0, filePath: '/a.brs' }];
       const edits = provider.provideDocumentFormatting(doc, config, casing, userFuncs);
       let text = doc.getText();
@@ -937,7 +937,7 @@ describe('BrightScriptFormattingProvider', () => {
     it('does not apply user function casing to property accesses after dot', () => {
       const doc = makeDocument('sub t()\n  result = context.arrayUtils.filter(items)\nend sub');
       const config: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, insertFinalNewline: false };
-      const casing: CasingConfig = { builtins: 'PascalCase', keywords: 'LowerCase', methods: 'CamelCase', userFunctions: 'PascalCase', exactCasing: {} };
+      const casing: CasingConfig = { builtin: 'pascal-case', keyword: 'lower-case', method: 'camel-case', userFunction: 'pascal-case', exact: {} };
       const userFuncs: FunctionDefinition[] = [{ name: 'ArrayUtils', nameLower: 'arrayutils', signature: 'function ArrayUtils()', line: 0, column: 0, filePath: '/a.brs' }];
       const edits = provider.provideDocumentFormatting(doc, config, casing, userFuncs);
       let text = doc.getText();
