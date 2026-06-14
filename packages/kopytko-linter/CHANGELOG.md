@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.0.1] - 2026-06-14
+
+### Fixed
+- Cast severity to LintSeverity in type rules
+- Add roRenderThreadQueue to component catalog
+
 ## [1.0.0] - 2026-06-14
 
 ### Fixed
