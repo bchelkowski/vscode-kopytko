@@ -224,6 +224,25 @@ describe('identifierRules', () => {
       const diags = checkUndefinedCalls(ctx);
       expect(diags.filter(d => d.code === 'identifier/undefined-function')).to.be.empty;
     });
+
+    it('does not misidentify a known function whose name ends with digits', () => {
+      const content = [
+        'function doWork()',
+        '  if (getSpliceEventIdFromSCTE35(value, "base16") = 305)',
+        '    print "done"',
+        '  end if',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: {
+          knownFuncNames: new Set(['getspliceeventidFromscte35'.toLowerCase()]),
+        },
+      });
+
+      const diags = checkUndefinedCalls(ctx);
+      expect(diags.filter(d => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
   });
 
   describe('checkUndefinedVariables', () => {

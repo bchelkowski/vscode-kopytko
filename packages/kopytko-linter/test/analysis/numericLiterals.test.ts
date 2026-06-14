@@ -195,5 +195,15 @@ describe('numericLiterals', () => {
       const result = stripNumericLiterals('arr = [1, &HFF, 2.3]');
       expect(result).to.not.include('&HFF');
     });
+
+    it('does not strip digits that are part of an identifier', () => {
+      const result = stripNumericLiterals('getSpliceEventIdFromSCTE35(x) = 305');
+      expect(result).to.equal('getSpliceEventIdFromSCTE35(x) = 000');
+    });
+
+    it('preserves multi-digit suffixes in identifiers', () => {
+      const result = stripNumericLiterals('value2 = func3(arr42)');
+      expect(result).to.equal('value2 = func3(arr42)');
+    });
   });
 });

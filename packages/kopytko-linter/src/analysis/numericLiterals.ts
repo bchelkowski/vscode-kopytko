@@ -35,7 +35,7 @@ const NUMERIC_LITERAL_RE =
  * a letter/underscore (to avoid matching inside identifiers).
  */
 export const NUMERIC_LITERAL_GLOBAL_RE =
-  /(?:&[Hh][0-9A-Fa-f]+&?|(?<![A-Za-z_])(?:\d+\.?\d*|\d*\.\d+)(?:[EeDd][+-]?\d+)?[%!#&]?)/g;
+  /(?:&[Hh][0-9A-Fa-f]+&?|(?<!\w)(?:\d+\.?\d*|\d*\.\d+)(?:[EeDd][+-]?\d+)?[%!#&]?)/g;
 
 /**
  * Returns the BrightScript type of a numeric literal, or `undefined` if
