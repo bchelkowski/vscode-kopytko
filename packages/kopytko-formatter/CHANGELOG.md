@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.2] - 2026-06-14
+
+### Fixed
+- Handle nested parens in anon function params
+
 ## [1.0.1] - 2026-06-14
 
 - Release 1.0.1
