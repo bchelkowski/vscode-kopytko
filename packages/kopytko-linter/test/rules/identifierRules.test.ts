@@ -520,6 +520,29 @@ describe('identifierRules', () => {
       expect(d).to.exist;
       expect(d!.fix).to.deep.include({ type: 'insert', text: '_' });
     });
+
+    it('reports correct column when short param name appears inside a preceding param name', () => {
+      const line = 'function _onStatusFetch(promise as Object, m as Object) as Boolean';
+      const content = [
+        line,
+        '  if (promise.isFulfilled)',
+        '    return true',
+        '  end if',
+        '  return false',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedParameters(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-parameter');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include('"m"');
+
+      const expectedCol = line.indexOf(', m') + 2;
+      expect(unused[0].column).to.equal(expectedCol);
+      expect(unused[0].endColumn).to.equal(expectedCol + 1);
+      expect(unused[0].fix).to.deep.include({ type: 'insert', column: expectedCol, text: '_' });
+    });
   });
 
   describe('@mock function visibility', () => {

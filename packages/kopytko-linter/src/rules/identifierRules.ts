@@ -287,14 +287,20 @@ export function checkUnusedParameters(ctx: RuleContext): LintDiagnostic[] {
     const funcMatch = FUNC_DECL_RE.exec(line) || ANON_FUNC_RE.exec(line);
     if (!funcMatch || !funcMatch[1].trim()) continue;
 
+    const paramsStr = funcMatch[1];
+    const paramsStart = line.indexOf('(', funcMatch.index) + 1;
     const params: { name: string; col: number }[] = [];
-    for (const param of funcMatch[1].split(',')) {
-      const nameMatch = /^\s*(\w+)/.exec(param.trim());
-      if (!nameMatch) continue;
-      const name = nameMatch[1];
-      if (name.startsWith('_')) continue;
-      const col = line.indexOf(name, funcMatch.index);
-      params.push({ name, col: col >= 0 ? col : 0 });
+    let offset = 0;
+    for (const rawParam of paramsStr.split(',')) {
+      const nameMatch = /^\s*(\w+)/.exec(rawParam);
+      if (nameMatch) {
+        const name = nameMatch[1];
+        if (!name.startsWith('_')) {
+          const col = paramsStart + offset + rawParam.length - rawParam.trimStart().length;
+          params.push({ name, col });
+        }
+      }
+      offset += rawParam.length + 1;
     }
 
     if (params.length === 0) continue;

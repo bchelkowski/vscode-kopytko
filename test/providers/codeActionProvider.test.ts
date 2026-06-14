@@ -254,6 +254,35 @@ describe('BrightScriptCodeActionProvider', () => {
     });
   });
 
+  // ── identifier/unused-parameter ────────────────────────────────────────────
+
+  describe('identifier/unused-parameter', () => {
+    it('inserts _ at the correct character position from diagnostic range', () => {
+      const line = 'function _onStatusFetch(promise as Object, m as Object) as Boolean';
+      const mCol = line.indexOf(', m') + 2;
+      const doc = makeDocument(line + '\n  print promise\nend function\n');
+
+      const diag: Diagnostic = {
+        severity: DiagnosticSeverity.Warning,
+        range: { start: { line: 0, character: mCol }, end: { line: 0, character: mCol + 1 } },
+        message: 'Parameter "m" is never used.',
+        source: 'kopytko',
+        code: 'identifier/unused-parameter',
+      };
+
+      const result = provider.provideCodeActions(doc, makeParams([diag]));
+      expect(result).to.have.length(1);
+      expect(result[0].title).to.include('prefix with _');
+      expect(result[0].isPreferred).to.be.true;
+
+      const edits = result[0].edit!.changes![DOCUMENT_URI];
+      expect(edits).to.have.length(1);
+      expect(edits[0].range.start).to.deep.equal({ line: 0, character: mCol });
+      expect(edits[0].range.end).to.deep.equal({ line: 0, character: mCol });
+      expect(edits[0].newText).to.equal('_');
+    });
+  });
+
   // ── Multiple diagnostics ──────────────────────────────────────────────────
 
   it('handles multiple diagnostics on different lines', () => {
