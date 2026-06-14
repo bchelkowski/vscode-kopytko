@@ -751,6 +751,24 @@ describe('kopytko-formatter', () => {
         'end function)',
       ].join('\n'));
     });
+
+    it('indents body when params contain nested parentheses', () => {
+      expect(format([
+        'prototype.fetch = function(eventId as String, abortController = AbortController() as Object) as Object',
+        'if (eventId = "")',
+        'return Invalid',
+        'end if',
+        'return eventId',
+        'end function',
+      ], { indentSize: 2 })).to.equal([
+        'prototype.fetch = function(eventId as String, abortController = AbortController() as Object) as Object',
+        '  if (eventId = "")',
+        '    return Invalid',
+        '  end if',
+        '  return eventId',
+        'end function',
+      ].join('\n'));
+    });
   });
 
   // ── Conditional compilation indentation ──────────────────────────────────

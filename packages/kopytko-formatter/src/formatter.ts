@@ -327,8 +327,8 @@ function passFunctionVsSub(lines: string[], config: FormattingConfig): string[] 
   if (config.functionVsSubForVoid === 'preserve') return lines;
 
   const result = [...lines];
-  const namedDeclRegex = /^(\s*)(function|sub)\s+(\w+)\s*\(([^)]*)\)(?:\s+as\s+(\w+))?\s*$/i;
-  const anonDeclRegex = /^(.*\b)(function|sub)(\s*\([^)]*\))(?:\s+as\s+(\w+))?\s*$/i;
+  const namedDeclRegex = /^(\s*)(function|sub)\s+(\w+)\s*\((.*)\)(?:\s+as\s+(\w+))?\s*$/i;
+  const anonDeclRegex = /^(.*\b)(function|sub)(\s*\(.*\))(?:\s+as\s+(\w+))?\s*$/i;
 
   for (let i = 0; i < result.length; i++) {
     // Named declarations
@@ -949,7 +949,7 @@ function passTrailingCommas(lines: string[], config: FormattingConfig): string[]
       if (depth <= 0) break;
 
       if (j < i && j > 0 && jTrimmed !== '' && !jTrimmed.startsWith("'") && !/^rem\b/i.test(jTrimmed)) {
-        if (/\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*$/i.test(jTrimmed)) continue;
+        if (/\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*$/i.test(jTrimmed)) continue;
         if (jTrimmed === '{' || jTrimmed === '[') continue;
         if (/^return\b/i.test(jTrimmed)) continue;
         if (/^(?:if|else|elseif|else\s+if|end\s*if|end\s*sub|end\s*function|end\s*for|end\s*while|end\s*try|for|while|try|catch|next|exit|throw|dim|print|\?)\b/i.test(jTrimmed)) continue;
@@ -1089,7 +1089,7 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
     if (trailingOpens !== 0) indentLevel = Math.max(0, indentLevel + trailingOpens);
 
     // Anonymous function expressions: trailing comment after return type is allowed.
-    if (/\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
+    if (/\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
       indentLevel++;
     }
 
@@ -1855,7 +1855,7 @@ function isDeindentLine(trimmed: string): boolean {
 }
 
 function isAnonFunctionOpener(t: string): boolean {
-  return /\b(?:function|sub)\s*\([^)]*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(t)
+  return /\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(t)
     && !/^(?:function|sub)\b/i.test(t)
     && !t.startsWith("'");
 }
