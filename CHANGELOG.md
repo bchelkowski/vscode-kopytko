@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.4] - 2026-06-14
+
+### Fixed
+- Sync catchParenStyle with formatter package
+
 ## [1.0.3] - 2026-06-14
 
 - Release 1.0.3
