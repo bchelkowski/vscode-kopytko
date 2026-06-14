@@ -1,6 +1,16 @@
 # Changelog
 
 
+## [1.0.6] - 2026-06-14
+
+### Added
+- Add Roku OS 15.0+ data transfer APIs and roUtils
+
+### Fixed
+- Remove unused imports breaking CI lint
+- Add missing since property to component and SgNodeMethod types
+- Nodes are not expandable variables during debugging
+
 ## [1.0.5] - 2026-06-14
 
 - Release 1.0.5
