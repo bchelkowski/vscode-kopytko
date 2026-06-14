@@ -1,4 +1,4 @@
-import type { LintDiagnostic, RuleContext } from '../types';
+import type { LintDiagnostic, LintSeverity, RuleContext } from '../types';
 import { extractParamList } from '../analysis/scopeAnalysis';
 import { stripStringLiterals } from '../analysis/textUtils';
 
@@ -33,7 +33,7 @@ export function checkMissingTypeAnnotations(ctx: RuleContext): LintDiagnostic[] 
       const afterDecl = getAfterParamList(stripped, i, lines);
       if (afterDecl !== null && !RETURN_TYPE_RE.test(')' + afterDecl)) {
         diagnostics.push({
-          severity: config['type/missing-return-type'] ?? 'warning',
+          severity: (config['type/missing-return-type'] ?? 'warning') as LintSeverity,
           code: 'type/missing-return-type',
           message: `Function "${funcName}" is missing a return type annotation.`,
           line: i,
@@ -72,7 +72,7 @@ export function checkMissingTypeAnnotations(ctx: RuleContext): LintDiagnostic[] 
             const col = paramNameStart >= 0 ? paramNameStart : paramOffset;
 
             diagnostics.push({
-              severity: config['type/missing-param-type'] ?? 'warning',
+              severity: (config['type/missing-param-type'] ?? 'warning') as LintSeverity,
               code: 'type/missing-param-type',
               message: `Parameter "${paramName}" is missing a type annotation.`,
               line: i,
