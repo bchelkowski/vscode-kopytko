@@ -199,6 +199,30 @@
           "default": [],
           "markdownDescription": "Glob patterns for files that the linter should skip. When set, overrides `kopytko.readOnlyPaths` for linting. When empty, falls back to `kopytko.readOnlyPaths`."
         },
+        "kopytko.lint.rules.type/missing-return-type": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "Warn when a function is missing an 'as Type' return type annotation."
+        },
+        "kopytko.lint.rules.type/missing-param-type": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "Warn when a function parameter is missing an 'as Type' annotation."
+        },
         "kopytko.casing.builtin": {
           "type": "string",
           "enum": [
@@ -484,26 +508,6 @@
           "default": "never",
           "description": "Spaces inside '()' in calls and definitions."
         },
-        "kopytko.format.returnTypeAnnotations": {
-          "type": "string",
-          "enum": [
-            "always",
-            "never",
-            "preserve"
-          ],
-          "default": "preserve",
-          "description": "Enforce or remove 'as Type' return annotations."
-        },
-        "kopytko.format.paramTypeAnnotations": {
-          "type": "string",
-          "enum": [
-            "always",
-            "never",
-            "preserve"
-          ],
-          "default": "preserve",
-          "description": "Enforce or remove 'as Type' parameter annotations."
-        },
         "kopytko.format.paramAlignmentStyle": {
           "type": "string",
           "enum": [
@@ -513,6 +517,12 @@
           ],
           "default": "preserve",
           "description": "Multi-line parameter alignment style."
+        },
+        "kopytko.format.maxLineLength": {
+          "type": "integer",
+          "default": 120,
+          "minimum": 0,
+          "markdownDescription": "Max line length before the formatter wraps long strings. `0` = no limit."
         },
         "kopytko.format.wrapLongStrings": {
           "type": "string",

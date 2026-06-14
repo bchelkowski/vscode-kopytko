@@ -3,6 +3,7 @@ import { checkImports } from './importRules';
 import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, checkUnusedParameters } from './identifierRules';
 import { checkThrowStatements, checkCreateObjectArgs, checkTrailingCommaSyntaxErrors, checkLoopFlowControl } from './syntaxRules';
 import { checkTestFileStructure } from './testRules';
+import { checkMissingTypeAnnotations } from './typeAnnotationRules';
 
 /** All rule groups as single functions that check multiple codes internally. */
 export const ALL_RULE_GROUPS: RuleDefinition[] = [
@@ -16,4 +17,5 @@ export const ALL_RULE_GROUPS: RuleDefinition[] = [
   { code: 'syntax/trailing-comma', defaultSeverity: 'error', fn: checkTrailingCommaSyntaxErrors },
   { code: 'syntax/flow-outside-loop', defaultSeverity: 'error', fn: checkLoopFlowControl },
   { code: 'test/*', defaultSeverity: 'warning', fn: checkTestFileStructure },
+  { code: 'type/*', defaultSeverity: 'warning', fn: checkMissingTypeAnnotations },
 ];

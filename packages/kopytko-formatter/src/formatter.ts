@@ -62,12 +62,6 @@ export function formatText(
   lines = passEndKeywordStyle(lines, config);
   lines = passFunctionVsSub(lines, config);
 
-  // Pass 3b — Return type annotations
-  lines = passReturnTypeAnnotations(lines, config);
-
-  // Pass 3c — Param type annotations
-  lines = passParamTypeAnnotations(lines, config);
-
   // Pass 4 — Then style + parenthesis if case + catch paren style
   lines = passThenStyle(lines, config);
   lines = passParenthesisIfCase(lines, config);
@@ -426,127 +420,6 @@ function findMatchingEnd(lines: string[], startIdx: number): number {
     }
   }
   return -1;
-}
-
-// ---------------------------------------------------------------------------
-// Pass 3b — Return type annotations
-// ---------------------------------------------------------------------------
-
-function passReturnTypeAnnotations(lines: string[], config: FormattingConfig): string[] {
-  if (config.returnTypeAnnotations === 'preserve') return lines;
-
-  const result = [...lines];
-  // Matches: optional whitespace, `function`, name, `(params)`, optional `as Type`, optional comment
-  const declRegex = /^(\s*function\s+\w+\s*\([^)]*\))(\s+as\s+\w+)?(\s*(?:'.*)?)?$/i;
-
-  for (let i = 0; i < result.length; i++) {
-    const m = declRegex.exec(result[i]);
-    if (!m) continue;
-
-    const [, before, asClause, trailing] = m;
-    const comment = trailing ?? '';
-
-    if (config.returnTypeAnnotations === 'always') {
-      if (!asClause) {
-        result[i] = before + ' as Dynamic' + comment;
-      }
-    } else {
-      // 'never' — remove the as Type clause
-      if (asClause) {
-        result[i] = before + comment;
-      }
-    }
-  }
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Pass 3c — Param type annotations
-// ---------------------------------------------------------------------------
-
-function passParamTypeAnnotations(lines: string[], config: FormattingConfig): string[] {
-  if (config.paramTypeAnnotations === 'preserve') return lines;
-
-  const result = [...lines];
-  // Match function/sub declaration lines (single-line params)
-  const declRegex = /^(\s*(?:function|sub)\s+\w*\s*)\(([^)]*)\)(.*)$/i;
-
-  for (let i = 0; i < result.length; i++) {
-    const m = declRegex.exec(result[i]);
-    if (!m) continue;
-    const [, prefix, paramStr, suffix] = m;
-    if (paramStr.trim() === '') continue;
-
-    const newParams = transformParams(paramStr, config.paramTypeAnnotations);
-    result[i] = prefix + '(' + newParams + ')' + suffix;
-  }
-
-  // Handle multi-line params: continuation lines between `(` and `)`
-  for (let i = 0; i < result.length; i++) {
-    const openMatch = /^(\s*(?:function|sub)\s+\w*\s*)\([^)]*$/i.exec(result[i]);
-    if (!openMatch) continue;
-
-    // Transform params in the opening line after `(`
-    const parenIdx = result[i].indexOf('(');
-    const afterParen = result[i].substring(parenIdx + 1);
-    if (afterParen.trim() !== '') {
-      result[i] = result[i].substring(0, parenIdx + 1) + transformParams(afterParen, config.paramTypeAnnotations);
-    }
-
-    // Transform continuation lines
-    for (let j = i + 1; j < result.length; j++) {
-      const line = result[j];
-      const closeIdx = line.indexOf(')');
-      if (closeIdx >= 0) {
-        // Line with closing paren — transform params before `)`
-        const beforeClose = line.substring(0, closeIdx);
-        if (beforeClose.trim() !== '') {
-          result[j] = transformParams(beforeClose, config.paramTypeAnnotations) + line.substring(closeIdx);
-        }
-        break;
-      }
-      // Pure continuation line — transform entire line preserving indent
-      const indentMatch = line.match(/^(\s*)/);
-      const indent = indentMatch ? indentMatch[1] : '';
-      const content = line.trim();
-      if (content !== '') {
-        result[j] = indent + transformParams(content, config.paramTypeAnnotations);
-      }
-    }
-  }
-
-  return result;
-}
-
-function transformParams(paramStr: string, mode: 'always' | 'never'): string {
-  // Split on commas (respecting that param names/types don't contain commas)
-  const parts = paramStr.split(',');
-  const transformed = parts.map(part => {
-    const trimmed = part.trim();
-    if (trimmed === '') return part;
-
-    // Pattern: name [as Type] [= default]
-    const paramRegex = /^(\w+)(\s+as\s+\w+)?(\s*=\s*.*)?$/i;
-    const m = paramRegex.exec(trimmed);
-    if (!m) return part;
-
-    const [, name, asClause, defaultVal] = m;
-    const preservedLeading = part.match(/^(\s*)/)?.[1] ?? '';
-    const trailingCommaSpace = part.match(/(\s*)$/)?.[1] ?? '';
-
-    if (mode === 'always') {
-      if (!asClause) {
-        return preservedLeading + name + ' as Dynamic' + (defaultVal ?? '') + trailingCommaSpace;
-      }
-    } else {
-      // 'never' — remove as Type
-      if (asClause) {
-        return preservedLeading + name + (defaultVal ?? '') + trailingCommaSpace;
-      }
-    }
-    return part;
-  });
-  return transformed.join(',');
 }
 
 // ---------------------------------------------------------------------------
@@ -1649,14 +1522,15 @@ function passFieldAccessConsistency(lines: string[], config: FormattingConfig): 
 // Pass 6b — Wrap long strings
 // ---------------------------------------------------------------------------
 
-const WRAP_LONG_STRINGS_WIDTH = 120;
-
 function passWrapLongStrings(lines: string[], config: FormattingConfig): string[] {
   if (config.wrapLongStrings === 'preserve') return lines;
 
+  const maxLineLength = config.maxLineLength;
+  if (maxLineLength <= 0) return lines;
+
   const result: string[] = [];
   for (const line of lines) {
-    if (line.length <= WRAP_LONG_STRINGS_WIDTH) { result.push(line); continue; }
+    if (line.length <= maxLineLength) { result.push(line); continue; }
 
     const indent = line.match(/^(\s*)/)?.[1] ?? '';
     const { code, comment } = splitTrailingComment(line);
@@ -1672,7 +1546,7 @@ function passWrapLongStrings(lines: string[], config: FormattingConfig): string[
     const after = code.slice(strStart + fullStr.length);
 
     const childIndent = indent + ' '.repeat(4);
-    const maxChunk = WRAP_LONG_STRINGS_WIDTH - childIndent.length - 6;
+    const maxChunk = maxLineLength - childIndent.length - 6;
     if (maxChunk <= 10) { result.push(line); continue; }
 
     const chunks: string[] = [];

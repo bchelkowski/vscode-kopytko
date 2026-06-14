@@ -43,14 +43,12 @@ export interface FormattingConfig {
   spaceBeforeCallParens: boolean;
   /** Spaces inside `()` in calls and definitions. */
   spaceInsideParens: 'never' | 'always';
-  /** Enforce or remove `as Type` return annotations on functions. */
-  returnTypeAnnotations: 'always' | 'never' | 'preserve';
-  /** Enforce or remove `as Type` param annotations. */
-  paramTypeAnnotations: 'always' | 'never' | 'preserve';
   /** Multi-line parameter alignment: 'indent' uses one level, 'align-to-paren' aligns to opening paren, 'preserve' leaves as-is. */
   paramAlignmentStyle: 'indent' | 'align-to-paren' | 'preserve';
 
   // ── Line Length & Wrapping ───────────────────────────────────────────────
+  /** Max line length before the formatter wraps long strings. 0 = no limit. */
+  maxLineLength: number;
   /** Long string handling: 'plus' breaks with + concatenation, 'array-join' breaks with [...].join(""), 'preserve' leaves as-is. */
   wrapLongStrings: 'preserve' | 'plus' | 'array-join';
   /** String concatenation style normalization: 'plus' enforces +, 'array-join' enforces [...].join(""), 'preserve' leaves as-is. */
@@ -155,11 +153,10 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   spaceBeforeAnonymousFunctionParens: false,
   spaceBeforeCallParens: false,
   spaceInsideParens: 'never',
-  returnTypeAnnotations: 'preserve',
-  paramTypeAnnotations: 'preserve',
   paramAlignmentStyle: 'preserve',
 
   // Line Length & Wrapping
+  maxLineLength: 120,
   wrapLongStrings: 'preserve',
   stringConcatStyle: 'preserve',
 
@@ -246,10 +243,9 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     spaceBeforeAnonymousFunctionParens: bool('spaceBeforeAnonymousFunctionParens', d.spaceBeforeAnonymousFunctionParens),
     spaceBeforeCallParens: bool('spaceBeforeCallParens', d.spaceBeforeCallParens),
     spaceInsideParens: str('spaceInsideParens', d.spaceInsideParens) as FormattingConfig['spaceInsideParens'],
-    returnTypeAnnotations: str('returnTypeAnnotations', d.returnTypeAnnotations) as FormattingConfig['returnTypeAnnotations'],
-    paramTypeAnnotations: str('paramTypeAnnotations', d.paramTypeAnnotations) as FormattingConfig['paramTypeAnnotations'],
     paramAlignmentStyle: str('paramAlignmentStyle', d.paramAlignmentStyle) as FormattingConfig['paramAlignmentStyle'],
 
+    maxLineLength: num('maxLineLength', d.maxLineLength),
     wrapLongStrings: str('wrapLongStrings', d.wrapLongStrings) as FormattingConfig['wrapLongStrings'],
     stringConcatStyle: str('stringConcatStyle', d.stringConcatStyle) as FormattingConfig['stringConcatStyle'],
 

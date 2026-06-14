@@ -33,6 +33,8 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'syntax/flow-outside-loop': 'error',
   'test/missing-mock-annotation': 'warning',
   'test/missing-return-ts': 'warning',
+  'type/missing-return-type': 'warning',
+  'type/missing-param-type': 'warning',
 };
 
 export const DEFAULT_LINTER_CONFIG: LinterConfig = {

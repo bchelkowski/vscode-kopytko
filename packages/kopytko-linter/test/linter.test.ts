@@ -12,7 +12,7 @@ describe('linter — lintFile', () => {
 
   it('returns no diagnostics for a clean file', () => {
     const content = [
-      'function sayHello(name)',
+      'function sayHello(name as String) as Void',
       '  print "Hello " + name',
       'end function',
     ].join('\n');

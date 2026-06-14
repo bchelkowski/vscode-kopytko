@@ -4,7 +4,7 @@ BrightScript linter for the [Kopytko ecosystem](https://github.com/bchelkowski/v
 
 ## Features
 
-- **19 diagnostic rules** covering imports, identifiers, syntax, and test structure
+- **21 diagnostic rules** covering imports, identifiers, syntax, test structure, and type annotations
 - **Configurable severity** per rule (`error`, `warning`, `info`, `hint`, `off`)
 - **Three output formats**: text (terminal), JSON, [SARIF](https://sarifweb.azurewebsites.net/) (GitHub Code Scanning)
 - **Config file support**: `kopytko-linter.json` or `.vscode/settings.json`
@@ -180,6 +180,13 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 |---|---|---|
 | `test/missing-mock-annotation` | warning | `mockFunction("X")` targets a function not in any `@mock`'ed file |
 | `test/missing-return-ts` | warning | `TestSuite__*` function missing `return ts` |
+
+### Type Annotation Rules
+
+| Rule | Default | Description |
+|---|---|---|
+| `type/missing-return-type` | warning | Function missing `as Type` return type annotation |
+| `type/missing-param-type` | warning | Function parameter missing `as Type` annotation |
 
 ## Library API
 

@@ -230,8 +230,6 @@ See [docs/formatting.md](docs/formatting.md) for the complete reference with bef
 | `spaceBeforeAnonymousFunctionParens` | `boolean` | `false` | Space before `(` in anonymous functions |
 | `spaceBeforeCallParens` | `boolean` | `false` | Space before `(` in calls |
 | `spaceInsideParens` | `string` | `"never"` | `never`, `always` |
-| `returnTypeAnnotations` | `string` | `"preserve"` | `always`, `never`, `preserve` |
-| `paramTypeAnnotations` | `string` | `"preserve"` | `always`, `never`, `preserve` |
 | `paramAlignmentStyle` | `string` | `"preserve"` | `preserve`, `indent`, `align-to-paren` |
 
 ### Strings

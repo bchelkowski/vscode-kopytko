@@ -88,7 +88,7 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Status | Doc |
 |---|---|---|
-| Standalone linter package (`kopytko-linter`) with all 19 diagnostic rules | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| Standalone linter package (`kopytko-linter`) with all 21 diagnostic rules | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
 | CLI tool (`kopytko-lint --check`) for CI pipelines | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
 | Configurable per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
 | Three output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |

@@ -585,26 +585,6 @@ result = getValue( key, default )
 
 ---
 
-**`kopytko.format.returnTypeAnnotations`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"always"`, `"never"`, `"preserve"` | `"preserve"` |
-
-Enforce or remove `as Type` return annotations on functions.
-
----
-
-**`kopytko.format.paramTypeAnnotations`**
-
-| Type | Values | Default |
-|---|---|---|
-| `string` | `"always"`, `"never"`, `"preserve"` | `"preserve"` |
-
-Enforce or remove `as Type` parameter annotations.
-
----
-
 **`kopytko.format.paramAlignmentStyle`**
 
 | Type | Values | Default |
@@ -634,6 +614,16 @@ function createUser(name as string,
 ---
 
 ## Strings
+
+---
+
+**`kopytko.format.maxLineLength`**
+
+| Type | Values | Default |
+|---|---|---|
+| `integer` | `0` – ∞ | `120` |
+
+Maximum line length before the formatter wraps long strings (when `wrapLongStrings` is not `"preserve"`). Set to `0` to disable wrapping.
 
 ---
 
