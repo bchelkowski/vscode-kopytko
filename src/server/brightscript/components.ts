@@ -47,6 +47,8 @@ interface BrightScriptComponent {
   docsUrl: string;
   /** Interface names implemented by this component */
   interfaces: string[];
+  /** Minimum Roku OS version that supports this component */
+  since?: string;
   /** Whether Roku has deprecated this component */
   deprecated?: boolean;
   deprecationNote?: string;

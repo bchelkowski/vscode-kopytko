@@ -24,6 +24,8 @@ export interface SgNodeMethod {
   returnType: string;
   description: string;
   interface: string;
+  /** Minimum Roku OS version that supports this method */
+  since?: string;
 }
 
 interface SgNodeDefinition {
