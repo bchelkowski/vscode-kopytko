@@ -10,17 +10,39 @@ Use it as a **CLI tool** in CI pipelines, or import it as a **library** in your 
 npm install --save-dev kopytko-formatter
 ```
 
+## Recommended npm Scripts
+
+Add these scripts to your project's `package.json` to run the formatter with the locally installed version — no `npx` needed:
+
+```json
+{
+  "scripts": {
+    "format": "kopytko-format --write \"src/**/*.brs\"",
+    "format:check": "kopytko-format --check \"src/**/*.brs\""
+  }
+}
+```
+
+Then run:
+
+```bash
+npm run format          # format files in place
+npm run format:check    # CI — exit 1 if any file needs formatting
+```
+
+> **Why npm scripts over npx?** `npx` may download a different version than what's installed locally. npm scripts resolve binaries from `node_modules/.bin/`, guaranteeing the exact installed version is used.
+
 ## CLI Usage
 
 ```bash
 # Check mode — exit 1 if any file needs formatting (use in CI)
-npx kopytko-format --check "src/**/*.brs"
+kopytko-format --check "src/**/*.brs"
 
 # Write mode — format files in place
-npx kopytko-format --write "src/**/*.brs"
+kopytko-format --write "src/**/*.brs"
 
 # With explicit config
-npx kopytko-format --check --config .kopytkorc "components/**/*.brs"
+kopytko-format --check --config .kopytkorc "components/**/*.brs"
 ```
 
 ### Options
@@ -83,7 +105,7 @@ Exclude paths from formatting via the `ignore` array in your config file or the 
 
 ```bash
 # CLI flag (repeatable)
-npx kopytko-format --check --ignore "**/_tests/**" --ignore "**/dist/**" app
+kopytko-format --check --ignore "**/_tests/**" --ignore "**/dist/**" app
 
 # Or in kopytko-formatter.json / .vscode/settings.json
 # "ignore": ["**/_tests/**", "**/dist/**"]
@@ -137,8 +159,10 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: npx kopytko-format --check "src/**/*.brs"
+      - run: npm run format:check
 ```
+
+> This assumes `format:check` is defined in your `package.json` scripts (see [Recommended npm Scripts](#recommended-npm-scripts) above).
 
 ## Planned Features (Not Yet Implemented)
 

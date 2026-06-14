@@ -16,26 +16,50 @@ BrightScript linter for the [Kopytko ecosystem](https://github.com/bchelkowski/v
 npm install --save-dev kopytko-linter
 ```
 
+## Recommended npm Scripts
+
+Add these scripts to your project's `package.json` to run the linter with the locally installed version — no `npx` needed:
+
+```json
+{
+  "scripts": {
+    "lint:brs": "kopytko-lint",
+    "lint:brs:check": "kopytko-lint --check",
+    "lint:brs:fix": "kopytko-lint --fix"
+  }
+}
+```
+
+Then run:
+
+```bash
+npm run lint:brs          # lint and report
+npm run lint:brs:check    # CI — exit 1 if any errors found
+npm run lint:brs:fix      # auto-fix fixable issues
+```
+
+> **Why npm scripts over npx?** `npx` may download a different version than what's installed locally. npm scripts resolve binaries from `node_modules/.bin/`, guaranteeing the exact installed version is used.
+
 ## CLI Usage
 
 ```bash
 # Lint the current project
-npx kopytko-lint
+kopytko-lint
 
 # CI mode — exit with code 1 if any errors are found
-npx kopytko-lint --check
+kopytko-lint --check
 
 # Output as JSON
-npx kopytko-lint --format json
+kopytko-lint --format json
 
 # Output SARIF for GitHub Code Scanning
-npx kopytko-lint --format sarif > results.sarif
+kopytko-lint --format sarif > results.sarif
 
 # Use a specific config file
-npx kopytko-lint --config my-rules.json
+kopytko-lint --config my-rules.json
 
 # Override source directory
-npx kopytko-lint --source-dir components
+kopytko-lint --source-dir components
 ```
 
 ### CLI Options
@@ -171,20 +195,22 @@ const diagnostics: LintDiagnostic[] = lintFile(
 
 ```yaml
 - name: Lint BrightScript
-  run: npx kopytko-lint --check
+  run: npm run lint:brs:check
 ```
 
 ### GitHub Code Scanning (SARIF)
 
 ```yaml
 - name: Lint BrightScript
-  run: npx kopytko-lint --format sarif > results.sarif
+  run: kopytko-lint --format sarif > results.sarif
 
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: results.sarif
 ```
+
+> The basic example assumes `lint:brs:check` is defined in your `package.json` scripts (see [Recommended npm Scripts](#recommended-npm-scripts) above). The SARIF example uses the command directly since it requires output redirection.
 
 ## License
 

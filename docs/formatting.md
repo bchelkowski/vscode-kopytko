@@ -1673,17 +1673,37 @@ The formatting engine is available as a standalone CLI tool via the `kopytko-for
 npm install --save-dev kopytko-formatter
 ```
 
+### Recommended npm Scripts
+
+Add these scripts to your project's `package.json`:
+
+```json
+{
+  "scripts": {
+    "format": "kopytko-format --write app",
+    "format:check": "kopytko-format --check app"
+  }
+}
+```
+
+Then run:
+
+```bash
+npm run format          # format files in place
+npm run format:check    # CI — exit 1 if any file needs formatting
+```
+
 ### Commands
 
 ```bash
 # Check mode — exit 1 if any file needs formatting (use in CI)
-npx kopytko-format --check app
+kopytko-format --check app
 
 # Write mode — format files in place
-npx kopytko-format --write app
+kopytko-format --write app
 
 # With explicit config and ignore patterns
-npx kopytko-format --check --config kopytko-formatter.json --ignore "**/_tests/**" app
+kopytko-format --check --config kopytko-formatter.json --ignore "**/_tests/**" app
 ```
 
 ### Config resolution
@@ -1728,7 +1748,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: npx kopytko-format --check app
+      - run: npm run format:check
 ```
 
 ### Library API

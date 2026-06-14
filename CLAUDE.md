@@ -82,11 +82,22 @@ npm test                 # run 140+ formatter tests
 npm run build            # compile to dist/
 ```
 
-**CLI usage:**
+**CLI usage (recommended via npm scripts):**
 
 ```bash
-npx kopytko-format --check "src/**/*.brs"   # CI — exit 1 if unformatted
-npx kopytko-format --write "src/**/*.brs"   # fix files in place
+kopytko-format --check "src/**/*.brs"   # CI — exit 1 if unformatted
+kopytko-format --write "src/**/*.brs"   # fix files in place
+```
+
+When consuming the package, add npm scripts to your `package.json` instead of using `npx`:
+
+```json
+{
+  "scripts": {
+    "format": "kopytko-format --write \"src/**/*.brs\"",
+    "format:check": "kopytko-format --check \"src/**/*.brs\""
+  }
+}
 ```
 
 Config resolution (priority order): `--config <file>` → `kopytko-formatter.json` → `.vscode/settings.json` (`kopytko.format.*` keys).
