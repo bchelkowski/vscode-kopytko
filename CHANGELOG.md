@@ -1,6 +1,20 @@
 # Changelog
 
 
+## [1.0.0] - 2026-06-14
+
+### Breaking Changes
+- Normalize settings names and implement 13 formatter passes
+
+### Added
+- Add roRenderThreadQueue component to catalog
+- Show all channels in registry viewer
+- Normalize settings names and implement 13 formatter passes
+
+### Fixed
+- Remove unused parseAppsXml import
+- Deduplicate Go to Definition results
+
 ## [0.2.4] - 2026-06-14
 
 ### Added
