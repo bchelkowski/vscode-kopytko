@@ -515,6 +515,19 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
     ],
   },
 
+  // ── ifRenderThreadQueue ──────────────────────────────────────────────────
+  ifRenderThreadQueue: {
+    name: 'ifRenderThreadQueue',
+    description: 'Queues messages for handlers on the render thread, enabling async communication from Task nodes without blocking.',
+    docsUrl: 'https://developer.roku.com/dev/docs/ifrenderthreadqueue',
+    methods: [
+      { name: 'RegisterMessageHandler', signature: 'RegisterMessageHandler(message_id as String, handler as String) as Object', returnType: 'Object', description: 'Registers a handler for messages on the given ID. Called on the render thread. Returns an object to unregister the handler.', since: '15.0' },
+      { name: 'PostMessage', signature: 'PostMessage(message_id as String, data as Object) as Void', returnType: 'Void', description: 'Posts a message to the queue. Data is moved and becomes unavailable to the calling thread. May be called from any thread.', since: '15.0' },
+      { name: 'CopyMessage', signature: 'CopyMessage(message_id as String, data as Object) as Void', returnType: 'Void', description: 'Posts a message to the queue. Data is copied instead of moved. May be called from any thread.', since: '15.0' },
+      { name: 'GetCopyCount', signature: 'GetCopyCount() as Integer', returnType: 'Integer', description: 'Returns the total number of objects that were copied by PostMessage() instead of being moved.', since: '15.0' },
+    ],
+  },
+
   // ── ifFileSystem ─────────────────────────────────────────────────────────
   ifFileSystem: {
     name: 'ifFileSystem',
@@ -1546,6 +1559,12 @@ export const BRIGHTSCRIPT_COMPONENTS: BrightScriptComponent[] = [
     description: 'Event queue. Attach to async objects with SetMessagePort() then call WaitMessage() in your main loop.',
     docsUrl: 'https://developer.roku.com/dev/docs/romessageport',
     interfaces: ['ifMessagePort'],
+  },
+  {
+    name: 'roRenderThreadQueue',
+    description: 'Queues messages for render-thread handlers. Enables async communication from Task nodes without blocking via rendezvous.',
+    docsUrl: 'https://developer.roku.com/dev/docs/rorenderthreadqueue',
+    interfaces: ['ifRenderThreadQueue'],
   },
   {
     name: 'roFileSystem',

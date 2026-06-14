@@ -91,6 +91,7 @@
 | Component | Interfaces | Description |
 |---|---|---|
 | `roMessagePort` | ifMessagePort | Event queue; use `WaitMessage()` in your main loop |
+| `roRenderThreadQueue` | ifRenderThreadQueue | Queues messages for render-thread handlers; async Task-to-render communication (since 15.0) |
 
 ### Device and app
 

@@ -21,6 +21,7 @@ describe('BrightScript component catalog', () => {
         'roUrlTransfer', 'roMessagePort', 'roFileSystem',
         'roDeviceInfo', 'roAppInfo', 'roRegistry', 'roRegistrySection',
         'roSGNode', 'roSGScreen', 'roAudioPlayer',
+        'roRenderThreadQueue',
       ]);
     });
 
@@ -147,6 +148,12 @@ describe('BrightScript component catalog', () => {
       const methods = getComponentMethods('roDeviceInfo');
       const names = methods.map((m) => m.name);
       expect(names).to.include.members(['GetModel', 'GetVersion', 'GetRIDA', 'GetConnectionType', 'HasFeature']);
+    });
+
+    it('returns methods for roRenderThreadQueue', () => {
+      const methods = getComponentMethods('roRenderThreadQueue');
+      const names = methods.map((m) => m.name);
+      expect(names).to.include.members(['RegisterMessageHandler', 'PostMessage', 'CopyMessage', 'GetCopyCount']);
     });
 
     it('returns empty array for unknown component', () => {
