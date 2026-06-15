@@ -219,6 +219,29 @@ Parameters prefixed with `_` (e.g. `_unused`) are considered intentionally unuse
 
 String literals and comments are excluded from the usage scan. Nested function bodies are scoped correctly — a parameter of an outer function is not considered "used" by an inner anonymous function's body.
 
+#### Unused variable diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `identifier/unused-variable` | Warning | A local variable is defined but never read in the enclosing function scope. |
+
+**What counts as a definition:** local variable assignments (`x = …`), for-loop iteration variables (`for i = …`, `for each item in …`), dim-array names (`dim arr(10)`), and `catch` variables (`catch e`). Member assignments (`m.field = …`) are not tracked as local variables.
+
+**What counts as a use:** any non-definition reference — `if` conditions, `return` statements, `print` calls, passing the variable as an argument in a function call (`someFunc(x)`), right-hand side of another assignment, compound assignments (`x += …`), array-indexed access (`arr[i] = …`), dot-access (`obj.method()`).
+
+Note: in BrightScript, `=` serves as both assignment and comparison. The checker only treats `varName = expr` at the beginning of a statement as an assignment; the same syntax inside `if`, `while`, or other expressions is correctly recognised as comparison (a read).
+
+**Statement separators:** the `:` character is handled as a statement separator. Multi-statement lines like `x = 1 : print x` are analysed per-statement, so the assignment and usage are correctly detected. Colons inside AA literals (`{ key: value }`) are not treated as separators.
+
+**What is NOT flagged:**
+- Variables prefixed with `_` (e.g. `_unused`) — considered intentionally unused.
+- `m` — the BrightScript component self-reference.
+- Function parameters — handled separately by `identifier/unused-parameter`.
+- BrightScript keywords.
+- Variables inside nested anonymous functions — BrightScript has no closures, so inner-scope references are isolated.
+
+A quick-fix code action is offered to remove the line containing the unused variable assignment.
+
 #### CreateObject argument validation
 
 | Code | Severity | Description |
@@ -291,6 +314,7 @@ Quick-fix light-bulb actions are offered on `@import` diagnostic lines. The serv
 | `identifier/undefined-function` | — (no action) |
 | `identifier/undefined-variable` | — (no action) |
 | `identifier/unused-parameter` | **Fix: prefix with _ to mark as unused** *(preferred)* |
+| `identifier/unused-variable` | **Remove unused variable** *(preferred)* |
 | `syntax/flow-outside-loop` | — (no action) |
 | `syntax/trailing-comma` | — (no action) |
 | `throw/invalid-value` | — (no action) |

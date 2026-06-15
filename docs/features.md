@@ -52,6 +52,7 @@ This document is the canonical list of extension features. Each feature links to
 | Undefined function calls (`identifier/undefined-function`) — suppressed for the entire `main.brs` file and inside Roku entry-point functions | ✅ Implemented | [language-server.md](./language-server.md) |
 | Undefined variables (`identifier/undefined-variable`) with per-function scope isolation — outer variables are not visible inside inner anonymous functions (no closures) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Unused function parameters with `_` prefix quick-fix (`identifier/unused-parameter`) | ✅ Implemented | [language-server.md](./language-server.md) |
+| Unused local variables with line-removal quick-fix (`identifier/unused-variable`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Built-in function arity check (`identifier/wrong-arg-count`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `CreateObject` unknown component (`createobject/unknown-component`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Loop flow control validation (`syntax/flow-outside-loop`) | ✅ Implemented | [language-server.md](./language-server.md) |
@@ -71,7 +72,7 @@ This document is the canonical list of extension features. Each feature links to
 | Feature | Status | Doc |
 |---|---|---|
 | Rename symbol (`textDocument/rename`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Code actions — quick fixes for import diagnostics and unused parameters | ✅ Implemented | [language-server.md](./language-server.md) |
+| Code actions — quick fixes for import diagnostics, unused parameters, and unused variables | ✅ Implemented | [language-server.md](./language-server.md) |
 | Document formatting — multi-pass engine with 60+ configurable rules | ✅ Implemented | [formatting.md](./formatting.md) |
 | Conditional compilation indentation (`#if`/`#else if`/`#else`/`#end if`, `#const`) | ✅ Implemented | [formatting.md](./formatting.md) |
 | Increment (`++`) and decrement (`--`) operators preserved by spacing pass | ✅ Implemented | [formatting.md](./formatting.md) |
@@ -90,7 +91,7 @@ This document is the canonical list of extension features. Each feature links to
 
 | Feature | Status | Doc |
 |---|---|---|
-| Standalone linter package (`kopytko-linter`) with all 21 diagnostic rules | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
+| Standalone linter package (`kopytko-linter`) with all 24 diagnostic rules | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
 | CLI tool (`kopytko-lint --check`) for CI pipelines | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
 | Configurable per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
 | Three output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |

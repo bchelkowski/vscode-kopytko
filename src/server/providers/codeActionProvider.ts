@@ -18,6 +18,7 @@ const FIXABLE_CODES = new Set([
   'import/path-not-absolute',
   'import/wrong-comment-style',
   'identifier/unused-parameter',
+  'identifier/unused-variable',
 ]);
 
 export class BrightScriptCodeActionProvider {
@@ -48,6 +49,11 @@ export class BrightScriptCodeActionProvider {
 
       if (code === 'identifier/unused-parameter') {
         actions.push(makePrefixUnderscoreAction(document.uri, diag));
+        continue;
+      }
+
+      if (code === 'identifier/unused-variable') {
+        actions.push(makeRemoveLineAction(document.uri, lineIndex, lines.length, lineText.length, diag, 'Remove unused variable'));
         continue;
       }
 
