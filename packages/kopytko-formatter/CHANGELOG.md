@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.6] - 2026-06-15
+
+### Fixed
+- Handle : statement separators in indentation pass
+
 ## [1.0.5] - 2026-06-14
 
 ### Fixed
