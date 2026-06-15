@@ -11,6 +11,7 @@ import {
   countCallArgs,
   extractParamList,
 } from '../analysis/scopeAnalysis';
+import type { FunctionScope } from '../analysis/scopeAnalysis';
 
 const CALL_RE = /(?<![.\w@])([a-zA-Z_]\w*)\s*\(/g;
 const DECL_RE = /^\s*(?:function|sub)\s+\w+\s*\(/i;
