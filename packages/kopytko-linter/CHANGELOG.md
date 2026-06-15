@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.5] - 2026-06-15
+
+### Fixed
+- Handle AA/array literals in param default values
+
 ## [1.0.4] - 2026-06-15
 
 - Release 1.0.4
