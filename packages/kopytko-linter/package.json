@@ -1,6 +1,6 @@
 {
   "name": "kopytko-linter",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "BrightScript linter for the Kopytko ecosystem. Use as a CLI tool or import as a library.",
   "license": "MIT",
   "author": "bchelkowski",

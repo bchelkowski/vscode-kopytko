@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.0.3] - 2026-06-15
+
+### Added
+- Add identifier/unused-variable diagnostic rule
+
+### Changed
+- Remove unused code in typeAnnotationRules
+
 ## [1.0.2] - 2026-06-14
 
 ### Added
