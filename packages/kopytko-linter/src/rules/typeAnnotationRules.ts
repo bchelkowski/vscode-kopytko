@@ -1,5 +1,5 @@
 import type { LintDiagnostic, LintSeverity, RuleContext } from '../types';
-import { extractParamList } from '../analysis/scopeAnalysis';
+import { extractParamList, splitParamList } from '../analysis/scopeAnalysis';
 import { stripStringLiterals } from '../analysis/textUtils';
 
 const FUNC_DECL_RE = /^\s*(function|sub)\s+(\w+)\s*\(/i;
@@ -48,7 +48,7 @@ export function checkMissingTypeAnnotations(ctx: RuleContext): LintDiagnostic[] 
     if (!paramTypeOff) {
       const paramStr = extractParamList(stripped);
       if (paramStr && paramStr.trim()) {
-        const params = paramStr.split(',');
+        const params = splitParamList(paramStr);
         let paramOffset = stripped.indexOf('(', namedMatch.index) + 1;
 
         for (const param of params) {

@@ -10,6 +10,7 @@ import {
   computeMainBodyLines,
   countCallArgs,
   extractParamList,
+  splitParamList,
 } from '../analysis/scopeAnalysis';
 import type { FunctionScope } from '../analysis/scopeAnalysis';
 
@@ -37,7 +38,7 @@ function collectLocalNames(lines: string[]): Set<string> {
     const strippedForParams = stripStringLiterals(line, true);
     const paramStr = extractParamList(strippedForParams);
     if (paramStr && paramStr.trim()) {
-      for (const part of paramStr.split(',')) {
+      for (const part of splitParamList(paramStr)) {
         const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
         if (nm) {
           const p = nm[1].toLowerCase();
@@ -277,22 +278,20 @@ export function checkUnusedParameters(ctx: RuleContext): LintDiagnostic[] {
   const { lines, filePath, config } = ctx;
   if (config['identifier/unused-parameter'] === 'off') return [];
 
-  const FUNC_DECL_RE = /^\s*(?:function|sub)\s+\w+\s*\(([^)]*)\)/i;
-  const ANON_FUNC_RE = /(?:function|sub)\s*\(([^)]*)\)/i;
   const diagnostics: LintDiagnostic[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^\s*'/.test(line) || /^\s*rem\b/i.test(line)) continue;
 
-    const funcMatch = FUNC_DECL_RE.exec(line) || ANON_FUNC_RE.exec(line);
-    if (!funcMatch || !funcMatch[1].trim()) continue;
+    const strippedLine = stripStringLiterals(line, true);
+    const paramsStr = extractParamList(strippedLine);
+    if (!paramsStr || !paramsStr.trim()) continue;
 
-    const paramsStr = funcMatch[1];
-    const paramsStart = line.indexOf('(', funcMatch.index) + 1;
+    const paramsStart = strippedLine.indexOf('(', strippedLine.search(/\b(?:function|sub)\b/i)) + 1;
     const params: { name: string; col: number }[] = [];
     let offset = 0;
-    for (const rawParam of paramsStr.split(',')) {
+    for (const rawParam of splitParamList(paramsStr)) {
       const nameMatch = /^\s*(\w+)/.exec(rawParam);
       if (nameMatch) {
         const name = nameMatch[1];

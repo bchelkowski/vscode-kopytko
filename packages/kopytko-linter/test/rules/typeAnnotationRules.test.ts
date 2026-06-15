@@ -215,6 +215,32 @@ describe('typeAnnotationRules', () => {
       const paramDiags = diags.filter(d => d.code === 'type/missing-param-type');
       expect(paramDiags).to.be.empty;
     });
+
+    it('does not treat AA literal keys as untyped parameters', () => {
+      const content = [
+        'function __createContentMock(fields = { streamFormat: "dash", url: "https://url.dazn1.com" } as Object) as Object',
+        '  return fields',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkMissingTypeAnnotations(ctx);
+      const paramDiags = diags.filter(d => d.code === 'type/missing-param-type');
+      expect(paramDiags).to.be.empty;
+    });
+
+    it('handles multiple params with AA literal default value', () => {
+      const content = [
+        'function work(name as String, opts = { a: 1, b: 2 } as Object) as Void',
+        '  print name',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkMissingTypeAnnotations(ctx);
+      const paramDiags = diags.filter(d => d.code === 'type/missing-param-type');
+      expect(paramDiags).to.be.empty;
+    });
   });
 
   describe('checkMissingTypeAnnotations — both rules together', () => {

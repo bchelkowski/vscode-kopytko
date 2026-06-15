@@ -543,6 +543,36 @@ describe('identifierRules', () => {
       expect(unused[0].endColumn).to.equal(expectedCol + 1);
       expect(unused[0].fix).to.deep.include({ type: 'insert', column: expectedCol, text: '_' });
     });
+
+    it('does not treat AA literal keys as parameters', () => {
+      const content = [
+        'function __createContentMock(fields = { streamFormat: "dash", url: "https://url.dazn1.com" } as Object) as Object',
+        '  content = CreateObject("roSGNode", "Node")',
+        '  content.addFields(fields)',
+        '  return content',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['createobject']) },
+      });
+      const diags = checkUnusedParameters(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-parameter');
+      expect(unused).to.be.empty;
+    });
+
+    it('does not flag AA literal keys as unused when param is used', () => {
+      const content = [
+        'function doWork(opts = { key: "value", other: 123 } as Object) as Void',
+        '  print opts.key',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedParameters(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-parameter');
+      expect(unused).to.be.empty;
+    });
   });
 
   describe('@mock function visibility', () => {

@@ -38,6 +38,36 @@ export function extractParamList(line: string): string | null {
   return null;
 }
 
+/**
+ * Splits a parameter list string by top-level commas, respecting
+ * nested `{}` (AA literals), `[]` (arrays), and `()` (calls) in default values.
+ */
+export function splitParamList(paramStr: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+
+  for (let i = 0; i < paramStr.length; i++) {
+    const ch = paramStr[i];
+    if (ch === '(') parenDepth++;
+    else if (ch === ')') parenDepth--;
+    else if (ch === '{') braceDepth++;
+    else if (ch === '}') braceDepth--;
+    else if (ch === '[') bracketDepth++;
+    else if (ch === ']') bracketDepth--;
+    else if (ch === ',' && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+  return parts;
+}
+
 export function buildFunctionScopes(lines: string[]): FunctionScope[] {
   const allScopes: FunctionScope[] = [];
   const stack: FunctionScope[] = [];
@@ -85,7 +115,7 @@ export function buildFunctionScopes(lines: string[]): FunctionScope[] {
       const params = new Set<string>();
       const paramStr = extractParamList(strippedForScope);
       if (paramStr && paramStr.trim()) {
-        for (const part of paramStr.split(',')) {
+        for (const part of splitParamList(paramStr)) {
           const nm = /^\s*([a-zA-Z_]\w*)/.exec(part.trim());
           if (nm) {
             const p = nm[1].toLowerCase();
