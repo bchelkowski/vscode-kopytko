@@ -1084,7 +1084,15 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
 
     const result = indentUnit.repeat(indentLevel + chainExtra) + trimmed;
 
-    if (isIndentLine(trimmed)) indentLevel++;
+    if (isIndentLine(trimmed)) {
+      indentLevel++;
+
+      // Account for inline block closers after ':' statement separators.
+      // e.g. `for i = 0 to 5 : next` — the `for` incremented indent above,
+      // but the `next` after `:` should cancel it out.
+      const inlineChange = countInlineIndentChange(trimmed);
+      if (inlineChange !== 0) indentLevel = Math.max(0, indentLevel + inlineChange);
+    }
 
     // Bracket depth: net change in [ ] { } on this line (string-aware).
     // trailingOpens = netDepth + leadingClosers gives the effective opens
@@ -1708,7 +1716,6 @@ function passAAThreshold(lines: string[], config: FormattingConfig): string[] {
   const result: string[] = [];
   for (const line of lines) {
     const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    const trimmed = line.trim();
     const { code, comment } = splitTrailingComment(line);
     const codeT = code.trim();
 
@@ -1857,6 +1864,56 @@ function isDeindentLine(trimmed: string): boolean {
   if (/^#else\s+if\b/i.test(lower)) return true;
 
   return false;
+}
+
+/**
+ * Counts the net indent change from sub-statements after the first `:` separator.
+ * Handles braces, parens, brackets, and string literals to avoid false splits.
+ */
+function countInlineIndentChange(line: string): number {
+  // Quick bail: no colon at all
+  if (!line.includes(':')) return 0;
+
+  // Split on `:` outside strings, braces, parens, and brackets
+  const parts: string[] = [];
+  let current = '';
+  let braceDepth = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let inString = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inString && line[i + 1] === '"') { i++; current += '""'; continue; }
+      inString = !inString;
+    }
+    if (inString) { current += ch; continue; }
+    if (ch === "'") break; // rest is comment
+    if (ch === '{') braceDepth++;
+    else if (ch === '}') braceDepth--;
+    else if (ch === '(') parenDepth++;
+    else if (ch === ')') parenDepth--;
+    else if (ch === '[') bracketDepth++;
+    else if (ch === ']') bracketDepth--;
+    else if (ch === ':' && braceDepth === 0 && parenDepth === 0 && bracketDepth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+
+  // Check sub-statements after the first one
+  let change = 0;
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i].trim();
+    if (!part) continue;
+    if (isDeindentLine(part)) change--;
+    if (isIndentLine(part)) change++;
+  }
+  return change;
 }
 
 function isAnonFunctionOpener(t: string): boolean {

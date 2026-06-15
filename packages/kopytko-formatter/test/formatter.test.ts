@@ -124,6 +124,116 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
+    it('handles for : end for on same line', () => {
+      expect(format([
+        'sub test()',
+        'for i = 0 to 5 : end for',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  for i = 0 to 5 : end for',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('handles for : body : end for on same line', () => {
+      expect(format([
+        'sub test()',
+        'for i = 0 to 5 : print i : end for',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  for i = 0 to 5 : print i : end for',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('handles while : end while on same line', () => {
+      expect(format([
+        'sub test()',
+        'while true : exit while : end while',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  while true : exit while : end while',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('handles try : catch : end try on same line', () => {
+      expect(format([
+        'sub test()',
+        'try : catch e : end try',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  try : catch e : end try',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('does not break if-then : end if on same line', () => {
+      expect(format([
+        'sub test()',
+        'if true then : end if',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  if true then : end if',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('does not break inline sub() : end sub on same line', () => {
+      expect(format([
+        'sub test()',
+        'cb = sub() : end sub',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  cb = sub() : end sub',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('handles for : if then : end if : end for on same line', () => {
+      expect(format([
+        'sub test()',
+        'for i = 0 to 5 : if true then : end if : end for',
+        'print "after"',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  for i = 0 to 5 : if true then : end if : end for',
+        '  print "after"',
+        'end sub',
+      ].join('\n'));
+    });
+
+    it('does not split : inside AA literal for indentation', () => {
+      expect(format([
+        'sub test()',
+        'x = { key: "val" } : return x',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  x = { key: "val" } : return x',
+        'end sub',
+      ].join('\n'));
+    });
+
     it('does not indent after single-line if', () => {
       expect(format([
         'sub test()',
