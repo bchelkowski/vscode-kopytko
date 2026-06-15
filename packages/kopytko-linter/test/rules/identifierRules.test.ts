@@ -573,6 +573,24 @@ describe('identifierRules', () => {
       const unused = diags.filter(d => d.code === 'identifier/unused-parameter');
       expect(unused).to.be.empty;
     });
+
+    it('fixes unused param on a line with end sub before the declaration', () => {
+      const line = '  end sub).finally(sub (data as Object)';
+      const content = [
+        line,
+        '    m.spinner.hide()',
+        '  end sub)',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedParameters(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-parameter');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include('"data"');
+      const expectedCol = line.indexOf('data');
+      expect(unused[0].column).to.equal(expectedCol);
+      expect(unused[0].fix).to.deep.include({ type: 'insert', column: expectedCol, text: '_' });
+    });
   });
 
   describe('@mock function visibility', () => {

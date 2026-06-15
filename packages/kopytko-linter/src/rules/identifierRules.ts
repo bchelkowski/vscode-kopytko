@@ -288,7 +288,12 @@ export function checkUnusedParameters(ctx: RuleContext): LintDiagnostic[] {
     const paramsStr = extractParamList(strippedLine);
     if (!paramsStr || !paramsStr.trim()) continue;
 
-    const paramsStart = strippedLine.indexOf('(', strippedLine.search(/\b(?:function|sub)\b/i)) + 1;
+    // Use the same regex as extractParamList to find the correct function/sub
+    // declaration — skips `end sub)` because it requires `(` after the keyword.
+    const funcDeclMatch = /\b(?:function|sub)\b\s*(?:[a-zA-Z_]\w*\s*)?\(/i.exec(strippedLine);
+    if (!funcDeclMatch) continue;
+    const openParenIdx = strippedLine.indexOf('(', funcDeclMatch.index + funcDeclMatch[0].length - 1);
+    const paramsStart = openParenIdx + 1;
     const params: { name: string; col: number }[] = [];
     let offset = 0;
     for (const rawParam of splitParamList(paramsStr)) {
