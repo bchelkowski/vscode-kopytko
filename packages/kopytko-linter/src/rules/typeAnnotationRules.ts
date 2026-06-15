@@ -3,7 +3,6 @@ import { extractParamList } from '../analysis/scopeAnalysis';
 import { stripStringLiterals } from '../analysis/textUtils';
 
 const FUNC_DECL_RE = /^\s*(function|sub)\s+(\w+)\s*\(/i;
-const ANON_FUNC_RE = /\b(function|sub)\s*\(/i;
 const RETURN_TYPE_RE = /\)\s+as\s+\w+/i;
 
 export function checkMissingTypeAnnotations(ctx: RuleContext): LintDiagnostic[] {
@@ -30,7 +29,7 @@ export function checkMissingTypeAnnotations(ctx: RuleContext): LintDiagnostic[] 
     // Check return type (only for `function`, not `sub`)
     if (!returnTypeOff && keyword === 'function') {
       // Find the closing paren for the param list, then check for `as Type` after it
-      const afterDecl = getAfterParamList(stripped, i, lines);
+      const afterDecl = getAfterParamList(stripped);
       if (afterDecl !== null && !RETURN_TYPE_RE.test(')' + afterDecl)) {
         diagnostics.push({
           severity: (config['type/missing-return-type'] ?? 'warning') as LintSeverity,
@@ -110,7 +109,7 @@ function paramHasType(param: string): boolean {
  * Gets the text after the closing `)` of the parameter list on a declaration line.
  * Returns null if the param list spans multiple lines (in which case we skip return-type check).
  */
-function getAfterParamList(line: string, _lineIdx: number, _lines: string[]): string | null {
+function getAfterParamList(line: string): string | null {
   const funcMatch = /\b(?:function|sub)\b\s*(?:\w+\s*)?\(/i.exec(line);
   if (!funcMatch) return null;
 
