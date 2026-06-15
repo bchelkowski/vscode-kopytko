@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, checkUnusedParameters } from '../../src/rules/identifierRules';
+import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, checkUnusedParameters, checkUnusedVariables } from '../../src/rules/identifierRules';
 import { createRuleContext } from '../helpers';
 import { DEFAULT_RULE_CONFIG } from '../../src/config';
 
@@ -567,6 +567,1017 @@ describe('identifierRules', () => {
 
       const diags = checkUndefinedCalls(ctx);
       expect(diags.filter(d => d.code === 'identifier/undefined-function')).to.be.empty;
+    });
+  });
+
+  describe('checkUnusedVariables', () => {
+    it('reports an unused variable', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].severity).to.equal('warning');
+      expect(unused[0].message).to.include("'x'");
+      expect(unused[0].message).to.include('never used');
+    });
+
+    it('does not report a variable used in a return statement', () => {
+      const content = [
+        'function doWork()',
+        '  result = getValue()',
+        '  return result',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used in a print statement', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  print x',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used as a function call argument', () => {
+      const content = [
+        'function doWork()',
+        '  data = getData()',
+        '  process(data)',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['getdata', 'process']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used in an if condition', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  if x = 1 then print "one"',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used in a while condition', () => {
+      const content = [
+        'function doWork()',
+        '  done = false',
+        '  while done = false',
+        '    done = true',
+        '  end while',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable prefixed with _', () => {
+      const content = [
+        'function doWork()',
+        '  _unused = 5',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report when the rule is turned off', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        'end function',
+      ].join('\n');
+
+      const config = { ...DEFAULT_RULE_CONFIG, 'identifier/unused-variable': 'off' as const };
+      const ctx = createRuleContext(content, { config });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags).to.be.empty;
+    });
+
+    it('does not report function parameters (handled by unused-parameter)', () => {
+      const content = [
+        'function doWork(param)',
+        '  print "hello"',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('reports an unused for-loop counter', () => {
+      const content = [
+        'function doWork()',
+        '  for i = 0 to 10',
+        '    print "hello"',
+        '  end for',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'i'");
+    });
+
+    it('does not report a used for-loop counter', () => {
+      const content = [
+        'function doWork(items)',
+        '  for i = 0 to 10',
+        '    print items[i]',
+        '  end for',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('reports an unused for-each variable', () => {
+      const content = [
+        'function doWork(collection)',
+        '  count = 0',
+        '  for each item in collection',
+        '    count += 1',
+        '  end for',
+        '  return count',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'item'");
+    });
+
+    it('does not report a used for-each variable', () => {
+      const content = [
+        'function doWork(collection)',
+        '  for each item in collection',
+        '    print item',
+        '  end for',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('reports an unused dim variable', () => {
+      const content = [
+        'function doWork()',
+        '  dim buffer(1024)',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'buffer'");
+    });
+
+    it('reports an unused catch variable', () => {
+      const content = [
+        'function doWork()',
+        '  try',
+        '    doSomething()',
+        '  catch e',
+        '    print "error"',
+        '  end try',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['dosomething']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'e'");
+    });
+
+    it('does not report a used catch variable', () => {
+      const content = [
+        'function doWork()',
+        '  try',
+        '    doSomething()',
+        '  catch e',
+        '    print e.message',
+        '  end try',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['dosomething']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used via compound assignment', () => {
+      const content = [
+        'function doWork()',
+        '  count = 0',
+        '  count += 1',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used via array indexing', () => {
+      const content = [
+        'function doWork()',
+        '  arr = []',
+        '  arr[0] = 5',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report m.field assignments as unused local variables', () => {
+      const content = [
+        'function doWork()',
+        '  m.value = 5',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('reports multiple unused variables in the same function', () => {
+      const content = [
+        'function doWork()',
+        '  a = 1',
+        '  b = 2',
+        '  c = 3',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(3);
+    });
+
+    it('reports only unused variables, not used ones', () => {
+      const content = [
+        'function doWork()',
+        '  used = 1',
+        '  unused = 2',
+        '  return used',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'unused'");
+    });
+
+    it('does not report a variable used in the RHS of its own reassignment', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  x = x + 1',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('reports a variable that is only reassigned without reading', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  x = 10',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'x'");
+    });
+
+    it('does not report a variable used on the RHS of another assignment', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  y = x + 1',
+        '  return y',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used in m.field assignment RHS', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  m.value = x',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not flag variables inside nested scopes as used by the outer scope', () => {
+      const content = [
+        'function outer()',
+        '  x = 5',
+        '  callback = sub()',
+        '    y = x',
+        '    print y',
+        '  end sub',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      // x is defined in outer but referenced only inside inner scope (which is skipped)
+      // callback is also unused in outer scope
+      const names = unused.map(d => d.message);
+      expect(names.some(m => m.includes("'x'"))).to.be.true;
+    });
+
+    it('emits a delete-line fix', () => {
+      const content = [
+        'function doWork()',
+        '  result = getValue()',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['getvalue']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      const d = diags.find(d => d.code === 'identifier/unused-variable');
+      expect(d).to.exist;
+      expect(d!.fix).to.deep.include({ type: 'delete-line', line: 1 });
+    });
+
+    it('reports correct column for the variable name', () => {
+      const content = [
+        'function doWork()',
+        '  result = getValue()',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['getvalue']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      const d = diags.find(d => d.code === 'identifier/unused-variable');
+      expect(d).to.exist;
+      expect(d!.column).to.equal(2);
+      expect(d!.endColumn).to.equal(2 + 'result'.length);
+    });
+
+    it('does not report a variable only referenced inside a string literal', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  print "x is great"',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'x'");
+    });
+
+    it('does not report a variable only referenced in a comment', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        "  ' use x here later",
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+    });
+
+    it('handles case-insensitive variable matching', () => {
+      const content = [
+        'function doWork()',
+        '  MyVar = 5',
+        '  print myvar',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used in a for-loop bound expression', () => {
+      const content = [
+        'function doWork()',
+        '  max = 10',
+        '  for i = 0 to max',
+        '    print i',
+        '  end for',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not report a variable used with dot-access (method call)', () => {
+      const content = [
+        'function doWork()',
+        '  obj = CreateObject("roAssociativeArray")',
+        '  obj.AddReplace("key", "value")',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('detects assignment after : statement separator', () => {
+      const content = [
+        'function doWork()',
+        '  if true then : x = 5 : end if',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'x'");
+    });
+
+    it('detects usage after : statement separator', () => {
+      const content = [
+        'function doWork()',
+        '  x = 1 : print x',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('handles assignment and usage on same line via :', () => {
+      const content = [
+        'sub doWork()',
+        '  x = 1 : Rnd(x)',
+        'end sub',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not split : inside AA literal key-value pairs', () => {
+      const content = [
+        'function doWork()',
+        '  config = { key: "value" }',
+        '  return config',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('reports unused variable defined after : when not referenced elsewhere', () => {
+      const content = [
+        'function doWork()',
+        '  print "start" : unused = 42',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'unused'");
+    });
+
+    it('reports multiple unused variables across : separators', () => {
+      const content = [
+        'function doWork()',
+        '  a = 1 : b = 2 : c = 3',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(3);
+    });
+
+    it('reports only the unused variable when one of two is used across :', () => {
+      const content = [
+        'function doWork()',
+        '  used = 1 : unused = 2',
+        '  return used',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'unused'");
+    });
+
+    it('detects usage before : on same line as definition after :', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5',
+        '  print x : y = 10',
+        '  return y',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('handles compound assignment after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  x = 0 : x += 1',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('handles m.field after : separator — no false local definition', () => {
+      const content = [
+        'function doWork()',
+        '  print "init" : m.value = 42',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('detects usage in if-condition after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  x = 5 : if x = 1 then print "one"',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not split : inside nested AA literal', () => {
+      const content = [
+        'function doWork()',
+        '  data = { outer: { inner: 1 } }',
+        '  return data',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('does not split : inside parenthesized expressions', () => {
+      const content = [
+        'function doWork()',
+        '  result = someFunc({ key: "val" })',
+        '  return result',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['somefunc']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('handles variable used in return after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  x = getValue() : return x',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['getvalue']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('handles three statements with define, use, and unrelated via :', () => {
+      const content = [
+        'function doWork()',
+        '  x = 1 : print x : y = 2',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'y'");
+    });
+
+    it('handles array access after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  arr = [] : arr[0] = 5',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('AA assignment then usage via : on same line', () => {
+      const content = [
+        'function doWork()',
+        '  config = { key: "value", num: 1 } : return config',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('AA assignment then unused via : on same line', () => {
+      const content = [
+        'function doWork()',
+        '  config = { key: "value" } : print "done"',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'config'");
+    });
+
+    it('nested AA with : not split, then used via : on next statement', () => {
+      const content = [
+        'function doWork()',
+        '  data = { outer: { inner: 42 } } : m.config = data',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('AA inside function call arg with : after closing paren', () => {
+      const content = [
+        'function doWork()',
+        '  result = process({ a: 1, b: 2 }) : return result',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['process']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('for each loop body via : separators', () => {
+      const content = [
+        'function doWork(items)',
+        '  total = 0',
+        '  for each item in items : total += item : end for',
+        '  return total',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('variable assigned from array literal then used after :', () => {
+      const content = [
+        'function doWork()',
+        '  items = [1, 2, 3] : print items[0]',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('dot-access method call after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  obj = CreateObject("roAssociativeArray") : obj.AddReplace("k", "v")',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('catch variable used after : in catch block', () => {
+      const content = [
+        'function doWork()',
+        '  try',
+        '    doSomething()',
+        '  catch e : print e.message',
+        '  end try',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['dosomething']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('dim then usage after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  dim buf(10) : buf[0] = 42',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('variable used in while condition after : separator', () => {
+      const content = [
+        'function doWork()',
+        '  done = false : while done = false : done = true : end while',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('inline sub body via : does not leak inner variables to outer scope', () => {
+      const content = [
+        'function outer()',
+        '  callback = sub() : inner = 5 : print inner : end sub',
+        '  return callback',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      // inner is local to the sub — should NOT be flagged in outer scope
+      const names = diags.filter(d => d.code === 'identifier/unused-variable').map(d => d.message);
+      expect(names.some(m => m.includes("'inner'"))).to.be.false;
+    });
+
+    it('inline sub assigned to variable tracks the variable correctly', () => {
+      const content = [
+        'function outer()',
+        '  callback = sub() : print "hi" : end sub',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      // callback is unused in outer scope
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'callback'");
+    });
+
+    it('inline function with parameters and default values', () => {
+      const content = [
+        'function outer()',
+        '  handler = function(name = "default" as String) : print name : end function',
+        '  return handler',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('inline function with default value from function call', () => {
+      const content = [
+        'function outer()',
+        '  handler = function(aa = SomeClass().field as String) : ?aa : end function',
+        '  return handler',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['someclass']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('complex inline function with AA and : separators', () => {
+      const content = [
+        'function outer()',
+        '  handler = function(aa = SomeClass().field as String) : ?aa : a = { key: "aa" } : ?a : end function',
+        '  return handler',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['someclass']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      // handler is used (returned), inner vars aa and a should not leak
+      const names = diags.filter(d => d.code === 'identifier/unused-variable').map(d => d.message);
+      expect(names.some(m => m.includes("'a'"))).to.be.false;
+      expect(names.some(m => m.includes("'aa'"))).to.be.false;
+      expect(names.some(m => m.includes("'handler'"))).to.be.false;
+    });
+
+    it('outer variable used in inline function default param value', () => {
+      const content = [
+        'function outer()',
+        '  defaultVal = "hello"',
+        '  handler = function(name = defaultVal as String) : print name : end function',
+        '  return handler',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      // defaultVal appears in the function(...) declaration statement which is outer scope
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('code after inline end sub is still in outer scope', () => {
+      const content = [
+        'function outer()',
+        '  cb = sub() : end sub : x = 5',
+        '  return x',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      // x is defined after end sub (back in outer scope) and used in return
+      // cb is unused
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'cb'");
+    });
+
+    it('nested inline functions do not leak across depth levels', () => {
+      const content = [
+        'function outer()',
+        '  factory = function() : inner = sub() : deep = 1 : end sub : return inner : end function',
+        '  return factory',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const names = diags.filter(d => d.code === 'identifier/unused-variable').map(d => d.message);
+      // None of inner, deep should leak to outer
+      expect(names.some(m => m.includes("'inner'"))).to.be.false;
+      expect(names.some(m => m.includes("'deep'"))).to.be.false;
+    });
+
+    it('inline sub with multiple params including typed defaults', () => {
+      const content = [
+        'function outer()',
+        '  cb = sub(a as Integer, b = 0 as Integer, c = "x" as String) : print a : print b : print c : end sub',
+        '  cb(1, 2, "y")',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      // cb is used (called), inner params should not leak
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('inline function with return type does not leak inner vars', () => {
+      const content = [
+        'function outer()',
+        '  getter = function(id as String) as Object : result = { id: id } : return result : end function',
+        '  return getter',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const names = diags.filter(d => d.code === 'identifier/unused-variable').map(d => d.message);
+      expect(names.some(m => m.includes("'result'"))).to.be.false;
+      expect(names.some(m => m.includes("'getter'"))).to.be.false;
+    });
+
+    it('inline function with typed params and return type — complex default from function call', () => {
+      const content = [
+        'function outer()',
+        '  handler = function(aa = GetDefault().value as String) as Boolean : ?aa : return true : end function',
+        '  return handler',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content, {
+        lintContextOverrides: { knownFuncNames: new Set(['getdefault']) },
+      });
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
+
+    it('inline sub returning void with typed params', () => {
+      const content = [
+        'function outer()',
+        '  logger = sub(msg as String) as Void : print msg : end sub',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      const unused = diags.filter(d => d.code === 'identifier/unused-variable');
+      // logger is unused, but msg should not leak
+      expect(unused).to.have.lengthOf(1);
+      expect(unused[0].message).to.include("'logger'");
     });
   });
 });

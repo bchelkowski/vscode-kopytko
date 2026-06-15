@@ -334,3 +334,257 @@ export function checkUnusedParameters(ctx: RuleContext): LintDiagnostic[] {
 
   return diagnostics;
 }
+
+// --- Unused variable detection ---
+
+interface UnusedVarDef {
+  name: string;
+  nameLower: string;
+  line: number;
+  column: number;
+}
+
+function buildNestedRanges(scopes: FunctionScope[], currentScope: FunctionScope): [number, number][] {
+  const ranges: [number, number][] = [];
+  for (const s of scopes) {
+    if (s === currentScope) continue;
+    if (s.startLine > currentScope.startLine && s.endLine <= currentScope.endLine) {
+      ranges.push([s.startLine, s.endLine]);
+    }
+  }
+  return ranges;
+}
+
+function isInNestedRange(line: number, ranges: [number, number][]): boolean {
+  return ranges.some(([start, end]) => line > start && line <= end);
+}
+
+/**
+ * Splits a stripped line on `:` statement separators, respecting braces,
+ * parentheses, and brackets (so `{ key: value }` is not split).
+ * Returns each sub-statement with its column offset in the original line.
+ */
+function splitStatements(stripped: string): { text: string; offset: number }[] {
+  const statements: { text: string; offset: number }[] = [];
+  let start = 0;
+  let braceDepth = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+
+  for (let i = 0; i < stripped.length; i++) {
+    const ch = stripped[i];
+    if (ch === '{') braceDepth++;
+    else if (ch === '}') braceDepth--;
+    else if (ch === '(') parenDepth++;
+    else if (ch === ')') parenDepth--;
+    else if (ch === '[') bracketDepth++;
+    else if (ch === ']') bracketDepth--;
+    else if (ch === ':' && braceDepth === 0 && parenDepth === 0 && bracketDepth === 0) {
+      const segment = stripped.slice(start, i);
+      if (segment.trim()) statements.push({ text: segment, offset: start });
+      start = i + 1;
+    }
+  }
+  const last = stripped.slice(start);
+  if (last.trim()) statements.push({ text: last, offset: start });
+
+  return statements;
+}
+
+function collectScopeVarDefs(
+  lines: string[],
+  scope: FunctionScope,
+  nestedRanges: [number, number][],
+): UnusedVarDef[] {
+  const defs: UnusedVarDef[] = [];
+  const seen = new Set<string>();
+
+  const ASSIGN_RE = /^\s*([a-zA-Z_]\w*)[&%!#$]?\s*(?:\+|-|\*|\/|\\|<<|>>)?=/;
+  const FOR_RE = /^\s*for\s+(?:each\s+)?([a-zA-Z_]\w*)\b/i;
+  const DIM_RE = /^\s*dim\s+([a-zA-Z_]\w*)\s*\(/i;
+  const CATCH_RE = /^\s*catch\s+([a-zA-Z_]\w*)/i;
+
+  for (let i = scope.startLine + 1; i < scope.endLine; i++) {
+    if (isInNestedRange(i, nestedRanges)) continue;
+
+    const raw = lines[i];
+    if (!raw) continue;
+    if (/^\s*'/.test(raw) || /^\s*rem\b/i.test(raw)) continue;
+
+    const stripped = stripStringLiterals(raw, true);
+    const stmts = splitStatements(stripped);
+    let inlineDepth = 0;
+
+    for (const { text: stmt, offset } of stmts) {
+      // Skip statements inside inline nested function/sub bodies
+      if (inlineDepth > 0) {
+        if (/^\s*(?:end\s*(?:function|sub)|endfunction|endsub)\b/i.test(stmt)) inlineDepth--;
+        continue;
+      }
+
+      // Local variable assignment (skip m.field assignments)
+      if (!/^\s*m\./i.test(stmt)) {
+        const assignMatch = ASSIGN_RE.exec(stmt);
+        if (assignMatch) {
+          const name = assignMatch[1];
+          const nameLower = name.toLowerCase();
+          if (!keywordNames.has(nameLower) && !scope.params.has(nameLower)
+              && !_alwaysValidVarIdents.has(nameLower) && !seen.has(nameLower)) {
+            seen.add(nameLower);
+            const col = offset + assignMatch.index + assignMatch[0].lastIndexOf(name);
+            defs.push({ name, nameLower, line: i, column: col });
+          }
+        }
+      }
+
+      const forMatch = FOR_RE.exec(stmt);
+      if (forMatch) {
+        const name = forMatch[1];
+        const nameLower = name.toLowerCase();
+        if (!scope.params.has(nameLower) && !_alwaysValidVarIdents.has(nameLower) && !seen.has(nameLower)) {
+          seen.add(nameLower);
+          const col = offset + forMatch.index + forMatch[0].lastIndexOf(name);
+          defs.push({ name, nameLower, line: i, column: col });
+        }
+      }
+
+      const dimMatch = DIM_RE.exec(stmt);
+      if (dimMatch) {
+        const name = dimMatch[1];
+        const nameLower = name.toLowerCase();
+        if (!scope.params.has(nameLower) && !_alwaysValidVarIdents.has(nameLower) && !seen.has(nameLower)) {
+          seen.add(nameLower);
+          const col = offset + dimMatch.index + dimMatch[0].lastIndexOf(name);
+          defs.push({ name, nameLower, line: i, column: col });
+        }
+      }
+
+      const catchMatch = CATCH_RE.exec(stmt);
+      if (catchMatch) {
+        const name = catchMatch[1];
+        const nameLower = name.toLowerCase();
+        if (!scope.params.has(nameLower) && !_alwaysValidVarIdents.has(nameLower) && !seen.has(nameLower)) {
+          seen.add(nameLower);
+          const col = offset + catchMatch.index + catchMatch[0].lastIndexOf(name);
+          defs.push({ name, nameLower, line: i, column: col });
+        }
+      }
+
+      // After processing, check if this statement opens an inline nested scope
+      if (/\b(?:function|sub)\s*\(/i.test(stmt)) inlineDepth++;
+    }
+  }
+
+  return defs;
+}
+
+function isVarUsedInScope(
+  varNameLower: string,
+  lines: string[],
+  scope: FunctionScope,
+  nestedRanges: [number, number][],
+): boolean {
+  const escaped = escapeRegex(varNameLower);
+  const varRe = new RegExp(`(?<![.\\w@])${escaped}\\b`, 'i');
+  const compoundAssignRe = new RegExp(`^\\s*${escaped}[&%!#$]?\\s*(?:\\+|-|\\*|\\/|\\\\|<<|>>)=`, 'i');
+  const arrayAccessRe = new RegExp(`^\\s*${escaped}[&%!#$]?\\s*\\[`, 'i');
+  const simpleAssignRe = new RegExp(`^\\s*${escaped}[&%!#$]?\\s*=`, 'i');
+  const assignCaptureRe = new RegExp(`^\\s*${escaped}[&%!#$]?\\s*=(.*)`, 'is');
+  const forDefRe = new RegExp(`^\\s*for\\s+${escaped}\\s*=`, 'i');
+  const forEachDefRe = new RegExp(`^\\s*for\\s+each\\s+${escaped}\\s+in\\b`, 'i');
+  const dimDefRe = new RegExp(`^\\s*dim\\s+${escaped}\\s*\\(`, 'i');
+  const catchDefRe = new RegExp(`^\\s*catch\\s+${escaped}\\b`, 'i');
+
+  for (let i = scope.startLine + 1; i < scope.endLine; i++) {
+    if (isInNestedRange(i, nestedRanges)) continue;
+
+    const raw = lines[i];
+    if (!raw) continue;
+    if (/^\s*'/.test(raw) || /^\s*rem\b/i.test(raw)) continue;
+
+    const stripped = stripStringLiterals(raw, true);
+    if (!varRe.test(stripped)) continue;
+
+    const stmts = splitStatements(stripped);
+    let inlineDepth = 0;
+
+    for (const { text: stmt } of stmts) {
+      // Skip statements inside inline nested function/sub bodies
+      if (inlineDepth > 0) {
+        if (/^\s*(?:end\s*(?:function|sub)|endfunction|endsub)\b/i.test(stmt)) inlineDepth--;
+        continue;
+      }
+
+      if (!varRe.test(stmt)) {
+        // Even if var not here, check for inline scope start
+        if (/\b(?:function|sub)\s*\(/i.test(stmt)) inlineDepth++;
+        continue;
+      }
+
+      // Compound assignment (x += ...) — variable is implicitly read
+      if (compoundAssignRe.test(stmt)) return true;
+
+      // Array-indexed access (x[i] = ... or x[i]) — variable is accessed
+      if (arrayAccessRe.test(stmt)) return true;
+
+      // Simple assignment (x = ...) — only a use if the variable also appears in the RHS
+      if (simpleAssignRe.test(stmt)) {
+        const fullMatch = assignCaptureRe.exec(stmt);
+        if (fullMatch) {
+          const rhs = fullMatch[1];
+          if (varRe.test(rhs)) return true;
+        }
+        // After processing, check if RHS opens an inline nested scope
+        if (/\b(?:function|sub)\s*\(/i.test(stmt)) inlineDepth++;
+        continue;
+      }
+
+      // For / for each / dim / catch definitions — not a use
+      if (forDefRe.test(stmt)) continue;
+      if (forEachDefRe.test(stmt)) continue;
+      if (dimDefRe.test(stmt)) continue;
+      if (catchDefRe.test(stmt)) continue;
+
+      // Variable appears in any other context (if condition, return, print,
+      // passed as argument in a call, etc.) — used
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function checkUnusedVariables(ctx: RuleContext): LintDiagnostic[] {
+  const { lines, filePath, config } = ctx;
+  if (config['identifier/unused-variable'] === 'off') return [];
+
+  const scopes = buildFunctionScopes(lines);
+  if (scopes.length === 0) return [];
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const scope of scopes) {
+    const nestedRanges = buildNestedRanges(scopes, scope);
+    const varDefs = collectScopeVarDefs(lines, scope, nestedRanges);
+
+    for (const vd of varDefs) {
+      if (vd.name.startsWith('_')) continue;
+
+      if (!isVarUsedInScope(vd.nameLower, lines, scope, nestedRanges)) {
+        diagnostics.push({
+          severity: config['identifier/unused-variable'] ?? 'warning',
+          code: 'identifier/unused-variable',
+          message: `Variable '${vd.name}' is defined but never used. Prefix with \`_\` to indicate it is intentionally unused.`,
+          line: vd.line,
+          column: vd.column,
+          endLine: vd.line,
+          endColumn: vd.column + vd.name.length,
+          filePath,
+          fix: { type: 'delete-line', line: vd.line, column: 0 },
+        });
+      }
+    }
+  }
+
+  return diagnostics;
+}

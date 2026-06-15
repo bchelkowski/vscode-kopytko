@@ -4,7 +4,7 @@ BrightScript linter for the [Kopytko ecosystem](https://github.com/bchelkowski/v
 
 ## Features
 
-- **21 diagnostic rules** covering imports, identifiers, syntax, test structure, and type annotations
+- **24 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, and callbacks
 - **Configurable severity** per rule (`error`, `warning`, `info`, `hint`, `off`)
 - **Three output formats**: text (terminal), JSON, [SARIF](https://sarifweb.azurewebsites.net/) (GitHub Code Scanning)
 - **Config file support**: `kopytko-linter.json` or `.vscode/settings.json`
@@ -167,6 +167,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `identifier/undefined-variable` | error | Variable used but never assigned in the enclosing scope |
 | `identifier/shadows-builtin` | error | Variable name shadows a BrightScript built-in function |
 | `identifier/unused-parameter` | warning | Function parameter never used in body (prefix `_` to suppress) |
+| `identifier/unused-variable` | warning | Local variable defined but never read (prefix `_` to suppress) |
 
 ### Syntax Rules
 

@@ -1,6 +1,6 @@
 import type { RuleDefinition } from '../types';
 import { checkImports } from './importRules';
-import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, checkUnusedParameters } from './identifierRules';
+import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, checkUnusedParameters, checkUnusedVariables } from './identifierRules';
 import { checkThrowStatements, checkCreateObjectArgs, checkTrailingCommaSyntaxErrors, checkLoopFlowControl } from './syntaxRules';
 import { checkTestFileStructure } from './testRules';
 import { checkMissingTypeAnnotations } from './typeAnnotationRules';
@@ -13,6 +13,7 @@ export const ALL_RULE_GROUPS: RuleDefinition[] = [
   { code: 'identifier/undefined-variable', defaultSeverity: 'error', fn: checkUndefinedVariables },
   { code: 'identifier/shadows-builtin', defaultSeverity: 'error', fn: checkShadowedBuiltins },
   { code: 'identifier/unused-parameter', defaultSeverity: 'hint', fn: checkUnusedParameters },
+  { code: 'identifier/unused-variable', defaultSeverity: 'warning', fn: checkUnusedVariables },
   { code: 'throw/*', defaultSeverity: 'warning', fn: checkThrowStatements },
   { code: 'createobject/unknown-component', defaultSeverity: 'warning', fn: checkCreateObjectArgs },
   { code: 'syntax/trailing-comma', defaultSeverity: 'error', fn: checkTrailingCommaSyntaxErrors },

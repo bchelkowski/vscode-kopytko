@@ -26,6 +26,7 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'identifier/undefined-variable': 'error',
   'identifier/shadows-builtin': 'error',
   'identifier/unused-parameter': 'warning',
+  'identifier/unused-variable': 'warning',
   'throw/invalid-value': 'warning',
   'throw/missing-message': 'warning',
   'createobject/unknown-component': 'warning',
