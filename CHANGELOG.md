@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.0.7] - 2026-06-15
+
+### Added
+- Add unused-variable code action and update docs
+- Add unused-variable code action and update docs
+
 ## [1.0.6] - 2026-06-14
 
 ### Added
