@@ -103,9 +103,9 @@ export function findBuiltin(name: string): BrightScriptBuiltin | undefined {
 }
 
 export const BRIGHTSCRIPT_KEYWORDS = [
-  'and', 'as', 'boolean', 'catch', 'dim', 'double',
+  'and', 'as', 'boolean', 'catch', 'continue', 'dim', 'double',
   'dynamic', 'each', 'else', 'elseif', 'end', 'endif', 'endsub', 'endfor',
-  'endfunction', 'endtry', 'endwhile', 'exit', 'exitwhile', 'exitfor', 'false',
+  'endfunction', 'endtry', 'endwhile', 'exit', 'false',
   'float', 'for', 'function', 'goto', 'if', 'in', 'integer', 'invalid', 'let',
   'interface', 'line_num', 'longinteger', 'mod', 'next', 'not', 'object', 'or', 'print',
   'rem', 'return', 'step', 'stop', 'string', 'sub', 'tab', 'then', 'throw',

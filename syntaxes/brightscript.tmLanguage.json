@@ -97,7 +97,7 @@
     },
     "keyword": {
       "name": "keyword.control.brightscript",
-      "match": "(?i)\\b(and|as|catch|dim|each|else|elseif|end|endif|endfor|endsub|endfunction|endtry|endwhile|eval|exit|exitwhile|exitfor|for|function|goto|if|in|let|mod|next|not|or|print|rem|return|run|step|stop|sub|tab|then|throw|to|try|type|while)\\b"
+      "match": "(?i)\\b(and|as|catch|continue|dim|each|else|elseif|end|endif|endfor|endsub|endfunction|endtry|endwhile|eval|exit|for|function|goto|if|in|let|mod|next|not|or|print|rem|return|run|step|stop|sub|tab|then|throw|to|try|type|while)\\b"
     },
     "as-type": {
       "match": "(?i)\\b(as)\\s+(boolean|double|dynamic|float|function|integer|interface|longinteger|object|string|void)\\b",
