@@ -52,7 +52,7 @@ This document is the canonical list of extension features. Each feature links to
 | Undefined function calls (`identifier/undefined-function`) — suppressed for the entire `main.brs` file and inside Roku entry-point functions | ✅ Implemented | [language-server.md](./language-server.md) |
 | Undefined variables (`identifier/undefined-variable`) with per-function scope isolation — outer variables are not visible inside inner anonymous functions (no closures) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Unused function parameters with `_` prefix quick-fix (`identifier/unused-parameter`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Unused local variables with line-removal quick-fix (`identifier/unused-variable`) | ✅ Implemented | [language-server.md](./language-server.md) |
+| Unused local variables warning (`identifier/unused-variable`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Built-in function arity check (`identifier/wrong-arg-count`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | `CreateObject` unknown component (`createobject/unknown-component`) | ✅ Implemented | [language-server.md](./language-server.md) |
 | Loop flow control validation (`syntax/flow-outside-loop`) | ✅ Implemented | [language-server.md](./language-server.md) |

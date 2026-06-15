@@ -240,7 +240,7 @@ Note: in BrightScript, `=` serves as both assignment and comparison. The checker
 - BrightScript keywords.
 - Variables inside nested anonymous functions — BrightScript has no closures, so inner-scope references are isolated.
 
-A quick-fix code action is offered to remove the line containing the unused variable assignment.
+No quick-fix is offered — the user decides whether to remove the variable, prefix it with `_`, or restructure the code.
 
 #### CreateObject argument validation
 
@@ -314,7 +314,7 @@ Quick-fix light-bulb actions are offered on `@import` diagnostic lines. The serv
 | `identifier/undefined-function` | — (no action) |
 | `identifier/undefined-variable` | — (no action) |
 | `identifier/unused-parameter` | **Fix: prefix with _ to mark as unused** *(preferred)* |
-| `identifier/unused-variable` | **Remove unused variable** *(preferred)* |
+| `identifier/unused-variable` | — (no action) |
 | `syntax/flow-outside-loop` | — (no action) |
 | `syntax/trailing-comma` | — (no action) |
 | `throw/invalid-value` | — (no action) |

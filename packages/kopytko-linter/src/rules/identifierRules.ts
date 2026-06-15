@@ -581,7 +581,6 @@ export function checkUnusedVariables(ctx: RuleContext): LintDiagnostic[] {
           endLine: vd.line,
           endColumn: vd.column + vd.name.length,
           filePath,
-          fix: { type: 'delete-line', line: vd.line, column: 0 },
         });
       }
     }

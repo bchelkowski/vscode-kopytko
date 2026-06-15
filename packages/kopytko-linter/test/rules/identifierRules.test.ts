@@ -951,7 +951,7 @@ describe('identifierRules', () => {
       expect(names.some(m => m.includes("'x'"))).to.be.true;
     });
 
-    it('emits a delete-line fix', () => {
+    it('does not emit a fix', () => {
       const content = [
         'function doWork()',
         '  result = getValue()',
@@ -964,7 +964,7 @@ describe('identifierRules', () => {
       const diags = checkUnusedVariables(ctx);
       const d = diags.find(d => d.code === 'identifier/unused-variable');
       expect(d).to.exist;
-      expect(d!.fix).to.deep.include({ type: 'delete-line', line: 1 });
+      expect(d!.fix).to.be.undefined;
     });
 
     it('reports correct column for the variable name', () => {
