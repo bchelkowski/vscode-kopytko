@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.0.9] - 2026-06-16
+
+### Fixed
+- Combine unused-parameter fixes into a single code action
+- Stop false unused-variable warning for AA args after end function
+
 ## [1.0.8] - 2026-06-15
 
 ### Fixed
