@@ -1927,18 +1927,32 @@ function countInlineIndentChange(line: string): number {
 
 /**
  * Count the net anonymous function/sub openers on a line, subtracting
- * inline closers (end sub / end function). Returns 0 for lines starting
- * with function/sub (handled by isIndentLine) or comments.
+ * inline closers (end sub / end function). Only closers that appear AFTER
+ * the first opener are counted — closers before the first opener are regular
+ * block closers already handled by isDeindentLine.
+ * Returns 0 for lines starting with function/sub (handled by isIndentLine)
+ * or comments.
  */
 function countNetAnonFunctionOpeners(trimmed: string): number {
   if (/^(?:function|sub)\b/i.test(trimmed)) return 0;
   if (trimmed.startsWith("'") || /^rem\b/i.test(trimmed)) return 0;
 
   const stripped = trimmed.replace(/"(?:[^"]|"")*"/g, '""').replace(/'.*$/, '');
-  const openers = (stripped.match(/\b(?:function|sub)\b(?:\s+\w+)?\s*\(/gi) || []).length;
-  if (openers === 0) return 0;
-  const closers = (stripped.match(/\b(?:end\s+(?:function|sub)|endfunction|endsub)\b/gi) || []).length;
-  return Math.max(0, openers - closers);
+
+  const openerRe = /\b(?:function|sub)\b(?:\s+\w+)?\s*\(/gi;
+  let firstOpenerPos = -1;
+  let openerCount = 0;
+  let m;
+  while ((m = openerRe.exec(stripped)) !== null) {
+    if (firstOpenerPos < 0) firstOpenerPos = m.index;
+    openerCount++;
+  }
+  if (openerCount === 0) return 0;
+
+  // Only count closers after the first opener (inline closers for anonymous scopes).
+  const afterFirstOpener = stripped.slice(firstOpenerPos);
+  const closers = (afterFirstOpener.match(/\b(?:end\s+(?:function|sub)|endfunction|endsub)\b/gi) || []).length;
+  return Math.max(0, openerCount - closers);
 }
 
 function isAnonFunctionOpener(t: string): boolean {

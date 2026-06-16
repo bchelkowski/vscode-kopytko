@@ -922,6 +922,26 @@ describe('kopytko-formatter', () => {
       ].join('\n'));
     });
 
+    it('indents body of anonymous sub that follows end sub on the same line', () => {
+      expect(format([
+        'sub test()',
+        '  call(sub (a as Object)',
+        '    doFirst()',
+        '  end sub, sub (b as Object)',
+        '    doSecond()',
+        '  end sub)',
+        'end sub',
+      ], { indentSize: 2 })).to.equal([
+        'sub test()',
+        '  call(sub (a as Object)',
+        '    doFirst()',
+        '  end sub, sub (b as Object)',
+        '    doSecond()',
+        '  end sub)',
+        'end sub',
+      ].join('\n'));
+    });
+
     it('does not treat keyword-named AA keys as block openers/closers', () => {
       expect(format([
         'sub init()',
