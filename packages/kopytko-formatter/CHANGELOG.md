@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.8] - 2026-06-16
+
+### Fixed
+- Correct indentation for inline anonymous subs and AA keyword keys
+
 ## [1.0.7] - 2026-06-15
 
 - Release 1.0.7
