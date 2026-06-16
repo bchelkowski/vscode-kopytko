@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.9] - 2026-06-16
+
+### Fixed
+- Count only inline closers in anonymous function detection
+
 ## [1.0.8] - 2026-06-16
 
 ### Fixed
