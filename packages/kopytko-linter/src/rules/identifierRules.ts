@@ -361,7 +361,10 @@ function buildNestedRanges(scopes: FunctionScope[], currentScope: FunctionScope)
 }
 
 function isInNestedRange(line: number, ranges: [number, number][]): boolean {
-  return ranges.some(([start, end]) => line > start && line <= end);
+  // Use strict < so the end-function/end-sub line is processed by the outer
+  // scope — trailing code after `end function` (e.g. AA arguments) belongs
+  // to the enclosing scope and may reference its variables.
+  return ranges.some(([start, end]) => line > start && line < end);
 }
 
 /**

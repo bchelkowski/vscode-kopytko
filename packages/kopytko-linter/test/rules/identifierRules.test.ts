@@ -1627,5 +1627,20 @@ describe('identifierRules', () => {
       expect(unused).to.have.lengthOf(1);
       expect(unused[0].message).to.include("'logger'");
     });
+
+    it('does not report variable used in AA argument after end function on the same line', () => {
+      const content = [
+        'function getItems()',
+        '  label = "hello"',
+        '  return arrayMap(items, function (item as Object, ctx as Object)',
+        '    return ctx.label',
+        '  end function, { label: label })',
+        'end function',
+      ].join('\n');
+
+      const ctx = createRuleContext(content);
+      const diags = checkUnusedVariables(ctx);
+      expect(diags.filter(d => d.code === 'identifier/unused-variable')).to.be.empty;
+    });
   });
 });
