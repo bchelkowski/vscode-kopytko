@@ -1101,9 +1101,10 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
     const trailingOpens = netDepth + leadingClosers;
     if (trailingOpens !== 0) indentLevel = Math.max(0, indentLevel + trailingOpens);
 
-    // Anonymous function expressions: trailing comment after return type is allowed.
+    // Anonymous function expressions: count net openers accounting for inline closers
+    // (e.g. `sub () : end sub` is balanced and should not increase indent).
     if (/\b(?:function|sub)(?:\s+\w+)?\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(trimmed) && !/^(?:function|sub)\b/i.test(trimmed)) {
-      indentLevel++;
+      indentLevel += countNetAnonFunctionOpeners(trimmed);
     }
 
     return result;
@@ -1801,6 +1802,10 @@ function passParamAlignment(lines: string[], config: FormattingConfig): string[]
 function isIndentLine(trimmed: string): boolean {
   const lower = trimmed.toLowerCase();
 
+  // A single-word keyword followed by `:` is an associative-array key,
+  // not a block opener. E.g. `for: value` inside an AA.
+  if (/^\w+\s*:/.test(lower)) return false;
+
   if (/^(?:if|else\s*if|elseif)\b/i.test(lower)) {
     if (/\bthen\b/i.test(lower)) {
       const afterThen = lower.replace(/^.*?\bthen\b/i, '').trim();
@@ -1849,6 +1854,10 @@ function isIndentLine(trimmed: string): boolean {
 
 function isDeindentLine(trimmed: string): boolean {
   const lower = trimmed.toLowerCase();
+
+  // A single-word keyword followed by `:` is an associative-array key,
+  // not a block closer. E.g. `next: { ... }` inside an AA.
+  if (/^\w+\s*:/.test(lower)) return false;
 
   if (/^end\s*(function|sub|if|for|while|try)\b/i.test(lower)) return true;
   if (/^(?:endfunction|endsub|endif|endfor|endwhile|endtry)\b/i.test(lower)) return true;
@@ -1916,10 +1925,25 @@ function countInlineIndentChange(line: string): number {
   return change;
 }
 
+/**
+ * Count the net anonymous function/sub openers on a line, subtracting
+ * inline closers (end sub / end function). Returns 0 for lines starting
+ * with function/sub (handled by isIndentLine) or comments.
+ */
+function countNetAnonFunctionOpeners(trimmed: string): number {
+  if (/^(?:function|sub)\b/i.test(trimmed)) return 0;
+  if (trimmed.startsWith("'") || /^rem\b/i.test(trimmed)) return 0;
+
+  const stripped = trimmed.replace(/"(?:[^"]|"")*"/g, '""').replace(/'.*$/, '');
+  const openers = (stripped.match(/\b(?:function|sub)\b(?:\s+\w+)?\s*\(/gi) || []).length;
+  if (openers === 0) return 0;
+  const closers = (stripped.match(/\b(?:end\s+(?:function|sub)|endfunction|endsub)\b/gi) || []).length;
+  return Math.max(0, openers - closers);
+}
+
 function isAnonFunctionOpener(t: string): boolean {
-  return /\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(t)
-    && !/^(?:function|sub)\b/i.test(t)
-    && !t.startsWith("'");
+  if (!/\b(?:function|sub)\s*\(.*\)(?:\s+as\s+\w+)?\s*(?:'.*)?$/i.test(t)) return false;
+  return countNetAnonFunctionOpeners(t) > 0;
 }
 
 /** Net change in [], {} depth on a line, ignoring string literals and tick-comments. Does NOT track (). */

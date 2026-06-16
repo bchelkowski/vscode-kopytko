@@ -907,6 +907,52 @@ describe('kopytko-formatter', () => {
         'end function',
       ].join('\n'));
     });
+
+    it('does not indent when inline anonymous sub is closed on the same line via colon', () => {
+      expect(format([
+        '_constructor = function(self as Object) as Object',
+        'self._railsService = RailsService(self._onRailsFetched, sub (_error as Object, _self as Object) : end sub, self)',
+        'return self',
+        'end function',
+      ], { indentSize: 2 })).to.equal([
+        '_constructor = function(self as Object) as Object',
+        '  self._railsService = RailsService(self._onRailsFetched, sub (_error as Object, _self as Object) : end sub, self)',
+        '  return self',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('does not treat keyword-named AA keys as block openers/closers', () => {
+      expect(format([
+        'sub init()',
+        '  linearSchedule = {',
+        '    next: {',
+        '      description: expectedDesc,',
+        '      end: expectedEnd,',
+        '      title: expectedTitle,',
+        '    },',
+        '    now: {',
+        '      description: currentDesc,',
+        '      title: currentTitle,',
+        '    },',
+        '  }',
+        'end sub',
+      ], { indentSize: 2, trailingComma: 'always' })).to.equal([
+        'sub init()',
+        '  linearSchedule = {',
+        '    next: {',
+        '      description: expectedDesc,',
+        '      end: expectedEnd,',
+        '      title: expectedTitle,',
+        '    },',
+        '    now: {',
+        '      description: currentDesc,',
+        '      title: currentTitle,',
+        '    },',
+        '  }',
+        'end sub',
+      ].join('\n'));
+    });
   });
 
   // ── Conditional compilation indentation ──────────────────────────────────
