@@ -714,6 +714,23 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('end sub)');
     });
 
+    it('does not convert function to sub when end sub, sub (...) chains anonymous callbacks', () => {
+      const result = format([
+        'sub describe()',
+        '  it("test", function (_ts as Object)',
+        '    call().then(sub (data as Object)',
+        '      m.data = data',
+        '    end sub, sub (error as Object)',
+        '      m.error = error',
+        '    end sub)',
+        '    return expect(m.error).toEqual(error)',
+        '  end function)',
+        'end sub',
+      ], { indentSize: 2, functionVsSubForVoid: 'sub' });
+      expect(result).to.include('it("test", function (_ts as Object)');
+      expect(result).to.not.include('it("test", sub');
+    });
+
     it('does not split compound assignment operators', () => {
       const result = format(
         ['sub t()', '  url += "/" + effect', '  count -= 1', '  ratio *= 2', '  total /= 3', 'end sub'],

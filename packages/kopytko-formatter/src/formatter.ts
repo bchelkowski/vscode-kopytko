@@ -400,8 +400,10 @@ function hasReturnWithValue(lines: string[], startIdx: number, endIdx: number): 
   let depth = 0;
   for (let i = startIdx; i < endIdx; i++) {
     const trimmed = lines[i].trim().toLowerCase();
+    // Check closer FIRST — a line can start with `end sub` and still open a
+    // new anonymous function later (e.g. `end sub, sub (x as Object)`).
+    if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/.test(trimmed)) depth--;
     if (/^(?:function|sub)\b/.test(trimmed) || isAnonFunctionOpener(trimmed)) depth++;
-    else if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/.test(trimmed)) depth--;
 
     if (depth > 0) continue;
 
@@ -414,10 +416,13 @@ function findMatchingEnd(lines: string[], startIdx: number): number {
   let depth = 1;
   for (let i = startIdx + 1; i < lines.length; i++) {
     const lower = lines[i].trim().toLowerCase();
-    if (/^(?:function|sub)\b/i.test(lower) || isAnonFunctionOpener(lower)) depth++;
-    else if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/i.test(lower)) {
-      if (--depth === 0) return i;
+    // Check closer FIRST so `end sub, sub (...)` correctly decrements before
+    // the anonymous opener increments.
+    if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/i.test(lower)) {
+      depth--;
+      if (depth === 0) return i;
     }
+    if (/^(?:function|sub)\b/i.test(lower) || isAnonFunctionOpener(lower)) depth++;
   }
   return -1;
 }
