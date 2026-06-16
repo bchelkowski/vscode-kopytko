@@ -64,6 +64,22 @@ export class BrightScriptCodeActionProvider {
       actions.push(makeRemoveLineAction(document.uri, lineIndex, lines.length, lineText.length, diag));
     }
 
+    // When there are multiple unused-parameter fixes, add a combined action
+    // so all edits are applied simultaneously (avoiding column-shift issues).
+    const unusedParamDiags = params.context.diagnostics.filter(
+      (d) => d.source === 'kopytko' && d.code === 'identifier/unused-parameter',
+    );
+    if (unusedParamDiags.length > 1) {
+      const edits = unusedParamDiags.map((d) => TextEdit.insert(d.range.start, '_'));
+      actions.push({
+        title: `Fix: prefix all ${unusedParamDiags.length} unused parameters with _`,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: unusedParamDiags,
+        isPreferred: true,
+        edit: { changes: { [document.uri]: edits } },
+      });
+    }
+
     return actions;
   }
 }
