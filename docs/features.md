@@ -137,7 +137,8 @@ This document is the canonical list of extension features. Each feature links to
 | Secure password storage (OS keychain via SecretStorage) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Set/unset active device for debug/deploy | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Per-device environment selection from .kopytkorc | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Package upload via sidebar UI | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Package upload via sidebar UI (play icon, `Ctrl+Shift+F5` keybinding for active device) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
+| Start debug session from sidebar (debug-alt icon per device, equivalent to F5) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 | Context menu actions (copy IP, open web portal, set password) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Registry viewer (read device registry via ECP, all channels) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
 | Device info webview panel | ⬜ Planned | — |

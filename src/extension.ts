@@ -18,6 +18,7 @@ import {
 import { BrightScriptDebugAdapterFactory } from './client/debug/debugAdapterFactory';
 import { getAvailableEnvironments } from './client/roku/kopytkorc';
 import { upload } from './client/roku/rokuDeployer';
+import { RokuDevice } from './client/roku/types';
 
 let client: KopytkoLanguageClient | undefined;
 let deviceManager: DeviceManager | undefined;
@@ -297,8 +298,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── Upload to device ───────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.commands.registerCommand('kopytko.uploadToDevice', async (item: unknown) => {
-      if (!(item instanceof DeviceTreeItem)) return;
-      const { device } = item;
+      let device: RokuDevice;
+      if (item instanceof DeviceTreeItem) {
+        device = item.device;
+      } else {
+        const active = deviceManager?.getActiveDevice();
+        if (!active) {
+          vscode.window.showErrorMessage('No active device. Select a device first (right-click → Select Active Device).');
+          return;
+        }
+        device = active;
+      }
 
       const deviceKey = device.deviceId || device.serialNumber;
       const password = await credentials.getPassword(deviceKey);
@@ -342,6 +352,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           }
         },
       );
+    })
+  );
+
+  // ── Debug device ─────────────────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kopytko.debugDevice', async (item: unknown) => {
+      let device: RokuDevice;
+      if (item instanceof DeviceTreeItem) {
+        device = item.device;
+      } else {
+        const active = deviceManager?.getActiveDevice();
+        if (!active) {
+          vscode.window.showErrorMessage('No active device. Select a device first (right-click → Select Active Device).');
+          return;
+        }
+        device = active;
+      }
+
+      const deviceKey = device.deviceId || device.serialNumber;
+      const password = await credentials.getPassword(deviceKey);
+      if (!password) {
+        vscode.window.showErrorMessage(
+          `No password stored for ${device.friendlyName}. Set a password first (right-click → Set Password).`
+        );
+        return;
+      }
+
+      const availableEnvs = getAvailableEnvironments(workspaceRoot);
+      const env = deviceManager!.getEffectiveEnvironment(device.serialNumber, availableEnvs);
+      const folder = vscode.workspace.workspaceFolders?.[0];
+
+      await vscode.debug.startDebugging(folder, {
+        type: 'kopytko',
+        request: 'launch',
+        name: 'Debug on Roku',
+        host: device.ip,
+        password,
+        ...(env ? { env } : {}),
+      });
     })
   );
 

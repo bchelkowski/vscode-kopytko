@@ -964,8 +964,14 @@
       },
       {
         "command": "kopytko.uploadToDevice",
-        "title": "Upload to Device",
-        "icon": "$(cloud-upload)",
+        "title": "Start (Ctrl+Shift+F5)",
+        "icon": "$(run)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.debugDevice",
+        "title": "Start Debugging (F5)",
+        "icon": "$(debug-alt)",
         "category": "Kopytko"
       }
     ],
@@ -999,14 +1005,19 @@
           "group": "inline@2"
         },
         {
+          "command": "kopytko.debugDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "group": "inline@3"
+        },
+        {
           "command": "kopytko.addFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-favorite)/",
-          "group": "inline@3"
+          "group": "inline@4"
         },
         {
           "command": "kopytko.removeFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
-          "group": "inline@3"
+          "group": "inline@4"
         },
         {
           "command": "kopytko.selectDevice",
@@ -1024,14 +1035,19 @@
           "group": "device@2"
         },
         {
+          "command": "kopytko.debugDevice",
+          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "group": "device@3"
+        },
+        {
           "command": "kopytko.addFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice/ && viewItem =~ /^(?!.*-favorite)/",
-          "group": "device@3"
+          "group": "device@4"
         },
         {
           "command": "kopytko.removeFavorite",
           "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-favorite/",
-          "group": "device@3"
+          "group": "device@4"
         },
         {
           "command": "kopytko.setDevicePassword",
@@ -1069,7 +1085,15 @@
           "group": "environment@1"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "kopytko.uploadToDevice",
+        "key": "ctrl+shift+f5",
+        "mac": "ctrl+shift+f5",
+        "when": "!inDebugMode"
+      }
+    ]
   },
   "configurationDefaults": {
     "editor.tokenColorCustomizations": {
