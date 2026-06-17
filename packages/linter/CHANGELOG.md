@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.1.1] - 2026-06-17
+
+### Added
+- Add import/missing-promise-deps rule
+
+### Fixed
+- Fix import/unused false positives for function-as-value and split test suites
+
 ## [1.1.0] - 2026-06-17
 
 ### Added
