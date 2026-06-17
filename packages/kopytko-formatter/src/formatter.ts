@@ -1,28 +1,21 @@
-import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, getKeywordCategory } from './builtins';
-import { CasingConfig, DEFAULT_CASING_CONFIG, applyCasing, applyCasingWithOverrides, resolveKeywordCasing } from './casing';
+
+import { CasingConfig, DEFAULT_CASING_CONFIG } from 'brightscript-parser';
 import { FunctionDefinition } from './types';
 import { FormattingConfig } from './config';
-
-/** Canonical (catalog-cased) lookup tables, built once at module load. */
-const _builtinMap = new Map<string, string>(
-  BRIGHTSCRIPT_BUILTINS.map((b) => [b.name.toLowerCase(), b.name])
-);
-const _keywordSet = new Set(BRIGHTSCRIPT_KEYWORDS.map((k) => k.toLowerCase()));
-
-/** Mapping from compact end-keyword to spaced form. */
-const COMPACT_TO_SPACED: Record<string, string> = {
-  'endif': 'end if',
-  'endfunction': 'end function',
-  'endsub': 'end sub',
-  'endwhile': 'end while',
-  'endfor': 'end for',
-  'endtry': 'end try',
-};
+import { parse } from 'brightscript-parser';
+import {
+  applyEdits,
+  endKeywordStylePass,
+  casingPass,
+  commentNormalizationPass,
+  printStatementRemovalPass,
+  thenStylePass,
+  functionVsSubPass,
+  trailingWhitespacePass,
+} from './cst-passes/index';
+import type { CstPass } from './cst-passes/index';
 
 /** Reverse mapping: spaced form → compact. */
-const SPACED_TO_COMPACT: Record<string, string> = Object.fromEntries(
-  Object.entries(COMPACT_TO_SPACED).map(([k, v]) => [v, k])
-);
 
 /**
  * Formats BrightScript source code using an 11-pass engine.
@@ -52,85 +45,107 @@ export function formatText(
     if (!userFuncMap.has(fn.nameLower)) userFuncMap.set(fn.nameLower, fn.name);
   }
 
-  // Pass 1 — Import sorting
+  // Pass 1 — Import sorting (regex — complex multi-group sorting with trivia)
   lines = passImportSorting(lines, config);
 
-  // Pass 2 — Comment normalization
-  lines = passCommentNormalization(lines, config);
+  // Pass 2 — Comment normalization (CST)
+  lines = runCstOnLines(lines, lineEndStr,
+    commentNormalizationPass({ commentStyle: config.commentStyle, spaceAfterCommentMarker: config.spaceAfterCommentMarker }));
 
-  // Pass 3 — End keyword style + function vs sub
-  lines = passEndKeywordStyle(lines, config);
-  lines = passFunctionVsSub(lines, config);
+  // Pass 3 — End keyword style (CST) + function vs sub (CST)
+  if (config.endKeywordStyle !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, endKeywordStylePass(config.endKeywordStyle));
+  }
+  if (config.functionVsSubForVoid !== 'preserve' && config.functionVsSubForVoid !== 'allow-void') {
+    lines = runCstOnLines(lines, lineEndStr, functionVsSubPass(config.functionVsSubForVoid));
+  }
 
-  // Pass 4 — Then style + parenthesis if case + catch paren strip
-  lines = passThenStyle(lines, config);
+  // Pass 4 — Then style (CST) + parenthesis if case (regex) + catch paren strip (regex)
+  if (config.thenStyle !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, thenStylePass(config.thenStyle));
+  }
   lines = passParenthesisIfCase(lines, config);
   lines = passStripCatchParens(lines);
 
-  // Pass 4c — Else on new line
+  // Pass 4c — Else on new line (regex)
   lines = passElseOnNewLine(lines, config);
 
-  // Pass 5 — Print statement handling
-  lines = passPrintStatement(lines, config);
+  // Pass 5 — Print statement handling (CST)
+  if (config.printStatement === 'remove') {
+    lines = runCstOnLines(lines, lineEndStr, printStatementRemovalPass());
+  }
 
-  // Pass 5b — Line comment position
+  // Pass 5b — Line comment position (regex)
   lines = passLineCommentPosition(lines, config);
 
-  // Pass 6 — Spacing rules
+  // Pass 6 — Spacing rules (regex)
   lines = passSpacing(lines, config);
 
-  // Pass 6b — Wrap long strings
+  // Pass 6b — Wrap long strings (regex)
   lines = passWrapLongStrings(lines, config);
 
-  // Pass 6c — String concatenation style
+  // Pass 6c — String concatenation style (regex)
   lines = passStringConcatStyle(lines, config);
 
-  // Pass 7 — Casing
-  lines = passCasing(lines, casing, userFuncMap);
+  // Pass 7 — Casing (CST)
+  lines = runCstOnLines(lines, lineEndStr, casingPass(casing, userFuncMap));
 
-  // Pass 7b — Split array open bracket
+  // Pass 7b — Split array open bracket (regex)
   lines = passSplitArrayOpenBracket(lines, config);
 
-  // Pass 7c — Associative array single-line threshold
+  // Pass 7c — Associative array single-line threshold (regex)
   lines = passAAThreshold(lines, config);
 
-  // Pass 8 — Indentation
+  // Pass 8 — Indentation (regex)
   lines = passIndentation(lines, config);
 
-  // Pass 8b — Trailing commas
+  // Pass 8b — Trailing commas (regex)
   lines = passTrailingCommas(lines, config);
 
-  // Pass 8c — Align assignments
+  // Pass 8c — Align assignments (regex)
   lines = passAlignAssignments(lines, config);
 
-  // Pass 8d — Multi-line param alignment
+  // Pass 8d — Multi-line param alignment (regex)
   lines = passParamAlignment(lines, config);
 
-  // Pass 9 — Blank line rules
+  // Pass 9 — Blank line rules (regex)
   lines = passBlankLines(lines, config);
 
-  // Pass 9b — Empty lines between methods
+  // Pass 9b — Empty lines between methods (regex)
   lines = passEmptyLinesBetweenMethods(lines, config);
 
-  // Pass 10 — Trailing whitespace
-  lines = passTrimTrailing(lines, config);
+  // Pass 10 — Trailing whitespace (CST)
+  if (config.trimTrailingWhitespace) {
+    lines = runCstOnLines(lines, lineEndStr, trailingWhitespacePass());
+  }
 
-  // Pass 11 — Comment width
+  // Pass 11 — Comment width (regex)
   lines = passCommentWidth(lines, config);
 
-  // Pass 12 — observeField style
+  // Pass 12 — observeField style (regex)
   lines = passObserveFieldStyle(lines, config);
 
-  // Pass 13 — m prefix style
+  // Pass 13 — m prefix style (regex)
   lines = passMPrefixStyle(lines, config);
 
-  // Pass 14 — Field access consistency
+  // Pass 14 — Field access consistency (regex)
   lines = passFieldAccessConsistency(lines, config);
 
   // Assemble result
   let newText = lines.join(lineEndStr);
   if (config.insertFinalNewline && newText.length > 0 && !newText.endsWith(lineEndStr)) {
     newText += lineEndStr;
+  }
+
+  // ── Syntax safety verification ──────────────────────────────────────────
+  // Parse the formatted output to detect if formatting broke the syntax.
+  // If errors are found, return the original source unchanged.
+  if (config.verifySyntax !== false) {
+    const result = parse(newText);
+    if (result.diagnostics.length > 0) {
+      // Formatting introduced syntax errors — fall back to original source
+      return source;
+    }
   }
 
   return newText;
@@ -148,6 +163,25 @@ export function checkFormatting(
   userFunctions?: FunctionDefinition[],
 ): boolean {
   return formatText(source, config, casing, userFunctions) === source;
+}
+
+// ---------------------------------------------------------------------------
+// CST ↔ lines bridge
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs a CST pass on a string[] lines array.
+ * Joins lines → runs CST pass → splits back to lines.
+ * Falls back to original lines if the source has parse errors.
+ */
+function runCstOnLines(lines: string[], lineEnd: string, pass: CstPass): string[] {
+  const source = lines.join(lineEnd);
+  const parseResult = parse(source);
+  if (parseResult.diagnostics.length > 0) return lines; // can't CST-transform broken code
+  const edits = pass(parseResult.root, source);
+  if (edits.length === 0) return lines;
+  const result = applyEdits(source, edits);
+  return result.split(/\r?\n/);
 }
 
 // ---------------------------------------------------------------------------
@@ -264,212 +298,12 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
 }
 
 // ---------------------------------------------------------------------------
-// Pass 2 — Comment normalization
-// ---------------------------------------------------------------------------
-
-function passCommentNormalization(lines: string[], config: FormattingConfig): string[] {
-  if (config.commentStyle === 'preserve' && !config.spaceAfterCommentMarker) return lines;
-
-  return lines.map(line => {
-    const trimmed = line.trim();
-
-    if (/^\s*'\s*@(?:import|mock)\s+/.test(line)) return line;
-
-    const isTickComment = trimmed.startsWith("'");
-    const isRemComment = /^rem\b/i.test(trimmed);
-    if (!isTickComment && !isRemComment) return line;
-
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    let content = isTickComment ? trimmed.slice(1) : trimmed.slice(3);
-
-    let marker: string;
-    if (config.commentStyle === 'preserve') {
-      marker = isTickComment ? "'" : trimmed.slice(0, 3);
-    } else {
-      marker = config.commentStyle === "'" ? "'" : 'rem';
-    }
-
-    if (config.spaceAfterCommentMarker && content.length > 0 && !content.startsWith(' ')) {
-      content = ' ' + content;
-    }
-
-    return indent + marker + content;
-  });
-}
 
 // ---------------------------------------------------------------------------
-// Pass 3 — End keyword style
-// ---------------------------------------------------------------------------
-
-function passEndKeywordStyle(lines: string[], config: FormattingConfig): string[] {
-  if (config.endKeywordStyle === 'preserve') return lines;
-
-  return lines.map(line => {
-    const lower = line.trim().toLowerCase();
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-
-    if (config.endKeywordStyle === 'compact') {
-      const compact = SPACED_TO_COMPACT[lower];
-      if (compact) return indent + compact;
-    } else {
-      const spaced = COMPACT_TO_SPACED[lower];
-      if (spaced) return indent + spaced;
-    }
-    return line;
-  });
-}
 
 // ---------------------------------------------------------------------------
-// Pass 3b — function vs sub for void
-// ---------------------------------------------------------------------------
-
-function passFunctionVsSub(lines: string[], config: FormattingConfig): string[] {
-  if (config.functionVsSubForVoid === 'preserve') return lines;
-
-  const result = [...lines];
-  const namedDeclRegex = /^(\s*)(function|sub)\s+(\w+)\s*\((.*)\)(?:\s+as\s+(\w+))?\s*$/i;
-  const anonDeclRegex = /^(.*\b)(function|sub)(\s*\(.*\))(?:\s+as\s+(\w+))?\s*$/i;
-
-  for (let i = 0; i < result.length; i++) {
-    // Named declarations
-    const nm = namedDeclRegex.exec(result[i]);
-    if (nm) {
-      const [, indent, keyword, name, params, returnType] = nm;
-      const kw = keyword.toLowerCase();
-
-      const endIdx = findMatchingEnd(result, i);
-      if (endIdx < 0) continue;
-
-      const hasExplicitReturnType = returnType && returnType.toLowerCase() !== 'void';
-      const hasValueReturn = hasReturnWithValue(result, i + 1, endIdx);
-      const isVoid = !hasExplicitReturnType && !hasValueReturn;
-
-      if (config.functionVsSubForVoid === 'sub' && kw === 'function' && isVoid) {
-        result[i] = `${indent}sub ${name}(${params})`;
-        const ei = result[endIdx].match(/^(\s*)/)?.[1] ?? '';
-        const el = result[endIdx].trim().toLowerCase();
-        if (el === 'end function') result[endIdx] = ei + 'end sub';
-        else if (el === 'endfunction') result[endIdx] = ei + 'endsub';
-      } else if (config.functionVsSubForVoid === 'function' && kw === 'sub') {
-        result[i] = `${indent}function ${name}(${params}) as Void`;
-        const ei = result[endIdx].match(/^(\s*)/)?.[1] ?? '';
-        const el = result[endIdx].trim().toLowerCase();
-        if (el === 'end sub') result[endIdx] = ei + 'end function';
-        else if (el === 'endsub') result[endIdx] = ei + 'endfunction';
-      }
-      continue;
-    }
-
-    // Anonymous function declarations
-    const am = anonDeclRegex.exec(result[i]);
-    if (!am) continue;
-    if (/^\s*(?:function|sub)\b/i.test(result[i])) continue;
-
-    const [, prefix, keyword, paramsWithParens, returnType] = am;
-    const kw = keyword.toLowerCase();
-
-    const endIdx = findMatchingEnd(result, i);
-    if (endIdx < 0) continue;
-
-    const hasExplicitReturnType = returnType && returnType.toLowerCase() !== 'void';
-    const hasValueReturn = hasReturnWithValue(result, i + 1, endIdx);
-    const isVoid = !hasExplicitReturnType && !hasValueReturn;
-
-    if (config.functionVsSubForVoid === 'sub' && kw === 'function' && isVoid) {
-      result[i] = `${prefix}sub${paramsWithParens}`;
-      replaceEndKeyword(result, endIdx, 'function', 'sub');
-    } else if (config.functionVsSubForVoid === 'function' && kw === 'sub') {
-      result[i] = `${prefix}function${paramsWithParens} as Void`;
-      replaceEndKeyword(result, endIdx, 'sub', 'function');
-    }
-  }
-  return result;
-}
-
-function replaceEndKeyword(lines: string[], idx: number, from: string, to: string): void {
-  const spaced = new RegExp(`\\bend\\s+${from}\\b`, 'i');
-  const joined = new RegExp(`\\bend${from}\\b`, 'i');
-  if (spaced.test(lines[idx])) {
-    lines[idx] = lines[idx].replace(spaced, `end ${to}`);
-  } else {
-    lines[idx] = lines[idx].replace(joined, `end${to}`);
-  }
-}
-
-function hasReturnWithValue(lines: string[], startIdx: number, endIdx: number): boolean {
-  let depth = 0;
-  for (let i = startIdx; i < endIdx; i++) {
-    const trimmed = lines[i].trim().toLowerCase();
-    // Check closer FIRST — a line can start with `end sub` and still open a
-    // new anonymous function later (e.g. `end sub, sub (x as Object)`).
-    if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/.test(trimmed)) depth--;
-    if (/^(?:function|sub)\b/.test(trimmed) || isAnonFunctionOpener(trimmed)) depth++;
-
-    if (depth > 0) continue;
-
-    if (/^return(?:\s+\S|\{|\[|\()/i.test(trimmed)) return true;
-  }
-  return false;
-}
-
-function findMatchingEnd(lines: string[], startIdx: number): number {
-  let depth = 1;
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const lower = lines[i].trim().toLowerCase();
-    // Check closer FIRST so `end sub, sub (...)` correctly decrements before
-    // the anonymous opener increments.
-    if (/^(?:end\s*function|end\s*sub|endfunction|endsub)\b/i.test(lower)) {
-      depth--;
-      if (depth === 0) return i;
-    }
-    if (/^(?:function|sub)\b/i.test(lower) || isAnonFunctionOpener(lower)) depth++;
-  }
-  return -1;
-}
 
 // ---------------------------------------------------------------------------
-// Pass 4 — Then style
-// ---------------------------------------------------------------------------
-
-function passThenStyle(lines: string[], config: FormattingConfig): string[] {
-  if (config.thenStyle === 'preserve') return lines;
-
-  return lines.map(line => {
-    const trimmed = line.trim();
-    if (!/^(?:if|else\s*if|elseif)\b/i.test(trimmed)) return line;
-
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    const hasThen = /\bthen\b/i.test(trimmed);
-
-    let isSingleLine = false;
-    if (hasThen) {
-      const afterThen = trimmed.replace(/^.*?\bthen\b/i, '').trim();
-      isSingleLine = afterThen !== '' && !afterThen.startsWith("'") && !/^rem\b/i.test(afterThen);
-    }
-
-    const removeThen = (): string => {
-      const split = splitTrailingComment(trimmed);
-      const codeOnly = split.code.replace(/\s*\bthen\b\s*$/i, '').trimEnd();
-      return indent + codeOnly + (split.comment ? ' ' + split.comment : '');
-    };
-
-    switch (config.thenStyle) {
-      case 'always':
-        if (!hasThen) return indent + trimmed + ' then';
-        break;
-      case 'never':
-        if (hasThen && !isSingleLine) return removeThen();
-        break;
-      case 'multiline-only':
-        if (!hasThen) return indent + trimmed + ' then';
-        break;
-      case 'singleline-only':
-        if (hasThen && !isSingleLine) return removeThen();
-        break;
-    }
-    return line;
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Pass 4b — Strip catch parentheses (always — BrightScript does not allow them)
@@ -613,13 +447,6 @@ function passElseOnNewLine(lines: string[], config: FormattingConfig): string[] 
 }
 
 // ---------------------------------------------------------------------------
-// Pass 5 — Print statement handling
-// ---------------------------------------------------------------------------
-
-function passPrintStatement(lines: string[], config: FormattingConfig): string[] {
-  if (config.printStatement !== 'remove') return lines;
-  return lines.filter(line => !/^\s*(?:print|\?)\b/i.test(line));
-}
 
 // ---------------------------------------------------------------------------
 // Pass 5b — Line comment position
@@ -843,7 +670,7 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
     // ── AA comma spacing ─────────────────────────────────────────────────────
     if (ch === ',' && commaMode !== 'preserve' && braceDepth > 0 && parenDepth === 0 && squareDepth === 0) {
       const spaceBefore = commaMode === 'before' || commaMode === 'both';
-      const spaceAfter  = commaMode === 'after'  || commaMode === 'both';
+      const spaceAfter = commaMode === 'after' || commaMode === 'both';
       // Remove any existing spaces before the comma
       while (result.length > 0 && result[result.length - 1] === ' ') result = result.slice(0, -1);
       if (spaceBefore) result += ' ';
@@ -861,18 +688,6 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
 }
 
 // ---------------------------------------------------------------------------
-// Pass 7 — Casing
-// ---------------------------------------------------------------------------
-
-function passCasing(lines: string[], casing: CasingConfig, userFuncMap: Map<string, string>): string[] {
-  return lines.map(line => {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith("'") || /^rem\b/i.test(trimmed)) return line;
-
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    return indent + applyCasingToLine(trimmed, casing, userFuncMap);
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Pass 7b — Split array open bracket
@@ -1364,15 +1179,6 @@ function passEmptyLinesBetweenMethods(lines: string[], config: FormattingConfig)
   }
 
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Pass 10 — Trim trailing whitespace
-// ---------------------------------------------------------------------------
-
-function passTrimTrailing(lines: string[], config: FormattingConfig): string[] {
-  if (!config.trimTrailingWhitespace) return lines;
-  return lines.map(line => line.trimEnd());
 }
 
 // ---------------------------------------------------------------------------
@@ -2030,31 +1836,7 @@ function isReturnAloneInBlock(lines: string[], returnIdx: number): boolean {
 
   return true;
 }
-
-// ---------------------------------------------------------------------------
-// Casing helpers
-// ---------------------------------------------------------------------------
-
-function applyCasingToLine(line: string, casing: CasingConfig, userFuncMap: Map<string, string>): string {
-  const segments = splitCodeSegments(line);
-  let result = '';
-
-  for (const seg of segments) {
-    if (seg.isCode) {
-      result += transformCodeSegment(seg.text, casing, userFuncMap);
-    } else {
-      result += seg.text;
-    }
-  }
-
-  return result;
-}
-
-interface Segment {
-  text: string;
-  isCode: boolean;
-}
-
+interface Segment { text: string; isCode: boolean; }
 function splitCodeSegments(line: string): Segment[] {
   const segments: Segment[] = [];
   let current = '';
@@ -2091,59 +1873,4 @@ function splitCodeSegments(line: string): Segment[] {
   }
 
   return segments;
-}
-
-function transformCodeSegment(code: string, casing: CasingConfig, userFuncMap: Map<string, string>): string {
-  const exactMap = casing.exact ?? {};
-  const userFuncCasing = casing.userFunction ?? 'preserve';
-
-  return code.replace(/\b([a-zA-Z_]\w*)\b/g, (match, _group, offset) => {
-    const afterIdx = offset + match.length;
-    const restAfter = code.slice(afterIdx);
-    if (/^\s*:/.test(restAfter)) return match;
-
-    if (offset > 0 && code[offset - 1] === '.') return match;
-
-    const lower = match.toLowerCase();
-
-    const exact = Object.prototype.hasOwnProperty.call(exactMap, lower) ? exactMap[lower] : undefined;
-    if (exact !== undefined) return exact;
-
-    if (_keywordSet.has(lower)) {
-      let category = getKeywordCategory(lower);
-      if (lower === 'function' && offset >= 3) {
-        const before = code.slice(Math.max(0, offset - 10), offset);
-        if (/\bas\s+$/i.test(before)) {
-          category = 'type';
-        }
-      }
-      const effectiveCasing = resolveKeywordCasing(category, casing);
-      if (effectiveCasing !== 'preserve') {
-        return applyCasingWithOverrides(match, effectiveCasing, exactMap);
-      }
-      return match;
-    }
-
-    if (_builtinMap.has(lower)) {
-      // Only treat as a built-in function when it is actually being called.
-      // Identifiers that happen to share a name with a built-in (e.g. a
-      // parameter named `str`) should not be re-cased.
-      if (!/^\s*\(/.test(restAfter)) return match;
-      const canonical = _builtinMap.get(lower)!;
-      if (casing.builtin !== 'preserve') {
-        return applyCasingWithOverrides(canonical, casing.builtin, exactMap);
-      }
-      return canonical;
-    }
-
-    if (userFuncMap.has(lower)) {
-      const definitionName = userFuncMap.get(lower)!;
-      if (userFuncCasing !== 'preserve') {
-        return applyCasing(definitionName, userFuncCasing);
-      }
-      return definitionName;
-    }
-
-    return match;
-  });
 }

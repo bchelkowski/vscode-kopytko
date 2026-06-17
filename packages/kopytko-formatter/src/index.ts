@@ -12,6 +12,9 @@
 
 export { formatText, checkFormatting } from './formatter';
 export { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './config';
-export { CasingConfig, CasingOption, DEFAULT_CASING_CONFIG, applyCasing, applyCasingWithOverrides, resolveKeywordCasing } from './casing';
 export { FunctionDefinition } from './types';
-export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, BrightScriptBuiltin, KeywordCategory, findBuiltin, getKeywordCategory } from './builtins';
+
+// Re-export from brightscript-parser (canonical source)
+export { CasingConfig, CasingOption, DEFAULT_CASING_CONFIG, applyCasing, applyCasingWithOverrides, resolveKeywordCasing } from 'brightscript-parser';
+export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, getKeywordCategory } from 'brightscript-parser';
+export type { BrightScriptBuiltin, KeywordCategory } from 'brightscript-parser';
