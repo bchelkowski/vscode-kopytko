@@ -21,6 +21,7 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'import/build-generated': 'info',
   'import/unresolved': 'error',
   'import/unused': 'warning',
+  'import/missing-promise-deps': 'warning',
   'identifier/undefined-function': 'error',
   'identifier/wrong-arg-count': 'error',
   'identifier/undefined-variable': 'error',

@@ -157,6 +157,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `import/build-generated` | info | Unresolved path matches a configured generated-path pattern |
 | `import/unresolved` | error | Cannot resolve import to a file on disk |
 | `import/unused` | warning | Imported file's functions are never referenced |
+| `import/missing-promise-deps` | warning | `.resolvedValue()` / `.rejectedValue()` used in a test file without importing `PromiseResolve.brs` / `PromiseReject.brs` from `@dazn/kopytko-utils` |
 
 ### Identifier Rules
 

@@ -1135,5 +1135,46 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
     }
   }
 
+  // import/missing-promise-deps: warn when .resolvedValue()/.rejectedValue() used without the required import
+  if (config['import/missing-promise-deps'] !== 'off' && lintContext.isTestFile(filePath)) {
+    // Collect imports from current file and siblings (split suites share imports at runtime)
+    const allImports = [...imports];
+    for (const sib of [...lintContext.getSiblingFiles(filePath), ...lintContext.getTestSiblings(filePath)]) {
+      const sibContent = lintContext.readFile(sib);
+      if (sibContent) allImports.push(...lintContext.parseImports(sibContent));
+    }
+
+    const hasPromiseResolveImport = allImports.some(
+      imp => !imp.isMock && imp.importPath.toLowerCase().endsWith('promiseresolve.brs'),
+    );
+    const hasPromiseRejectImport = allImports.some(
+      imp => !imp.isMock && imp.importPath.toLowerCase().endsWith('promisereject.brs'),
+    );
+
+    if (!hasPromiseResolveImport && currentContent.includes('.resolvedValue(')) {
+      const lineIndex = lines.findIndex(line => line.includes('.resolvedValue('));
+      if (lineIndex >= 0) {
+        diagnostics.push({
+          severity: (config['import/missing-promise-deps'] as LintSeverity) ?? 'warning',
+          code: 'import/missing-promise-deps',
+          message: "`.resolvedValue()` requires `' @import /components/promise/PromiseResolve.brs from @dazn/kopytko-utils`.",
+          line: lineIndex, column: 0, endLine: lineIndex, endColumn: Number.MAX_SAFE_INTEGER, filePath,
+        });
+      }
+    }
+
+    if (!hasPromiseRejectImport && currentContent.includes('.rejectedValue(')) {
+      const lineIndex = lines.findIndex(line => line.includes('.rejectedValue('));
+      if (lineIndex >= 0) {
+        diagnostics.push({
+          severity: (config['import/missing-promise-deps'] as LintSeverity) ?? 'warning',
+          code: 'import/missing-promise-deps',
+          message: "`.rejectedValue()` requires `' @import /components/promise/PromiseReject.brs from @dazn/kopytko-utils`.",
+          line: lineIndex, column: 0, endLine: lineIndex, endColumn: Number.MAX_SAFE_INTEGER, filePath,
+        });
+      }
+    }
+  }
+
   return diagnostics;
 }

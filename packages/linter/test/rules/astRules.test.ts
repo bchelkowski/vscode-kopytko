@@ -469,6 +469,11 @@ describe('AST-based lint rules', () => {
         resolveImportPath: () => null,
         generatedPaths: ['/generated/*'],
         generatedModules: [],
+        isTestFile: () => false,
+        getSiblingFiles: () => [],
+        getTestSiblings: () => [],
+        parseImports: () => [],
+        readFile: () => null,
       } as any;
       (ctx.config as Record<string, string>)['import/unresolved'] = 'warning';
       const { checkImportsAst } = require('../../src/rules/astRules');
@@ -563,5 +568,101 @@ describe('AST-based lint rules', () => {
       ctx.filePath = '/project/test/TestSuite__MyTest.test.brs';
       const diags = checkImportsAst(ctx);
       expect(codes(diags)).not.to.include('import/unused');
+    });
+  });
+
+  describe('import/missing-promise-deps', () => {
+    function makePromiseDepsCtx(
+      source: string,
+      imports: { importPath: string }[] = [],
+      lintContextOverrides: Partial<LintContext> = {},
+    ): RuleContext {
+      const ctx = makeCtx(source, { 'import/missing-promise-deps': 'warning' });
+      ctx.filePath = '/project/test/MyTest.test.brs';
+      ctx.imports = imports.map(imp => ({
+        raw: `' @import ${imp.importPath}`,
+        importPath: imp.importPath,
+        line: 1,
+        isMock: false,
+      }));
+      ctx.lintContext = {
+        knownFuncNames: new Set(),
+        parseImports: (text: string) => {
+          const matches = [...text.matchAll(/' @import (\S+)/g)];
+          return matches.map(m => ({ raw: m[0], importPath: m[1].trim(), line: 1, isMock: false }));
+        },
+        resolveImportPath: () => null,
+        importExists: () => false,
+        readFile: () => null,
+        parseFunctionsFromFile: () => [],
+        getSiblingFiles: () => [],
+        getTestSiblings: () => [],
+        isTestFile: () => true,
+        generatedPaths: [],
+        generatedModules: [],
+        siblingPatterns: [],
+        ...lintContextOverrides,
+      } as LintContext;
+      return ctx;
+    }
+
+    it('reports missing PromiseResolve import when .resolvedValue() is used', () => {
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  x = mockFunction(\"fn\").resolvedValue(1)\nend function",
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).to.include('import/missing-promise-deps');
+      expect(diags.find(d => d.code === 'import/missing-promise-deps')!.message).to.contain('PromiseResolve');
+    });
+
+    it('reports missing PromiseReject import when .rejectedValue() is used', () => {
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  x = mockFunction(\"fn\").rejectedValue({message:\"err\"})\nend function",
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).to.include('import/missing-promise-deps');
+      expect(diags.find(d => d.code === 'import/missing-promise-deps')!.message).to.contain('PromiseReject');
+    });
+
+    it('does not report when PromiseResolve.brs is imported', () => {
+      const ctx = makePromiseDepsCtx(
+        "' @import /components/promise/PromiseResolve.brs from @dazn/kopytko-utils\nfunction test()\n  x = mockFunction(\"fn\").resolvedValue(1)\nend function",
+        [{ importPath: '/components/promise/PromiseResolve.brs' }],
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/missing-promise-deps');
+    });
+
+    it('does not report when PromiseResolve is imported in a sibling file', () => {
+      const siblingContent = "' @import /components/promise/PromiseResolve.brs from @dazn/kopytko-utils\n";
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  x = mockFunction(\"fn\").resolvedValue(1)\nend function",
+        [],
+        {
+          getSiblingFiles: () => ['/project/test/TestSuite__MyTest.test.brs'],
+          readFile: () => siblingContent,
+        },
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/missing-promise-deps');
+    });
+
+    it('does not report in non-test files', () => {
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  x = mockFunction(\"fn\").resolvedValue(1)\nend function",
+        [],
+        { isTestFile: () => false },
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/missing-promise-deps');
+    });
+
+    it('does not report when rule is off', () => {
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  x = mockFunction(\"fn\").resolvedValue(1)\nend function",
+      );
+      (ctx.config as Record<string, string>)['import/missing-promise-deps'] = 'off';
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/missing-promise-deps');
     });
   });

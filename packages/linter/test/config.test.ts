@@ -3,14 +3,14 @@ import { parseLinterConfig, DEFAULT_LINTER_CONFIG, DEFAULT_RULE_CONFIG } from '.
 
 describe('config', () => {
   describe('DEFAULT_RULE_CONFIG', () => {
-    it('has 24 rules defined', () => {
+    it('has 25 rules defined', () => {
       const ruleCount = Object.keys(DEFAULT_RULE_CONFIG).length;
-      expect(ruleCount).to.equal(24);
+      expect(ruleCount).to.equal(25);
     });
 
     it('includes all import rules', () => {
       const importRules = Object.keys(DEFAULT_RULE_CONFIG).filter(k => k.startsWith('import/'));
-      expect(importRules).to.have.lengthOf(7);
+      expect(importRules).to.have.lengthOf(8);
     });
 
     it('includes all identifier rules', () => {
@@ -50,7 +50,7 @@ describe('config', () => {
       const config = parseLinterConfig({});
       expect(config.sourceDir).to.equal('src');
       expect(config.resolveModules).to.equal(true);
-      expect(Object.keys(config.rules).length).to.equal(24);
+      expect(Object.keys(config.rules).length).to.equal(25);
     });
 
     it('overrides a rule severity', () => {
@@ -106,7 +106,7 @@ describe('config', () => {
 
     it('ignores non-object rules field', () => {
       const config = parseLinterConfig({ rules: 'invalid' });
-      expect(Object.keys(config.rules).length).to.equal(24);
+      expect(Object.keys(config.rules).length).to.equal(25);
     });
   });
 });
