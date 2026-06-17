@@ -1,25 +1,37 @@
 import type { RuleDefinition } from '../types';
-import { checkImports } from './importRules';
-import { checkUndefinedCalls, checkUndefinedVariables, checkShadowedBuiltins, checkUnusedParameters, checkUnusedVariables } from './identifierRules';
-import { checkThrowStatements, checkCreateObjectArgs, checkTrailingCommaSyntaxErrors, checkLoopFlowControl } from './syntaxRules';
-import { checkTestFileStructure } from './testRules';
-import { checkMissingTypeAnnotations } from './typeAnnotationRules';
-import { checkObserverCallbacks, checkEventCallbacks } from './callbackRules';
+import { checkTrailingCommaSyntaxErrors } from './syntaxRules';
+import {
+  checkCreateObjectArgsAst,
+  checkThrowStatementsAst,
+  checkLoopFlowControlAst,
+  checkMissingTypeAnnotationsAst,
+  checkShadowedBuiltinsAst,
+  checkUnusedParametersAst,
+  checkUnusedVariablesAst,
+  checkWrongArgCountAst,
+  checkUndefinedCallsAst,
+  checkUndefinedVariablesAst,
+  checkObserverCallbacksAst,
+  checkTestFileStructureAst,
+  checkEventCallbacksAst,
+  checkImportsAst,
+} from './astRules';
 
-/** All rule groups as single functions that check multiple codes internally. */
+/** All rule groups — AST-based via brightscript-parser. */
 export const ALL_RULE_GROUPS: RuleDefinition[] = [
-  { code: 'import/*', defaultSeverity: 'error', fn: checkImports },
-  { code: 'identifier/undefined-function', defaultSeverity: 'error', fn: checkUndefinedCalls },
-  { code: 'identifier/undefined-variable', defaultSeverity: 'error', fn: checkUndefinedVariables },
-  { code: 'identifier/shadows-builtin', defaultSeverity: 'error', fn: checkShadowedBuiltins },
-  { code: 'identifier/unused-parameter', defaultSeverity: 'hint', fn: checkUnusedParameters },
-  { code: 'identifier/unused-variable', defaultSeverity: 'warning', fn: checkUnusedVariables },
-  { code: 'throw/*', defaultSeverity: 'warning', fn: checkThrowStatements },
-  { code: 'createobject/unknown-component', defaultSeverity: 'warning', fn: checkCreateObjectArgs },
+  { code: 'import/*', defaultSeverity: 'error', fn: checkImportsAst },
+  { code: 'identifier/undefined-function', defaultSeverity: 'error', fn: checkUndefinedCallsAst },
+  { code: 'identifier/undefined-variable', defaultSeverity: 'error', fn: checkUndefinedVariablesAst },
+  { code: 'identifier/shadows-builtin', defaultSeverity: 'error', fn: checkShadowedBuiltinsAst },
+  { code: 'identifier/unused-parameter', defaultSeverity: 'hint', fn: checkUnusedParametersAst },
+  { code: 'identifier/unused-variable', defaultSeverity: 'warning', fn: checkUnusedVariablesAst },
+  { code: 'identifier/wrong-arg-count', defaultSeverity: 'error', fn: checkWrongArgCountAst },
+  { code: 'throw/*', defaultSeverity: 'warning', fn: checkThrowStatementsAst },
+  { code: 'createobject/unknown-component', defaultSeverity: 'warning', fn: checkCreateObjectArgsAst },
   { code: 'syntax/trailing-comma', defaultSeverity: 'error', fn: checkTrailingCommaSyntaxErrors },
-  { code: 'syntax/flow-outside-loop', defaultSeverity: 'error', fn: checkLoopFlowControl },
-  { code: 'test/*', defaultSeverity: 'warning', fn: checkTestFileStructure },
-  { code: 'type/*', defaultSeverity: 'warning', fn: checkMissingTypeAnnotations },
-  { code: 'callback/undefined-observer-callback', defaultSeverity: 'error', fn: checkObserverCallbacks },
-  { code: 'callback/undefined-event-callback', defaultSeverity: 'error', fn: checkEventCallbacks },
+  { code: 'syntax/flow-outside-loop', defaultSeverity: 'error', fn: checkLoopFlowControlAst },
+  { code: 'test/*', defaultSeverity: 'warning', fn: checkTestFileStructureAst },
+  { code: 'type/*', defaultSeverity: 'warning', fn: checkMissingTypeAnnotationsAst },
+  { code: 'callback/undefined-observer-callback', defaultSeverity: 'error', fn: checkObserverCallbacksAst },
+  { code: 'callback/undefined-event-callback', defaultSeverity: 'error', fn: checkEventCallbacksAst },
 ];

@@ -1,4 +1,5 @@
 import type { LintContext } from './context';
+import type { ParseResult } from 'brightscript-parser';
 
 export type LintSeverity = 'error' | 'warning' | 'info' | 'hint';
 
@@ -63,6 +64,8 @@ export interface RuleContext {
   imports: KopytkoImport[];
   config: RuleConfig;
   lintContext: LintContext;
+  /** Parsed CST — available for rules that use AST-based analysis. */
+  parseResult?: ParseResult;
 }
 
 export type RuleConfig = Record<string, LintSeverity | 'off'>;

@@ -36,6 +36,9 @@
     "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "prepublishOnly": "npm run clean && npm run build"
   },
+  "dependencies": {
+    "brightscript-parser": "file:../brightscript-parser"
+  },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.9.2",

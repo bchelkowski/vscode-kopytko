@@ -13,6 +13,7 @@ import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from '.
 import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
+import { parse } from 'brightscript-parser';
 
 /**
  * Lints a single file with a pre-built context.
@@ -28,12 +29,16 @@ export function lintFile(
   const lines = preLines ?? content.split(/\r?\n/);
   const imports = context.parseImports(content);
 
+  // Parse the source for AST-based rules (cached if called multiple times)
+  const parseResult = parse(content);
+
   const ruleContext: RuleContext = {
     filePath,
     lines,
     imports,
     config: config.rules,
     lintContext: context,
+    parseResult,
   };
 
   const diagnostics: LintDiagnostic[] = [];

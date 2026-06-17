@@ -20,11 +20,15 @@ export type { LintContext } from './context';
 export { applyFixes } from './fixer';export { formatText } from './output/textFormatter';
 export { formatJson } from './output/jsonFormatter';
 export { formatSarif } from './output/sarifFormatter';
-export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, builtinNames, keywordNames } from './catalog/builtins';
-export { findComponent } from './catalog/components';
+// Re-export from brightscript-parser (canonical source)
+export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, builtinNames, keywordNames } from 'brightscript-parser';
+export { matchesGlob, findMatchingGlob } from 'brightscript-parser';
+export { inferNumericLiteralType, isNumericLiteral, stripNumericLiterals, NUMERIC_LITERAL_GLOBAL_RE } from 'brightscript-parser';
+export type { NumericType } from 'brightscript-parser';
+
+export { findComponent } from 'brightscript-parser';
+export { escapeRegex } from 'brightscript-parser';
 export { parseImports, ImportResolver } from './analysis/importParser';
 export { parseFunctionDefs, parseInnerMethodDefs } from './analysis/functionIndex';
 export { isTestFile, isMockFile, isTestRelatedFile, getTestBaseName, findTestSiblings } from './analysis/testUtils';
-export { stripStringLiterals, escapeRegex } from './analysis/textUtils';
-export { inferNumericLiteralType, isNumericLiteral, stripNumericLiterals, NUMERIC_LITERAL_GLOBAL_RE } from './analysis/numericLiterals';
-export type { NumericType } from './analysis/numericLiterals';
+export { stripStringLiterals } from './analysis/textUtils';
