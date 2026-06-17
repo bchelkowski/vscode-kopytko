@@ -34,7 +34,7 @@
   "dependencies": {
     "kopytko-brightscript-parser": "^1.0.1",
     "kopytko-formatter": "^1.1.1",
-    "kopytko-linter": "^1.0.7",
+    "kopytko-linter": "^1.0.8",
     "vscode-languageclient": "^10.0.0",
     "vscode-languageserver": "^10.0.0",
     "vscode-languageserver-textdocument": "^1.0.13",
