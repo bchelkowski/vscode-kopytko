@@ -8,8 +8,9 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import fsWrapper from '../utils/fsWrapper';
-import { getWordInfo, escapeRegex, getDocumentPath } from '../utils/textUtils';
-import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from '../brightscript/builtins';
+import { getDocumentPath } from '../utils/textUtils';
+import { getWordAtPosition, escapeRegex } from 'brightscript-parser';
+import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'brightscript-parser';
 import { getCachedAllFunctions } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
@@ -36,7 +37,7 @@ export class BrightScriptRenameProvider {
   ): { range: Range; placeholder: string } | null {
     const lines = document.getText().split(/\r?\n/);
     const line = lines[position.line] ?? '';
-    const info = getWordInfo(line, position.character);
+    const info = getWordAtPosition(line, position.character);
     if (!info) return null;
     if (isProtected(info.word)) return null;
     return {
@@ -64,7 +65,7 @@ export class BrightScriptRenameProvider {
     const text = document.getText();
     const lines = text.split(/\r?\n/);
     const line = lines[position.line] ?? '';
-    const info = getWordInfo(line, position.character);
+    const info = getWordAtPosition(line, position.character);
     if (!info) return null;
     if (isProtected(info.word)) return null;
 

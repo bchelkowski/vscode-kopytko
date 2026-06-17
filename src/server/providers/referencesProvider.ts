@@ -2,7 +2,7 @@ import { ReferenceParams, Location, Range, Position } from 'vscode-languageserve
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import fsWrapper from '../utils/fsWrapper';
-import { getWord, escapeRegex } from '../utils/textUtils';
+import { getWordAtPosition, escapeRegex } from 'brightscript-parser';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
 const FUNC_DEF_RE = /^\s*(?:function|sub)\s+(\w+)\s*\(/i;
@@ -15,7 +15,8 @@ export class BrightScriptReferencesProvider {
     const lines = text.split(/\r?\n/);
     const lineText = lines[params.position.line] ?? '';
 
-    const word = getWord(lineText, params.position.character);
+    const wordResult = getWordAtPosition(lineText, params.position.character);
+    const word = wordResult?.word ?? null;
     if (!word) return [];
 
     const wordRe = new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi');

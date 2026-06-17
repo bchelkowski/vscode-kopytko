@@ -1,7 +1,7 @@
 import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
-import { matchesGlob } from '../brightscript/globMatcher';
+import { matchesGlob } from 'brightscript-parser';
 import { getDocumentPath } from '../utils/textUtils';
 import { getCachedLines, getCachedImports, getCachedKnownFuncNames } from '../utils/documentCache';
 import { isTestFile } from '../kopytko/testFramework';

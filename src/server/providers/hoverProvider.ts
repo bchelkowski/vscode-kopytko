@@ -1,17 +1,18 @@
 import { Hover, MarkupKind, Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { findBuiltin } from '../brightscript/builtins';
+import { findBuiltin } from 'brightscript-parser';
 import {
   findComponent,
   getComponentMethods,
   findMethodInterface,
   CATALOG_LAST_VERIFIED,
-} from '../brightscript/components';
+} from 'brightscript-parser';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 import { resolveReceiverType, getInlineCreateObjectType } from '../brightscript/typeInference';
-import { inferNumericLiteralType } from '../brightscript/numericLiterals';
-import { getWordInfo, getDocumentPath } from '../utils/textUtils';
+import { inferNumericLiteralType } from 'brightscript-parser';
+import { getDocumentPath } from '../utils/textUtils';
+import { getWordAtPosition } from 'brightscript-parser';
 import { getCachedTypeMap, getCachedAllFunctions } from '../utils/documentCache';
 import {
   isTestFile,
@@ -53,7 +54,7 @@ export class BrightScriptHoverProvider {
       }
     }
 
-    const word = getWordInfo(line, position.character);
+    const word = getWordAtPosition(line, position.character);
     if (!word) return null;
 
     // ── 1. Component name hover (e.g. user hovers over "roUrlTransfer") ──────
@@ -284,7 +285,7 @@ function buildTestApiHover(entry: TestApiEntry): Hover {
 // Numeric literal helpers
 // ---------------------------------------------------------------------------
 
-import { NUMERIC_LITERAL_GLOBAL_RE } from '../brightscript/numericLiterals';
+import { NUMERIC_LITERAL_GLOBAL_RE } from 'brightscript-parser';
 
 const PRIMITIVE_TYPES = new Set(['Integer', 'Float', 'Double', 'LongInteger', 'Boolean', 'String']);
 

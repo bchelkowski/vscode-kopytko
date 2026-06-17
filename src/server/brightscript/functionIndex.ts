@@ -5,6 +5,7 @@ import { getScriptPathsFromXml, getXmlSiblingPaths, findComponentXml, parseXmlEx
 import { findSiblingFiles } from './patternSiblings';
 import { buildSearchRoots } from '../utils/workspaceUtils';
 import { isTestFile, getTestBaseName } from '../kopytko/testFramework';
+import { parse, walk, FunctionDeclaration } from 'brightscript-parser';
 
 /**
  * Normalizes a file path for use in visited/dedup sets.
@@ -40,8 +41,6 @@ export interface InnerMethodDefinition {
   ownerFunction?: string;
 }
 
-const FUNC_PREFIX_RE = /^\s*(?:function|sub)\s+/i;
-const FUNC_FULL_RE = /^\s*(?:function|sub)\s+(\w+)\s*\(/i;
 const INNER_METHOD_RE = /^\s*\w+\.(\w+)\s*=\s*(?:function|sub)\s*\(/i;
 const INNER_COLON_METHOD_RE = /^\s*(\w+)\s*:\s*(?:function|sub)\s*\(/i;
 
@@ -58,25 +57,30 @@ function deduplicateByLocation<T extends { filePath: string; line: number; colum
 
 /**
  * Parses all top-level function/sub definitions from a BrightScript text.
- * Accepts optional pre-split lines to avoid redundant splitting.
+ * Uses the brightscript-parser CST for accurate function detection.
  */
-export function parseFunctionDefs(text: string, filePath: string, preLines?: string[]): FunctionDefinition[] {
-  const lines = preLines ?? text.split(/\r?\n/);
+export function parseFunctionDefs(text: string, filePath: string, _preLines?: string[]): FunctionDefinition[] {
+  const result = parse(text);
   const defs: FunctionDefinition[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const match = FUNC_FULL_RE.exec(lines[i]);
-    if (!match) continue;
-    const prefixMatch = FUNC_PREFIX_RE.exec(lines[i]);
-    const column = prefixMatch ? prefixMatch[0].length : 0;
-    defs.push({
-      name: match[1],
-      nameLower: match[1].toLowerCase(),
-      line: i,
-      column,
-      filePath,
-      signature: lines[i].trim(),
-    });
-  }
+  const lines = text.split(/\r?\n/);
+
+  walk(result.root, {
+    visitFunctionDeclaration(node: InstanceType<typeof FunctionDeclaration>) {
+      const nameToken = node.nameToken;
+      if (!nameToken) return;
+      const signature = lines[nameToken.line]?.trim() ?? '';
+      defs.push({
+        name: nameToken.text,
+        nameLower: nameToken.text.toLowerCase(),
+        line: nameToken.line,
+        column: nameToken.column,
+        filePath,
+        signature,
+      });
+      return false; // don't recurse into nested functions
+    },
+  });
+
   return defs;
 }
 

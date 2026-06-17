@@ -30,74 +30,10 @@
  * display type information.
  */
 
-import { inferNumericLiteralType } from './numericLiterals';
 
 /** Maps a local variable name (lowercase) → type name (e.g. "roUrlTransfer" or "Integer") */
 export type TypeMap = Map<string, string>;
 
-/**
- * Pattern: `varName = CreateObject("roXxx")` or `varName = CreateObject("roXxx", ...)`
- * Also handles `m.varName = CreateObject(...)` and `varName=CreateObject(...)`.
- */
-const CREATE_OBJECT_PATTERN =
-  /(?:^[ \t]*|\bm\.)(\w+)\s*=\s*CreateObject\s*\(\s*["']([a-zA-Z]+)["']/gim;
-
-/**
- * Pattern: `param as roXxx` or `param = defaultValue as roXxx` — typed parameters.
- * The optional `= defaultValue` group handles parameters that carry a default value.
- */
-const TYPED_PARAM_PATTERN =
-  /(\w+)(?:\s*=[^,)]*?)?\s+as\s+(ro[A-Za-z]+)/gi;
-
-/**
- * Pattern: `varName = <numeric literal>` — numeric literal assignments.
- * Captures the variable name and the literal value (hex, decimal, float, etc.).
- * Also handles `m.varName = <literal>` and compound/no-space forms.
- */
-const NUMERIC_ASSIGN_PATTERN =
-  /(?:^[ \t]*|\bm\.)(\w+)\s*=\s*(-?(?:&[Hh][0-9A-Fa-f]+&?|(?:\d+\.?\d*|\d*\.\d+)(?:[EeDd][+-]?\d+)?[%!#&]?))\s*(?:['\n\r,;)\]]|$)/gm;
-
-/**
- * Scans the entire document text and returns a TypeMap of all variable names
- * whose types can be statically inferred.
- */
-export function inferTypes(text: string): TypeMap {
-  const map: TypeMap = new Map();
-
-  // CreateObject assignments
-  let m: RegExpExecArray | null;
-  CREATE_OBJECT_PATTERN.lastIndex = 0;
-  while ((m = CREATE_OBJECT_PATTERN.exec(text)) !== null) {
-    const varName = m[1].toLowerCase();
-    const typeName = m[2]; // preserve original casing for lookup
-    map.set(varName, typeName);
-  }
-
-  // Typed function parameters
-  TYPED_PARAM_PATTERN.lastIndex = 0;
-  while ((m = TYPED_PARAM_PATTERN.exec(text)) !== null) {
-    const varName = m[1].toLowerCase();
-    const typeName = m[2];
-    // Don't overwrite a CreateObject binding with a weaker param hint
-    if (!map.has(varName)) {
-      map.set(varName, typeName);
-    }
-  }
-
-  // Numeric literal assignments
-  NUMERIC_ASSIGN_PATTERN.lastIndex = 0;
-  while ((m = NUMERIC_ASSIGN_PATTERN.exec(text)) !== null) {
-    const varName = m[1].toLowerCase();
-    const literalValue = m[2];
-    const numType = inferNumericLiteralType(literalValue);
-    // Don't overwrite a CreateObject or typed-param binding
-    if (numType && !map.has(varName)) {
-      map.set(varName, numType);
-    }
-  }
-
-  return map;
-}
 
 /**
  * Given the source text and a cursor position, returns the variable name

@@ -2,7 +2,7 @@ import { DocumentLink, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
-import { findMatchingGlob } from '../brightscript/globMatcher';
+import { findMatchingGlob } from 'brightscript-parser';
 
 /**
  * Provides document links for Kopytko @import and @mock annotations.

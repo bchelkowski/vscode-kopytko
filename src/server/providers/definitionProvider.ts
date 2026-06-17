@@ -4,7 +4,8 @@ import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';
 import { getReceiverName } from '../brightscript/typeInference';
-import { getWordInfo, getDocumentPath } from '../utils/textUtils';
+import { getDocumentPath } from '../utils/textUtils';
+import { getWordAtPosition } from 'brightscript-parser';
 import { getCachedAllFunctions, getCachedAllInnerMethods } from '../utils/documentCache';
 
 export class BrightScriptDefinitionProvider {
@@ -37,7 +38,7 @@ export class BrightScriptDefinitionProvider {
     }
 
     // 2. Cursor on a function/sub name or AA method → find definition across all visible files
-    const wordInfo = getWordInfo(currentLine, position.character);
+    const wordInfo = getWordAtPosition(currentLine, position.character);
     if (wordInfo) {
       const { word, start } = wordInfo;
       const documentPath = getDocumentPath(document);

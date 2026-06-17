@@ -1,5 +1,18 @@
 import { expect } from 'chai';
-import { inferTypes, getReceiverName, resolveReceiverType } from '../../src/server/brightscript/typeInference';
+import { parse, inferTypesFromAst, getVariableType } from 'brightscript-parser';
+import { getReceiverName, resolveReceiverType } from '../../src/server/brightscript/typeInference';
+
+/** Helper: infer types using the parser and return a simple name→type map. */
+function inferTypes(text: string): Map<string, string> {
+  const result = parse(text);
+  const typeMap = inferTypesFromAst(result.root);
+  const simpleMap = new Map<string, string>();
+  for (const [name] of typeMap) {
+    const type = getVariableType(typeMap, name);
+    if (type) simpleMap.set(name, type);
+  }
+  return simpleMap;
+}
 
 describe('typeInference', () => {
 
@@ -43,9 +56,10 @@ describe('typeInference', () => {
       expect(map.get('sec')).to.equal('roRegistrySection');
     });
 
-    it('handles single-quoted strings in CreateObject', () => {
+    it('single-quoted strings are comments in BrightScript (not valid string syntax)', () => {
       const map = inferTypes(`fs = CreateObject('roFileSystem')`);
-      expect(map.get('fs')).to.equal('roFileSystem');
+      // BrightScript uses double quotes only — single quote starts a comment
+      expect(map.get('fs')).to.be.undefined;
     });
 
     it('infers typed function parameters', () => {

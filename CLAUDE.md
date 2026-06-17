@@ -17,16 +17,55 @@ Kopytko ecosystem repos:
 
 ```
 packages/
-└── kopytko-formatter/              Standalone BrightScript formatter (CLI + library)
-    ├── src/
-    │   ├── index.ts                Public API (formatText, checkFormatting)
-    │   ├── formatter.ts            Core 11-pass formatting engine
-    │   ├── config.ts               FormattingConfig interface + defaults
-    │   ├── casing.ts               CasingConfig + transforms
-    │   ├── builtins.ts             BrightScript built-in function catalog
-    │   └── types.ts                FunctionDefinition interface
-    ├── bin/kopytko-format.ts        CLI entry point
-    └── test/formatter.test.ts       140+ test cases covering formatting and JSONC parsing
+├── brightscript-parser/              Shared BrightScript parser (lexer + CST + AST + scope)
+│   ├── src/
+│   │   ├── index.ts                Public API
+│   │   ├── tokenKind.ts            Token type enum (~80 kinds)
+│   │   ├── token.ts                Token interface + round-trip utilities
+│   │   ├── trivia.ts               Whitespace/comment trivia types
+│   │   ├── lexer.ts                Hand-written character scanner
+│   │   ├── syntaxKind.ts           CST node type enum (~50 kinds)
+│   │   ├── syntaxNode.ts           Lossless CST node class
+│   │   ├── parser.ts               Recursive descent parser → CST
+│   │   ├── ast.ts                  Typed AST wrappers (40+ node types)
+│   │   ├── visitor.ts              AstVisitor + walk() + findAll()
+│   │   ├── scope.ts                Scope analysis (buildScopes, resolve)
+│   │   └── diagnostics.ts          Parse error types
+│   ├── test/                       384 tests (lexer, parser, AST, scope)
+│   └── docs/
+│       └── syntax-reference.md     BrightScript syntax catalog (valid/invalid)
+├── kopytko-formatter/              Standalone BrightScript formatter (CLI + library)
+│   ├── src/
+│   │   ├── index.ts                Public API (formatText, checkFormatting)
+│   │   ├── formatter.ts            Formatting engine (CST passes + regex text formatting)
+│   │   ├── cst-passes/             CST-based formatting passes (12 passes)
+│   │   │   ├── infrastructure.ts   TextEdit, applyEdits, runCstPasses, walkTokens
+│   │   │   ├── endKeywordStyle.ts  endif ↔ end if
+│   │   │   ├── casingPass.ts       Keyword/builtin/identifier casing
+│   │   │   ├── commentNormalization.ts  rem ↔ ', space after marker
+│   │   │   ├── printStatementRemoval.ts  Remove print/? statements
+│   │   │   ├── importSorting.ts    Sort @import annotations
+│   │   │   ├── trailingWhitespace.ts  Remove trailing spaces
+│   │   │   ├── thenStyle.ts        Add/remove then keyword
+│   │   │   ├── functionVsSub.ts    Convert function ↔ sub for void
+│   │   │   ├── blankLines.ts       Limit consecutive blank lines
+│   │   │   ├── spacing.ts          Space around operators
+│   │   │   ├── indentation.ts      Depth-based indentation
+│   │   │   └── trailingCommas.ts   Add/remove trailing commas
+│   │   ├── config.ts               FormattingConfig interface + defaults
+│   │   ├── casing.ts               CasingConfig + transforms
+│   │   ├── builtins.ts             BrightScript built-in function catalog
+│   │   └── types.ts                FunctionDefinition interface
+│   ├── bin/kopytko-format.ts        CLI entry point
+│   └── test/                        227 tests (formatting + CST passes)
+├── kopytko-linter/                 Standalone BrightScript linter (CLI + library)
+│   ├── src/
+│   │   ├── linter.ts               Lint engine (parses with brightscript-parser)
+│   │   ├── rules/
+│   │   │   ├── astRules.ts         AST-based rules (15 rules using parser)
+│   │   │   ├── syntaxRules.ts      Trailing comma check (pre-parse)
+│   │   │   └── index.ts            Rule registry│   │   └── analysis/               Legacy analysis utilities (superseded by parser)
+│   └── test/                        447 tests
 src/
 ├── extension.ts                    Extension entry point
 ├── client/                         VS Code client (debug adapter, device discovery, tree views)
@@ -48,7 +87,7 @@ src/
     │   └── testFramework.ts        Test framework API catalog
     └── utils/
         ├── brsFileCollector.ts     File walker
-        ├── documentCache.ts        Per-document version-keyed results cache
+        ├── documentCache.ts        Per-document cache + getCachedParseResult()
         ├── workspaceFunctionIndex.ts  Built at startup, updated incrementally
         ├── workspaceUtils.ts       Search-root builder
         ├── fsWrapper.ts            Thin fs wrapper (enables Sinon stubbing in tests)
@@ -201,4 +240,4 @@ The formatting engine is extracted into the standalone `packages/kopytko-formatt
 
 **To add a new formatting option:** add the field to `FormattingConfig` in `packages/kopytko-formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
 
-**Duplicate sources:** `builtins.ts`, `casing.ts`, and `config.ts` exist in both the extension (`src/server/brightscript/`) and the formatter package (`packages/kopytko-formatter/src/`). The extension copies are used by non-formatting providers (completion, hover, etc.). Keep them in sync when making changes. Note: casing settings use `kopytko.casing.*` keys (e.g. `kopytko.casing.builtin`, `kopytko.casing.keyword`) while formatting settings use `kopytko.format.*` keys. Casing values are kebab-case: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
+**Shared sources:** The `brightscript-parser` package is the canonical source for builtins, components, casing, numericLiterals, and globMatcher. Both `kopytko-formatter` and `kopytko-linter` import from it. The extension's `src/server/brightscript/` retains only extension-specific files (functionIndex for cross-file scope, typeInference for cursor helpers, xmlScriptParser for file system operations).

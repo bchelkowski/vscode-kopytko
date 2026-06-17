@@ -1,11 +1,13 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver, KopytkoImport } from '../kopytko/importResolver';
 import { FunctionDefinition, collectFunctionsFromImports, collectFunctionsFromExtends, collectAllFunctions, collectAllInnerMethods, InnerMethodDefinition, resolveTestedFiles, findTestSiblings, parseFunctionDefs } from '../brightscript/functionIndex';
-import { TypeMap, inferTypes } from '../brightscript/typeInference';
+import { TypeMap } from '../brightscript/typeInference';
 import { findSiblingFiles } from '../brightscript/patternSiblings';
 import * as nodePath from 'path';
 import fsWrapper from './fsWrapper';
 import { isTestFile } from '../kopytko/testFramework';
+import { parse, inferTypesFromAst, getVariableType } from 'brightscript-parser';
+import type { ParseResult } from 'brightscript-parser';
 
 /**
  * Per-document cache that stores parsed/computed results keyed by
@@ -25,6 +27,8 @@ interface CacheEntry {
   allFuncSiblingKey?: string;
   allInnerMethods?: InnerMethodDefinition[];
   allMethodsSiblingKey?: string;
+  /** Parsed CST from brightscript-parser (cached per version). */
+  parseResult?: ParseResult;
 }
 
 const _cache = new Map<string, CacheEntry>();
@@ -58,6 +62,18 @@ export function getCachedLines(document: TextDocument): string[] {
   return entry.lines;
 }
 
+/**
+ * Returns the parsed CST from brightscript-parser (cached per version).
+ * This is the shared parse result that all AST-based providers can use.
+ */
+export function getCachedParseResult(document: TextDocument): ParseResult {
+  const entry = getEntry(document);
+  if (!entry.parseResult) {
+    entry.parseResult = parse(document.getText());
+  }
+  return entry.parseResult;
+}
+
 /** Returns parsed @import annotations (cached per version). */
 export function getCachedImports(document: TextDocument, importResolver: KopytkoImportResolver): KopytkoImport[] {
   const entry = getEntry(document);
@@ -71,7 +87,16 @@ export function getCachedImports(document: TextDocument, importResolver: Kopytko
 export function getCachedTypeMap(document: TextDocument): TypeMap {
   const entry = getEntry(document);
   if (!entry.typeMap) {
-    entry.typeMap = inferTypes(document.getText());
+    // Use parser-based type inference
+    const parseResult = getCachedParseResult(document);
+    const parserTypeMap = inferTypesFromAst(parseResult.root);
+    // Convert parser TypeMap to extension TypeMap format
+    const typeMap: TypeMap = new Map();
+    for (const [name] of parserTypeMap) {
+      const best = getVariableType(parserTypeMap, name);
+      if (best) typeMap.set(name, best);
+    }
+    entry.typeMap = typeMap;
   }
   return entry.typeMap;
 }

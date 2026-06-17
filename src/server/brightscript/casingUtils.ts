@@ -98,7 +98,7 @@ export function applyCasingWithOverrides(
   return applyCasing(name, option);
 }
 
-import type { KeywordCategory } from './builtins';
+import type { KeywordCategory } from 'brightscript-parser';
 
 /**
  * Resolves the effective casing option for a keyword sub-category.
@@ -110,7 +110,7 @@ export function resolveKeywordCasing(category: KeywordCategory, config: CasingCo
     case 'literal': return config.literal ?? config.keyword;
     case 'logicOperator': return config.logicOperator ?? config.keyword;
     case 'mathOperator': return config.mathOperator ?? config.keyword;
-    case 'keyword': return config.keyword;
+    default: return config.keyword;
   }
 }
 

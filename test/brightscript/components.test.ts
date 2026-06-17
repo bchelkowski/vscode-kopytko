@@ -6,7 +6,7 @@ import {
   getComponentMethods,
   findMethodInterface,
   CATALOG_LAST_VERIFIED,
-} from '../../src/server/brightscript/components';
+} from 'brightscript-parser';
 
 describe('BrightScript component catalog', () => {
 
