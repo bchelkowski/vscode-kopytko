@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.2] - 2026-06-17
+
+### Fixed
+- Handle parenthesized catch variable syntax
+
 ## [1.0.1] - 2026-06-17
 
 - Release 1.0.1
