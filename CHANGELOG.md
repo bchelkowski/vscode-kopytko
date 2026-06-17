@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.0] - 2026-06-17
+
+### Added
+- Migrate extension to use brightscript-parser
+
 ## [1.0.9] - 2026-06-16
 
 ### Fixed
