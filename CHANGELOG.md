@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.2] - 2026-06-17
+
+### Fixed
+- ParseImports callback now parses sibling content correctly
+
 ## [1.1.1] - 2026-06-17
 
 ### Added
