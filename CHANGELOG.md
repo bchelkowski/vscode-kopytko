@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.1.1] - 2026-06-17
+
+### Added
+- Add debug-alt sidebar button, play icon for upload, and Ctrl+Shift+F5 keybinding
+
+### Fixed
+- Missing verifySyntax field in formatting config
+
 ## [1.1.0] - 2026-06-17
 
 ### Added
