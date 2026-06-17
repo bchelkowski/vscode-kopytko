@@ -6,8 +6,8 @@ import { findSiblingFiles } from '../brightscript/patternSiblings';
 import * as nodePath from 'path';
 import fsWrapper from './fsWrapper';
 import { isTestFile } from '../kopytko/testFramework';
-import { parse, inferTypesFromAst, getVariableType } from 'brightscript-parser';
-import type { ParseResult } from 'brightscript-parser';
+import { parse, inferTypesFromAst, getVariableType } from 'kopytko-brightscript-parser';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 
 /**
  * Per-document cache that stores parsed/computed results keyed by

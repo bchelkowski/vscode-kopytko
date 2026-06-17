@@ -1,7 +1,7 @@
 import { TextEdit, Range, Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { formatText } from 'kopytko-formatter';
-import { CasingConfig, DEFAULT_CASING_CONFIG } from 'brightscript-parser';
+import { CasingConfig, DEFAULT_CASING_CONFIG } from 'kopytko-brightscript-parser';
 import { FunctionDefinition } from '../brightscript/functionIndex';
 import { FormattingConfig } from '../brightscript/formattingConfig';
 

@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { parse, inferTypesFromAst, getVariableType } from 'brightscript-parser';
+import { parse, inferTypesFromAst, getVariableType } from 'kopytko-brightscript-parser';
 import { getReceiverName, resolveReceiverType } from '../../src/server/brightscript/typeInference';
 
 /** Helper: infer types using the parser and return a simple name→type map. */

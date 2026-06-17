@@ -6,8 +6,8 @@ import {
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
-import { findBuiltin } from 'brightscript-parser';
-import { getComponentMethods } from 'brightscript-parser';
+import { findBuiltin } from 'kopytko-brightscript-parser';
+import { getComponentMethods } from 'kopytko-brightscript-parser';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 import { resolveReceiverType } from '../brightscript/typeInference';
 import { KopytkoImportResolver } from '../kopytko/importResolver';

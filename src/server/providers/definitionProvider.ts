@@ -5,7 +5,7 @@ import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';
 import { getReceiverName } from '../brightscript/typeInference';
 import { getDocumentPath } from '../utils/textUtils';
-import { getWordAtPosition } from 'brightscript-parser';
+import { getWordAtPosition } from 'kopytko-brightscript-parser';
 import { getCachedAllFunctions, getCachedAllInnerMethods } from '../utils/documentCache';
 
 export class BrightScriptDefinitionProvider {

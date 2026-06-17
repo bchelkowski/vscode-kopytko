@@ -2,7 +2,7 @@ import { ReferenceParams, Location, Range, Position } from 'vscode-languageserve
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import fsWrapper from '../utils/fsWrapper';
-import { getWordAtPosition, escapeRegex } from 'brightscript-parser';
+import { getWordAtPosition, escapeRegex } from 'kopytko-brightscript-parser';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
 const FUNC_DEF_RE = /^\s*(?:function|sub)\s+(\w+)\s*\(/i;

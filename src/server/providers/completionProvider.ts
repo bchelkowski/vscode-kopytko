@@ -11,13 +11,13 @@ import {
 import { URI } from 'vscode-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import fsWrapper from '../utils/fsWrapper';
-import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'brightscript-parser';
+import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'kopytko-brightscript-parser';
 import {
   BRIGHTSCRIPT_COMPONENTS,
   findComponent,
   getComponentMethods,
   findMethodInterface,
-} from 'brightscript-parser';
+} from 'kopytko-brightscript-parser';
 import { collectMtopItems, MtopField, MtopMethod } from '../brightscript/mtopResolver';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
@@ -27,7 +27,7 @@ import {
   DEFAULT_CASING_CONFIG,
   applyCasing,
   applyCasingWithOverrides,
-} from 'brightscript-parser';
+} from 'kopytko-brightscript-parser';
 import { applySnippetCasing } from '../brightscript/casingUtils';
 import { getCachedTypeMap, getCachedAllFunctions, getCachedAllInnerMethods } from '../utils/documentCache';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';

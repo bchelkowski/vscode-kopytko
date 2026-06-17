@@ -5,7 +5,7 @@ import { getScriptPathsFromXml, getXmlSiblingPaths, findComponentXml, parseXmlEx
 import { findSiblingFiles } from './patternSiblings';
 import { buildSearchRoots } from '../utils/workspaceUtils';
 import { isTestFile, getTestBaseName } from '../kopytko/testFramework';
-import { parse, walk, FunctionDeclaration } from 'brightscript-parser';
+import { parse, walk, FunctionDeclaration } from 'kopytko-brightscript-parser';
 
 /**
  * Normalizes a file path for use in visited/dedup sets.

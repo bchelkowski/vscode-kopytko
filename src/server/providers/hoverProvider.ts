@@ -1,18 +1,18 @@
 import { Hover, MarkupKind, Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { findBuiltin } from 'brightscript-parser';
+import { findBuiltin } from 'kopytko-brightscript-parser';
 import {
   findComponent,
   getComponentMethods,
   findMethodInterface,
   CATALOG_LAST_VERIFIED,
-} from 'brightscript-parser';
+} from 'kopytko-brightscript-parser';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 import { resolveReceiverType, getInlineCreateObjectType } from '../brightscript/typeInference';
-import { inferNumericLiteralType } from 'brightscript-parser';
+import { inferNumericLiteralType } from 'kopytko-brightscript-parser';
 import { getDocumentPath } from '../utils/textUtils';
-import { getWordAtPosition } from 'brightscript-parser';
+import { getWordAtPosition } from 'kopytko-brightscript-parser';
 import { getCachedTypeMap, getCachedAllFunctions } from '../utils/documentCache';
 import {
   isTestFile,
@@ -285,7 +285,7 @@ function buildTestApiHover(entry: TestApiEntry): Hover {
 // Numeric literal helpers
 // ---------------------------------------------------------------------------
 
-import { NUMERIC_LITERAL_GLOBAL_RE } from 'brightscript-parser';
+import { NUMERIC_LITERAL_GLOBAL_RE } from 'kopytko-brightscript-parser';
 
 const PRIMITIVE_TYPES = new Set(['Integer', 'Float', 'Double', 'LongInteger', 'Boolean', 'String']);
 

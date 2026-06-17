@@ -48,12 +48,12 @@ import { BrightScriptWorkspaceSymbolProvider } from './providers/workspaceSymbol
 import { BrightScriptRenameProvider } from './providers/renameProvider';
 import { BrightScriptCodeActionProvider } from './providers/codeActionProvider';
 import { BrightScriptFormattingProvider } from './providers/formattingProvider';
-import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'brightscript-parser';
+import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
 import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
 import { invalidateAllCaches, getCachedAllFunctions } from './utils/documentCache';
 import { WorkspaceFunctionIndex } from './utils/workspaceFunctionIndex';
-import { findMatchingGlob } from 'brightscript-parser';
+import { findMatchingGlob } from 'kopytko-brightscript-parser';
 
 const connection: Connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments<TextDocument>(TextDocument);

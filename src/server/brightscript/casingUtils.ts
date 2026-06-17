@@ -98,7 +98,7 @@ export function applyCasingWithOverrides(
   return applyCasing(name, option);
 }
 
-import type { KeywordCategory } from 'brightscript-parser';
+import type { KeywordCategory } from 'kopytko-brightscript-parser';
 
 /**
  * Resolves the effective casing option for a keyword sub-category.

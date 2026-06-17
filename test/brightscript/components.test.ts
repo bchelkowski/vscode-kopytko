@@ -6,7 +6,7 @@ import {
   getComponentMethods,
   findMethodInterface,
   CATALOG_LAST_VERIFIED,
-} from 'brightscript-parser';
+} from 'kopytko-brightscript-parser';
 
 describe('BrightScript component catalog', () => {
 

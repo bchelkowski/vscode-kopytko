@@ -9,8 +9,8 @@ import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import fsWrapper from '../utils/fsWrapper';
 import { getDocumentPath } from '../utils/textUtils';
-import { getWordAtPosition, escapeRegex } from 'brightscript-parser';
-import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'brightscript-parser';
+import { getWordAtPosition, escapeRegex } from 'kopytko-brightscript-parser';
+import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'kopytko-brightscript-parser';
 import { getCachedAllFunctions } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
