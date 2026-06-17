@@ -11,6 +11,7 @@ import { findSiblingFiles } from '../brightscript/patternSiblings';
 import { findTestSiblings } from '../brightscript/functionIndex';
 import {
   lintFile,
+  parseImports,
   DEFAULT_LINTER_CONFIG,
   type LintContext,
   type LintDiagnostic,
@@ -74,9 +75,10 @@ export class BrightScriptDiagnosticsProvider {
     const context: LintContext = {
       knownFuncNames,
 
-      parseImports: (_text: string): KopytkoImport[] => {
-        // Return cached imports — the adapter always lints the current document
-        return cachedImports;
+      parseImports: (text: string): KopytkoImport[] => {
+        // When called with sibling content, parse it; for the current document use the cache
+        if (text === content) return cachedImports;
+        return parseImports(text);
       },
 
       resolveImportPath: (importPath: string, _docPath: string, fromModule?: string): string | null => {
