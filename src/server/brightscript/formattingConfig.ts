@@ -126,6 +126,8 @@ export interface FormattingConfig {
   alignAssignments: boolean;
   /** Field access consistency on known objects. 'dot' prefers m.top.field, 'method' prefers m.top.getField("field"), 'preserve' leaves as-is. */
   fieldAccessConsistency: 'dot' | 'method' | 'preserve';
+  /** Parse the formatted output to verify it's still valid BrightScript. If syntax errors are detected, the original source is returned unchanged. */
+  verifySyntax: boolean;
 }
 
 /** Default formatting config — all rules set to preserve existing code style. */
@@ -201,6 +203,7 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   mPrefixStyle: 'preserve',
   alignAssignments: false,
   fieldAccessConsistency: 'preserve',
+  verifySyntax: true,
 };
 
 /** Reads a FormattingConfig from a raw VS Code settings object. */
@@ -286,5 +289,6 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     mPrefixStyle: str('mPrefixStyle', d.mPrefixStyle) as FormattingConfig['mPrefixStyle'],
     alignAssignments: bool('alignAssignments', d.alignAssignments),
     fieldAccessConsistency: str('fieldAccessConsistency', d.fieldAccessConsistency) as FormattingConfig['fieldAccessConsistency'],
+    verifySyntax: bool('verifySyntax', d.verifySyntax),
   };
 }
