@@ -439,13 +439,14 @@ describe('AST-based lint rules', () => {
       expect(diags).to.have.length(0);
     });
 
-    it('skips undefined-variable in /source/ files', () => {
+    it('still checks undefined-variable in /source/ files (variables are function-local)', () => {
       const ctx = makeCtx('function foo()\n  return unknownVar\nend function');
       ctx.filePath = '/project/source/main.brs';
       (ctx.config as Record<string, string>)['identifier/undefined-variable'] = 'error';
       const { checkUndefinedVariablesAst } = require('../../src/rules/astRules');
       const diags = checkUndefinedVariablesAst(ctx);
-      expect(diags).to.have.length(0);
+      expect(diags).to.have.length(1);
+      expect(diags[0].code).to.equal('identifier/undefined-variable');
     });
 
     it('still checks /components/ files', () => {

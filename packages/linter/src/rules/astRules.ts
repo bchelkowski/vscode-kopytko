@@ -9,6 +9,7 @@
  */
 
 import type { LintDiagnostic, LintSeverity, RuleContext } from '../types';
+import type { LintContext } from '../context';
 import {
   SyntaxKind, SyntaxNode, walk, TokenKind,
   CallExpression,
@@ -17,7 +18,7 @@ import {
   buildScopes, resolve,
   findComponent, matchesGlob, parse as parseBrs,
 } from 'kopytko-brightscript-parser';
-import type { Scope, Declaration } from 'kopytko-brightscript-parser';
+import type { Scope, Declaration, ParseResult } from 'kopytko-brightscript-parser';
 import { builtinNames, builtinArity, keywordNames } from 'kopytko-brightscript-parser';
 
 // ─── CreateObject unknown component ─────────────────────────────────────────
@@ -98,6 +99,37 @@ export function checkThrowStatementsAst(ctx: RuleContext): LintDiagnostic[] {
               endLine: token.line, endColumn: token.column + token.text.length,
               filePath,
             });
+          }
+          // throw invalid — the `invalid` keyword literal is not a valid throw value
+          if (token && token.kind === TokenKind.Invalid) {
+            diagnostics.push({
+              severity: (config['throw/invalid-value'] as LintSeverity) ?? 'warning',
+              code: 'throw/invalid-value',
+              message: '`throw` requires a string or an associative array with a "message" field — `invalid` is not a valid throw value.',
+              line: token.line, column: token.column,
+              endLine: token.line, endColumn: token.column + token.text.length,
+              filePath,
+            });
+          }
+        }
+
+        // Unary negation of a numeric literal: throw -1, throw -3.14
+        if (exprSyntax.kind === SyntaxKind.UnaryExpression) {
+          const operand = exprSyntax.findChild(SyntaxKind.LiteralExpression);
+          if (operand) {
+            const numToken = operand.childTokens[0];
+            if (numToken && isNumericTokenKind(numToken.kind)) {
+              const minusToken = exprSyntax.childTokens[0];
+              const startToken = minusToken ?? numToken;
+              diagnostics.push({
+                severity: (config['throw/invalid-value'] as LintSeverity) ?? 'warning',
+                code: 'throw/invalid-value',
+                message: '`throw` requires a string or an associative array with a "message" field — numeric literals are not valid throw values.',
+                line: startToken.line, column: startToken.column,
+                endLine: numToken.line, endColumn: numToken.column + numToken.text.length,
+                filePath,
+              });
+            }
           }
         }
 
@@ -519,6 +551,31 @@ export function checkWrongArgCountAst(ctx: RuleContext): LintDiagnostic[] {
  * Uses CallExpression visitor + knownFuncNames from extension context.
  * No regex, no stripStringLiterals needed.
  */
+// Roku entry-point function names — calls inside these are exempt from undefined-function checks
+const ENTRY_POINT_NAMES = new Set(['main', 'runuserinterface', 'runscreensaver']);
+
+/**
+ * Check if a syntax node is inside a top-level entry-point function (Main, RunUserInterface, RunScreenSaver).
+ * "Top-level" means the function is declared directly at file scope (not nested).
+ */
+function isInsideEntryPointFunction(node: SyntaxNode): boolean {
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.kind === SyntaxKind.FunctionDeclaration || current.kind === SyntaxKind.FunctionExpression) {
+      if (current.kind === SyntaxKind.FunctionDeclaration) {
+        const nameToken = current.findToken(TokenKind.Identifier);
+        if (nameToken && ENTRY_POINT_NAMES.has(nameToken.text.toLowerCase())) {
+          if (current.parent && current.parent.kind === SyntaxKind.SourceFile) {
+            return true;
+          }
+        }
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
 export function checkUndefinedCallsAst(ctx: RuleContext): LintDiagnostic[] {
   const { filePath, config, parseResult, lintContext } = ctx;
   if (config['identifier/undefined-function'] === 'off') return [];
@@ -552,6 +609,9 @@ export function checkUndefinedCallsAst(ctx: RuleContext): LintDiagnostic[] {
       if (knownFuncNames.has(nameLower)) return;
       if (allLocalNames.has(nameLower)) return;
 
+      // Entry-point exemption: calls inside Main/RunUserInterface/RunScreenSaver are exempt
+      if (isInsideEntryPointFunction(node.syntax)) return;
+
       const nameToken = callee.nameToken;
       if (nameToken) {
         diagnostics.push({
@@ -572,20 +632,66 @@ export function checkUndefinedCallsAst(ctx: RuleContext): LintDiagnostic[] {
 // ─── Undefined variables ───────────────────────────────────────────────────
 
 /**
+ * Resolve a variable name respecting BrightScript's no-closures semantics.
+ * Anonymous functions (FunctionExpression) cannot see variables from enclosing function scopes.
+ * Resolution walks up the scope chain but skips parent function scopes when crossing
+ * a FunctionExpression boundary.
+ */
+function resolveNoClosures(name: string, scope: Scope): Declaration | undefined {
+  const lower = name.toLowerCase();
+  // Check current scope first
+  const decl = scope.declarations.get(lower);
+  if (decl) return decl;
+
+  // Walk up, but skip intermediate function scopes if current scope is a function
+  if (!scope.parent) return undefined;
+
+  // If this scope's owner is a FunctionExpression (anonymous function),
+  // skip all parent function scopes and go directly to file scope
+  const ownerKind = scope.owner?.kind;
+  if (ownerKind === SyntaxKind.FunctionExpression) {
+    // Jump to file scope (root), skipping parent function scopes
+    let fileScope = scope.parent;
+    while (fileScope.parent) fileScope = fileScope.parent;
+    return fileScope.declarations.get(lower);
+  }
+
+  // For named function scopes (FunctionDeclaration), check file scope
+  if (ownerKind === SyntaxKind.FunctionDeclaration) {
+    return scope.parent.declarations.get(lower);
+  }
+
+  // For other scopes (shouldn't happen with current parser), fall through
+  return resolve(name, scope.parent);
+}
+
+/**
  * AST-based: detect usage of undefined variables.
  * Uses scope analysis — checks identifier references against declarations.
+ * Respects BrightScript's no-closures semantics for anonymous functions.
  */
 export function checkUndefinedVariablesAst(ctx: RuleContext): LintDiagnostic[] {
   const { filePath, config, parseResult, lintContext } = ctx;
   if (config['identifier/undefined-variable'] === 'off') return [];
   if (!parseResult) return [];
-  // Files in /source/ have flat scope access to everything
-  if (/[/\\]source[/\\]/i.test(filePath)) return [];
 
   const diagnostics: LintDiagnostic[] = [];
   const rootScope = buildScopes(parseResult.root);
   const knownFuncNames = lintContext.knownFuncNames;
   const ALWAYS_VALID = new Set(['m', 'true', 'false', 'invalid', 'line_num']);
+
+  // Collect all call target identifiers (line:col) to exclude from undefined-variable checks.
+  // These are handled by checkUndefinedCallsAst instead.
+  const callTargets = new Set<string>();
+  walk(parseResult.root, {
+    visitCallExpression(node: CallExpression) {
+      const callee = node.callee;
+      if (callee && callee instanceof IdentifierExpression) {
+        const t = callee.nameToken;
+        if (t) callTargets.add(`${t.line}:${t.column}`);
+      }
+    },
+  });
 
   function checkScope(scope: Scope): void {
     for (const ref of scope.references) {
@@ -594,8 +700,11 @@ export function checkUndefinedVariablesAst(ctx: RuleContext): LintDiagnostic[] {
       if (builtinNames.has(ref.nameLower)) continue;
       if (knownFuncNames.has(ref.nameLower)) continue;
 
-      // Check if resolved in this scope or any parent
-      if (resolve(ref.name, scope)) continue;
+      // Skip references that are call targets (handled by undefined-function rule)
+      if (callTargets.has(`${ref.line}:${ref.column}`)) continue;
+
+      // Resolve with no-closures semantics
+      if (resolveNoClosures(ref.name, scope)) continue;
 
       diagnostics.push({
         severity: (config['identifier/undefined-variable'] as LintSeverity) ?? 'error',
@@ -839,11 +948,87 @@ export function checkEventCallbacksAst(ctx: RuleContext): LintDiagnostic[] {
 // ─── Import checks (AST-based on trivia) ───────────────────────────────────
 
 /**
+ * Check if any function from an imported file is actually used in the current file
+ * (or its sibling/test sibling files). Uses AST analysis to avoid false positives
+ * from comments or string literals.
+ */
+function isFunctionFromImportUsed(
+  importedFuncNames: string[],
+  currentFilePath: string,
+  currentContent: string,
+  currentParseResult: ParseResult | undefined,
+  lintContext: LintContext,
+): boolean {
+  const funcNamesLower = new Set(importedFuncNames.map(n => n.toLowerCase()));
+
+  // Check usage in current file using the already-parsed result
+  if (currentParseResult) {
+    if (hasCallToAnyInTree(currentParseResult, funcNamesLower)) return true;
+  } else if (currentContent) {
+    if (hasCallToAny(currentContent, funcNamesLower)) return true;
+  }
+
+  // Check usage in sibling files
+  const siblings = lintContext.getSiblingFiles(currentFilePath);
+  for (const sib of siblings) {
+    const content = lintContext.readFile(sib);
+    if (content && hasCallToAny(content, funcNamesLower)) return true;
+  }
+
+  // Check usage in test sibling files
+  const testSiblings = lintContext.getTestSiblings(currentFilePath);
+  for (const sib of testSiblings) {
+    const content = lintContext.readFile(sib);
+    if (content && hasCallToAny(content, funcNamesLower)) return true;
+  }
+
+  // Special case: PromiseResolve/PromiseReject imports are used if .resolvedValue()/.rejectedValue() appear
+  if (funcNamesLower.has('promiseresolve') || funcNamesLower.has('promisereject')) {
+    if (lintContext.isTestFile(currentFilePath)) {
+      if (funcNamesLower.has('promiseresolve') && currentContent.includes('.resolvedValue(')) return true;
+      if (funcNamesLower.has('promisereject') && currentContent.includes('.rejectedValue(')) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if any identifier in `funcNames` is used as a call expression in an already-parsed tree.
+ */
+function hasCallToAnyInTree(parseResult: ParseResult, funcNames: Set<string>): boolean {
+  let found = false;
+  walk(parseResult.root, {
+    visitCallExpression(node: CallExpression) {
+      if (found) return;
+      const callee = node.callee;
+      if (callee && callee instanceof IdentifierExpression) {
+        if (funcNames.has(callee.name.toLowerCase())) {
+          found = true;
+        }
+      }
+    },
+  });
+  return found;
+}
+
+/**
+ * Parse text and check if any identifier in `funcNames` is called as a function.
+ * Uses the parser to avoid matching names in comments or string literals.
+ */
+function hasCallToAny(text: string, funcNames: Set<string>): boolean {
+  const parseResult = parseBrs(text);
+  if (!parseResult) return false;
+  return hasCallToAnyInTree(parseResult, funcNames);
+}
+
+/**
  * AST-based: check @import/@mock annotations in comment trivia.
  * Validates: duplicate, missing path, unresolved, unused.
  */
 export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
-  const { filePath, imports, config, lintContext } = ctx;
+  const { filePath, imports, config, lintContext, parseResult, lines } = ctx;
+  const currentContent = lines.join('\n');
   const diagnostics: LintDiagnostic[] = [];
   const seenImportKeys = new Set<string>();
 
@@ -890,18 +1075,46 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
 
     // Resolve the import
     const resolved = lintContext.resolveImportPath(imp.importPath, filePath, imp.fromModule);
-    if (resolved !== null) continue;
+    if (resolved !== null) {
+      // import/unused — check if any function from the resolved file is actually used
+      if (config['import/unused'] !== 'off' && !imp.isMock) {
+        const funcs = lintContext.parseFunctionsFromFile(resolved);
+        if (funcs.length > 0) {
+          // Check usage in current file + sibling files
+          const isUsed = isFunctionFromImportUsed(funcs, filePath, currentContent, parseResult, lintContext);
+          if (!isUsed) {
+            diagnostics.push({
+              severity: (config['import/unused'] as LintSeverity) ?? 'warning',
+              code: 'import/unused',
+              message: `Kopytko ${annotationType}: "${imp.importPath}" is imported but none of its functions are referenced.`,
+              line: lineIndex, column: 0, endLine: lineIndex, endColumn: Number.MAX_SAFE_INTEGER, filePath,
+              fix: { type: 'delete-line' as const, line: lineIndex, column: 0 },
+            });
+          }
+        }
+      }
+      continue;
+    }
 
     // Check if this is a build-generated file (matches generatedPaths/generatedModules)
+    let matchedPattern: string | null = null;
     if (lintContext.generatedPaths && lintContext.generatedPaths.length > 0) {
-      
-      const isGenerated = lintContext.generatedPaths.some((p: string) => matchesGlob(imp.importPath, p));
-      if (isGenerated) continue;
+      const pattern = lintContext.generatedPaths.find((p: string) => matchesGlob(imp.importPath, p));
+      if (pattern) matchedPattern = pattern;
     }
-    if (lintContext.generatedModules && lintContext.generatedModules.length > 0) {
-      
-      const isGenerated = lintContext.generatedModules.some((gm: { path: string }) => matchesGlob(imp.importPath, gm.path));
-      if (isGenerated) continue;
+    if (!matchedPattern && lintContext.generatedModules && lintContext.generatedModules.length > 0) {
+      const gm = lintContext.generatedModules.find((gm: { path: string }) => matchesGlob(imp.importPath, gm.path));
+      if (gm) matchedPattern = gm.path;
+    }
+
+    if (matchedPattern) {
+      diagnostics.push({
+        severity: 'info' as LintSeverity,
+        code: 'import/build-generated',
+        message: `Kopytko ${annotationType}: "${imp.importPath}" matches generated pattern "${matchedPattern}" — file will be created at build time.`,
+        line: lineIndex, column: 0, endLine: lineIndex, endColumn: Number.MAX_SAFE_INTEGER, filePath,
+      });
+      continue;
     }
 
     // import/unresolved
