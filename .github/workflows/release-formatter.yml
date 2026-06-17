@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/kopytko-formatter
+        working-directory: packages/formatter
 
     steps:
       - uses: actions/checkout@v4
@@ -125,15 +125,15 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
 
-          if [ -f packages/kopytko-formatter/CHANGELOG.md ]; then
+          if [ -f packages/formatter/CHANGELOG.md ]; then
             # Insert after the first "# Changelog" header line
             awk -v entry="$ENTRY" '
               /^# Changelog/ { print; getline; print; print ""; print entry; next }
               { print }
-            ' packages/kopytko-formatter/CHANGELOG.md > /tmp/changelog.tmp
-            mv /tmp/changelog.tmp packages/kopytko-formatter/CHANGELOG.md
+            ' packages/formatter/CHANGELOG.md > /tmp/changelog.tmp
+            mv /tmp/changelog.tmp packages/formatter/CHANGELOG.md
           else
-            echo -e "# Changelog\n\n$ENTRY\n" > packages/kopytko-formatter/CHANGELOG.md
+            echo -e "# Changelog\n\n$ENTRY\n" > packages/formatter/CHANGELOG.md
           fi
 
       - name: Commit, tag, and push
@@ -141,7 +141,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           VERSION="${{ steps.version.outputs.version }}"
           TAG="kopytko-formatter-v${VERSION}"
-          git add packages/kopytko-formatter/package.json packages/kopytko-formatter/package-lock.json packages/kopytko-formatter/CHANGELOG.md
+          git add packages/formatter/package.json packages/formatter/package-lock.json packages/formatter/CHANGELOG.md
           git commit -m "chore(kopytko-formatter): release v${VERSION}"
           git tag "$TAG" -m "kopytko-formatter v${VERSION}"
           git push origin HEAD --tags
