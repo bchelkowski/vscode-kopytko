@@ -1,0 +1,57 @@
+{
+  "name": "brightscript-parser",
+  "version": "0.1.0",
+  "description": "Hand-written BrightScript lexer and lossless CST parser. Shared foundation for kopytko-formatter, kopytko-linter, and the Kopytko language server.",
+  "license": "MIT",
+  "author": "bchelkowski",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bchelkowski/vscode-kopytko.git",
+    "directory": "packages/brightscript-parser"
+  },
+  "keywords": [
+    "brightscript",
+    "parser",
+    "lexer",
+    "cst",
+    "ast",
+    "roku"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "mocha",
+    "lint": "eslint \"./src/**/*.ts\" --ext .ts",
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.9.2",
+    "chai": "^6.2.2",
+    "eslint": "^10.5.0",
+    "mocha": "^11.7.6",
+    "source-map-support": "^0.5.21",
+    "tsx": "^4.20.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "diff": "^8.0.3"
+  }
+}
