@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.0] - 2026-06-17
+
+### Added
+- Add import/unused, entry-point exemption, throw and scope fixes
+
 ## [1.0.8] - 2026-06-17
 
 - Release 1.0.8
