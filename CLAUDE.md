@@ -206,7 +206,9 @@ All new features must follow these patterns:
 | Scope | Appears in |
 |---|---|
 | `feat(vscode-kopytko):` / `fix(vscode-kopytko):` / `refactor(vscode-kopytko):` | Extension CHANGELOG |
-| `feat(kopytko-formatter):` / `fix(kopytko-formatter):` / `refactor(kopytko-formatter):` | Formatter CHANGELOG |
+| `feat(formatter):` / `fix(formatter):` / `refactor(formatter):` | Formatter CHANGELOG |
+| `feat(linter):` / `fix(linter):` / `refactor(linter):` | Linter CHANGELOG |
+| `feat(brightscript-parser):` / `fix(brightscript-parser):` / `refactor(brightscript-parser):` | BrightScript Parser CHANGELOG |
 | Breaking change: add `!` after the scope — e.g. `feat(vscode-kopytko)!:` | `### Breaking Changes` section |
 | `chore:`, `test:`, unscoped commits | Not included in any changelog |
 

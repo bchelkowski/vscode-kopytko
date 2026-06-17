@@ -61,7 +61,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DATE=$(date +%Y-%m-%d)
-          SCOPE="kopytko-formatter"
+          SCOPE="formatter"
           PREV_TAG=$(git tag --list 'kopytko-formatter-v*' --sort=-v:refname | head -1)
 
           if [ -n "$PREV_TAG" ]; then
