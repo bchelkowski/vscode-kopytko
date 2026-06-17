@@ -13,7 +13,7 @@ import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from '.
 import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
-import { parse } from 'brightscript-parser';
+import { parse } from 'kopytko-brightscript-parser';
 
 /**
  * Lints a single file with a pre-built context.

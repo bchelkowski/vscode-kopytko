@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/kopytko-linter
+        working-directory: packages/linter
 
     steps:
       - uses: actions/checkout@v4
@@ -125,15 +125,15 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
 
-          if [ -f packages/kopytko-linter/CHANGELOG.md ]; then
+          if [ -f packages/linter/CHANGELOG.md ]; then
             # Insert after the first "# Changelog" header line
             awk -v entry="$ENTRY" '
               /^# Changelog/ { print; getline; print; print ""; print entry; next }
               { print }
-            ' packages/kopytko-linter/CHANGELOG.md > /tmp/changelog.tmp
-            mv /tmp/changelog.tmp packages/kopytko-linter/CHANGELOG.md
+            ' packages/linter/CHANGELOG.md > /tmp/changelog.tmp
+            mv /tmp/changelog.tmp packages/linter/CHANGELOG.md
           else
-            echo -e "# Changelog\n\n$ENTRY\n" > packages/kopytko-linter/CHANGELOG.md
+            echo -e "# Changelog\n\n$ENTRY\n" > packages/linter/CHANGELOG.md
           fi
 
       - name: Commit, tag, and push
@@ -141,7 +141,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           VERSION="${{ steps.version.outputs.version }}"
           TAG="kopytko-linter-v${VERSION}"
-          git add packages/kopytko-linter/package.json packages/kopytko-linter/package-lock.json packages/kopytko-linter/CHANGELOG.md
+          git add packages/linter/package.json packages/linter/package-lock.json packages/linter/CHANGELOG.md
           git commit -m "chore(kopytko-linter): release v${VERSION}"
           git tag "$TAG" -m "kopytko-linter v${VERSION}"
           git push origin HEAD --tags

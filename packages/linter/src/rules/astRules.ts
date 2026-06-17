@@ -16,9 +16,9 @@ import {
   AALiteral, LiteralExpression,
   buildScopes, resolve,
   findComponent, matchesGlob, parse as parseBrs,
-} from 'brightscript-parser';
-import type { Scope, Declaration } from 'brightscript-parser';
-import { builtinNames, builtinArity, keywordNames } from 'brightscript-parser';
+} from 'kopytko-brightscript-parser';
+import type { Scope, Declaration } from 'kopytko-brightscript-parser';
+import { builtinNames, builtinArity, keywordNames } from 'kopytko-brightscript-parser';
 
 // ─── CreateObject unknown component ─────────────────────────────────────────
 

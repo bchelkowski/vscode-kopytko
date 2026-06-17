@@ -21,13 +21,13 @@ export { applyFixes } from './fixer';export { formatText } from './output/textFo
 export { formatJson } from './output/jsonFormatter';
 export { formatSarif } from './output/sarifFormatter';
 // Re-export from brightscript-parser (canonical source)
-export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, builtinNames, keywordNames } from 'brightscript-parser';
-export { matchesGlob, findMatchingGlob } from 'brightscript-parser';
-export { inferNumericLiteralType, isNumericLiteral, stripNumericLiterals, NUMERIC_LITERAL_GLOBAL_RE } from 'brightscript-parser';
-export type { NumericType } from 'brightscript-parser';
+export { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS, findBuiltin, builtinNames, keywordNames } from 'kopytko-brightscript-parser';
+export { matchesGlob, findMatchingGlob } from 'kopytko-brightscript-parser';
+export { inferNumericLiteralType, isNumericLiteral, stripNumericLiterals, NUMERIC_LITERAL_GLOBAL_RE } from 'kopytko-brightscript-parser';
+export type { NumericType } from 'kopytko-brightscript-parser';
 
-export { findComponent } from 'brightscript-parser';
-export { escapeRegex } from 'brightscript-parser';
+export { findComponent } from 'kopytko-brightscript-parser';
+export { escapeRegex } from 'kopytko-brightscript-parser';
 export { parseImports, ImportResolver } from './analysis/importParser';
 export { parseFunctionDefs, parseInnerMethodDefs } from './analysis/functionIndex';
 export { isTestFile, isMockFile, isTestRelatedFile, getTestBaseName, findTestSiblings } from './analysis/testUtils';

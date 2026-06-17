@@ -1,5 +1,5 @@
 import type { LintDiagnostic, RuleContext } from '../types';
-import { findComponent } from 'brightscript-parser';
+import { findComponent } from 'kopytko-brightscript-parser';
 import { isNumericLiteral } from '../analysis/numericLiterals';
 
 export function checkThrowStatements(ctx: RuleContext): LintDiagnostic[] {

@@ -1,5 +1,5 @@
 import type { LintContext } from './context';
-import type { ParseResult } from 'brightscript-parser';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 
 export type LintSeverity = 'error' | 'warning' | 'info' | 'hint';
 

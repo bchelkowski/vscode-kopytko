@@ -18,7 +18,7 @@ import type { RuleContext, LintDiagnostic } from '../../src/types';
 import type { LintContext } from '../../src/context';
 
 // We need to require parse from the installed package
-const { parse } = require('brightscript-parser');
+const { parse } = require('kopytko-brightscript-parser');
 
 /** Builds a minimal RuleContext from source code. */
 function makeCtx(source: string, configOverrides: Record<string, string> = {}): RuleContext {
