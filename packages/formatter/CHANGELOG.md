@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.1.0] - 2026-06-17
+
+### Added
+- Migrate to brightscript-parser CST
+
+### Changed
+- Rename directory to packages/formatter
+
 ## [1.0.10] - 2026-06-16
 
 ### Fixed
