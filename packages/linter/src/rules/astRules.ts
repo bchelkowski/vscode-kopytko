@@ -963,63 +963,67 @@ function isFunctionFromImportUsed(
 
   // Check usage in current file using the already-parsed result
   if (currentParseResult) {
-    if (hasCallToAnyInTree(currentParseResult, funcNamesLower)) return true;
+    if (hasReferenceToAnyInTree(currentParseResult, funcNamesLower)) return true;
   } else if (currentContent) {
-    if (hasCallToAny(currentContent, funcNamesLower)) return true;
+    if (hasReferenceToAny(currentContent, funcNamesLower)) return true;
   }
+
+  const isTestFile = lintContext.isTestFile(currentFilePath);
+  const isPromiseHelper = funcNamesLower.has('promiseresolve') || funcNamesLower.has('promisereject');
+
+  // PromiseResolve/PromiseReject are used indirectly via .resolvedValue()/.rejectedValue()
+  if (isPromiseHelper && isTestFile && contentUsesPromiseHelper(currentContent, funcNamesLower)) return true;
 
   // Check usage in sibling files
   const siblings = lintContext.getSiblingFiles(currentFilePath);
   for (const sib of siblings) {
     const content = lintContext.readFile(sib);
-    if (content && hasCallToAny(content, funcNamesLower)) return true;
+    if (!content) continue;
+    if (hasReferenceToAny(content, funcNamesLower)) return true;
+    if (isPromiseHelper && isTestFile && contentUsesPromiseHelper(content, funcNamesLower)) return true;
   }
 
   // Check usage in test sibling files
   const testSiblings = lintContext.getTestSiblings(currentFilePath);
   for (const sib of testSiblings) {
     const content = lintContext.readFile(sib);
-    if (content && hasCallToAny(content, funcNamesLower)) return true;
-  }
-
-  // Special case: PromiseResolve/PromiseReject imports are used if .resolvedValue()/.rejectedValue() appear
-  if (funcNamesLower.has('promiseresolve') || funcNamesLower.has('promisereject')) {
-    if (lintContext.isTestFile(currentFilePath)) {
-      if (funcNamesLower.has('promiseresolve') && currentContent.includes('.resolvedValue(')) return true;
-      if (funcNamesLower.has('promisereject') && currentContent.includes('.rejectedValue(')) return true;
-    }
+    if (!content) continue;
+    if (hasReferenceToAny(content, funcNamesLower)) return true;
+    if (isPromiseHelper && isTestFile && contentUsesPromiseHelper(content, funcNamesLower)) return true;
   }
 
   return false;
 }
 
 /**
- * Check if any identifier in `funcNames` is used as a call expression in an already-parsed tree.
+ * Check if any identifier in `funcNames` is referenced in an already-parsed tree —
+ * either as a direct call (`asd()`) or as a value (`callback = asd`).
  */
-function hasCallToAnyInTree(parseResult: ParseResult, funcNames: Set<string>): boolean {
+function hasReferenceToAnyInTree(parseResult: ParseResult, funcNames: Set<string>): boolean {
   let found = false;
   walk(parseResult.root, {
-    visitCallExpression(node: CallExpression) {
+    visitIdentifierExpression(node: IdentifierExpression) {
       if (found) return;
-      const callee = node.callee;
-      if (callee && callee instanceof IdentifierExpression) {
-        if (funcNames.has(callee.name.toLowerCase())) {
-          found = true;
-        }
-      }
+      if (funcNames.has(node.name.toLowerCase())) found = true;
     },
   });
   return found;
 }
 
 /**
- * Parse text and check if any identifier in `funcNames` is called as a function.
+ * Parse text and check if any identifier in `funcNames` is referenced (called or used as value).
  * Uses the parser to avoid matching names in comments or string literals.
  */
-function hasCallToAny(text: string, funcNames: Set<string>): boolean {
+function hasReferenceToAny(text: string, funcNames: Set<string>): boolean {
   const parseResult = parseBrs(text);
   if (!parseResult) return false;
-  return hasCallToAnyInTree(parseResult, funcNames);
+  return hasReferenceToAnyInTree(parseResult, funcNames);
+}
+
+function contentUsesPromiseHelper(content: string, funcNames: Set<string>): boolean {
+  if (funcNames.has('promiseresolve') && content.includes('.resolvedValue(')) return true;
+  if (funcNames.has('promisereject') && content.includes('.rejectedValue(')) return true;
+  return false;
 }
 
 /**

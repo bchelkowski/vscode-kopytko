@@ -13,6 +13,7 @@ import {
   checkUndefinedVariablesAst,
   checkObserverCallbacksAst,
   checkTestFileStructureAst,
+  checkImportsAst,
 } from '../../src/rules/astRules';
 import type { RuleContext, LintDiagnostic } from '../../src/types';
 import type { LintContext } from '../../src/context';
@@ -483,5 +484,84 @@ describe('AST-based lint rules', () => {
       const { checkUndefinedVariablesAst } = require('../../src/rules/astRules');
       const diags = checkUndefinedVariablesAst(ctx);
       expect(diags).to.have.length(0);
+    });
+  });
+
+  describe('import/unused', () => {
+    function makeImportCtx(
+      source: string,
+      importedFuncNames: string[],
+      lintContextOverrides: Partial<LintContext> = {},
+    ): RuleContext {
+      const ctx = makeCtx(source, { 'import/unused': 'warning' });
+      ctx.imports = [{ raw: "' @import /utils/dep.brs", importPath: '/utils/dep.brs', line: 1, isMock: false }];
+      ctx.lintContext = {
+        knownFuncNames: new Set(),
+        parseImports: () => [],
+        resolveImportPath: () => '/resolved/dep.brs',
+        importExists: () => true,
+        readFile: () => null,
+        parseFunctionsFromFile: () => importedFuncNames,
+        getSiblingFiles: () => [],
+        getTestSiblings: () => [],
+        isTestFile: () => false,
+        generatedPaths: [],
+        generatedModules: [],
+        siblingPatterns: [],
+        ...lintContextOverrides,
+      } as LintContext;
+      return ctx;
+    }
+
+    it('flags unused import', () => {
+      const ctx = makeImportCtx("' @import /utils/dep.brs\nfunction foo()\n  return 1\nend function", ['unusedFunc']);
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).to.include('import/unused');
+    });
+
+    it('does not flag import when function is called directly', () => {
+      const ctx = makeImportCtx("' @import /utils/dep.brs\nfunction foo()\n  myFunc()\nend function", ['myFunc']);
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/unused');
+    });
+
+    it('does not flag import when function is used as a value (not called)', () => {
+      const ctx = makeImportCtx("' @import /utils/dep.brs\nfunction foo()\n  callback = myFunc\nend function", ['myFunc']);
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/unused');
+    });
+
+    it('does not flag PromiseResolve import when .resolvedValue() appears in the same file', () => {
+      const source = "' @import /utils/dep.brs\nfunction test()\n  m.mock = mockFunction(\"x\").resolvedValue(1)\nend function";
+      const ctx = makeImportCtx(source, ['PromiseResolve'], { isTestFile: () => true });
+      ctx.filePath = '/project/test/MyTest.test.brs';
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/unused');
+    });
+
+    it('does not flag PromiseResolve import when .resolvedValue() appears only in a sibling file', () => {
+      const source = "' @import /utils/dep.brs\nfunction TestSuite__MyTest()\n  ts = {}\n  return ts\nend function";
+      const siblingContent = "function TestSuite__MyTest__part()\n  x = mockFunction(\"x\").resolvedValue(1)\nend function";
+      const ctx = makeImportCtx(source, ['PromiseResolve'], {
+        isTestFile: () => true,
+        getSiblingFiles: () => ['/project/test/TestSuite__MyTest__part.test.brs'],
+        readFile: () => siblingContent,
+      });
+      ctx.filePath = '/project/test/TestSuite__MyTest.test.brs';
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/unused');
+    });
+
+    it('does not flag PromiseReject import when .rejectedValue() appears only in a test sibling file', () => {
+      const source = "' @import /utils/dep.brs\nfunction TestSuite__MyTest()\n  ts = {}\n  return ts\nend function";
+      const siblingContent = "function TestSuite__MyTest__part()\n  x = mockFunction(\"x\").rejectedValue({message:\"err\"})\nend function";
+      const ctx = makeImportCtx(source, ['PromiseReject'], {
+        isTestFile: () => true,
+        getTestSiblings: () => ['/project/test/TestSuite__MyTest__part.test.brs'],
+        readFile: () => siblingContent,
+      });
+      ctx.filePath = '/project/test/TestSuite__MyTest.test.brs';
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/unused');
     });
   });
