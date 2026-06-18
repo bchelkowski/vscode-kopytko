@@ -2,8 +2,9 @@ import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { matchesGlob } from 'kopytko-brightscript-parser';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 import { getDocumentPath } from '../utils/textUtils';
-import { getCachedLines, getCachedImports, getCachedKnownFuncNames } from '../utils/documentCache';
+import { getCachedLines, getCachedImports, getCachedKnownFuncNames, getCachedParseResult } from '../utils/documentCache';
 import { isTestFile } from '../kopytko/testFramework';
 import fsWrapper from '../utils/fsWrapper';
 import { parseFunctionDefs as extParseFunctionDefs } from '../brightscript/functionIndex';
@@ -19,6 +20,23 @@ import {
   type LinterConfig,
   type KopytkoImport,
 } from 'kopytko-linter';
+
+/**
+ * `kopytko-linter`'s `lintFile` gained an optional 6th `preParseResult` argument
+ * (reuse an already-computed CST) in a release after the version currently
+ * pinned here. This forward-compatible signature lets the diagnostics path pass
+ * the extension's cached parse instead of making the linter re-parse the same
+ * text: older installed builds simply ignore the extra argument at runtime, and
+ * the optimization activates automatically once the dependency is bumped.
+ */
+type LintFileWithPreParse = (
+  filePath: string,
+  content: string,
+  context: LintContext,
+  config: LinterConfig,
+  preLines?: string[],
+  preParseResult?: ParseResult,
+) => LintDiagnostic[];
 
 export interface GeneratedModuleConfig {
   path: string;
@@ -127,8 +145,11 @@ export class BrightScriptDiagnosticsProvider {
 
     const config: LinterConfig = { ...DEFAULT_LINTER_CONFIG, generatedPaths, generatedModules, siblingPatterns };
 
-    // Pass cached lines directly to avoid re-splitting content inside lintFile
-    const lintDiagnostics = lintFile(documentPath, content, context, config, cachedLines);
+    // Pass cached lines (avoid re-splitting) and the extension's cached CST
+    // (avoid a redundant parse) into the linter. `content === document.getText()`,
+    // so the cached parse corresponds exactly to what is being linted.
+    const lint: LintFileWithPreParse = lintFile;
+    const lintDiagnostics = lint(documentPath, content, context, config, cachedLines, getCachedParseResult(document));
 
     return lintDiagnostics.map((d) => this.toLspDiagnostic(d));
   }
