@@ -26,6 +26,7 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'identifier/wrong-arg-count': 'error',
   'identifier/undefined-variable': 'error',
   'identifier/shadows-builtin': 'error',
+  'identifier/shadows-function': 'error',
   'identifier/unused-parameter': 'warning',
   'identifier/unused-variable': 'warning',
   'throw/invalid-value': 'warning',

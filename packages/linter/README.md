@@ -167,6 +167,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `identifier/wrong-arg-count` | error | Built-in function called with wrong number of arguments |
 | `identifier/undefined-variable` | error | Variable used but never assigned in the enclosing scope |
 | `identifier/shadows-builtin` | error | Variable name shadows a BrightScript built-in function |
+| `identifier/shadows-function` | error | Variable or parameter shadows a user-defined function (local or `@import`-ed) |
 | `identifier/unused-parameter` | warning | Function parameter never used in body (prefix `_` to suppress) |
 | `identifier/unused-variable` | warning | Local variable defined but never read (prefix `_` to suppress) |
 

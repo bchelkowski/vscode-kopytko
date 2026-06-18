@@ -88,6 +88,7 @@ function getRuleDescription(code: string): string {
     'identifier/wrong-arg-count': 'Built-in function called with wrong argument count',
     'identifier/undefined-variable': 'Variable used but never defined in scope',
     'identifier/shadows-builtin': 'Variable name shadows a built-in function',
+    'identifier/shadows-function': 'Variable or parameter shadows a user-defined function',
     'identifier/unused-parameter': 'Function parameter is never used',
     'throw/invalid-value': 'Invalid throw value type',
     'throw/missing-message': 'Thrown AA missing message field',

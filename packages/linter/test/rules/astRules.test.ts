@@ -6,6 +6,7 @@ import {
   checkMissingTypeAnnotationsAst,
   checkTrailingCommaAst,
   checkShadowedBuiltinsAst,
+  checkShadowedFunctionsAst,
   checkUnusedParametersAst,
   checkUnusedVariablesAst,
   checkWrongArgCountAst,
@@ -238,6 +239,94 @@ describe('AST-based lint rules', () => {
     it('does not report non-builtin names', () => {
       const ctx = makeCtx('function foo(myParam)\n  return myParam\nend function', { 'identifier/shadows-builtin': 'error' });
       const diags = checkShadowedBuiltinsAst(ctx);
+      expect(diags).to.have.length(0);
+    });
+  });
+
+  describe('checkShadowedFunctionsAst', () => {
+    function makeCtxWithKnown(source: string, knownFuncNames: Set<string>, configOverrides: Record<string, string> = {}): RuleContext {
+      return { ...makeCtx(source, configOverrides), lintContext: { knownFuncNames } as unknown as LintContext };
+    }
+
+    it('reports parameter that shadows a local function', () => {
+      const src = [
+        'function myHelper() as Integer',
+        '  return 1',
+        'end function',
+        '',
+        'function foo(myHelper as Integer) as Integer',
+        '  return myHelper',
+        'end function',
+      ].join('\n');
+      const ctx = makeCtx(src, { 'identifier/shadows-function': 'error' });
+      const diags = checkShadowedFunctionsAst(ctx);
+      expect(codes(diags)).to.include('identifier/shadows-function');
+      expect(diags[0].message).to.contain('myHelper');
+    });
+
+    it('reports variable that shadows a local function', () => {
+      const src = [
+        'function myHelper() as Integer',
+        '  return 1',
+        'end function',
+        '',
+        'function foo()',
+        '  myHelper = 42',
+        'end function',
+      ].join('\n');
+      const ctx = makeCtx(src, { 'identifier/shadows-function': 'error' });
+      const diags = checkShadowedFunctionsAst(ctx);
+      expect(codes(diags)).to.include('identifier/shadows-function');
+    });
+
+    it('reports parameter that shadows an imported function', () => {
+      const src = 'function foo(importedHelper as Integer) as Integer\n  return importedHelper\nend function';
+      const ctx = makeCtxWithKnown(src, new Set(['importedhelper']), { 'identifier/shadows-function': 'error' });
+      const diags = checkShadowedFunctionsAst(ctx);
+      expect(codes(diags)).to.include('identifier/shadows-function');
+    });
+
+    it('reports variable that shadows an imported function', () => {
+      const src = 'function foo()\n  importedHelper = 42\nend function';
+      const ctx = makeCtxWithKnown(src, new Set(['importedhelper']), { 'identifier/shadows-function': 'error' });
+      const diags = checkShadowedFunctionsAst(ctx);
+      expect(codes(diags)).to.include('identifier/shadows-function');
+    });
+
+    it('does not flag function declarations themselves', () => {
+      const src = 'function myHelper()\n  return 1\nend function';
+      const ctx = makeCtx(src, { 'identifier/shadows-function': 'error' });
+      const diags = checkShadowedFunctionsAst(ctx);
+      expect(diags).to.have.length(0);
+    });
+
+    it('does not flag unrelated names', () => {
+      const src = [
+        'function myHelper() as Integer',
+        '  return 1',
+        'end function',
+        '',
+        'function foo(otherParam as Integer) as Integer',
+        '  return otherParam',
+        'end function',
+      ].join('\n');
+      const ctx = makeCtx(src, { 'identifier/shadows-function': 'error' });
+      const diags = checkShadowedFunctionsAst(ctx);
+      expect(diags).to.have.length(0);
+    });
+
+    it('respects off config', () => {
+      const src = [
+        'function myHelper() as Integer',
+        '  return 1',
+        'end function',
+        '',
+        'function foo(myHelper as Integer) as Integer',
+        '  return myHelper',
+        'end function',
+      ].join('\n');
+      const ctx = makeCtx(src, { 'identifier/shadows-function': 'off' });
+      const diags = checkShadowedFunctionsAst(ctx);
       expect(diags).to.have.length(0);
     });
   });
