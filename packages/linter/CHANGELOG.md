@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.3.1] - 2026-06-18
+
+### Fixed
+- Allow trailing suppression comment on @import/@mock lines
+
 ## [1.3.0] - 2026-06-18
 
 ### Added
