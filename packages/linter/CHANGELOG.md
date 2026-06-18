@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.2] - 2026-06-18
+
+### Added
+- Accept an optional pre-parsed CST in lintFile
+
 ## [1.1.1] - 2026-06-17
 
 ### Added
