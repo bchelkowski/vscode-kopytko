@@ -727,9 +727,9 @@ Test-specific completions are provided in these contexts:
 | `expect(value).` | All matchers: `toBe`, `toEqual`, `toBeTrue`, `toBeFalse`, `toBeValid`, `toBeInvalid`, `toContain`, `toHaveKey`, `toHaveKeys`, `toHaveLength`, `toThrow`, `toHaveBeenCalled`, `toHaveBeenCalledTimes`, `toHaveBeenCalledWith`, `toHaveBeenLastCalledWith`, `toHaveBeenNthCalledWith`, `not` |
 | `expect(value).not.` | All matchers (negated) |
 | `mockFunction("name").` | `returnValue`, `resolvedValue`, `rejectedValue`, `implementation`, `throw`, `clear`, `getCalls`, `getConstructorCalls`, `setProperty`, `setProperties` |
-| `ts().` | Test suite methods: `addTest`, `setBeforeEach`, `assertMethodWasCalled`, etc. |
+| `getTestSuite().` | Test suite methods: `addTest`, `setBeforeEach`, `assertMethodWasCalled`, etc. |
 | `fakeClock(m).` | `tick` |
-| Default (test file) | Global test functions: `it`, `test`, `itEach`, `testEach`, `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `expect`, `mockFunction`, `ts`, `fakeClock`, `initKopytko`, `forceUpdate` |
+| Default (test file) | Global test functions: `it`, `test`, `itEach`, `testEach`, `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `expect`, `mockFunction`, `getTestSuite`, `fakeClock`, `initKopytko`, `forceUpdate` |
 | `' @` (annotation context) | `@mock` completion alongside `@import` |
 
 ### Hover Documentation

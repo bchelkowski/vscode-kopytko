@@ -13,6 +13,6 @@ export const TEST_FRAMEWORK_GLOBALS: string[] = [
   'expect', 'mockfunction', 'mock',
   // Test utilities
   'fakeclock', 'initkopytko', 'forceupdate', 'destroykopytko',
-  // Test suite object
-  'ts',
+  // Test suite accessor
+  'gettestsuite',
 ];

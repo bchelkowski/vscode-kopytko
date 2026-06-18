@@ -380,8 +380,8 @@ export const GLOBAL_TEST_FUNCTIONS: TestApiEntry[] = [
     context: 'global',
   },
   {
-    name: 'ts',
-    signature: 'ts() as Object',
+    name: 'getTestSuite',
+    signature: 'getTestSuite() as Object',
     returnType: 'Object',
     description: 'Returns the current test suite object. Backed by `GetGlobalAA()["$$ts"]`.',
     context: 'global',
