@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.3.0] - 2026-06-18
+
+### Added
+- Add inline suppression comments
+
 ## [1.2.0] - 2026-06-18
 
 ### Added
