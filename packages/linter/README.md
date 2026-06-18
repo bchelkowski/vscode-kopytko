@@ -221,6 +221,13 @@ riskyCall()    ' all rules suppressed on this line
 
 Multiple rule codes are separated by commas. Directives apply only to the single target line — there is no block form.
 
+> **`@import` / `@mock` lines:** Do **not** use `kopytko-disable-line` as a trailing comment on `@import` or `@mock` annotation lines. The kopytko-packager uses a strict end-of-line regex to detect imports and will silently ignore any `@import` that has a trailing comment, causing the file to be omitted from the bundle. Use `kopytko-disable-next-line` on the preceding line instead:
+>
+> ```brightscript
+> ' kopytko-disable-next-line import/unused
+> ' @import /valid/absolute/path.brs
+> ```
+
 ## Library API
 
 ```typescript
