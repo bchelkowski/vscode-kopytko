@@ -30,6 +30,7 @@ import {
   DocumentFormattingParams,
   DidChangeWatchedFilesParams,
   FileChangeType,
+  SemanticTokensParams,
 } from 'vscode-languageserver/node';
 import type { Connection } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -48,6 +49,7 @@ import { BrightScriptWorkspaceSymbolProvider } from './providers/workspaceSymbol
 import { BrightScriptRenameProvider } from './providers/renameProvider';
 import { BrightScriptCodeActionProvider } from './providers/codeActionProvider';
 import { BrightScriptFormattingProvider } from './providers/formattingProvider';
+import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensProvider';
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
 import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
@@ -74,6 +76,7 @@ let workspaceSymbolProvider: BrightScriptWorkspaceSymbolProvider;
 let renameProvider: BrightScriptRenameProvider;
 let codeActionProvider: BrightScriptCodeActionProvider;
 let formattingProvider: BrightScriptFormattingProvider;
+let semanticTokensProvider: BrightScriptSemanticTokensProvider;
 let casingConfig: CasingConfig = { ...DEFAULT_CASING_CONFIG };
 let formattingConfig: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG };
 let generatedPaths: string[] = [];
@@ -100,6 +103,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   renameProvider = new BrightScriptRenameProvider(importResolver, workspaceIndex);
   codeActionProvider = new BrightScriptCodeActionProvider();
   formattingProvider = new BrightScriptFormattingProvider();
+  semanticTokensProvider = new BrightScriptSemanticTokensProvider();
 
   return {
     capabilities: {
@@ -123,6 +127,10 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       },
       codeActionProvider: {
         codeActionKinds: [CodeActionKind.QuickFix],
+      },
+      semanticTokensProvider: {
+        legend: semanticTokensProvider.getLegend(),
+        full: true,
       },
     },
     serverInfo: {
@@ -449,6 +457,13 @@ connection.onDocumentFormatting((params: DocumentFormattingParams): TextEdit[] =
   const documentPath = URI.parse(document.uri).fsPath;
   const allFunctions = getCachedAllFunctions(document, documentPath, importResolver, siblingPatterns);
   return formattingProvider.provideDocumentFormatting(document, formattingConfig, casingConfig, allFunctions);
+});
+
+// Semantic tokens (full document)
+connection.languages.semanticTokens.on((params: SemanticTokensParams) => {
+  const document = getBrsDocument(params.textDocument.uri);
+  if (!document) return { data: [] };
+  return semanticTokensProvider.provideSemanticTokens(document);
 });
 
 // Wire up

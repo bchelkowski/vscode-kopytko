@@ -13,6 +13,7 @@ Canonical list of extension and package features. Each row links to its topic do
 | Syntax highlighting (keywords, types, strings, numbers, operators) | ✅ | [brightscript-support.md](./brightscript-support.md) |
 | Distinct scopes for function calls, `m`, and `as <type>` annotations (incl. `Function`) | ✅ | [brightscript-support.md](./brightscript-support.md) |
 | `@import` / `@mock` annotation highlighting (distinct colours) | ✅ | [brightscript-support.md](./brightscript-support.md) |
+| Semantic tokens — parser-driven highlighting separating params, locals, calls, and `m`-fields | ✅ | [language-server.md](./language-server.md) |
 | Language configuration (brackets, comments, indent rules) | ✅ | [brightscript-support.md](./brightscript-support.md) |
 | Code snippets — general BrightScript + test framework | ✅ | [brightscript-support.md](./brightscript-support.md) |
 
@@ -188,7 +189,6 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 | **Document highlight** | Highlight every occurrence of the symbol under the cursor (scope-aware, skips strings). | `buildScopes` / `resolve` |
 | **Folding ranges** | Fold functions, `if`/`for`/`while` blocks, and `@import` blocks from the CST (vs today's indentation heuristic). | CST node ranges |
 | **Selection range** | Smart expand/shrink selection along AST boundaries. | CST node ranges |
-| **Semantic tokens** | Parser-driven highlighting that separates params, locals, calls, and `m`-fields more reliably than the TextMate grammar. | `buildScopes` |
 | **More quick-fixes** | "Create missing function" stub from an undefined-function call; "Add `@import`" for a function found in another module; "Add type annotation" inferring the type. | scope + import resolver + `inferTypesFromAst` |
 
 ### B. Higher-value, larger build

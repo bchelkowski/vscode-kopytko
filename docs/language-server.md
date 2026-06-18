@@ -21,6 +21,7 @@ VS Code Extension Host
               ├── BrightScriptRenameProvider
               ├── BrightScriptCodeActionProvider
               ├── BrightScriptFormattingProvider
+              ├── BrightScriptSemanticTokensProvider
               ├── KopytkoImportResolver
               ├── KopytkoModuleCatalog
               ├── WorkspaceFunctionIndex
@@ -37,7 +38,7 @@ VS Code Extension Host
 
 The server avoids recomputation on hot paths (completion fires per keystroke, hover per mouse-move) through several cooperating caches:
 
-- **Per-document cache** (`utils/documentCache.ts`) — keyed by `{uri, version, contentLength}`, stores the split lines, parsed CST, type map, `@import` list, and the collected function / inner-method sets for a document, evicting the least-recently-used entry. Providers read through the `getCached*` helpers instead of calling `split()`, `parse()`, or the collectors directly.
+- **Per-document cache** (`utils/documentCache.ts`) — keyed by `{uri, version, contentLength}`, stores the split lines, parsed CST, scope tree, type map, `@import` list, and the collected function / inner-method sets for a document, evicting the least-recently-used entry. Providers read through the `getCached*` helpers instead of calling `split()`, `parse()`, `buildScopes()`, or the collectors directly.
 - **Cross-document file parse cache** (`utils/fileParseCache.ts`) — reads and parses each `.brs`/`.xml` file **once** and shares its text (`readCachedFileText`), function definitions (`getCachedFunctionDefs`), and inner methods (`getCachedInnerMethodDefs`) across every document and provider. `WorkspaceFunctionIndex`, Find References, Rename, and the import-chain collectors all consume it; `readCachedDir` similarly caches directory listings for import-path completion. The document under the cursor always parses its own **live** buffer — the cache is only consulted for other (imported / sibling / `extends`) files, so an unsaved edit is never served stale.
 - **Component-XML resolution cache** — `findComponentXml` memoizes `componentName → XML path` (including misses), keyed by search roots, avoiding repeated recursive directory walks while resolving `extends` chains.
 
@@ -610,6 +611,28 @@ String literal contents and trailing comments (`'…`) are preserved verbatim �
 **Implementation:** `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts`.
 
 See [formatting.md](./formatting.md) for the complete formatting rule reference.
+
+### Semantic Tokens (`textDocument/semanticTokens/full`)
+
+Parser-driven syntax highlighting that classifies each identifier from the scope tree, layered **on top of** the TextMate grammar. Where TextMate can only guess from neighbouring characters, this provider knows — from `buildScopes` — whether an identifier is a parameter, a local, a user-function call, or an `m`-field, and colours it accordingly. Anything not emitted here keeps its TextMate colour.
+
+**Legend.** Four token types — `function`, `parameter`, `variable`, `property` — and one modifier, `declaration`.
+
+| Source construct | Token type | Modifier |
+|---|---|---|
+| User function/sub name at its declaration | `function` | `declaration` |
+| Call to a function — `foo(...)` (callee identifier, including builtins/globals) | `function` | — |
+| Parameter — at declaration and every use | `parameter` | `declaration` at the declaration |
+| Local — `=` assignment, `for` / `for each`, `catch`, `dim` — at declaration and every use | `variable` | `declaration` at the declaration |
+| `m.field` member name | `property` | — |
+
+**How it works.** A single AST `walk` over the cached CST, in pre-order so that call/dot handlers "claim" a token position before the generic identifier handler runs (a callee like `foo` in `foo(x)` is therefore emitted once, never as both a function and a variable). Identifiers that are neither a call callee nor an `m`-member are resolved with `findScopeAtLine` + `resolve` against the cached scope tree; the matching `Declaration.kind` selects the token type, and a position match against the declaration adds the `declaration` modifier. Unresolved names (and the implicit `m`) are skipped so the TextMate grammar continues to colour builtins, keywords, and non-`m` member access. Tokens are sorted into document order and delta-encoded via `SemanticTokensBuilder`.
+
+**Left to TextMate (by design):** builtins/keywords, the `m` identifier itself, `obj.method()` and non-`m` member access, and `#if`/`#const` manifest constants. Only the full-document request is implemented (no delta/range). Highlighting never throws — on an unexpected error the request returns whatever tokens were collected.
+
+**Client:** none required. The stock `LanguageClient` auto-registers the feature from the server's advertised capability, and the four legend types are standard and themed by default (`editor.semanticHighlighting.enabled` is on by default).
+
+**Implementation:** `BrightScriptSemanticTokensProvider` in `src/server/providers/semanticTokensProvider.ts`; scope tree cached via `getCachedScopeTree` in `src/server/utils/documentCache.ts`.
 
 ## Adding New Providers
 

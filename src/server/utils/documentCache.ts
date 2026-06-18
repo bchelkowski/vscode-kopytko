@@ -6,8 +6,8 @@ import { findSiblingFiles } from '../brightscript/patternSiblings';
 import * as nodePath from 'path';
 import fsWrapper from './fsWrapper';
 import { isTestFile } from '../kopytko/testFramework';
-import { parse, inferTypesFromAst, getVariableType } from 'kopytko-brightscript-parser';
-import type { ParseResult } from 'kopytko-brightscript-parser';
+import { parse, inferTypesFromAst, getVariableType, buildScopes } from 'kopytko-brightscript-parser';
+import type { ParseResult, Scope } from 'kopytko-brightscript-parser';
 import { clearFileParseCache } from './fileParseCache';
 import { clearComponentXmlCache } from '../brightscript/xmlScriptParser';
 
@@ -31,6 +31,8 @@ interface CacheEntry {
   allMethodsSiblingKey?: string;
   /** Parsed CST from brightscript-parser (cached per version). */
   parseResult?: ParseResult;
+  /** Scope tree built from the CST (cached per version). */
+  scopeTree?: Scope;
 }
 
 const _cache = new Map<string, CacheEntry>();
@@ -83,6 +85,19 @@ export function getCachedParseResult(document: TextDocument): ParseResult {
     entry.parseResult = parse(document.getText());
   }
   return entry.parseResult;
+}
+
+/**
+ * Returns the scope tree built from the parsed CST (cached per version).
+ * Provides per-function declarations (params, locals, functions) and references
+ * for scope-aware providers (semantic tokens, future call hierarchy, etc.).
+ */
+export function getCachedScopeTree(document: TextDocument): Scope {
+  const entry = getEntry(document);
+  if (!entry.scopeTree) {
+    entry.scopeTree = buildScopes(getCachedParseResult(document).root);
+  }
+  return entry.scopeTree;
 }
 
 /** Returns parsed @import annotations (cached per version). */
