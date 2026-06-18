@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.0] - 2026-06-18
+
+### Added
+- Add identifier/shadows-function rule
+
 ## [1.1.3] - 2026-06-18
 
 ### Fixed
