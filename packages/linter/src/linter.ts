@@ -11,6 +11,7 @@ import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
 import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from './analysis/xmlParser';
 import { matchesGlob } from './analysis/globMatcher';
+import { parseSuppressionMap, isSuppressed } from './suppression';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 import { parse } from 'kopytko-brightscript-parser';
@@ -55,7 +56,10 @@ export function lintFile(
     }
   }
 
-  return diagnostics;
+  const suppressionMap = parseSuppressionMap(lines);
+  return suppressionMap.size === 0
+    ? diagnostics
+    : diagnostics.filter(d => !isSuppressed(suppressionMap, d));
 }
 
 /**

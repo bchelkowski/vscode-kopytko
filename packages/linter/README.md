@@ -195,6 +195,32 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `type/missing-return-type` | warning | Function missing `as Type` return type annotation |
 | `type/missing-param-type` | warning | Function parameter missing `as Type` annotation |
 
+## Inline Suppression
+
+Individual diagnostics can be suppressed per-line using BrightScript comment directives. Both `'` and `rem` comment styles are recognized.
+
+| Directive | Scope |
+|---|---|
+| `' kopytko-disable-next-line <rule>` | Suppresses matching rule(s) on the **immediately following line** |
+| `' kopytko-disable-line <rule>` | Suppresses matching rule(s) on the **same line** (works as a trailing comment) |
+
+Rule codes accept glob patterns (`import/*` suppresses all `import/` diagnostics). Omitting the rule list suppresses every rule on the target line.
+
+```brightscript
+' kopytko-disable-next-line identifier/undefined-function
+doSomething()
+
+doSomething()  ' kopytko-disable-line identifier/undefined-function
+
+' kopytko-disable-next-line import/*, identifier/wrong-arg-count
+doSomethingElse()
+
+' kopytko-disable-next-line
+riskyCall()    ' all rules suppressed on this line
+```
+
+Multiple rule codes are separated by commas. Directives apply only to the single target line — there is no block form.
+
 ## Library API
 
 ```typescript

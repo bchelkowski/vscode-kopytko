@@ -24,6 +24,7 @@
 - **Rename symbol** — safe rename across the workspace
 - **Outline & Workspace Symbols** — navigate functions, subs, AA methods, and test cases via the Outline view or `Ctrl+T`
 - **21 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
+- **Inline suppression** — `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` comments to suppress individual diagnostics per-line (glob patterns and `rem` style supported)
 - **Code actions** — quick fixes for import diagnostics and unused parameters
 - **Document formatting** — multi-pass engine with 60+ configurable rules (indentation, spacing, casing, blank lines, keyword style, and more)
 - **Configurable identifier casing** — 10 casing dimensions (builtins, keywords, types, methods, user functions) with per-identifier overrides
@@ -42,7 +43,7 @@ The formatting engine and linter are also available as standalone npm packages f
 | Package | Description |
 |---|---|
 | [**kopytko-formatter**](packages/kopytko-formatter/README.md) | BrightScript formatter — `kopytko-format --check` / `--write` for CI, plus a library API |
-| [**kopytko-linter**](packages/kopytko-linter/README.md) | BrightScript linter with 21 rules — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
+| [**kopytko-linter**](packages/kopytko-linter/README.md) | BrightScript linter with 21 rules and inline suppression comments — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
 
 ---
 

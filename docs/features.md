@@ -66,6 +66,7 @@ Backed by the standalone linter's 24 rules (shared by the editor and CI). Full r
 | `CreateObject` | unknown-component | ✅ | [language-server.md](./language-server.md) |
 | Callbacks | undefined-observer-callback · undefined-event-callback | ✅ | [language-server.md](./language-server.md) |
 | Test structure | missing-return-ts · missing-mock-annotation | ✅ | [language-server.md](./language-server.md) |
+| Inline suppression | `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` comments; glob patterns supported; omit rule to suppress all | ✅ | — |
 
 **Scope-resolution details that keep diagnostics accurate:**
 
