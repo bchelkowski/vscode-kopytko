@@ -4,7 +4,7 @@ BrightScript linter for the [Kopytko ecosystem](https://github.com/bchelkowski/v
 
 ## Features
 
-- **24 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, and callbacks
+- **25 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, and callbacks
 - **Configurable severity** per rule (`error`, `warning`, `info`, `hint`, `off`)
 - **Three output formats**: text (terminal), JSON, [SARIF](https://sarifweb.azurewebsites.net/) (GitHub Code Scanning)
 - **Config file support**: `kopytko-linter.json` or `.vscode/settings.json`
