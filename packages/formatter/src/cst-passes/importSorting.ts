@@ -22,8 +22,8 @@ interface ImportSortConfig {
 
 const IMPORT_RE = /^\s*'\s*@import\s+/;
 const MOCK_RE = /^\s*'\s*@mock\s+/;
-const FROM_IMPORT_RE = /^\s*'\s*@import\s+(.*?)\s+from\s+(\S+)\s*$/;
-const FROM_MOCK_RE = /^\s*'\s*@mock\s+(.*?)\s+from\s+(\S+)\s*$/;
+const FROM_IMPORT_RE = /^\s*'\s*@import\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
+const FROM_MOCK_RE = /^\s*'\s*@mock\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
 
 /**
  * Creates an import sorting CST pass.

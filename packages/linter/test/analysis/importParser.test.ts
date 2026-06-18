@@ -102,6 +102,33 @@ describe('importParser', () => {
       expect(imports[0].isMock).to.not.be.true;
       expect(imports[1].isMock).to.be.true;
     });
+
+    it('parses an import with a trailing suppression comment', () => {
+      const text = `' @import /components/utils.brs ' kopytko-disable-line import/unused`;
+      const imports = parseImports(text);
+
+      expect(imports).to.have.length(1);
+      expect(imports[0].importPath).to.equal('/components/utils.brs');
+      expect(imports[0].fromModule).to.be.undefined;
+    });
+
+    it('parses an external import with a trailing suppression comment', () => {
+      const text = `' @import /components/KopytkoFramework.brs from @dazn/kopytko-framework ' kopytko-disable-line import/unused`;
+      const imports = parseImports(text);
+
+      expect(imports).to.have.length(1);
+      expect(imports[0].importPath).to.equal('/components/KopytkoFramework.brs');
+      expect(imports[0].fromModule).to.equal('@dazn/kopytko-framework');
+    });
+
+    it('parses a mock with a trailing suppression comment', () => {
+      const text = `' @mock /components/MyService.brs ' kopytko-disable-line import/unused`;
+      const imports = parseImports(text);
+
+      expect(imports).to.have.length(1);
+      expect(imports[0].importPath).to.equal('/components/MyService.brs');
+      expect(imports[0].isMock).to.be.true;
+    });
   });
 
   // ---------------------------------------------------------------------------

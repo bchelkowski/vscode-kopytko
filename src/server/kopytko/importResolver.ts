@@ -32,7 +32,7 @@ export interface ImportResolverOptions {
  */
 export class KopytkoImportResolver {
   private static readonly IMPORT_PATTERN =
-    /^\s*'\s*@(import|mock)\s+(\S+)(?:\s+from\s+(\S+))?\s*$/;
+    /^\s*'\s*@(import|mock)\s+(\S+)(?:\s+from\s+(\S+))?\s*(?:(?:'|rem\b).*)?$/;
 
   private _packageCache: string[] | null = null;
   private _baseDirCache = new Map<string, string | undefined>();

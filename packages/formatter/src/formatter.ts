@@ -240,7 +240,7 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
     else if (importRegex.test(trimmed)) importLines.push(trimmed);
   }
 
-  const fromImportRegex = /^\s*'\s*@import\s+(.*?)\s+from\s+(\S+)\s*$/;
+  const fromImportRegex = /^\s*'\s*@import\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
   const moduleImports: string[] = [];
   const localImports: string[] = [];
   for (const line of importLines) {
@@ -261,7 +261,7 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
     return ap.localeCompare(bp);
   });
 
-  const fromMockRegex = /^\s*'\s*@mock\s+(.*?)\s+from\s+(\S+)\s*$/;
+  const fromMockRegex = /^\s*'\s*@mock\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
   const moduleMocks: string[] = [];
   const localMocks: string[] = [];
   for (const line of mockLines) {

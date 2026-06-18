@@ -2,7 +2,7 @@ import * as nodePath from 'path';
 import type { KopytkoImport } from '../types';
 import fsWrapper from './fsWrapper';
 
-const IMPORT_PATTERN = /^\s*'\s*@(import|mock)\s+(\S+)(?:\s+from\s+(\S+))?\s*$/;
+const IMPORT_PATTERN = /^\s*'\s*@(import|mock)\s+(\S+)(?:\s+from\s+(\S+))?\s*(?:(?:'|rem\b).*)?$/;
 
 export function parseImports(text: string): KopytkoImport[] {
   const lines = text.split(/\r?\n/);

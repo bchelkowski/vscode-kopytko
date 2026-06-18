@@ -270,6 +270,21 @@ describe('suppression — lintFile integration', () => {
     expect(diags.map(d => d.code)).to.not.include('import/path-not-absolute');
   });
 
+  it('disable-line on an @import line suppresses import/unused', () => {
+    const content = [
+      "' @import /valid/absolute/path.brs ' kopytko-disable-line import/unused",
+      'function doWork()',
+      'end function',
+    ].join('\n');
+
+    const contextWithFile = createMockContext({
+      importExists: () => true,
+      parseFunctionsFromFile: () => [],
+    });
+    const diags = lintFile('/project/src/t.brs', content, contextWithFile, DEFAULT_LINTER_CONFIG);
+    expect(diags.map(d => d.code)).to.not.include('import/unused');
+  });
+
   it('a file with no suppression comments returns the same diagnostics (no regression)', () => {
     const content = [
       "' @import utils/Relative.brs",
