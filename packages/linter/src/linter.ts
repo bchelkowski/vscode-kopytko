@@ -14,6 +14,7 @@ import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 import { parse } from 'kopytko-brightscript-parser';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 
 /**
  * Lints a single file with a pre-built context.
@@ -25,12 +26,15 @@ export function lintFile(
   context: LintContext,
   config: LinterConfig,
   preLines?: string[],
+  preParseResult?: ParseResult,
 ): LintDiagnostic[] {
   const lines = preLines ?? content.split(/\r?\n/);
   const imports = context.parseImports(content);
 
-  // Parse the source for AST-based rules (cached if called multiple times)
-  const parseResult = parse(content);
+  // Parse the source for AST-based rules. Callers that already hold a CST for
+  // this exact `content` (e.g. an editor integration with its own document
+  // cache) can pass it as `preParseResult` to avoid a redundant parse.
+  const parseResult = preParseResult ?? parse(content);
 
   const ruleContext: RuleContext = {
     filePath,

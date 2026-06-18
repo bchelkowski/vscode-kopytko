@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { parse } from 'kopytko-brightscript-parser';
 import { lintFile, DEFAULT_LINTER_CONFIG } from '../src/index';
 import { createMockContext } from './helpers';
 import type { LinterConfig } from '../src/config';
@@ -41,6 +42,40 @@ describe('linter — lintFile', () => {
     expect(codes).to.include('createobject/unknown-component');
     expect(codes).to.include('syntax/trailing-comma');
     expect(codes).to.include('identifier/unused-parameter');
+  });
+
+  it('uses a supplied preParseResult instead of re-parsing the content', () => {
+    const messy = [
+      "' @import utils/Relative.brs",            // import/path-not-absolute — import-based
+      'sub doWork()',
+      '  obj = CreateObject("roFakeComponent")', // createobject/unknown-component — AST-based
+      'end sub',
+    ].join('\n');
+
+    // A clean CST from unrelated source. If lintFile honours preParseResult, the
+    // AST-based rules walk THIS tree (no bad CreateObject) and stay silent, while
+    // the import rule still inspects the messy content's @import lines.
+    const cleanParse = parse('sub clean()\nend sub');
+
+    const diags = lintFile('/project/src/mixed.brs', messy, createMockContext(), DEFAULT_LINTER_CONFIG, undefined, cleanParse);
+    const codes = diags.map(d => d.code);
+
+    expect(codes).to.not.include('createobject/unknown-component'); // AST rule used the supplied parse
+    expect(codes).to.include('import/path-not-absolute');           // import rule used the messy content
+  });
+
+  it('produces the same diagnostics with or without a matching preParseResult', () => {
+    const content = [
+      "' @import utils/Relative.brs",
+      'sub doWork()',
+      '  obj = CreateObject("roFakeComponent")',
+      'end sub',
+    ].join('\n');
+
+    const without = lintFile('/project/src/same.brs', content, createMockContext(), DEFAULT_LINTER_CONFIG);
+    const withParse = lintFile('/project/src/same.brs', content, createMockContext(), DEFAULT_LINTER_CONFIG, undefined, parse(content));
+
+    expect(withParse.map(d => d.code).sort()).to.deep.equal(without.map(d => d.code).sort());
   });
 
   it('excludes diagnostics for disabled rules', () => {
