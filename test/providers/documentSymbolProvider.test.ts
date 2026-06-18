@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { SymbolKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { BrightScriptDocumentSymbolProvider } from '../../src/server/providers/documentSymbolProvider';
+import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 function makeDocument(content: string): TextDocument {
   return TextDocument.create('file:///workspace/app/components/Test.brs', 'brightscript', 1, content);
@@ -13,6 +14,9 @@ describe('BrightScriptDocumentSymbolProvider', () => {
   beforeEach(() => {
     provider = new BrightScriptDocumentSymbolProvider();
   });
+
+  // Provider reads getCachedLines(); clear the shared cache between tests.
+  afterEach(() => invalidateAllCaches());
 
   it('returns empty array for a file with no function or sub definitions', () => {
     const doc = makeDocument([

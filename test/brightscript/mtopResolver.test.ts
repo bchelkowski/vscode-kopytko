@@ -3,6 +3,7 @@ import * as sinon from 'sinon';
 import fsWrapper from '../../src/server/utils/fsWrapper';
 import { collectMtopItems } from '../../src/server/brightscript/mtopResolver';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
+import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 const makeResolver = (opts: Partial<ConstructorParameters<typeof KopytkoImportResolver>[0]> = {}) =>
   new KopytkoImportResolver({
@@ -25,7 +26,9 @@ describe('mtopResolver', () => {
     readdirTypedStub = sinon.stub(fsWrapper, 'readdirTyped');
   });
 
-  afterEach(() => sinon.restore());
+  // collectMtopItems reads XML via the shared file parse cache and resolves
+  // components via the component-XML cache; reset both between tests.
+  afterEach(() => { sinon.restore(); invalidateAllCaches(); });
 
   describe('collectMtopItems', () => {
     it('returns empty when no XML file in the same directory', () => {

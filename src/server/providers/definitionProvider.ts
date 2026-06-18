@@ -6,7 +6,7 @@ import { InnerMethodDefinition } from '../brightscript/functionIndex';
 import { getReceiverName } from '../brightscript/typeInference';
 import { getDocumentPath } from '../utils/textUtils';
 import { getWordAtPosition } from 'kopytko-brightscript-parser';
-import { getCachedAllFunctions, getCachedAllInnerMethods } from '../utils/documentCache';
+import { getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
 
 export class BrightScriptDefinitionProvider {
   constructor(private readonly importResolver: KopytkoImportResolver) {}
@@ -16,8 +16,7 @@ export class BrightScriptDefinitionProvider {
     position: Position,
     siblingPatterns: string[][] = [],
   ): Location | Location[] | null {
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const currentLine = lines[position.line] ?? '';
 
     // 1. Cursor on a @import line → navigate to the imported file

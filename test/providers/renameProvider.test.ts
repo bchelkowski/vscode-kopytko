@@ -113,7 +113,7 @@ describe('BrightScriptRenameProvider', () => {
 
     it('accepts newName with underscores and digits', () => {
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns('function doWork()\nend function');
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns('function doWork()\nend function');
       index.build(['/project']);
       provider = new BrightScriptRenameProvider(makeResolver(), index);
       const doc = makeDocument('function doWork()\nend function');
@@ -129,8 +129,8 @@ describe('BrightScriptRenameProvider', () => {
         { name: 'A.brs', isDirectory: false },
         { name: 'B.brs', isDirectory: false },
       ]);
-      readFileStub.withArgs('/project/A.brs', 'utf8').returns('function doWork()\nend function');
-      readFileStub.withArgs('/project/B.brs', 'utf8').returns('result = doWork()');
+      readFileStub.withArgs('/project/A.brs', 'utf-8').returns('function doWork()\nend function');
+      readFileStub.withArgs('/project/B.brs', 'utf-8').returns('result = doWork()');
       index.build(['/project']);
       provider = new BrightScriptRenameProvider(makeResolver(), index);
       const doc = makeDocument('function doWork()\nend function', 'file:///project/A.brs');
@@ -141,7 +141,7 @@ describe('BrightScriptRenameProvider', () => {
 
     it('includes the definition line in a function rename', () => {
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns(
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns(
         'function doWork()\nend function\nx = doWork()'
       );
       index.build(['/project']);
@@ -155,7 +155,7 @@ describe('BrightScriptRenameProvider', () => {
 
     it('uses word boundaries for function rename', () => {
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns(
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns(
         'function doWork()\nend function\ndoWorkHelper()\ndoWork()'
       );
       index.build(['/project']);
@@ -169,7 +169,7 @@ describe('BrightScriptRenameProvider', () => {
 
     it('function rename is case-insensitive', () => {
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns(
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns(
         'function doWork()\nend function\nDOWORK()\nDoWork()'
       );
       index.build(['/project']);
@@ -185,7 +185,7 @@ describe('BrightScriptRenameProvider', () => {
         { name: 'node_modules', isDirectory: true },
         { name: 'App.brs', isDirectory: false },
       ]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns('function doWork()\nend function');
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns('function doWork()\nend function');
       index.build(['/project']);
       provider = new BrightScriptRenameProvider(makeResolver(), index);
       const doc = makeDocument('function doWork()\nend function');
@@ -196,8 +196,8 @@ describe('BrightScriptRenameProvider', () => {
     it('function rename collects across multiple workspace folders', () => {
       readdirStub.withArgs('/project1').returns([{ name: 'A.brs', isDirectory: false }]);
       readdirStub.withArgs('/project2').returns([{ name: 'B.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project1/A.brs', 'utf8').returns('function doWork()\nend function');
-      readFileStub.withArgs('/project2/B.brs', 'utf8').returns('doWork()');
+      readFileStub.withArgs('/project1/A.brs', 'utf-8').returns('function doWork()\nend function');
+      readFileStub.withArgs('/project2/B.brs', 'utf-8').returns('doWork()');
       index.build(['/project1', '/project2']);
       provider = new BrightScriptRenameProvider(makeResolver(['/project1', '/project2']), index);
       const doc = makeDocument('function doWork()\nend function', 'file:///project1/A.brs');
@@ -322,7 +322,7 @@ describe('BrightScriptRenameProvider', () => {
       // cursor on 'foo' — which IS a function name, so it goes workspace-wide
       // Let's test a case where there truly are no matches
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns('other()');
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns('other()');
       index.build(['/project']);
       provider = new BrightScriptRenameProvider(makeResolver(), index);
       const doc2 = makeDocument('other()');
@@ -348,7 +348,7 @@ describe('BrightScriptRenameProvider', () => {
 
     it('handles cursor on the function declaration line (function name itself goes workspace-wide)', () => {
       readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
-      readFileStub.withArgs('/project/App.brs', 'utf8').returns('function doWork()\nend function');
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns('function doWork()\nend function');
       index.build(['/project']);
       provider = new BrightScriptRenameProvider(makeResolver(), index);
       const doc = makeDocument('function doWork()\nend function');

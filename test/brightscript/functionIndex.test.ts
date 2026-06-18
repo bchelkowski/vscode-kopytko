@@ -3,6 +3,7 @@ import * as sinon from 'sinon';
 import fsWrapper from '../../src/server/utils/fsWrapper';
 import { collectAllFunctions, collectFunctionsFromImports, collectFunctionsFromExtends } from '../../src/server/brightscript/functionIndex';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
+import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 const makeResolver = (opts: Partial<ConstructorParameters<typeof KopytkoImportResolver>[0]> = {}) =>
   new KopytkoImportResolver({
@@ -25,7 +26,10 @@ describe('functionIndex', () => {
     readdirTypedStub = sinon.stub(fsWrapper, 'readdirTyped');
   });
 
-  afterEach(() => sinon.restore());
+  // Collectors now populate cross-test module caches (file parse cache +
+  // component-XML resolution cache); reset them all between tests so reused
+  // paths/component names don't return a prior test's result.
+  afterEach(() => { sinon.restore(); invalidateAllCaches(); });
 
   // ── collectAllFunctions ──────────────────────────────────────────────────
 
@@ -55,6 +59,41 @@ describe('functionIndex', () => {
       const names = defs.map((d) => d.name);
       expect(names).to.include('main');
       expect(names).to.include('helperFn');
+    });
+
+    it('reads each imported file only once across repeated collections (shared cache)', () => {
+      const mainText = [
+        "' @import /utils/helper.brs",
+        'function main()',
+        'end function',
+      ].join('\n');
+      existsStub.withArgs('/project/app/utils/helper.brs').returns(true);
+      readFileStub.withArgs('/project/app/utils/helper.brs', 'utf-8')
+        .returns('function helperFn()\nend function');
+      readdirStub.returns([]);
+
+      const resolver = makeResolver({ workspaceFolders: ['/project'], sourceDir: 'app' });
+      collectAllFunctions('/project/app/main.brs', mainText, resolver);
+      collectAllFunctions('/project/app/main.brs', mainText, resolver);
+
+      // The imported file is read from disk once; the second collection hits the
+      // shared file parse cache instead of re-reading.
+      const helperReads = readFileStub.getCalls()
+        .filter((c) => c.args[0] === '/project/app/utils/helper.brs');
+      expect(helperReads).to.have.length(1);
+    });
+
+    it('parses the entry file from the passed text, never the cache', () => {
+      readdirStub.returns([]);
+      const resolver = makeResolver();
+
+      // Same entry path, different live text on each call — the result must
+      // reflect the text passed in, proving the entry is never served from cache.
+      const v1 = collectAllFunctions('/dir/entry.brs', 'function versionOne()\nend function', resolver);
+      const v2 = collectAllFunctions('/dir/entry.brs', 'function versionTwo()\nend function', resolver);
+
+      expect(v1.map((d) => d.name)).to.deep.equal(['versionOne']);
+      expect(v2.map((d) => d.name)).to.deep.equal(['versionTwo']);
     });
 
     it('collects functions from XML sibling files', () => {

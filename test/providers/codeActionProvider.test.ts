@@ -8,6 +8,7 @@ import {
   Range,
 } from 'vscode-languageserver/node';
 import { BrightScriptCodeActionProvider } from '../../src/server/providers/codeActionProvider';
+import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,6 +50,10 @@ describe('BrightScriptCodeActionProvider', () => {
   beforeEach(() => {
     provider = new BrightScriptCodeActionProvider();
   });
+
+  // The provider now reads getCachedLines(); clear the shared document cache
+  // between tests so reused URIs/versions don't return another test's lines.
+  afterEach(() => invalidateAllCaches());
 
   // ── No actions for non-kopytko diagnostics ────────────────────────────────
 

@@ -3,6 +3,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { parseFunctionDefs } from '../brightscript/functionIndex';
 import { isTestFile } from '../kopytko/testFramework';
+import { getCachedLines } from '../utils/documentCache';
 
 // Matches: <obj>.<method> = function|sub (<params>) [as <type>]
 // Captures: (1) object name, (2) method name, (3) keyword, (4) param list with parens, (5) return type
@@ -38,7 +39,7 @@ export class BrightScriptDocumentSymbolProvider {
     const defs = parseFunctionDefs(text, filePath);
     if (defs.length === 0) return [];
 
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const lastLine = lines.length - 1;
 
     // Build top-level symbols

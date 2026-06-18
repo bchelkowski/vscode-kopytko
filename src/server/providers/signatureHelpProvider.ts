@@ -12,7 +12,7 @@ import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 import { resolveReceiverType } from '../brightscript/typeInference';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { stripStringLiterals } from '../utils/textUtils';
-import { getCachedTypeMap, getCachedAllFunctions } from '../utils/documentCache';
+import { getCachedTypeMap, getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
 
 interface ActiveCall {
   funcName: string;
@@ -35,8 +35,7 @@ export class BrightScriptSignatureHelpProvider {
   ) {}
 
   provideSignatureHelp(document: TextDocument, position: Position, siblingPatterns: string[][] = []): SignatureHelp | null {
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const line = lines[position.line] ?? '';
 
     if (!line.trim() || isInComment(line, position.character)) return null;

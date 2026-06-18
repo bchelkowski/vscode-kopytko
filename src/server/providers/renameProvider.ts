@@ -7,11 +7,11 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
-import fsWrapper from '../utils/fsWrapper';
+import { readCachedFileText } from '../utils/fileParseCache';
 import { getDocumentPath } from '../utils/textUtils';
 import { getWordAtPosition, escapeRegex } from 'kopytko-brightscript-parser';
 import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'kopytko-brightscript-parser';
-import { getCachedAllFunctions } from '../utils/documentCache';
+import { getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
 const BUILTIN_NAMES = new Set(BRIGHTSCRIPT_BUILTINS.map((b) => b.name.toLowerCase()));
@@ -35,7 +35,7 @@ export class BrightScriptRenameProvider {
     document: TextDocument,
     position: Position,
   ): { range: Range; placeholder: string } | null {
-    const lines = document.getText().split(/\r?\n/);
+    const lines = getCachedLines(document);
     const line = lines[position.line] ?? '';
     const info = getWordAtPosition(line, position.character);
     if (!info) return null;
@@ -62,8 +62,7 @@ export class BrightScriptRenameProvider {
   ): WorkspaceEdit | null {
     if (!VALID_IDENTIFIER_RE.test(newName)) return null;
 
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const line = lines[position.line] ?? '';
     const info = getWordAtPosition(line, position.character);
     if (!info) return null;
@@ -93,12 +92,8 @@ export class BrightScriptRenameProvider {
 
     const files = this._index ? this._index.getFiles() : [];
     for (const filePath of files) {
-      let fileText: string;
-      try {
-        fileText = fsWrapper.readFileSync(filePath, 'utf8');
-      } catch {
-        continue;
-      }
+      const fileText = readCachedFileText(filePath);
+      if (fileText === undefined) continue;
       const fileLines = fileText.split(/\r?\n/);
       const edits: TextEdit[] = [];
       for (let lineIdx = 0; lineIdx < fileLines.length; lineIdx++) {

@@ -1,5 +1,6 @@
 import * as nodePath from 'path';
 import fsWrapper from '../utils/fsWrapper';
+import { readCachedFileText } from '../utils/fileParseCache';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import {
   parseXmlExtends,
@@ -46,12 +47,8 @@ function collectFromXmlChain(
   if (visitedXmls.has(xmlPath)) return;
   visitedXmls.add(xmlPath);
 
-  let xmlText: string;
-  try {
-    xmlText = fsWrapper.readFileSync(xmlPath, 'utf-8');
-  } catch {
-    return;
-  }
+  const xmlText = readCachedFileText(xmlPath);
+  if (xmlText === undefined) return;
 
   const iface = parseXmlInterface(xmlText);
   for (const f of iface.fields) {
@@ -118,12 +115,8 @@ export function collectMtopItems(
   } catch { /* ignore */ }
 
   for (const xmlPath of xmlCandidates) {
-    let xmlText: string;
-    try {
-      xmlText = fsWrapper.readFileSync(xmlPath, 'utf-8');
-    } catch {
-      continue;
-    }
+    const xmlText = readCachedFileText(xmlPath);
+    if (xmlText === undefined) continue;
     if (!xmlText.includes(brsBasename)) continue;
     const listed = getScriptPathsFromXml(xmlPath, workspaceFolders, sourceDir);
     if (!listed.includes(brsPath)) continue;

@@ -1,7 +1,7 @@
 import { ReferenceParams, Location, Range, Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
-import fsWrapper from '../utils/fsWrapper';
+import { readCachedFileText } from '../utils/fileParseCache';
 import { getWordAtPosition, escapeRegex } from 'kopytko-brightscript-parser';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
@@ -23,12 +23,8 @@ export class BrightScriptReferencesProvider {
     const locations: Location[] = [];
 
     for (const filePath of this._index.getFiles()) {
-      let fileText: string;
-      try {
-        fileText = fsWrapper.readFileSync(filePath, 'utf8');
-      } catch {
-        continue;
-      }
+      const fileText = readCachedFileText(filePath);
+      if (fileText === undefined) continue;
       const fileLines = fileText.split(/\r?\n/);
       for (let lineIdx = 0; lineIdx < fileLines.length; lineIdx++) {
         const line = fileLines[lineIdx];

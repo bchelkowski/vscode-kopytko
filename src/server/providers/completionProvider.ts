@@ -10,7 +10,7 @@ import {
 } from 'vscode-languageserver/node';
 import { URI } from 'vscode-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import fsWrapper from '../utils/fsWrapper';
+import { readCachedDir } from '../utils/fileParseCache';
 import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'kopytko-brightscript-parser';
 import {
   BRIGHTSCRIPT_COMPONENTS,
@@ -29,7 +29,7 @@ import {
   applyCasingWithOverrides,
 } from 'kopytko-brightscript-parser';
 import { applySnippetCasing } from '../brightscript/casingUtils';
-import { getCachedTypeMap, getCachedAllFunctions, getCachedAllInnerMethods } from '../utils/documentCache';
+import { getCachedTypeMap, getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';
 import {
   isTestFile,
@@ -70,8 +70,7 @@ export class BrightScriptCompletionProvider {
     casing: CasingConfig = DEFAULT_CASING_CONFIG,
     siblingPatterns: string[][] = [],
   ): CompletionItem[] {
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const currentLine = lines[position.line] ?? '';
     const documentPath = URI.parse(document.uri).fsPath;
 
@@ -394,12 +393,8 @@ export class BrightScriptCompletionProvider {
       const relDir = dirPart.length > 1 ? dirPart.slice(1, -1) : ''; // strip leading / and trailing /
       const absDir = relDir ? path.join(baseDir, relDir) : baseDir;
 
-      let entries: ReturnType<typeof fsWrapper.readdirTyped>;
-      try {
-        entries = fsWrapper.readdirTyped(absDir);
-      } catch {
-        continue;
-      }
+      const entries = readCachedDir(absDir);
+      if (entries === undefined) continue;
 
       for (const entry of entries) {
         if (entry.name.startsWith('.')) continue;

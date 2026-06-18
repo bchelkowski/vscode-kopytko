@@ -6,6 +6,7 @@ import { findSiblingFiles } from './patternSiblings';
 import { buildSearchRoots } from '../utils/workspaceUtils';
 import { isTestFile, getTestBaseName } from '../kopytko/testFramework';
 import { parse, walk, FunctionDeclaration } from 'kopytko-brightscript-parser';
+import { readCachedFileText, getCachedFunctionDefs, getCachedInnerMethodDefs } from '../utils/fileParseCache';
 
 /**
  * Normalizes a file path for use in visited/dedup sets.
@@ -43,6 +44,8 @@ export interface InnerMethodDefinition {
 
 const INNER_METHOD_RE = /^\s*\w+\.(\w+)\s*=\s*(?:function|sub)\s*\(/i;
 const INNER_COLON_METHOD_RE = /^\s*(\w+)\s*:\s*(?:function|sub)\s*\(/i;
+/** Comment-only line (used to skip lines while scanning for inner methods). */
+const COMMENT_LINE_RE = /^\s*'/;
 
 /** Removes duplicate definitions that share the same file, line, and column. */
 function deduplicateByLocation<T extends { filePath: string; line: number; column: number }>(defs: T[]): T[] {
@@ -100,24 +103,57 @@ export function collectFunctionsFromImports(
   importResolver: KopytkoImportResolver,
   visited: Set<string> = new Set(),
 ): FunctionDefinition[] {
+  return _collectFunctionsFromImports(filePath, fileText, importResolver, visited, true);
+}
+
+function _collectFunctionsFromImports(
+  filePath: string,
+  fileText: string,
+  importResolver: KopytkoImportResolver,
+  visited: Set<string>,
+  isEntry: boolean,
+): FunctionDefinition[] {
   const normalPath = normalizePathKey(filePath);
   if (visited.has(normalPath)) return [];
   visited.add(normalPath);
 
-  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, nodePath.normalize(filePath))];
+  const defs: FunctionDefinition[] = [...ownFunctionDefs(filePath, fileText, isEntry)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
     const resolved = importResolver.resolveImportPath(imp, nodePath.normalize(filePath));
     if (resolved && !visited.has(normalizePathKey(resolved)) && fsWrapper.existsSync(resolved)) {
-      try {
-        const text = fsWrapper.readFileSync(resolved, 'utf-8');
-        defs.push(...collectFunctionsFromImports(resolved, text, importResolver, visited));
-      } catch { /* skip unreadable files */ }
+      const text = readCachedFileText(resolved);
+      if (text !== undefined) {
+        defs.push(..._collectFunctionsFromImports(resolved, text, importResolver, visited, false));
+      }
     }
   }
 
   return defs;
+}
+
+/**
+ * Returns a file's own top-level function/sub definitions.
+ *
+ * The **entry** document (the file under the cursor) parses the live `fileText`
+ * it was handed — which may differ from what's on disk when the buffer is dirty.
+ * A **non-entry** file (reached via @import / XML sibling / extends) uses the
+ * shared, memoized parse of its on-disk text, so the same imported file is read
+ * and parsed once across every document and provider that depends on it.
+ *
+ * The result is always spread into a fresh array by callers before mutation, so
+ * the memoized array is never modified in place.
+ */
+function ownFunctionDefs(filePath: string, fileText: string, isEntry: boolean): FunctionDefinition[] {
+  if (isEntry) return parseFunctionDefs(fileText, nodePath.normalize(filePath));
+  return getCachedFunctionDefs(filePath) ?? parseFunctionDefs(fileText, nodePath.normalize(filePath));
+}
+
+/** Inner-method counterpart of {@link ownFunctionDefs}. */
+function ownInnerMethodDefs(filePath: string, fileText: string, isEntry: boolean): InnerMethodDefinition[] {
+  if (isEntry) return parseInnerMethodDefs(fileText, nodePath.normalize(filePath));
+  return getCachedInnerMethodDefs(filePath) ?? parseInnerMethodDefs(fileText, nodePath.normalize(filePath));
 }
 
 /**
@@ -133,22 +169,33 @@ export function collectAllFunctions(
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
 ): FunctionDefinition[] {
+  return _collectAllFunctions(filePath, fileText, importResolver, visited, siblingPatterns, true);
+}
+
+function _collectAllFunctions(
+  filePath: string,
+  fileText: string,
+  importResolver: KopytkoImportResolver,
+  visited: Set<string>,
+  siblingPatterns: string[][],
+  isEntry: boolean,
+): FunctionDefinition[] {
   const normalPath = nodePath.normalize(filePath);
   const pathKey = normalizePathKey(filePath);
   if (visited.has(pathKey)) return [];
   visited.add(pathKey);
 
-  const defs: FunctionDefinition[] = [...parseFunctionDefs(fileText, normalPath)];
+  const defs: FunctionDefinition[] = [...ownFunctionDefs(filePath, fileText, isEntry)];
 
   // 1. Collect from @import annotations
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
     const resolved = importResolver.resolveImportPath(imp, normalPath);
     if (resolved && !visited.has(normalizePathKey(resolved)) && fsWrapper.existsSync(resolved)) {
-      try {
-        const text = fsWrapper.readFileSync(resolved, 'utf-8');
-        defs.push(...collectAllFunctions(resolved, text, importResolver, visited, siblingPatterns));
-      } catch { /* skip unreadable files */ }
+      const text = readCachedFileText(resolved);
+      if (text !== undefined) {
+        defs.push(..._collectAllFunctions(resolved, text, importResolver, visited, siblingPatterns, false));
+      }
     }
   }
 
@@ -159,20 +206,20 @@ export function collectAllFunctions(
   for (const sibling of siblings) {
     if (visited.has(normalizePathKey(sibling))) continue;
     if (!fsWrapper.existsSync(sibling)) continue;
-    try {
-      const text = fsWrapper.readFileSync(sibling, 'utf-8');
-      defs.push(...collectAllFunctions(sibling, text, importResolver, visited, siblingPatterns));
-    } catch { /* skip unreadable files */ }
+    const text = readCachedFileText(sibling);
+    if (text !== undefined) {
+      defs.push(..._collectAllFunctions(sibling, text, importResolver, visited, siblingPatterns, false));
+    }
   }
 
   // 3. Collect from pattern-based sibling files (e.g. *.component.brs ↔ *.template.brs)
   for (const siblingPath of findSiblingFiles(normalPath, siblingPatterns)) {
     if (visited.has(normalizePathKey(siblingPath))) continue;
     if (!fsWrapper.existsSync(siblingPath)) continue;
-    try {
-      const text = fsWrapper.readFileSync(siblingPath, 'utf-8');
-      defs.push(...collectAllFunctions(siblingPath, text, importResolver, visited, siblingPatterns));
-    } catch { /* skip unreadable files */ }
+    const text = readCachedFileText(siblingPath);
+    if (text !== undefined) {
+      defs.push(..._collectAllFunctions(siblingPath, text, importResolver, visited, siblingPatterns, false));
+    }
   }
 
   // 4. For test files: include tested file scope, extends chain, and test siblings
@@ -180,10 +227,10 @@ export function collectAllFunctions(
     for (const testedPath of resolveTestedFiles(normalPath)) {
       if (visited.has(normalizePathKey(testedPath))) continue;
       if (!fsWrapper.existsSync(testedPath)) continue;
-      try {
-        const text = fsWrapper.readFileSync(testedPath, 'utf-8');
-        defs.push(...collectAllFunctions(testedPath, text, importResolver, visited, siblingPatterns));
-      } catch { /* skip unreadable files */ }
+      const text = readCachedFileText(testedPath);
+      if (text !== undefined) {
+        defs.push(..._collectAllFunctions(testedPath, text, importResolver, visited, siblingPatterns, false));
+      }
       defs.push(...collectFunctionsFromExtends(testedPath, importResolver));
     }
 
@@ -191,10 +238,10 @@ export function collectAllFunctions(
     for (const siblingTest of findTestSiblings(normalPath)) {
       if (visited.has(normalizePathKey(siblingTest))) continue;
       if (!fsWrapper.existsSync(siblingTest)) continue;
-      try {
-        const text = fsWrapper.readFileSync(siblingTest, 'utf-8');
-        defs.push(...collectFunctionsFromImports(siblingTest, text, importResolver, visited));
-      } catch { /* skip */ }
+      const text = readCachedFileText(siblingTest);
+      if (text !== undefined) {
+        defs.push(..._collectFunctionsFromImports(siblingTest, text, importResolver, visited, false));
+      }
     }
   }
 
@@ -212,7 +259,7 @@ export function parseInnerMethodDefs(text: string, filePath: string): InnerMetho
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/^\s*'/.test(line)) continue;
+    if (COMMENT_LINE_RE.test(line)) continue;
 
     let name: string, column: number;
 
@@ -250,21 +297,32 @@ export function collectAllInnerMethods(
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
 ): InnerMethodDefinition[] {
+  return _collectAllInnerMethods(filePath, fileText, importResolver, visited, siblingPatterns, true);
+}
+
+function _collectAllInnerMethods(
+  filePath: string,
+  fileText: string,
+  importResolver: KopytkoImportResolver,
+  visited: Set<string>,
+  siblingPatterns: string[][],
+  isEntry: boolean,
+): InnerMethodDefinition[] {
   const normalPath = nodePath.normalize(filePath);
   const pathKey = normalizePathKey(filePath);
   if (visited.has(pathKey)) return [];
   visited.add(pathKey);
 
-  const defs: InnerMethodDefinition[] = [...parseInnerMethodDefs(fileText, normalPath)];
+  const defs: InnerMethodDefinition[] = [...ownInnerMethodDefs(filePath, fileText, isEntry)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
     const resolved = importResolver.resolveImportPath(imp, normalPath);
     if (resolved && !visited.has(normalizePathKey(resolved)) && fsWrapper.existsSync(resolved)) {
-      try {
-        const importedText = fsWrapper.readFileSync(resolved, 'utf-8');
-        defs.push(...collectAllInnerMethods(resolved, importedText, importResolver, visited, siblingPatterns));
-      } catch { /* skip unreadable files */ }
+      const importedText = readCachedFileText(resolved);
+      if (importedText !== undefined) {
+        defs.push(..._collectAllInnerMethods(resolved, importedText, importResolver, visited, siblingPatterns, false));
+      }
     }
   }
 
@@ -274,20 +332,20 @@ export function collectAllInnerMethods(
   for (const sibling of siblings) {
     if (visited.has(normalizePathKey(sibling))) continue;
     if (!fsWrapper.existsSync(sibling)) continue;
-    try {
-      const siblingText = fsWrapper.readFileSync(sibling, 'utf-8');
-      defs.push(...collectAllInnerMethods(sibling, siblingText, importResolver, visited, siblingPatterns));
-    } catch { /* skip unreadable files */ }
+    const siblingText = readCachedFileText(sibling);
+    if (siblingText !== undefined) {
+      defs.push(..._collectAllInnerMethods(sibling, siblingText, importResolver, visited, siblingPatterns, false));
+    }
   }
 
   // Collect from pattern-based sibling files
   for (const siblingPath of findSiblingFiles(normalPath, siblingPatterns)) {
     if (visited.has(normalizePathKey(siblingPath))) continue;
     if (!fsWrapper.existsSync(siblingPath)) continue;
-    try {
-      const siblingText = fsWrapper.readFileSync(siblingPath, 'utf-8');
-      defs.push(...collectAllInnerMethods(siblingPath, siblingText, importResolver, visited, siblingPatterns));
-    } catch { /* skip unreadable files */ }
+    const siblingText = readCachedFileText(siblingPath);
+    if (siblingText !== undefined) {
+      defs.push(..._collectAllInnerMethods(siblingPath, siblingText, importResolver, visited, siblingPatterns, false));
+    }
   }
 
   // Deduplicate by location (normalize path for case-insensitive FS)
@@ -316,12 +374,8 @@ function _collectFromXmlChain(
   if (visitedXmls.has(xmlPath)) return [];
   visitedXmls.add(xmlPath);
 
-  let xmlText: string;
-  try {
-    xmlText = fsWrapper.readFileSync(xmlPath, 'utf-8');
-  } catch {
-    return [];
-  }
+  const xmlText = readCachedFileText(xmlPath);
+  if (xmlText === undefined) return [];
 
   const workspaceFolders = importResolver.getWorkspaceFolders();
   const sourceDir = importResolver.getSourceDir();
@@ -331,10 +385,10 @@ function _collectFromXmlChain(
   const visitedBrs = new Set<string>();
   for (const brsPath of getScriptPathsFromXml(xmlPath, workspaceFolders, sourceDir)) {
     if (visitedBrs.has(brsPath) || !fsWrapper.existsSync(brsPath)) continue;
-    try {
-      const brsText = fsWrapper.readFileSync(brsPath, 'utf-8');
-      defs.push(...collectFunctionsFromImports(brsPath, brsText, importResolver, visitedBrs));
-    } catch { /* skip */ }
+    const brsText = readCachedFileText(brsPath);
+    if (brsText !== undefined) {
+      defs.push(..._collectFunctionsFromImports(brsPath, brsText, importResolver, visitedBrs, false));
+    }
   }
 
   // Walk up the extends chain
@@ -384,12 +438,8 @@ export function collectFunctionsFromExtends(
   const normalizedBrsPath = nodePath.normalize(brsPath).toLowerCase();
   for (const xmlPath of xmlCandidates) {
     if (visitedXmls.has(xmlPath)) continue;
-    let xmlText: string;
-    try {
-      xmlText = fsWrapper.readFileSync(xmlPath, 'utf-8');
-    } catch {
-      continue;
-    }
+    const xmlText = readCachedFileText(xmlPath);
+    if (xmlText === undefined) continue;
     if (!xmlText.includes(brsBasename)) continue;
 
     // Check this xml lists brsPath (case-insensitive for Windows path comparison)

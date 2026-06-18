@@ -4,6 +4,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import fsWrapper from '../../src/server/utils/fsWrapper';
 import { BrightScriptDocumentLinkProvider } from '../../src/server/providers/documentLinkProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
+import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 const makeDocument = (content: string, uri = 'file:///project/app/main.brs') =>
   TextDocument.create(uri, 'brightscript', 1, content);
@@ -26,7 +27,7 @@ describe('BrightScriptDocumentLinkProvider', () => {
     provider = new BrightScriptDocumentLinkProvider(makeResolver());
   });
 
-  afterEach(() => sinon.restore());
+  afterEach(() => { sinon.restore(); invalidateAllCaches(); });
 
   it('returns a link for a resolved internal @import', () => {
     existsStub.withArgs('/project/app/utils/helper.brs').returns(true);

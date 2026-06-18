@@ -51,7 +51,8 @@ import { BrightScriptFormattingProvider } from './providers/formattingProvider';
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
 import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
-import { invalidateAllCaches, getCachedAllFunctions } from './utils/documentCache';
+import { invalidateAllCaches, invalidateDocumentCaches, getCachedAllFunctions } from './utils/documentCache';
+import { invalidateFileParseCache } from './utils/fileParseCache';
 import { WorkspaceFunctionIndex } from './utils/workspaceFunctionIndex';
 import { findMatchingGlob } from 'kopytko-brightscript-parser';
 
@@ -137,7 +138,7 @@ connection.onInitialized(async () => {
   connection.client.register(DidChangeConfigurationNotification.type, {
     section: 'kopytko',
   });
-  await refreshConfiguration();
+  await refreshConfiguration(true);
   workspaceIndex.build(importResolver.getWorkspaceFolders());
   // Re-validate all documents that may have been validated before config loaded
   for (const document of documents.all()) {
@@ -146,7 +147,7 @@ connection.onInitialized(async () => {
 });
 
 connection.onDidChangeConfiguration(async () => {
-  await refreshConfiguration();
+  await refreshConfiguration(false);
   for (const document of documents.all()) {
     scheduleValidation(document);
   }
@@ -162,25 +163,38 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
     catalog.scan(importResolver.getWorkspaceFolders()[0] ?? '/', importResolver);
   }
 
-  // Update workspace function index incrementally
+  // Update the workspace function index incrementally and evict changed files
+  // from the shared file parse cache. .brs files are handled by the index
+  // (updateFile/removeFile already evict the file cache); .xml files feed the
+  // collectors' extends/sibling resolution, so evict those explicitly.
   for (const change of params.changes) {
-    if (!change.uri.endsWith('.brs')) continue;
     const fsPath = URI.parse(change.uri).fsPath;
-    if (change.type === FileChangeType.Deleted) {
-      workspaceIndex.removeFile(fsPath);
-    } else {
-      workspaceIndex.updateFile(fsPath);
+    if (change.uri.endsWith('.brs')) {
+      if (change.type === FileChangeType.Deleted) {
+        workspaceIndex.removeFile(fsPath);
+      } else {
+        workspaceIndex.updateFile(fsPath);
+      }
+    } else if (change.uri.endsWith('.xml')) {
+      invalidateFileParseCache(fsPath);
     }
   }
 
-  // Any .brs or .xml change invalidates the document function cache
-  invalidateAllCaches();
+  // The changed .brs/.xml files were already evicted from the file parse cache
+  // above, so recompute only the per-document derived caches and keep the rest
+  // of the file cache warm. A package.json/node_modules change can touch many
+  // files that do not each fire a watch event, so fall back to a full clear.
+  if (hasPackageChange) {
+    invalidateAllCaches();
+  } else {
+    invalidateDocumentCaches();
+  }
   for (const document of documents.all()) {
     scheduleValidation(document);
   }
 });
 
-async function refreshConfiguration(): Promise<void> {
+async function refreshConfiguration(rescanPackages: boolean): Promise<void> {
   casingConfig = await fetchCasingConfig();
   formattingConfig = await fetchFormattingConfig();
   const importCfg = await fetchImportConfig();
@@ -190,8 +204,15 @@ async function refreshConfiguration(): Promise<void> {
   readOnlyPaths = await fetchReadOnlyPaths();
   formattingProvider.setReadOnlyCheck(isReadOnlyPath);
   invalidateAllCaches();
-  importResolver.invalidatePackageCache();
-  catalog.scan(importResolver.getWorkspaceFolders()[0] ?? '/', importResolver);
+  // The installed Kopytko package list and the module catalog depend on
+  // node_modules, not on user settings (the import resolver's sourceDir and
+  // workspace folders are fixed at construction). So a plain settings change no
+  // longer triggers a full package re-walk — that runs once at startup, and
+  // package.json/node_modules changes are handled in onDidChangeWatchedFiles.
+  if (rescanPackages) {
+    importResolver.invalidatePackageCache();
+    catalog.scan(importResolver.getWorkspaceFolders()[0] ?? '/', importResolver);
+  }
 }
 
 async function fetchImportConfig(): Promise<{ generatedPaths: string[]; generatedModules: GeneratedModuleConfig[]; siblingPatterns: string[][] }> {

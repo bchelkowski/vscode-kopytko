@@ -165,13 +165,17 @@ This document is the canonical list of extension features. Each feature links to
 | Compile errors as VS Code diagnostics | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 | Program output via dedicated IO channel | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
 
+## Performance & Caching
+
+| Feature | Status | Notes |
+|---|---|---|
+| Per-document cache (true LRU) | ✅ Implemented | `utils/documentCache.ts` caches split lines, parsed CST, type map, imports, and collected functions per `{uri, version, length}`, evicting the least-recently-used document. Every provider reads through it (`getCachedLines`, `getCachedParseResult`, `getCachedAllFunctions`, …) rather than recomputing. |
+| Cross-document file parse cache | ✅ Implemented | `utils/fileParseCache.ts` reads and parses each `.brs`/`.xml` file once and shares the text + definitions across all documents and providers. Find References, Rename, and the `@import`/sibling/extends collectors consume it instead of re-reading from disk. The edited document always parses its own live buffer. |
+| Component-XML resolution cache | ✅ Implemented | `findComponentXml` memoizes `componentName → XML path` (including negative results), keyed by search roots, avoiding repeated recursive directory walks during `extends`-chain resolution. |
+| Import-path directory cache | ✅ Implemented | Import-path completion lists each directory once per session via `readCachedDir`. |
+| Granular cache invalidation | ✅ Implemented | A watched-file change evicts only the changed files from the file cache and recomputes per-document state, keeping unaffected files warm. Plain settings changes no longer trigger a full installed-package re-walk (that runs once at startup; `package.json`/`node_modules` changes still rescan). |
+
 ## Planned / Future
-
-### Architecture & Performance
-
-| Feature | Notes |
-|---|---|
-| Workspace file index for all providers | Extend `WorkspaceFunctionIndex` to cache file contents and share across all providers, eliminating redundant `readFileSync` calls. |
 
 ### Roku Device & Debugging
 

@@ -30,8 +30,18 @@ VS Code Extension Host
                    brightscript/typeInference, brightscript/numericLiterals,
                    brightscript/patternSiblings,
                    brightscript/sgNodes, brightscript/mtopResolver,
-                   utils/documentCache, utils/textUtils)
+                   utils/documentCache, utils/fileParseCache, utils/textUtils)
 ```
+
+## Caching & performance
+
+The server avoids recomputation on hot paths (completion fires per keystroke, hover per mouse-move) through several cooperating caches:
+
+- **Per-document cache** (`utils/documentCache.ts`) — keyed by `{uri, version, contentLength}`, stores the split lines, parsed CST, type map, `@import` list, and the collected function / inner-method sets for a document, evicting the least-recently-used entry. Providers read through the `getCached*` helpers instead of calling `split()`, `parse()`, or the collectors directly.
+- **Cross-document file parse cache** (`utils/fileParseCache.ts`) — reads and parses each `.brs`/`.xml` file **once** and shares its text (`readCachedFileText`), function definitions (`getCachedFunctionDefs`), and inner methods (`getCachedInnerMethodDefs`) across every document and provider. `WorkspaceFunctionIndex`, Find References, Rename, and the import-chain collectors all consume it; `readCachedDir` similarly caches directory listings for import-path completion. The document under the cursor always parses its own **live** buffer — the cache is only consulted for other (imported / sibling / `extends`) files, so an unsaved edit is never served stale.
+- **Component-XML resolution cache** — `findComponentXml` memoizes `componentName → XML path` (including misses), keyed by search roots, avoiding repeated recursive directory walks while resolving `extends` chains.
+
+**Invalidation.** `invalidateAllCaches()` clears everything (document caches + file parse cache + component cache) and runs on configuration changes. On a watched-file change the server is more surgical: it evicts only the changed files from the file parse cache (`WorkspaceFunctionIndex.updateFile`/`removeFile` for `.brs`, `invalidateFileParseCache` for `.xml`) and then calls `invalidateDocumentCaches()`, which recomputes per-document derived state while keeping unaffected files warm. A `package.json`/`node_modules` change falls back to a full clear because it can touch many files without firing individual events. Diagnostics are additionally debounced (300 ms) via `scheduleValidation()`.
 
 ## Capabilities
 

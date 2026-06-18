@@ -3,6 +3,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { findMatchingGlob } from 'kopytko-brightscript-parser';
+import { getCachedLines } from '../utils/documentCache';
 
 /**
  * Provides document links for Kopytko @import and @mock annotations.
@@ -18,7 +19,7 @@ export class BrightScriptDocumentLinkProvider {
     const links: DocumentLink[] = [];
     const text = document.getText();
     const documentPath = URI.parse(document.uri).fsPath;
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const imports = this.importResolver.parseImports(text);
 
     for (const imp of imports) {

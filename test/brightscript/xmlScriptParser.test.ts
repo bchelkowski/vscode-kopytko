@@ -4,6 +4,8 @@ import fsWrapper from '../../src/server/utils/fsWrapper';
 import {
   findParentXmls,
   getXmlSiblingPaths,
+  findComponentXml,
+  clearComponentXmlCache,
 } from '../../src/server/brightscript/xmlScriptParser';
 
 describe('xmlScriptParser', () => {
@@ -17,7 +19,36 @@ describe('xmlScriptParser', () => {
     readdirStub = sinon.stub(fsWrapper, 'readdirSync');
   });
 
-  afterEach(() => sinon.restore());
+  afterEach(() => { sinon.restore(); clearComponentXmlCache(); });
+
+  // ── findComponentXml (cached) ─────────────────────────────────────────────
+
+  describe('findComponentXml (cached)', () => {
+    it('memoizes resolution and re-walks only after the cache is cleared', () => {
+      const readdirTypedStub = sinon.stub(fsWrapper, 'readdirTyped');
+      readdirTypedStub.withArgs('/project/app').returns([
+        { name: 'Widget.xml', isDirectory: false },
+      ]);
+
+      expect(findComponentXml('Widget', ['/project/app'])).to.equal('/project/app/Widget.xml');
+      expect(findComponentXml('Widget', ['/project/app'])).to.equal('/project/app/Widget.xml');
+      // Second call served from cache → directory walked only once.
+      expect(readdirTypedStub.callCount).to.equal(1);
+
+      clearComponentXmlCache();
+      findComponentXml('Widget', ['/project/app']);
+      expect(readdirTypedStub.callCount).to.equal(2);
+    });
+
+    it('memoizes negative results (component not found)', () => {
+      const readdirTypedStub = sinon.stub(fsWrapper, 'readdirTyped').returns([]);
+      expect(findComponentXml('Missing', ['/project/app'])).to.be.undefined;
+      const afterFirst = readdirTypedStub.callCount;
+      expect(findComponentXml('Missing', ['/project/app'])).to.be.undefined;
+      // The negative result is cached → no further directory walks.
+      expect(readdirTypedStub.callCount).to.equal(afterFirst);
+    });
+  });
 
   // ── findParentXmls ────────────────────────────────────────────────────────
 

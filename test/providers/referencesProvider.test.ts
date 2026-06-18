@@ -4,6 +4,7 @@ import fsWrapper from '../../src/server/utils/fsWrapper';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { BrightScriptReferencesProvider } from '../../src/server/providers/referencesProvider';
 import { WorkspaceFunctionIndex } from '../../src/server/utils/workspaceFunctionIndex';
+import { clearFileParseCache } from '../../src/server/utils/fileParseCache';
 
 function makeDocument(content: string, uri = 'file:///workspace/app/components/Test.brs'): TextDocument {
   return TextDocument.create(uri, 'brightscript', 1, content);
@@ -42,6 +43,7 @@ describe('BrightScriptReferencesProvider', () => {
 
   afterEach(() => {
     sinon.restore();
+    clearFileParseCache();
   });
 
   it('returns empty array when cursor is on whitespace', () => {
@@ -62,7 +64,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace').returns([
       { name: 'Foo.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/Foo.brs', 'utf8').returns(
+    readFileStub.withArgs('/workspace/Foo.brs', 'utf-8').returns(
       'sub init()\n  doSomething()\nend sub\nsub doSomething()\nend sub'
     );
     rebuildIndex();
@@ -78,7 +80,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace').returns([
       { name: 'Foo.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/Foo.brs', 'utf8').returns(
+    readFileStub.withArgs('/workspace/Foo.brs', 'utf-8').returns(
       'sub myFunc()\nend sub\nmyFunc()'
     );
     rebuildIndex();
@@ -95,7 +97,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace').returns([
       { name: 'Bar.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/Bar.brs', 'utf8').returns(
+    readFileStub.withArgs('/workspace/Bar.brs', 'utf-8').returns(
       'sub myFunc()\nend sub\nmyFunc()'
     );
     rebuildIndex();
@@ -113,7 +115,7 @@ describe('BrightScriptReferencesProvider', () => {
       { name: 'node_modules', isDirectory: true },
       { name: 'Foo.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/Foo.brs', 'utf8').returns('myFunc()');
+    readFileStub.withArgs('/workspace/Foo.brs', 'utf-8').returns('myFunc()');
     rebuildIndex();
 
     const doc = makeDocument('myFunc()');
@@ -128,7 +130,7 @@ describe('BrightScriptReferencesProvider', () => {
       { name: '.git', isDirectory: true },
       { name: 'Foo.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/Foo.brs', 'utf8').returns('myFunc()');
+    readFileStub.withArgs('/workspace/Foo.brs', 'utf-8').returns('myFunc()');
     rebuildIndex();
 
     const doc = makeDocument('myFunc()');
@@ -142,8 +144,8 @@ describe('BrightScriptReferencesProvider', () => {
       { name: 'A.brs', isDirectory: false },
       { name: 'B.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/A.brs', 'utf8').returns('myFunc()');
-    readFileStub.withArgs('/workspace/B.brs', 'utf8').returns('sub myFunc()\nend sub\nmyFunc()');
+    readFileStub.withArgs('/workspace/A.brs', 'utf-8').returns('myFunc()');
+    readFileStub.withArgs('/workspace/B.brs', 'utf-8').returns('sub myFunc()\nend sub\nmyFunc()');
     rebuildIndex();
 
     const doc = makeDocument('myFunc()');
@@ -157,7 +159,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace').returns([
       { name: 'C.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/C.brs', 'utf8').returns(
+    readFileStub.withArgs('/workspace/C.brs', 'utf-8').returns(
       'if myFunc() then myFunc()'
     );
     rebuildIndex();
@@ -176,7 +178,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace/components').returns([
       { name: 'Nested.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/components/Nested.brs', 'utf8').returns('myFunc()');
+    readFileStub.withArgs('/workspace/components/Nested.brs', 'utf-8').returns('myFunc()');
     rebuildIndex();
 
     const doc = makeDocument('myFunc()');
@@ -189,7 +191,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace').returns([
       { name: 'D.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/D.brs', 'utf8').returns('  myFunc()');
+    readFileStub.withArgs('/workspace/D.brs', 'utf-8').returns('  myFunc()');
     rebuildIndex();
 
     const doc = makeDocument('myFunc()');
@@ -204,7 +206,7 @@ describe('BrightScriptReferencesProvider', () => {
     readdirTypedStub.withArgs('/workspace').returns([
       { name: 'E.brs', isDirectory: false },
     ]);
-    readFileStub.withArgs('/workspace/E.brs', 'utf8').returns('MYFUNC()\nMyFunc()');
+    readFileStub.withArgs('/workspace/E.brs', 'utf-8').returns('MYFUNC()\nMyFunc()');
     rebuildIndex();
 
     const doc = makeDocument('myFunc()');

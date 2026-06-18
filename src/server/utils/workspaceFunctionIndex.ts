@@ -1,6 +1,11 @@
 import * as path from 'path';
 import fsWrapper from './fsWrapper';
-import { parseFunctionDefs, FunctionDefinition } from '../brightscript/functionIndex';
+import { FunctionDefinition } from '../brightscript/functionIndex';
+import {
+  getCachedFunctionDefs,
+  invalidateFileParseCache,
+  clearFileParseCache,
+} from './fileParseCache';
 
 /**
  * A workspace-wide index of function/sub definitions from all .brs files.
@@ -22,6 +27,7 @@ export class WorkspaceFunctionIndex {
   build(roots: string[]): void {
     this._fileIndex.clear();
     this._allNames.clear();
+    clearFileParseCache();
     for (const root of roots) {
       this._walkDir(root);
     }
@@ -36,18 +42,21 @@ export class WorkspaceFunctionIndex {
       for (const def of old) this._allNames.delete(def.nameLower);
     }
 
-    try {
-      const text = fsWrapper.readFileSync(filePath, 'utf-8');
-      const defs = parseFunctionDefs(text, filePath);
+    // Evict any stale cached text/parse, then re-read via the shared cache so
+    // the fresh read is memoized for References/Rename and the collectors.
+    invalidateFileParseCache(filePath);
+    const defs = getCachedFunctionDefs(filePath);
+    if (defs) {
       this._fileIndex.set(filePath, defs);
       for (const def of defs) this._allNames.add(def.nameLower);
-    } catch {
+    } else {
       this._fileIndex.delete(filePath);
     }
   }
 
   /** Removes a file from the index (after delete). */
   removeFile(filePath: string): void {
+    invalidateFileParseCache(filePath);
     const old = this._fileIndex.get(filePath);
     if (old) {
       for (const def of old) this._allNames.delete(def.nameLower);
@@ -74,15 +83,6 @@ export class WorkspaceFunctionIndex {
     return all;
   }
 
-  /** Reads a file's text from the index cache (avoids re-reading from disk). */
-  readFileText(filePath: string): string | undefined {
-    try {
-      return fsWrapper.readFileSync(filePath, 'utf-8');
-    } catch {
-      return undefined;
-    }
-  }
-
   /** Number of indexed files. */
   get fileCount(): number {
     return this._fileIndex.size;
@@ -101,12 +101,11 @@ export class WorkspaceFunctionIndex {
       if (entry.isDirectory) {
         this._walkDir(full);
       } else if (entry.name.endsWith('.brs')) {
-        try {
-          const text = fsWrapper.readFileSync(full, 'utf-8');
-          const defs = parseFunctionDefs(text, full);
+        const defs = getCachedFunctionDefs(full);
+        if (defs) {
           this._fileIndex.set(full, defs);
           for (const def of defs) this._allNames.add(def.nameLower);
-        } catch { /* skip unreadable */ }
+        }
       }
     }
   }

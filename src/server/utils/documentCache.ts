@@ -8,6 +8,8 @@ import fsWrapper from './fsWrapper';
 import { isTestFile } from '../kopytko/testFramework';
 import { parse, inferTypesFromAst, getVariableType } from 'kopytko-brightscript-parser';
 import type { ParseResult } from 'kopytko-brightscript-parser';
+import { clearFileParseCache } from './fileParseCache';
+import { clearComponentXmlCache } from '../brightscript/xmlScriptParser';
 
 /**
  * Per-document cache that stores parsed/computed results keyed by
@@ -32,7 +34,7 @@ interface CacheEntry {
 }
 
 const _cache = new Map<string, CacheEntry>();
-const MAX_CACHE_SIZE = 50;
+const MAX_CACHE_SIZE = 100;
 
 function getEntry(document: TextDocument): CacheEntry {
   const uri = document.uri;
@@ -40,8 +42,17 @@ function getEntry(document: TextDocument): CacheEntry {
   const contentLength = document.getText().length;
   const existing = _cache.get(uri);
   if (existing && existing.version === version && existing.contentLength === contentLength) {
+    // Cache hit — re-insert so this entry moves to the most-recently-used end.
+    // (A Map preserves insertion order, so eviction below can drop the truly
+    // least-recently-used document instead of the oldest-inserted one.)
+    _cache.delete(uri);
+    _cache.set(uri, existing);
     return existing;
   }
+
+  // Drop any stale entry for this uri first so the fresh one is re-inserted at
+  // the MRU position rather than keeping the stale entry's slot.
+  if (existing) _cache.delete(uri);
 
   if (_cache.size >= MAX_CACHE_SIZE) {
     const oldest = _cache.keys().next().value;
@@ -231,7 +242,28 @@ export function getCachedAllInnerMethods(
   return entry.allInnerMethods;
 }
 
-/** Invalidate all cached entries (e.g. on config change). */
+/**
+ * Invalidate all cached entries (e.g. on config change or any watched-file
+ * change). Also clears the cross-document file parse cache — this is the single
+ * point that keeps the file-level cache from outliving a disk/config change.
+ */
 export function invalidateAllCaches(): void {
   _cache.clear();
+  clearFileParseCache();
+  clearComponentXmlCache();
+}
+
+/**
+ * Clears per-document derived caches (lines, parse results, type maps, collected
+ * functions) and the component-XML resolution cache, but leaves the
+ * cross-document file parse cache intact.
+ *
+ * Used on watched-file changes: the changed files are evicted from the file
+ * parse cache individually (see server.ts), so unaffected files stay warm while
+ * every open document recomputes its derived state on next access — picking up
+ * the fresh content of the files that actually changed.
+ */
+export function invalidateDocumentCaches(): void {
+  _cache.clear();
+  clearComponentXmlCache();
 }

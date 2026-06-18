@@ -34,6 +34,13 @@
 /** Maps a local variable name (lowercase) → type name (e.g. "roUrlTransfer" or "Integer") */
 export type TypeMap = Map<string, string>;
 
+// Hoisted to module scope so these aren't re-allocated on every completion/hover
+// trigger (getReceiverName / getInlineCreateObjectType run on each keystroke).
+// All non-global, so they carry no lastIndex state and are safe to share.
+const WORD_CHAR_RE = /\w/;
+const TRAILING_IDENT_RE = /(\w+)$/;
+const INLINE_CREATE_OBJECT_RE = /CreateObject\s*\(\s*"([a-zA-Z]+)"\s*(?:,[^)]*?)?\s*\)\s*$/i;
+
 
 /**
  * Given the source text and a cursor position, returns the variable name
@@ -46,7 +53,7 @@ export type TypeMap = Map<string, string>;
 export function getReceiverName(line: string, charPos: number): string | null {
   // Walk back past any word characters (cursor may be inside a method name)
   let pos = charPos;
-  while (pos > 0 && /\w/.test(line[pos - 1])) {
+  while (pos > 0 && WORD_CHAR_RE.test(line[pos - 1])) {
     pos--;
   }
 
@@ -55,7 +62,7 @@ export function getReceiverName(line: string, charPos: number): string | null {
 
   // Extract the identifier before the dot
   const beforeDot = line.substring(0, pos - 1);
-  const identMatch = /(\w+)$/.exec(beforeDot);
+  const identMatch = TRAILING_IDENT_RE.exec(beforeDot);
   if (!identMatch) return null;
 
   return identMatch[1];
@@ -68,14 +75,14 @@ export function getReceiverName(line: string, charPos: number): string | null {
 export function getInlineCreateObjectType(line: string, charPos: number): string | undefined {
   // Walk back past any word characters (cursor may be inside a method name)
   let pos = charPos;
-  while (pos > 0 && /\w/.test(line[pos - 1])) pos--;
+  while (pos > 0 && WORD_CHAR_RE.test(line[pos - 1])) pos--;
 
   // Must have a dot before the word
   if (pos <= 0 || line[pos - 1] !== '.') return undefined;
 
   // Check if the text before the dot ends with CreateObject("...")
   const beforeDot = line.substring(0, pos - 1);
-  const match = /CreateObject\s*\(\s*"([a-zA-Z]+)"\s*(?:,[^)]*?)?\s*\)\s*$/i.exec(beforeDot);
+  const match = INLINE_CREATE_OBJECT_RE.exec(beforeDot);
   return match ? match[1] : undefined;
 }
 

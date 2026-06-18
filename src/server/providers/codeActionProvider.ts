@@ -8,6 +8,7 @@ import {
   TextEdit,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { getCachedLines } from '../utils/documentCache';
 
 /** Diagnostic codes for which we offer quick fixes. */
 const FIXABLE_CODES = new Set([
@@ -26,7 +27,7 @@ export class BrightScriptCodeActionProvider {
     params: CodeActionParams,
   ): CodeAction[] {
     const actions: CodeAction[] = [];
-    const lines = document.getText().split(/\r?\n/);
+    const lines = getCachedLines(document);
 
     for (const diag of params.context.diagnostics) {
       if (diag.source !== 'kopytko') continue;

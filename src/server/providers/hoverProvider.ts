@@ -13,7 +13,7 @@ import { resolveReceiverType, getInlineCreateObjectType } from '../brightscript/
 import { inferNumericLiteralType } from 'kopytko-brightscript-parser';
 import { getDocumentPath } from '../utils/textUtils';
 import { getWordAtPosition } from 'kopytko-brightscript-parser';
-import { getCachedTypeMap, getCachedAllFunctions } from '../utils/documentCache';
+import { getCachedTypeMap, getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
 import {
   isTestFile,
   buildTestApiMap,
@@ -36,8 +36,7 @@ export class BrightScriptHoverProvider {
   ) {}
 
   provideHover(document: TextDocument, position: Position, siblingPatterns: string[][] = []): Hover | null {
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const line = lines[position.line];
     if (!line) return null;
 
