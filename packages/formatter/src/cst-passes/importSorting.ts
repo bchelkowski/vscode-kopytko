@@ -24,6 +24,7 @@ const IMPORT_RE = /^\s*'\s*@import\s+/;
 const MOCK_RE = /^\s*'\s*@mock\s+/;
 const FROM_IMPORT_RE = /^\s*'\s*@import\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
 const FROM_MOCK_RE = /^\s*'\s*@mock\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
+const SUPPRESSION_RE = /^\s*(?:'|rem\b)\s*kopytko-disable-next-line\b/i;
 
 /**
  * Creates an import sorting CST pass.
@@ -40,73 +41,85 @@ export function importSortingPass(config: ImportSortConfig): (root: SyntaxNode, 
     const firstToken = findFirstToken(root);
     if (!firstToken) return [];
 
-    // Collect consecutive import comments from leading trivia
-    const importTrivia: Trivia[] = [];
-    let lastImportIdx = -1;
+    // Collect consecutive import comments from leading trivia.
+    // disable-next-line suppression comments are treated as transparent prefixes
+    // that travel with the import that follows them during sorting.
+    interface ImportEntry { prefixes: Trivia[]; trivia: Trivia }
+    const importEntries: ImportEntry[] = [];
+    let pendingPrefixes: Trivia[] = [];
 
     for (let i = 0; i < firstToken.leadingTrivia.length; i++) {
       const t = firstToken.leadingTrivia[i];
       if (t.kind === TriviaKind.Comment) {
         if (IMPORT_RE.test(t.text) || MOCK_RE.test(t.text)) {
-          importTrivia.push(t);
-          lastImportIdx = i;
+          importEntries.push({ prefixes: pendingPrefixes, trivia: t });
+          pendingPrefixes = [];
+        } else if (SUPPRESSION_RE.test(t.text)) {
+          pendingPrefixes.push(t);
         } else {
-          // Non-import comment encountered — stop
+          // Non-import, non-suppression comment — stop
           break;
         }
       }
       // Skip whitespace and line breaks between imports
     }
 
-    if (importTrivia.length === 0) return [];
+    if (importEntries.length === 0) return [];
     if (!config.sortImports) return []; // Only sorting for now
 
-    // Sort imports
-    const moduleImports: string[] = [];
-    const localImports: string[] = [];
-    const moduleMocks: string[] = [];
-    const localMocks: string[] = [];
+    // Sort entries into groups, keeping each entry's prefixes with it
+    const moduleImportEntries: ImportEntry[] = [];
+    const localImportEntries: ImportEntry[] = [];
+    const moduleMockEntries: ImportEntry[] = [];
+    const localMockEntries: ImportEntry[] = [];
 
-    for (const t of importTrivia) {
-      if (MOCK_RE.test(t.text)) {
-        if (FROM_MOCK_RE.test(t.text)) moduleMocks.push(t.text);
-        else localMocks.push(t.text);
+    for (const entry of importEntries) {
+      if (MOCK_RE.test(entry.trivia.text)) {
+        if (FROM_MOCK_RE.test(entry.trivia.text)) moduleMockEntries.push(entry);
+        else localMockEntries.push(entry);
       } else {
-        if (FROM_IMPORT_RE.test(t.text)) moduleImports.push(t.text);
-        else localImports.push(t.text);
+        if (FROM_IMPORT_RE.test(entry.trivia.text)) moduleImportEntries.push(entry);
+        else localImportEntries.push(entry);
       }
     }
 
-    // Sort each group
-    moduleImports.sort((a, b) => {
-      const am = FROM_IMPORT_RE.exec(a)!;
-      const bm = FROM_IMPORT_RE.exec(b)!;
+    moduleImportEntries.sort((a, b) => {
+      const am = FROM_IMPORT_RE.exec(a.trivia.text)!;
+      const bm = FROM_IMPORT_RE.exec(b.trivia.text)!;
       const cmp = am[2].localeCompare(bm[2]);
       return cmp !== 0 ? cmp : am[1].localeCompare(bm[1]);
     });
-    localImports.sort();
-    moduleMocks.sort((a, b) => {
-      const am = FROM_MOCK_RE.exec(a)!;
-      const bm = FROM_MOCK_RE.exec(b)!;
+    localImportEntries.sort((a, b) => a.trivia.text.localeCompare(b.trivia.text));
+    moduleMockEntries.sort((a, b) => {
+      const am = FROM_MOCK_RE.exec(a.trivia.text)!;
+      const bm = FROM_MOCK_RE.exec(b.trivia.text)!;
       const cmp = am[2].localeCompare(bm[2]);
       return cmp !== 0 ? cmp : am[1].localeCompare(bm[1]);
     });
-    localMocks.sort();
+    localMockEntries.sort((a, b) => a.trivia.text.localeCompare(b.trivia.text));
 
-    const sorted = [...moduleImports, ...localImports, ...moduleMocks, ...localMocks];
+    const sortedEntries = [
+      ...moduleImportEntries, ...localImportEntries,
+      ...moduleMockEntries, ...localMockEntries,
+    ];
 
-    // Check if already sorted
-    const original = importTrivia.map(t => t.text);
-    if (arraysEqual(original, sorted)) return [];
+    // Check if already sorted (comparing flattened prefix+import texts)
+    const originalTexts = importEntries.flatMap(e => [...e.prefixes.map(p => p.text), e.trivia.text]);
+    const sortedTexts = sortedEntries.flatMap(e => [...e.prefixes.map(p => p.text), e.trivia.text]);
+    if (arraysEqual(originalTexts, sortedTexts)) return [];
 
-    // Build the replacement: sorted imports joined by newlines
-    const firstImport = importTrivia[0];
-    const lastImport = importTrivia[importTrivia.length - 1];
-    // Find the range covering all import trivia (from first import start to last import end)
-    const rangeStart = firstImport.pos;
-    const rangeEnd = lastImport.end;
+    // Build the replacement range: from the start of the first prefix (or first import)
+    // to the end of the last import trivia.
+    const firstEntry = importEntries[0];
+    const lastEntry = importEntries[importEntries.length - 1];
+    const rangeStart = firstEntry.prefixes.length > 0
+      ? firstEntry.prefixes[0].pos
+      : firstEntry.trivia.pos;
+    const rangeEnd = lastEntry.trivia.end;
 
-    const newText = sorted.join('\n');
+    const newText = sortedEntries
+      .map(e => [...e.prefixes.map(p => p.text), e.trivia.text].join('\n'))
+      .join('\n');
     return [{ pos: rangeStart, end: rangeEnd, newText }];
   };
 }

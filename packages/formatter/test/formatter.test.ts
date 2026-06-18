@@ -593,6 +593,51 @@ describe('kopytko-formatter', () => {
       expect(lines[2]).to.equal("' @mock /components/Alpha.brs");
       expect(lines[3]).to.equal("' @mock /components/Zebra.brs");
     });
+
+    it('keeps disable-next-line comment paired with its import when sorting', () => {
+      const result = format([
+        "' @import /components/Zebra.brs",
+        "' kopytko-disable-next-line import/unused",
+        "' @import /components/Alpha.brs",
+        '',
+        'sub init()',
+        'end sub',
+      ], { sortImports: true });
+      const lines = result.split('\n');
+      expect(lines[0]).to.equal("' kopytko-disable-next-line import/unused");
+      expect(lines[1]).to.equal("' @import /components/Alpha.brs");
+      expect(lines[2]).to.equal("' @import /components/Zebra.brs");
+    });
+
+    it('emptyLineAfterImports places empty line after the last import, not before it', () => {
+      const result = format([
+        "' kopytko-disable-next-line import/unused",
+        "' @import /components/Alpha.brs",
+        'sub init()',
+        'end sub',
+      ], { emptyLineAfterImports: true });
+      const lines = result.split('\n');
+      expect(lines[0]).to.equal("' kopytko-disable-next-line import/unused");
+      expect(lines[1]).to.equal("' @import /components/Alpha.brs");
+      expect(lines[2]).to.equal('');
+      expect(lines[3]).to.equal('sub init()');
+    });
+
+    it('emptyLineAfterImports with sortImports and disable-next-line', () => {
+      const result = format([
+        "' @import /components/Zebra.brs",
+        "' kopytko-disable-next-line import/unused",
+        "' @import /components/Alpha.brs",
+        'sub init()',
+        'end sub',
+      ], { sortImports: true, emptyLineAfterImports: true });
+      const lines = result.split('\n');
+      expect(lines[0]).to.equal("' kopytko-disable-next-line import/unused");
+      expect(lines[1]).to.equal("' @import /components/Alpha.brs");
+      expect(lines[2]).to.equal("' @import /components/Zebra.brs");
+      expect(lines[3]).to.equal('');
+      expect(lines[4]).to.equal('sub init()');
+    });
   });
 
   // ── checkFormatting ────────────────────────────────────────────────────

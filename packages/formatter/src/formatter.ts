@@ -210,12 +210,17 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
   const importRegex = /^\s*'\s*@import\s+/;
   const mockRegex = /^\s*'\s*@mock\s+/;
   const annotationRegex = /^\s*'\s*@(?:import|mock)\s+/;
+  const suppressionNextLineRegex = /^\s*(?:'|rem\b)\s*kopytko-disable-next-line\b/i;
 
+  // Find the last actual @import/@mock line. disable-next-line suppression comments
+  // and blank lines are treated as transparent — they don't end the import block.
   let lastAnnotationIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (annotationRegex.test(lines[i])) {
       lastAnnotationIdx = i;
-    } else if (lines[i].trim() !== '') {
+    } else if (suppressionNextLineRegex.test(lines[i]) || lines[i].trim() === '') {
+      // suppression comment or blank line — keep scanning
+    } else {
       break;
     }
   }
@@ -232,59 +237,71 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
     return lines;
   }
 
-  const importLines: string[] = [];
-  const mockLines: string[] = [];
+  // Collect import units: each unit groups disable-next-line prefix lines with the
+  // import line that follows them, so they move together during sorting.
+  type ImportUnit = { prefixes: string[]; line: string };
+  const importUnits: ImportUnit[] = [];
+  const mockUnits: ImportUnit[] = [];
+
+  let pendingPrefixes: string[] = [];
   for (let i = 0; i < blockEnd; i++) {
     const trimmed = lines[i].trim();
-    if (mockRegex.test(trimmed)) mockLines.push(trimmed);
-    else if (importRegex.test(trimmed)) importLines.push(trimmed);
+    if (suppressionNextLineRegex.test(trimmed)) {
+      pendingPrefixes.push(trimmed);
+    } else if (mockRegex.test(trimmed)) {
+      mockUnits.push({ prefixes: pendingPrefixes, line: trimmed });
+      pendingPrefixes = [];
+    } else if (importRegex.test(trimmed)) {
+      importUnits.push({ prefixes: pendingPrefixes, line: trimmed });
+      pendingPrefixes = [];
+    } else {
+      pendingPrefixes = [];
+    }
   }
+
+  const flattenUnits = (units: ImportUnit[]): string[] =>
+    units.flatMap(u => [...u.prefixes, u.line]);
 
   const fromImportRegex = /^\s*'\s*@import\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
-  const moduleImports: string[] = [];
-  const localImports: string[] = [];
-  for (const line of importLines) {
-    if (fromImportRegex.test(line)) moduleImports.push(line);
-    else localImports.push(line);
-  }
+  const moduleImportUnits = importUnits.filter(u => fromImportRegex.test(u.line));
+  const localImportUnits = importUnits.filter(u => !fromImportRegex.test(u.line));
 
-  moduleImports.sort((a, b) => {
-    const am = fromImportRegex.exec(a)!;
-    const bm = fromImportRegex.exec(b)!;
+  moduleImportUnits.sort((a, b) => {
+    const am = fromImportRegex.exec(a.line)!;
+    const bm = fromImportRegex.exec(b.line)!;
     const cmp = am[2].localeCompare(bm[2]);
     return cmp !== 0 ? cmp : am[1].localeCompare(bm[1]);
   });
 
-  localImports.sort((a, b) => {
-    const ap = a.replace(/^\s*'\s*@import\s+/, '');
-    const bp = b.replace(/^\s*'\s*@import\s+/, '');
+  localImportUnits.sort((a, b) => {
+    const ap = a.line.replace(/^\s*'\s*@import\s+/, '');
+    const bp = b.line.replace(/^\s*'\s*@import\s+/, '');
     return ap.localeCompare(bp);
   });
 
   const fromMockRegex = /^\s*'\s*@mock\s+(.*?)\s+from\s+(\S+)\s*(?:(?:'|rem\b).*)?$/;
-  const moduleMocks: string[] = [];
-  const localMocks: string[] = [];
-  for (const line of mockLines) {
-    if (fromMockRegex.test(line)) moduleMocks.push(line);
-    else localMocks.push(line);
-  }
+  const moduleMockUnits = mockUnits.filter(u => fromMockRegex.test(u.line));
+  const localMockUnits = mockUnits.filter(u => !fromMockRegex.test(u.line));
 
-  moduleMocks.sort((a, b) => {
-    const am = fromMockRegex.exec(a)!;
-    const bm = fromMockRegex.exec(b)!;
+  moduleMockUnits.sort((a, b) => {
+    const am = fromMockRegex.exec(a.line)!;
+    const bm = fromMockRegex.exec(b.line)!;
     const cmp = am[2].localeCompare(bm[2]);
     return cmp !== 0 ? cmp : am[1].localeCompare(bm[1]);
   });
 
-  localMocks.sort((a, b) => {
-    const ap = a.replace(/^\s*'\s*@mock\s+/, '');
-    const bp = b.replace(/^\s*'\s*@mock\s+/, '');
+  localMockUnits.sort((a, b) => {
+    const ap = a.line.replace(/^\s*'\s*@mock\s+/, '');
+    const bp = b.line.replace(/^\s*'\s*@mock\s+/, '');
     return ap.localeCompare(bp);
   });
 
-  const sorted: string[] = [...moduleImports, ...localImports];
-  if (mockLines.length > 0) {
-    sorted.push(...moduleMocks, ...localMocks);
+  const sorted: string[] = [
+    ...flattenUnits(moduleImportUnits),
+    ...flattenUnits(localImportUnits),
+  ];
+  if (mockUnits.length > 0) {
+    sorted.push(...flattenUnits(moduleMockUnits), ...flattenUnits(localMockUnits));
   }
 
   if (config.emptyLineAfterImports) {
