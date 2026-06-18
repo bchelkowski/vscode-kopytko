@@ -20,6 +20,12 @@ export class WorkspaceFunctionIndex {
   /** All function names (lowercase) for quick membership checks. */
   private _allNames = new Set<string>();
 
+  // Lazily-built caches for source/ directory functions.
+  // Cleared whenever a file in a source/ directory is added, updated, or removed.
+  private _sourceDirNamesCache: Set<string> | null = null;
+  private _sourceDirFunctionsCache: FunctionDefinition[] | null = null;
+  private _sourceDirMapCache: Map<string, FunctionDefinition> | null = null;
+
   /**
    * Builds the index by scanning all .brs files under the given roots.
    * Skips hidden directories and node_modules.
@@ -27,6 +33,7 @@ export class WorkspaceFunctionIndex {
   build(roots: string[]): void {
     this._fileIndex.clear();
     this._allNames.clear();
+    this._clearSourceDirCache();
     clearFileParseCache();
     for (const root of roots) {
       this._walkDir(root);
@@ -36,6 +43,7 @@ export class WorkspaceFunctionIndex {
   /** Updates the index for a single file (after save/create). */
   updateFile(filePath: string): void {
     if (!filePath.endsWith('.brs')) return;
+    if (filePath.replace(/\\/g, '/').includes('/source/')) this._clearSourceDirCache();
     // Remove old entries
     const old = this._fileIndex.get(filePath);
     if (old) {
@@ -56,6 +64,7 @@ export class WorkspaceFunctionIndex {
 
   /** Removes a file from the index (after delete). */
   removeFile(filePath: string): void {
+    if (filePath.replace(/\\/g, '/').includes('/source/')) this._clearSourceDirCache();
     invalidateFileParseCache(filePath);
     const old = this._fileIndex.get(filePath);
     if (old) {
@@ -86,6 +95,52 @@ export class WorkspaceFunctionIndex {
   /** Number of indexed files. */
   get fileCount(): number {
     return this._fileIndex.size;
+  }
+
+  /** Names (lowercase) of functions defined in source/ directories. Cached. */
+  getSourceDirNames(): Set<string> {
+    if (!this._sourceDirNamesCache) this._buildSourceDirCache();
+    return this._sourceDirNamesCache!;
+  }
+
+  /** Function definitions from source/ directories. Cached. */
+  getSourceDirFunctions(): FunctionDefinition[] {
+    if (!this._sourceDirFunctionsCache) this._buildSourceDirCache();
+    return this._sourceDirFunctionsCache!;
+  }
+
+  /** O(1) lookup of a source/ function by lowercase name. Cached. */
+  findSourceDirFunction(nameLower: string): FunctionDefinition | undefined {
+    if (!this._sourceDirMapCache) {
+      const map = new Map<string, FunctionDefinition>();
+      for (const def of this.getSourceDirFunctions()) {
+        if (!map.has(def.nameLower)) map.set(def.nameLower, def);
+      }
+      this._sourceDirMapCache = map;
+    }
+    return this._sourceDirMapCache.get(nameLower);
+  }
+
+  private _buildSourceDirCache(): void {
+    const names = new Set<string>();
+    const funcs: FunctionDefinition[] = [];
+    for (const [filePath, defs] of this._fileIndex) {
+      if (filePath.replace(/\\/g, '/').includes('/source/')) {
+        for (const def of defs) {
+          names.add(def.nameLower);
+          funcs.push(def);
+        }
+      }
+    }
+    this._sourceDirNamesCache = names;
+    this._sourceDirFunctionsCache = funcs;
+    this._sourceDirMapCache = null;
+  }
+
+  private _clearSourceDirCache(): void {
+    this._sourceDirNamesCache = null;
+    this._sourceDirFunctionsCache = null;
+    this._sourceDirMapCache = null;
   }
 
   private _walkDir(dir: string): void {

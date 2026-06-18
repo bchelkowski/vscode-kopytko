@@ -20,6 +20,8 @@ import {
   type LinterConfig,
   type KopytkoImport,
 } from 'kopytko-linter';
+import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 
 /**
  * `kopytko-linter`'s `lintFile` gained an optional 6th `preParseResult` argument
@@ -57,6 +59,8 @@ const SEVERITY_MAP: Record<LintSeverity, typeof DiagnosticSeverity[keyof typeof 
 export class BrightScriptDiagnosticsProvider {
   constructor(
     private readonly importResolver: KopytkoImportResolver,
+    private readonly workspaceIndex?: WorkspaceFunctionIndex,
+    private readonly catalog?: KopytkoModuleCatalog,
   ) {}
 
   provideDiagnostics(
@@ -86,8 +90,20 @@ export class BrightScriptDiagnosticsProvider {
         }
       }
       if (extra.size > 0) {
-        knownFuncNames = new Set([...cachedKnownFuncNames, ...extra]);
+        knownFuncNames = new Set([...knownFuncNames, ...extra]);
       }
+    }
+
+    // Project source/ functions are globally accessible at runtime (O(1) — cached in workspaceIndex)
+    if (this.workspaceIndex) {
+      const sourceNames = this.workspaceIndex.getSourceDirNames();
+      if (sourceNames.size > 0) knownFuncNames = new Set([...knownFuncNames, ...sourceNames]);
+    }
+
+    // Kopytko module source/ functions (O(1) — cached in catalog)
+    if (this.catalog) {
+      const moduleSourceNames = this.catalog.getSourceDirNamesLower();
+      if (moduleSourceNames.size > 0) knownFuncNames = new Set([...knownFuncNames, ...moduleSourceNames]);
     }
 
     const context: LintContext = {

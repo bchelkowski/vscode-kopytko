@@ -57,6 +57,7 @@ Returns Markdown documentation when the cursor is over:
 - **Variables with inferred primitive types** — when a variable is assigned from a numeric literal (e.g. `flags = &HFF`), hovering the variable shows its inferred type (Integer)
 - **Kopytko module exports** — function name, module name (derived from the source file name), NPM package, and signature; sourced from the dynamic `KopytkoModuleCatalog` (see below)
 - **User-defined functions** — function name, source file path, and full declaration signature with parameter names and types; resolved from the current file, `@import` chain, XML sibling scripts, and pattern-based sibling files
+- **`source/` directory functions** — function name, `source/<file>` path, and signature; resolved from workspace-wide `WorkspaceFunctionIndex` (O(1) cached lookup)
 
 ### Completion (`textDocument/completion`)
 
@@ -74,7 +75,7 @@ Completion contexts (evaluated in priority order):
 6. **Inline constructor call** — after `FunctionName().`, resolves the function as the owner and suggests its inner methods (AA method assignments like `prototype.doWork = function()`).
 7. **`m.top.` context** — when the cursor is after `m.top.` (with optional partial identifier already typed), offers all members accessible through the SceneGraph component's node reference. See [m.top member completion](#mtop-member-completion) below.
 8. **Member access context** — after `receiver.`, infers the receiver's component type via `CreateObject` or typed-parameter analysis and returns that component's methods. For user-defined "class" patterns (variable assigned from a function call, e.g. `obj = MyClass()`), suggests inner methods owned by that constructor function. If no methods can be resolved for a dot-access context, returns empty — default completions are never shown after a dot.
-9. **Default context** — offers BrightScript built-in functions, language keywords, Kopytko module exports, **user-defined functions** from the current file's scope (own definitions, `@import` chain, XML siblings, pattern siblings, extends chain), and **local variables** (function parameters, local assignments, and for-loop iteration variables). Results are deduplicated by name (case-insensitive) — builtins and keywords take priority over user-defined names.
+9. **Default context** — offers BrightScript built-in functions, language keywords, Kopytko module exports, **user-defined functions** from the current file's scope (own definitions, `@import` chain, XML siblings, pattern siblings, extends chain), **`source/` directory functions** (workspace-wide, deduped against the import chain), and **local variables** (function parameters, local assignments, and for-loop iteration variables). Results are deduplicated by name (case-insensitive) — builtins and keywords take priority over user-defined names.
 
 Completion identifiers are formatted according to the casing configuration (see [Identifier Casing](#identifier-casing) below). Component names in `CreateObject()` are never re-cased — the Roku runtime is case-sensitive for string literals.
 
@@ -131,6 +132,7 @@ Three sub-cases resolved in order:
    - The current `.brs` file itself
    - All files transitively reachable via `@import` annotations (including imports inside node_modules packages)
    - All `.brs` siblings listed in the same SceneGraph XML component (`<script type="text/brightscript" uri="..."/>`)
+   - **`source/` directory functions** (fallback — workspace-wide O(1) lookup via `WorkspaceFunctionIndex`)
 
    Lookup is case-insensitive (BrightScript is case-insensitive).
 
@@ -144,6 +146,7 @@ Triggered by `(` and `,`. Shows a parameter hint popup while the cursor is insid
 2. **BrightScript built-in functions** — signatures from `src/server/brightscript/builtins.ts`.
 3. **Kopytko module exports** — signatures from the dynamic `KopytkoModuleCatalog` (see below).
 4. **User-defined functions** — walks the same scope as go-to-definition: the current file, files transitively reachable via `@import`, and XML sibling scripts.
+5. **`source/` directory functions** — fallback lookup via `WorkspaceFunctionIndex` (O(1) cached).
 
 **Active parameter tracking:** commas between the opening `(` and the cursor are counted at the top call depth. Commas inside nested calls or array literals (`[…]`) do not advance the parameter index of the outer call. The active parameter is clamped to the last declared parameter so the hint remains useful even when more arguments are supplied than declared.
 
@@ -397,6 +400,29 @@ The casing engine only transforms **standalone identifiers** — direct function
 
 - **Associative array keys** — identifiers followed by `:` (e.g. `{ arrayUtils: value }`) are never re-cased, because the key name is a data label, not a function reference.
 - **Property accesses** — identifiers preceded by `.` (e.g. `context.arrayUtils`) are never re-cased, because the property name belongs to the object's namespace, not the global scope.
+
+## Global function scope (`source/` directory convention)
+
+Roku's BrightScript runtime compiles all `.brs` files placed in a directory named **`source/`** within the app directory into the application's global scope. Any function defined there is callable from every component file without requiring an explicit `@import`.
+
+The extension and linter both honour this convention:
+
+- **Linter CLI** (`lintProject` / `lintProjectAsync`) — after building per-file known function names, `buildKnownFunctions` makes a single pass over the `fileFunctions` map and merges every function from any file whose path contains `/source/` as a path segment into every other file's `knownFuncNames`. No config is needed; it is auto-detected by directory name.
+
+- **Extension (LSP)** — `WorkspaceFunctionIndex` exposes three cached methods: `getSourceDirNames()`, `getSourceDirFunctions()`, and `findSourceDirFunction(nameLower)`. The caches are built lazily on first access and invalidated only when a file under a `source/` path actually changes, keeping O(1) per-keystroke cost.
+
+- **Kopytko modules** — `KopytkoModuleCatalog.getSourceDirNamesLower()` returns the subset of catalog entries whose `importPath` starts with `/source/`, also lazily cached and invalidated on `scan()`.
+
+**Scope of the rule:** a `.brs` file is considered globally accessible if and only if its **normalized path contains `/source/` as a path segment**. Files at the project root or in `components/` or any other directory are not affected.
+
+```
+app/
+  source/
+    Helpers.brs       ← globally accessible (contains /source/)
+  components/
+    Button.brs        ← NOT globally accessible
+  Root.brs            ← NOT globally accessible
+```
 
 ## Dynamic Kopytko Module Catalog
 

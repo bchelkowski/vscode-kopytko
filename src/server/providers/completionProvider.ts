@@ -30,6 +30,7 @@ import {
 } from 'kopytko-brightscript-parser';
 import { applySnippetCasing } from '../brightscript/casingUtils';
 import { getCachedTypeMap, getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
+import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';
 import {
   isTestFile,
@@ -62,6 +63,7 @@ export class BrightScriptCompletionProvider {
   constructor(
     private readonly _importResolver: KopytkoImportResolver,
     private readonly _catalog?: KopytkoModuleCatalog,
+    private readonly _workspaceIndex?: WorkspaceFunctionIndex,
   ) {}
 
   provideCompletions(
@@ -176,6 +178,7 @@ export class BrightScriptCompletionProvider {
       ...this.keywordCompletions(casing),
       ...this.kopytkoExportCompletions(document.uri, documentPath),
       ...this.userFunctionCompletions(document, documentPath, siblingPatterns),
+      ...this.sourceDirFunctionCompletions(document, documentPath, siblingPatterns),
       ...this.localVariableCompletions(lines, position.line),
     ];
 
@@ -584,6 +587,30 @@ export class BrightScriptCompletionProvider {
       });
     }
     return items;
+  }
+
+  private sourceDirFunctionCompletions(
+    document: TextDocument,
+    documentPath: string,
+    siblingPatterns: string[][],
+  ): CompletionItem[] {
+    if (!this._workspaceIndex) return [];
+    const importChainNames = new Set(
+      getCachedAllFunctions(document, documentPath, this._importResolver, siblingPatterns).map((f) => f.nameLower),
+    );
+    const seen = new Set<string>();
+    return this._workspaceIndex.getSourceDirFunctions()
+      .filter((fn) => {
+        if (importChainNames.has(fn.nameLower) || seen.has(fn.nameLower)) return false;
+        seen.add(fn.nameLower);
+        return true;
+      })
+      .map((fn) => ({
+        label: fn.name,
+        kind: CompletionItemKind.Function,
+        detail: fn.signature,
+        sortText: `3_${fn.name}`,
+      }));
   }
 
   private innerMethodCompletions(

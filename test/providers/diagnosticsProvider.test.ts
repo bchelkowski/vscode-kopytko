@@ -5,7 +5,10 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import { BrightScriptDiagnosticsProvider } from '../../src/server/providers/diagnosticsProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
+import { WorkspaceFunctionIndex } from '../../src/server/utils/workspaceFunctionIndex';
+import { KopytkoModuleCatalog } from '../../src/server/kopytko/moduleCatalog';
 import { invalidateAllCaches } from '../../src/server/utils/documentCache';
+import * as path from 'path';
 
 function makeDocument(content: string, uri = 'file:///workspace/app/components/Test.brs'): TextDocument {
   return TextDocument.create(uri, 'brightscript', 1, content);
@@ -2574,6 +2577,94 @@ describe('BrightScriptDiagnosticsProvider', () => {
       ].join('\n'));
       const diags = await provider.provideDiagnostics(doc);
       expect(diags.filter((d) => d.code === 'callback/undefined-event-callback')).to.be.empty;
+    });
+  });
+
+  // ── source/ directory global functions ───────────────────────────────────
+
+  describe('source/ directory global functions', () => {
+    const WORKSPACE = '/workspace';
+    const SOURCE_FILE = path.join(WORKSPACE, 'app', 'source', 'Helpers.brs');
+
+    let readdirStub: sinon.SinonStub;
+    let readFileStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readdirStub = sinon.stub(fsWrapper, 'readdirTyped');
+      readFileStub = sinon.stub(fsWrapper, 'readFileSync');
+      readdirStub.returns([]);
+      readFileStub.returns('');
+    });
+
+    function buildIndexWithSource(sourceContent: string): WorkspaceFunctionIndex {
+      readdirStub.withArgs(WORKSPACE).returns([{ name: 'app', isDirectory: true }]);
+      readdirStub.withArgs(path.join(WORKSPACE, 'app')).returns([
+        { name: 'source', isDirectory: true },
+      ]);
+      readdirStub.withArgs(path.join(WORKSPACE, 'app', 'source')).returns([
+        { name: 'Helpers.brs', isDirectory: false },
+      ]);
+      readFileStub.withArgs(SOURCE_FILE, 'utf-8').returns(sourceContent);
+      const idx = new WorkspaceFunctionIndex();
+      idx.build([WORKSPACE]);
+      return idx;
+    }
+
+    it('does not flag a call to a function defined in source/', async () => {
+      const idx = buildIndexWithSource(
+        'function globalHelper() as Void\nend function\n',
+      );
+      const p = new BrightScriptDiagnosticsProvider(resolver, idx);
+      const doc = makeDocument([
+        'sub init()',
+        '  globalHelper()',
+        'end sub',
+      ].join('\n'));
+
+      const diags = await p.provideDiagnostics(doc);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('still flags a call to a function NOT in source/', async () => {
+      const idx = buildIndexWithSource(
+        'function globalHelper() as Void\nend function\n',
+      );
+      const p = new BrightScriptDiagnosticsProvider(resolver, idx);
+      const doc = makeDocument([
+        'sub init()',
+        '  missingFn()',
+        'end sub',
+      ].join('\n'));
+
+      const diags = await p.provideDiagnostics(doc);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-function');
+      expect(undef).to.have.lengthOf(1);
+    });
+
+    it('uses kopytko module source/ names from catalog when provided', async () => {
+      const catalogStub = {
+        getSourceDirNamesLower: () => new Set(['modulesourcefn']),
+      } as unknown as KopytkoModuleCatalog;
+
+      const p = new BrightScriptDiagnosticsProvider(resolver, undefined, catalogStub);
+      const doc = makeDocument([
+        'sub init()',
+        '  moduleSourceFn()',
+        'end sub',
+      ].join('\n'));
+
+      const diags = await p.provideDiagnostics(doc);
+      const undef = diags.filter(d => d.code === 'identifier/undefined-function');
+      expect(undef).to.be.empty;
+    });
+
+    it('is backward-compatible when workspaceIndex and catalog are omitted', async () => {
+      const p = new BrightScriptDiagnosticsProvider(resolver);
+      const doc = makeDocument('sub init()\nend sub');
+      // Should not throw
+      const diags = await p.provideDiagnostics(doc);
+      expect(diags).to.be.an('array');
     });
   });
 });

@@ -5,6 +5,8 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { BrightScriptSignatureHelpProvider } from '../../src/server/providers/signatureHelpProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
 import { KopytkoModuleCatalog, KopytkoExportEntry } from '../../src/server/kopytko/moduleCatalog';
+import { WorkspaceFunctionIndex } from '../../src/server/utils/workspaceFunctionIndex';
+import { FunctionDefinition } from '../../src/server/brightscript/functionIndex';
 import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 function makeDocument(content: string): TextDocument {
@@ -301,5 +303,51 @@ describe('BrightScriptSignatureHelpProvider', () => {
     expect(result).to.not.be.null;
     expect(result!.signatures[0].label).to.include('helper');
     expect(result!.signatures[0].parameters).to.have.length(2);
+  });
+
+  // ── source/ directory signature help ──────────────────────────────────────
+
+  describe('source/ directory signature help', () => {
+    function makeSourceDirIndex(fns: FunctionDefinition[]): WorkspaceFunctionIndex {
+      const idx = sinon.createStubInstance(WorkspaceFunctionIndex);
+      idx.findSourceDirFunction.callsFake((nameLower: string) =>
+        fns.find(f => f.nameLower === nameLower),
+      );
+      return idx as unknown as WorkspaceFunctionIndex;
+    }
+
+    it('returns signature for a function in source/', () => {
+      const def: FunctionDefinition = {
+        name: 'globalHelper',
+        nameLower: 'globalhelper',
+        signature: 'function globalHelper(a as String, b as Integer) as String',
+        filePath: '/project/app/source/Helpers.brs',
+        line: 0,
+        column: 0,
+      };
+      const idx = makeSourceDirIndex([def]);
+      const p = new BrightScriptSignatureHelpProvider(makeResolver(), makeEmptyCatalog(), idx);
+      const doc = makeDocument('globalHelper(');
+      const result = p.provideSignatureHelp(doc, { line: 0, character: 13 });
+      expect(result).to.not.be.null;
+      expect(result!.signatures[0].label).to.include('globalHelper');
+      expect(result!.signatures[0].parameters).to.have.length(2);
+    });
+
+    it('returns null when function is not in source/', () => {
+      const idx = makeSourceDirIndex([]);
+      const p = new BrightScriptSignatureHelpProvider(makeResolver(), makeEmptyCatalog(), idx);
+      const doc = makeDocument('unknownFn(');
+      const result = p.provideSignatureHelp(doc, { line: 0, character: 10 });
+      expect(result).to.be.null;
+    });
+
+    it('is backward-compatible when workspaceIndex is omitted', () => {
+      const p = new BrightScriptSignatureHelpProvider(makeResolver(), makeEmptyCatalog());
+      const doc = makeDocument('Abs(');
+      // Built-in should still work
+      const result = p.provideSignatureHelp(doc, { line: 0, character: 4 });
+      expect(result).to.not.be.null;
+    });
   });
 });

@@ -675,6 +675,21 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     allFunctions.set(normalizedFile, known);
   }
 
+  // Collect functions from source/ directories (globally accessible by Roku convention).
+  // Any .brs file whose path contains a segment named 'source' is compiled into the
+  // app's global scope and callable from any component without an @import.
+  const globalSourceFunctions = new Set<string>();
+  for (const [filePath, fns] of fileFunctions) {
+    if (filePath.replace(/\\/g, '/').includes('/source/')) {
+      for (const fn of fns) globalSourceFunctions.add(fn);
+    }
+  }
+  if (globalSourceFunctions.size > 0) {
+    for (const known of allFunctions.values()) {
+      for (const fn of globalSourceFunctions) known.add(fn);
+    }
+  }
+
   const context: LintContext = {
     get knownFuncNames() { return new Set<string>(); },
 

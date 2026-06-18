@@ -23,6 +23,7 @@ Canonical list of extension and package features. Each row links to its topic do
 |---|---|---|
 | Built-in functions and keywords | ✅ | [language-server.md](./language-server.md) |
 | User-defined functions in scope (`@import` chain, XML siblings, `extends` chain) | ✅ | [language-server.md](./language-server.md) |
+| `source/` directory functions (globally accessible, no `@import` required) | ✅ | [language-server.md](./language-server.md) |
 | Local variables (params, assignments, for-loop vars) | ✅ | [language-server.md](./language-server.md) |
 | `as <type>` annotations (primitives + `ro*` components) | ✅ | [language-server.md](./language-server.md) |
 | `CreateObject("…")` component names (inside string only) | ✅ | [brightscript-components.md](./brightscript-components.md) |
@@ -44,6 +45,7 @@ Canonical list of extension and package features. Each row links to its topic do
 | Hover type info — numeric literals and variables assigned from them | ✅ | [language-server.md](./language-server.md) |
 | Component catalog with firmware `since`, deprecation, Roku docs links | ✅ | [brightscript-components.md](./brightscript-components.md) |
 | Go-to-definition — `@import`/`@mock` paths and user functions | ✅ | [language-server.md](./language-server.md) |
+| Go-to-definition — `source/` directory functions (workspace-wide, no `@import` required) | ✅ | [language-server.md](./language-server.md) |
 | Signature help | ✅ | [language-server.md](./language-server.md) |
 | Find All References — workspace-wide | ✅ | [language-server.md](./language-server.md) |
 | Outline / Document symbols — functions, subs, AA methods | ✅ | [language-server.md](./language-server.md) |
@@ -75,6 +77,7 @@ Backed by the standalone linter's 24 rules (shared by the editor and CI). Full r
 | `#if` / `#const` conditional-compilation lines skipped | ✅ |
 | SceneGraph `extends` inheritance included in scope | ✅ |
 | XML sibling and pattern-sibling scope included | ✅ |
+| `source/` directory functions treated as globally accessible (no false `undefined-function` errors) | ✅ |
 | Component lookup by `<component name>` attribute (handles dotted filenames) | ✅ |
 
 ## Refactoring & Formatting

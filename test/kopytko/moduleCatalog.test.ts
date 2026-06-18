@@ -276,6 +276,88 @@ describe('KopytkoModuleCatalog', () => {
     });
   });
 
+  // ── getSourceDirNamesLower ────────────────────────────────────────────────
+
+  describe('getSourceDirNamesLower()', () => {
+    it('returns an empty set when catalog is empty', () => {
+      const resolver = makeResolver([]);
+      catalog.scan('/workspace', resolver);
+      expect(catalog.getSourceDirNamesLower().size).to.equal(0);
+    });
+
+    it('returns only names from files under source/', () => {
+      const resolver = makeResolver();
+      readdirStub.withArgs(BASE_DIR).returns([
+        { name: 'source', isDirectory: true },
+        { name: 'components', isDirectory: true },
+      ]);
+      readdirStub.withArgs(path.join(BASE_DIR, 'source')).returns([
+        { name: 'Helpers.brs', isDirectory: false },
+      ]);
+      readdirStub.withArgs(path.join(BASE_DIR, 'components')).returns([
+        { name: 'Button.brs', isDirectory: false },
+      ]);
+      readFileStub.withArgs(path.join(BASE_DIR, 'source', 'Helpers.brs'), 'utf-8').returns(
+        'function sourceHelper() as Void\nend function'
+      );
+      readFileStub.withArgs(path.join(BASE_DIR, 'components', 'Button.brs'), 'utf-8').returns(
+        'function componentFn() as Void\nend function'
+      );
+      catalog.scan('/workspace', resolver);
+
+      const names = catalog.getSourceDirNamesLower();
+      expect(names.has('sourcehelper')).to.be.true;
+      expect(names.has('componentfn')).to.be.false;
+    });
+
+    it('is case-insensitive (always lowercase)', () => {
+      const resolver = makeResolver();
+      readdirStub.withArgs(BASE_DIR).returns([
+        { name: 'source', isDirectory: true },
+      ]);
+      readdirStub.withArgs(path.join(BASE_DIR, 'source')).returns([
+        { name: 'Utils.brs', isDirectory: false },
+      ]);
+      readFileStub.withArgs(path.join(BASE_DIR, 'source', 'Utils.brs'), 'utf-8').returns(
+        'function MyGlobalFn() as Void\nend function'
+      );
+      catalog.scan('/workspace', resolver);
+      expect(catalog.getSourceDirNamesLower().has('myglobalfn')).to.be.true;
+      expect(catalog.getSourceDirNamesLower().has('MyGlobalFn')).to.be.false;
+    });
+
+    it('returns the same Set instance on repeated calls (cache hit)', () => {
+      const resolver = makeResolver([]);
+      catalog.scan('/workspace', resolver);
+      const first = catalog.getSourceDirNamesLower();
+      const second = catalog.getSourceDirNamesLower();
+      expect(first).to.equal(second);
+    });
+
+    it('clears cache on rescan', () => {
+      const resolver = makeResolver();
+      readdirStub.withArgs(BASE_DIR).returns([
+        { name: 'source', isDirectory: true },
+      ]);
+      readdirStub.withArgs(path.join(BASE_DIR, 'source')).returns([
+        { name: 'Helpers.brs', isDirectory: false },
+      ]);
+      readFileStub.withArgs(path.join(BASE_DIR, 'source', 'Helpers.brs'), 'utf-8').returns(
+        'function sourceHelper() as Void\nend function'
+      );
+      catalog.scan('/workspace', resolver);
+      const before = catalog.getSourceDirNamesLower();
+      expect(before.has('sourcehelper')).to.be.true;
+
+      // Rescan with empty package list → catalog is empty
+      const emptyResolver = makeResolver([]);
+      catalog.scan('/workspace', emptyResolver);
+      const after = catalog.getSourceDirNamesLower();
+      expect(after).to.not.equal(before);
+      expect(after.size).to.equal(0);
+    });
+  });
+
   // ── size ─────────────────────────────────────────────────────────────────
 
   describe('size', () => {

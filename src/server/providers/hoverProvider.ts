@@ -21,6 +21,7 @@ import {
   MOCK_FUNCTION_METHODS,
   TestApiEntry,
 } from '../kopytko/testFramework';
+import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
 /**
  * Provides hover documentation for:
@@ -33,6 +34,7 @@ export class BrightScriptHoverProvider {
   constructor(
     private readonly _catalog: KopytkoModuleCatalog,
     private readonly _importResolver?: KopytkoImportResolver,
+    private readonly _workspaceIndex?: WorkspaceFunctionIndex,
   ) {}
 
   provideHover(document: TextDocument, position: Position, siblingPatterns: string[][] = []): Hover | null {
@@ -130,6 +132,19 @@ export class BrightScriptHoverProvider {
           `**${userFunc.name}** *(${relativePath})*`,
           '',
           `\`\`\`brightscript\n${userFunc.signature}\n\`\`\``,
+        ]);
+      }
+    }
+
+    // ── 5b. source/ directory function (globally accessible, not in @import chain) ──
+    if (this._workspaceIndex) {
+      const match = this._workspaceIndex.findSourceDirFunction(word.word.toLowerCase());
+      if (match) {
+        const rel = match.filePath.replace(/\\/g, '/').replace(/.*\/source\//, 'source/');
+        return markdown([
+          `**${match.name}** *(${rel})*`,
+          '',
+          `\`\`\`brightscript\n${match.signature}\n\`\`\``,
         ]);
       }
     }

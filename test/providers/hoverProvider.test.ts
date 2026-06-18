@@ -6,6 +6,8 @@ import fsWrapper from '../../src/server/utils/fsWrapper';
 import { BrightScriptHoverProvider } from '../../src/server/providers/hoverProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
 import { KopytkoModuleCatalog, KopytkoExportEntry } from '../../src/server/kopytko/moduleCatalog';
+import { WorkspaceFunctionIndex } from '../../src/server/utils/workspaceFunctionIndex';
+import { FunctionDefinition } from '../../src/server/brightscript/functionIndex';
 import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 function makeDocument(content: string): TextDocument {
@@ -341,6 +343,51 @@ describe('BrightScriptHoverProvider', () => {
       const val = hoverValue(hover);
       expect(val).to.include('unknownThing');
       expect(val).to.include('Integer');
+    });
+  });
+
+  // ── source/ directory hover ─────────────────────────────────────────────────
+
+  describe('source/ directory hover', () => {
+    function makeSourceDirIndex(fns: FunctionDefinition[]): WorkspaceFunctionIndex {
+      const idx = sinon.createStubInstance(WorkspaceFunctionIndex);
+      idx.findSourceDirFunction.callsFake((nameLower: string) =>
+        fns.find(f => f.nameLower === nameLower),
+      );
+      return idx as unknown as WorkspaceFunctionIndex;
+    }
+
+    it('shows hover for a function in source/', () => {
+      const def: FunctionDefinition = {
+        name: 'globalHelper',
+        nameLower: 'globalhelper',
+        signature: 'function globalHelper(a as String) as String',
+        filePath: '/project/app/source/Helpers.brs',
+        line: 0,
+        column: 0,
+      };
+      const idx = makeSourceDirIndex([def]);
+      const p = new BrightScriptHoverProvider(makeEmptyCatalog(), undefined, idx);
+      const doc = makeDocument('globalHelper("hi")');
+      const hover = p.provideHover(doc, { line: 0, character: 4 });
+      const val = hoverValue(hover);
+      expect(val).to.include('globalHelper');
+      expect(val).to.include('source/');
+    });
+
+    it('returns null when the function is not in source/', () => {
+      const idx = makeSourceDirIndex([]);
+      const p = new BrightScriptHoverProvider(makeEmptyCatalog(), undefined, idx);
+      const doc = makeDocument('unknownFn()');
+      const hover = p.provideHover(doc, { line: 0, character: 4 });
+      expect(hover).to.be.null;
+    });
+
+    it('is backward-compatible when workspaceIndex is omitted', () => {
+      const p = new BrightScriptHoverProvider(makeEmptyCatalog());
+      const doc = makeDocument('roArray');
+      // Should not throw — falls through to component hover normally
+      expect(() => p.provideHover(doc, { line: 0, character: 3 })).to.not.throw();
     });
   });
 });

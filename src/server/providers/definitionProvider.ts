@@ -7,9 +7,13 @@ import { getReceiverName } from '../brightscript/typeInference';
 import { getDocumentPath } from '../utils/textUtils';
 import { getWordAtPosition } from 'kopytko-brightscript-parser';
 import { getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
+import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
 export class BrightScriptDefinitionProvider {
-  constructor(private readonly importResolver: KopytkoImportResolver) {}
+  constructor(
+    private readonly importResolver: KopytkoImportResolver,
+    private readonly workspaceIndex?: WorkspaceFunctionIndex,
+  ) {}
 
   provideDefinition(
     document: TextDocument,
@@ -81,6 +85,17 @@ export class BrightScriptDefinitionProvider {
           uri: URI.file(funcMatch.filePath).toString(),
           range: Range.create(funcMatch.line, funcMatch.column, funcMatch.line, funcMatch.column + funcMatch.name.length),
         };
+      }
+
+      // Fallback: source/ directory functions (globally accessible, not in @import chain)
+      if (this.workspaceIndex) {
+        const match = this.workspaceIndex.findSourceDirFunction(word.toLowerCase());
+        if (match) {
+          return {
+            uri: URI.file(match.filePath).toString(),
+            range: Range.create(match.line, match.column, match.line, match.column + match.name.length),
+          };
+        }
       }
     }
 

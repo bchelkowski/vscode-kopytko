@@ -5,7 +5,10 @@ import { Location } from 'vscode-languageserver/node';
 import fsWrapper from '../../src/server/utils/fsWrapper';
 import { BrightScriptDefinitionProvider } from '../../src/server/providers/definitionProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
+import { WorkspaceFunctionIndex } from '../../src/server/utils/workspaceFunctionIndex';
 import { invalidateAllCaches } from '../../src/server/utils/documentCache';
+import { clearFileParseCache } from '../../src/server/utils/fileParseCache';
+import * as path from 'path';
 
 const makeDocument = (content: string, uri = 'file:///project/app/main.brs') =>
   TextDocument.create(uri, 'brightscript', 1, content);
@@ -543,6 +546,102 @@ describe('BrightScriptDefinitionProvider', () => {
       expect(loc.range.start.line).to.equal(2);
       // Should be a single Location, not an array
       expect(result).to.not.be.an('array');
+    });
+  });
+
+  // ── source/ directory navigation ──────────────────────────────────────────
+
+  describe('source/ directory navigation', () => {
+    const WORKSPACE = '/project';
+    const SOURCE_FILE = path.join(WORKSPACE, 'app', 'source', 'Helpers.brs');
+
+    let readdirTypedStub: sinon.SinonStub;
+
+    beforeEach(() => {
+      readdirTypedStub = sinon.stub(fsWrapper, 'readdirTyped');
+      readdirTypedStub.returns([]);
+    });
+
+    afterEach(() => {
+      clearFileParseCache();
+    });
+
+    function buildIndexWithSource(sourceContent: string): WorkspaceFunctionIndex {
+      readdirTypedStub.withArgs(WORKSPACE).returns([{ name: 'app', isDirectory: true }]);
+      readdirTypedStub.withArgs(path.join(WORKSPACE, 'app')).returns([
+        { name: 'source', isDirectory: true },
+      ]);
+      readdirTypedStub.withArgs(path.join(WORKSPACE, 'app', 'source')).returns([
+        { name: 'Helpers.brs', isDirectory: false },
+      ]);
+      readFileStub.withArgs(SOURCE_FILE, 'utf-8').returns(sourceContent);
+      const idx = new WorkspaceFunctionIndex();
+      idx.build([WORKSPACE]);
+      return idx;
+    }
+
+    it('navigates to a function defined in source/', async () => {
+      const idx = buildIndexWithSource(
+        'function globalHelper(a as String) as String\n  return a\nend function\n',
+      );
+      const p = new BrightScriptDefinitionProvider(makeResolver(), idx);
+      const doc = makeDocument([
+        'sub init()',
+        '  globalHelper("hi")',
+        'end sub',
+      ].join('\n'));
+
+      const result = await p.provideDefinition(doc, { line: 1, character: 4 });
+      expect(result).to.not.be.null;
+      const loc = result as Location;
+      expect(loc.uri).to.include('Helpers.brs');
+      expect(loc.range.start.line).to.equal(0);
+    });
+
+    it('returns null for a function in components/ (not in source/)', async () => {
+      const idx = buildIndexWithSource('');
+      const p = new BrightScriptDefinitionProvider(makeResolver(), idx);
+      const doc = makeDocument([
+        'sub init()',
+        '  componentOnlyFn()',
+        'end sub',
+      ].join('\n'));
+
+      const result = await p.provideDefinition(doc, { line: 1, character: 4 });
+      // No match — componentOnlyFn is not in import chain and not in source/
+      expect(result).to.be.null;
+    });
+
+    it('import-chain takes priority over source/ lookup', async () => {
+      const IMPORTED_FILE = path.join(WORKSPACE, 'app', 'components', 'utils.brs');
+      existsStub.withArgs(IMPORTED_FILE).returns(true);
+      readFileStub.withArgs(IMPORTED_FILE, 'utf-8').returns(
+        'function globalHelper() as Void\nend function\n',
+      );
+
+      const idx = buildIndexWithSource(
+        'function globalHelper() as Void\nend function\n',
+      );
+      const p = new BrightScriptDefinitionProvider(makeResolver(), idx);
+      const doc = makeDocument([
+        "' @import /components/utils.brs",
+        'sub init()',
+        '  globalHelper()',
+        'end sub',
+      ].join('\n'), 'file:///project/app/components/Button.brs');
+
+      const result = await p.provideDefinition(doc, { line: 2, character: 4 });
+      expect(result).to.not.be.null;
+      // Should be the imported file, not the source/ file
+      const loc = result as Location;
+      expect(loc.uri).to.include('utils.brs');
+    });
+
+    it('is backward-compatible when workspaceIndex is omitted', async () => {
+      const p = new BrightScriptDefinitionProvider(makeResolver());
+      const doc = makeDocument('sub init()\n  unknownFn()\nend sub');
+      const result = await p.provideDefinition(doc, { line: 1, character: 4 });
+      expect(result).to.be.null;
     });
   });
 });

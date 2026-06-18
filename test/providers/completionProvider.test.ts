@@ -6,6 +6,8 @@ import { CompletionItemKind, InsertTextFormat } from 'vscode-languageserver/node
 import { BrightScriptCompletionProvider } from '../../src/server/providers/completionProvider';
 import { KopytkoImportResolver } from '../../src/server/kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../../src/server/kopytko/moduleCatalog';
+import { WorkspaceFunctionIndex } from '../../src/server/utils/workspaceFunctionIndex';
+import { FunctionDefinition } from '../../src/server/brightscript/functionIndex';
 import { invalidateAllCaches } from '../../src/server/utils/documentCache';
 
 function makeDocument(content: string): TextDocument {
@@ -1150,6 +1152,69 @@ describe('BrightScriptCompletionProvider', () => {
       const items = provider.provideCompletions(doc, { line: 2, character: 4 });
       const labels = items.map((i) => i.label);
       expect(labels).to.include('item');
+    });
+  });
+
+  // ── source/ directory completions ──────────────────────────────────────────
+
+  describe('source/ directory completions', () => {
+    function makeSourceDirIndex(fns: FunctionDefinition[]): WorkspaceFunctionIndex {
+      const idx = sinon.createStubInstance(WorkspaceFunctionIndex);
+      idx.getSourceDirFunctions.returns(fns);
+      return idx as unknown as WorkspaceFunctionIndex;
+    }
+
+    it('includes source/ functions in default completions', () => {
+      const def: FunctionDefinition = {
+        name: 'globalHelper',
+        nameLower: 'globalhelper',
+        signature: 'function globalHelper() as Void',
+        filePath: '/project/app/source/Helpers.brs',
+        line: 0,
+        column: 0,
+      };
+      const idx = makeSourceDirIndex([def]);
+      const p = new BrightScriptCompletionProvider(makeResolver(), undefined, idx);
+      const doc = makeDocument('sub init()\n  g\nend sub');
+      const items = p.provideCompletions(doc, { line: 1, character: 3 });
+      const labels = items.map(i => i.label);
+      expect(labels).to.include('globalHelper');
+    });
+
+    it('does not include source/ functions when no workspaceIndex is provided', () => {
+      const p = new BrightScriptCompletionProvider(makeResolver());
+      const doc = makeDocument('sub init()\nend sub');
+      // Should not throw — and should return normal completions
+      const items = p.provideCompletions(doc, { line: 0, character: 10 });
+      expect(items).to.be.an('array');
+    });
+
+    it('deduplicates source/ functions already present in the @import chain', () => {
+      const def: FunctionDefinition = {
+        name: 'globalHelper',
+        nameLower: 'globalhelper',
+        signature: 'function globalHelper() as Void',
+        filePath: '/workspace/app/source/Helpers.brs',
+        line: 0,
+        column: 0,
+      };
+      const idx = makeSourceDirIndex([def]);
+
+      // Also make globalHelper appear in the import chain
+      sinon.stub(fsWrapper, 'readFileSync')
+        .withArgs('/workspace/app/utils.brs', 'utf-8')
+        .returns('function globalHelper() as Void\nend function\n');
+      fsStub.withArgs('/workspace/app/utils.brs').returns(true);
+
+      const p = new BrightScriptCompletionProvider(makeResolver(), undefined, idx);
+      const doc = TextDocument.create(
+        'file:///workspace/app/components/Test.brs', 'brightscript', 1,
+        ["' @import /utils.brs", 'sub init()', '  g', 'end sub'].join('\n'),
+      );
+      const items = p.provideCompletions(doc, { line: 2, character: 3 });
+      const globalHelperItems = items.filter(i => (i.label as string).toLowerCase() === 'globalhelper');
+      // Should appear exactly once (deduplication)
+      expect(globalHelperItems.length).to.equal(1);
     });
   });
 });

@@ -13,6 +13,7 @@ import { resolveReceiverType } from '../brightscript/typeInference';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { stripStringLiterals } from '../utils/textUtils';
 import { getCachedTypeMap, getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
+import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 
 interface ActiveCall {
   funcName: string;
@@ -32,6 +33,7 @@ export class BrightScriptSignatureHelpProvider {
   constructor(
     private readonly importResolver: KopytkoImportResolver,
     private readonly _catalog: KopytkoModuleCatalog,
+    private readonly _workspaceIndex?: WorkspaceFunctionIndex,
   ) {}
 
   provideSignatureHelp(document: TextDocument, position: Position, siblingPatterns: string[][] = []): SignatureHelp | null {
@@ -76,6 +78,14 @@ export class BrightScriptSignatureHelpProvider {
     const userFunc = allFunctions.find((f) => f.nameLower === funcName.toLowerCase());
     if (userFunc?.signature) {
       return buildSignatureHelp(userFunc.signature, activeParam);
+    }
+
+    // 5. source/ directory function (globally accessible, not in @import chain)
+    if (this._workspaceIndex) {
+      const match = this._workspaceIndex.findSourceDirFunction(funcName.toLowerCase());
+      if (match?.signature) {
+        return buildSignatureHelp(match.signature, activeParam);
+      }
     }
 
     return null;

@@ -26,6 +26,7 @@ export class KopytkoModuleCatalog {
   private _entries: KopytkoExportEntry[] = [];
   private _lookupMap = new Map<string, KopytkoExportEntry>();
   private _namesLower = new Set<string>();
+  private _sourceDirNamesCache: Set<string> | null = null;
 
   /**
    * Rebuilds the catalog by walking all Kopytko packages visible from rootPath.
@@ -35,6 +36,7 @@ export class KopytkoModuleCatalog {
     this._entries = [];
     this._lookupMap = new Map();
     this._namesLower = new Set();
+    this._sourceDirNamesCache = null;
     const packages = importResolver.getInstalledKopytkoPackages(rootPath);
     for (const pkg of packages) {
       const baseDir = importResolver.resolvePackageBaseDir(pkg, rootPath);
@@ -75,6 +77,21 @@ export class KopytkoModuleCatalog {
    */
   getAllNamesLower(): Set<string> {
     return this._namesLower;
+  }
+
+  /**
+   * Returns a set of function/sub names (lowercase) from Kopytko module source/
+   * directories. These are globally accessible at runtime without @import.
+   */
+  getSourceDirNamesLower(): Set<string> {
+    if (!this._sourceDirNamesCache) {
+      this._sourceDirNamesCache = new Set(
+        this._entries
+          .filter((e) => e.importPath.startsWith('/source/'))
+          .map((e) => e.name.toLowerCase()),
+      );
+    }
+    return this._sourceDirNamesCache;
   }
 
   /** Number of catalogued entries. */
