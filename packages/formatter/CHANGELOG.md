@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.2] - 2026-06-18
+
+### Fixed
+- Respect disable-next-line comments in import block detection
+
 ## [1.1.1] - 2026-06-17
 
 - Release 1.1.1
