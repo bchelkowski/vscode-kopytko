@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.1.3] - 2026-06-18
+
+### Changed
+- Reuse the cached CST for linter diagnostics
+- Cache file reads/parses across documents and tighten LSP caching
+
 ## [1.1.2] - 2026-06-17
 
 ### Fixed
