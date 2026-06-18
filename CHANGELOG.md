@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.0] - 2026-06-18
+
+### Added
+- Add semantic tokens provider
+
 ## [1.1.3] - 2026-06-18
 
 ### Changed
