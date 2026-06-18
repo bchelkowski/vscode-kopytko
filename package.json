@@ -2,7 +2,7 @@
   "name": "vscode-kopytko",
   "displayName": "Kopytko BrightScript",
   "description": "BrightScript & Kopytko language support for Visual Studio Code — syntax, IntelliSense, diagnostics, and Kopytko import resolution.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "bchelkowski",
   "license": "MIT",
   "icon": "images/kopytko-logo.png",
@@ -111,14 +111,32 @@
       {
         "language": "brightscript",
         "scopes": {
-          "function": ["entity.name.function", "support.function"],
-          "function.declaration": ["entity.name.function", "support.function"],
-          "parameter": ["variable.parameter"],
-          "parameter.declaration": ["variable.parameter"],
-          "variable": ["variable.other.readwrite"],
-          "variable.declaration": ["variable.other.readwrite"],
-          "property": ["variable.other.property"],
-          "property.declaration": ["variable.other.property"]
+          "function": [
+            "entity.name.function",
+            "support.function"
+          ],
+          "function.declaration": [
+            "entity.name.function",
+            "support.function"
+          ],
+          "parameter": [
+            "variable.parameter"
+          ],
+          "parameter.declaration": [
+            "variable.parameter"
+          ],
+          "variable": [
+            "variable.other.readwrite"
+          ],
+          "variable.declaration": [
+            "variable.other.readwrite"
+          ],
+          "property": [
+            "variable.other.property"
+          ],
+          "property.declaration": [
+            "variable.other.property"
+          ]
         }
       }
     ],
@@ -1119,27 +1137,39 @@
       "textMateRules": [
         {
           "scope": "keyword.preprocessor.brightscript",
-          "settings": { "foreground": "#C586C0" }
+          "settings": {
+            "foreground": "#C586C0"
+          }
         },
         {
           "scope": "keyword.control.import.brightscript",
-          "settings": { "foreground": "#C586C0" }
+          "settings": {
+            "foreground": "#C586C0"
+          }
         },
         {
           "scope": "keyword.control.mock.brightscript",
-          "settings": { "foreground": "#CE9178" }
+          "settings": {
+            "foreground": "#CE9178"
+          }
         },
         {
           "scope": "string.unquoted.kopytko.import.path",
-          "settings": { "foreground": "#CE9178" }
+          "settings": {
+            "foreground": "#CE9178"
+          }
         },
         {
           "scope": "entity.name.module.kopytko",
-          "settings": { "foreground": "#4EC9B0" }
+          "settings": {
+            "foreground": "#4EC9B0"
+          }
         },
         {
           "scope": "punctuation.definition.annotation.brightscript",
-          "settings": { "foreground": "#6A9955" }
+          "settings": {
+            "foreground": "#6A9955"
+          }
         }
       ]
     }
