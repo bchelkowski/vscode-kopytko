@@ -240,7 +240,7 @@ const diagnostics: LintDiagnostic[] = lintFile(
 
 ```yaml
 - name: Lint BrightScript
-  run: kopytko-lint --format sarif > results.sarif
+  run: npx kopytko-lint --format sarif > results.sarif
 
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
@@ -248,7 +248,9 @@ const diagnostics: LintDiagnostic[] = lintFile(
     sarif_file: results.sarif
 ```
 
-> The basic example assumes `lint:brs:check` is defined in your `package.json` scripts (see [Recommended npm Scripts](#recommended-npm-scripts) above). The SARIF example uses the command directly since it requires output redirection.
+> **Important:** Use `npx kopytko-lint` (or `./node_modules/.bin/kopytko-lint`) rather than `npm run <script>` when redirecting SARIF output. `npm run` prepends a `> package@version scriptname` header line to stdout that corrupts the JSON. If you must use an npm script, pass `--silent` to suppress it: `npm run --silent lint:brs -- --format sarif > results.sarif`.
+
+> The basic example assumes `lint:brs:check` is defined in your `package.json` scripts (see [Recommended npm Scripts](#recommended-npm-scripts) above). The SARIF example uses `npx` since it requires output redirection.
 
 ## License
 
