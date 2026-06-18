@@ -93,7 +93,11 @@
         "extensions": [
           ".brs"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/brightscript.svg",
+          "dark": "./images/brightscript.svg"
+        }
       }
     ],
     "grammars": [
@@ -101,6 +105,21 @@
         "language": "brightscript",
         "scopeName": "source.brightscript",
         "path": "./syntaxes/brightscript.tmLanguage.json"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "brightscript",
+        "scopes": {
+          "function": ["entity.name.function", "support.function"],
+          "function.declaration": ["entity.name.function", "support.function"],
+          "parameter": ["variable.parameter"],
+          "parameter.declaration": ["variable.parameter"],
+          "variable": ["variable.other.readwrite"],
+          "variable.declaration": ["variable.other.readwrite"],
+          "property": ["variable.other.property"],
+          "property.declaration": ["variable.other.property"]
+        }
       }
     ],
     "configuration": {
@@ -1099,10 +1118,28 @@
     "editor.tokenColorCustomizations": {
       "textMateRules": [
         {
+          "scope": "keyword.preprocessor.brightscript",
+          "settings": { "foreground": "#C586C0" }
+        },
+        {
+          "scope": "keyword.control.import.brightscript",
+          "settings": { "foreground": "#C586C0" }
+        },
+        {
           "scope": "keyword.control.mock.brightscript",
-          "settings": {
-            "foreground": "#CE9178"
-          }
+          "settings": { "foreground": "#CE9178" }
+        },
+        {
+          "scope": "string.unquoted.kopytko.import.path",
+          "settings": { "foreground": "#CE9178" }
+        },
+        {
+          "scope": "entity.name.module.kopytko",
+          "settings": { "foreground": "#4EC9B0" }
+        },
+        {
+          "scope": "punctuation.definition.annotation.brightscript",
+          "settings": { "foreground": "#6A9955" }
         }
       ]
     }
