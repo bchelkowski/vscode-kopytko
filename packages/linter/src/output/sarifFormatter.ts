@@ -1,4 +1,4 @@
-import type { LintResult, LintSeverity } from '../types';
+import type { LintResult, LintSeverity, RuleConfig } from '../types';
 import { DEFAULT_RULE_CONFIG } from '../config';
 import * as nodePath from 'path';
 
@@ -27,12 +27,15 @@ interface SarifResult {
   }[];
 }
 
-export function formatSarif(result: LintResult, projectRoot?: string): string {
-  const rules: SarifRule[] = Object.entries(DEFAULT_RULE_CONFIG).map(([code, severity]) => ({
-    id: code,
-    shortDescription: { text: getRuleDescription(code) },
-    defaultConfiguration: { level: SEVERITY_TO_SARIF[severity as LintSeverity] ?? 'warning' },
-  }));
+export function formatSarif(result: LintResult, projectRoot?: string, configRules?: RuleConfig): string {
+  const effectiveConfig = configRules ?? DEFAULT_RULE_CONFIG;
+  const rules: SarifRule[] = Object.entries(effectiveConfig)
+    .filter(([, severity]) => severity !== 'off')
+    .map(([code, severity]) => ({
+      id: code,
+      shortDescription: { text: getRuleDescription(code) },
+      defaultConfiguration: { level: SEVERITY_TO_SARIF[severity as LintSeverity] ?? 'warning' },
+    }));
 
   const results: SarifResult[] = result.diagnostics.map(d => ({
     ruleId: d.code,
@@ -93,6 +96,12 @@ function getRuleDescription(code: string): string {
     'syntax/flow-outside-loop': 'Loop flow control statement outside loop',
     'test/missing-mock-annotation': 'mockFunction target not in any @mock file',
     'test/missing-return-ts': 'Test suite function missing return ts',
+    'type/missing-return-type': 'Function is missing a return type annotation',
+    'type/missing-param-type': 'Function parameter is missing a type annotation',
+    'import/missing-promise-deps': 'Import for Promise helper is missing',
+    'identifier/unused-variable': 'Variable is assigned but never read',
+    'callback/undefined-observer-callback': 'Observer callback function is not defined',
+    'callback/undefined-event-callback': 'Event callback function is not defined',
   };
   return descriptions[code] ?? code;
 }

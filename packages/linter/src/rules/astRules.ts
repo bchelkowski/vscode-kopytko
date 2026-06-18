@@ -1111,9 +1111,9 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
       if (gm) matchedPattern = gm.path;
     }
 
-    if (matchedPattern) {
+    if (config['import/build-generated'] !== 'off' && matchedPattern) {
       diagnostics.push({
-        severity: 'info' as LintSeverity,
+        severity: (config['import/build-generated'] as LintSeverity) ?? 'info',
         code: 'import/build-generated',
         message: `Kopytko ${annotationType}: "${imp.importPath}" matches generated pattern "${matchedPattern}" — file will be created at build time.`,
         line: lineIndex, column: 0, endLine: lineIndex, endColumn: Number.MAX_SAFE_INTEGER, filePath,

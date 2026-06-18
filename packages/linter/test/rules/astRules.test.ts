@@ -666,3 +666,52 @@ describe('AST-based lint rules', () => {
       expect(codes(diags)).not.to.include('import/missing-promise-deps');
     });
   });
+
+  describe('import/build-generated', () => {
+    function makeGeneratedCtx(configOverrides: Record<string, string> = {}): RuleContext {
+      const ctx = makeCtx("' @import /generated/Api.brs\nprint 1", {
+        'import/build-generated': 'info',
+        'import/unresolved': 'error',
+        ...configOverrides,
+      });
+      ctx.imports = [{ raw: "' @import /generated/Api.brs", importPath: '/generated/Api.brs', line: 1, isMock: false }];
+      ctx.lintContext = {
+        ...ctx.lintContext,
+        resolveImportPath: () => null,
+        generatedPaths: ['/generated/*'],
+        generatedModules: [],
+        isTestFile: () => false,
+        getSiblingFiles: () => [],
+        getTestSiblings: () => [],
+        parseImports: () => [],
+        readFile: () => null,
+        parseFunctionsFromFile: () => [],
+      } as any;
+      return ctx;
+    }
+
+    it('emits diagnostic with default info severity', () => {
+      const ctx = makeGeneratedCtx();
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).to.include('import/build-generated');
+      expect(diags.find(d => d.code === 'import/build-generated')!.severity).to.equal('info');
+    });
+
+    it('respects configured warning severity', () => {
+      const ctx = makeGeneratedCtx({ 'import/build-generated': 'warning' });
+      const diags = checkImportsAst(ctx);
+      expect(diags.find(d => d.code === 'import/build-generated')!.severity).to.equal('warning');
+    });
+
+    it('suppresses diagnostic when rule is off', () => {
+      const ctx = makeGeneratedCtx({ 'import/build-generated': 'off' });
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/build-generated');
+    });
+
+    it('falls through to import/unresolved when rule is off', () => {
+      const ctx = makeGeneratedCtx({ 'import/build-generated': 'off', 'import/unresolved': 'error' });
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).to.include('import/unresolved');
+    });
+  });

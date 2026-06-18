@@ -133,7 +133,7 @@ async function main(): Promise<void> {
       console.log(formatJson(result));
       break;
     case 'sarif':
-      console.log(formatSarif(result, projectRoot));
+      console.log(formatSarif(result, projectRoot, config.rules));
       break;
     default:
       console.log(formatText(result, !options.noColor));
