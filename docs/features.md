@@ -1,191 +1,212 @@
 # vscode-kopytko — Feature Overview
 
-This document is the canonical list of extension features. Each feature links to its dedicated documentation file. New features must be documented here before being considered complete.
+Canonical list of extension and package features. Each row links to its topic doc. **A feature is not "done" until it appears here.** Status legend: ✅ Implemented · 🟡 Partial · ⬜ Planned.
+
+> Package layout: the BrightScript engine ships as three npm packages — `kopytko-brightscript-parser` (`packages/brightscript-parser/`), `kopytko-formatter` (`packages/formatter/`), and `kopytko-linter` (`packages/linter/`). The extension's LSP server is a thin adapter over them.
+
+---
 
 ## Language Support
 
 | Feature | Status | Doc |
 |---|---|---|
-| BrightScript syntax highlighting (keywords, types, strings, numbers, operators) | ✅ Implemented | [brightscript-support.md](./brightscript-support.md) |
-| Function call and `m` variable highlighting (distinct scopes) | ✅ Implemented | [brightscript-support.md](./brightscript-support.md) |
-| `as <type>` annotations highlighted as types, including `Function` | ✅ Implemented | [brightscript-support.md](./brightscript-support.md) |
-| `@import` / `@mock` annotation highlighting (distinct colours) | ✅ Implemented | [brightscript-support.md](./brightscript-support.md) |
-| Language configuration (brackets, comments, indent rules) | ✅ Implemented | [brightscript-support.md](./brightscript-support.md) |
-| Code snippets — general BrightScript + test framework | ✅ Implemented | [brightscript-support.md](./brightscript-support.md) |
+| Syntax highlighting (keywords, types, strings, numbers, operators) | ✅ | [brightscript-support.md](./brightscript-support.md) |
+| Distinct scopes for function calls, `m`, and `as <type>` annotations (incl. `Function`) | ✅ | [brightscript-support.md](./brightscript-support.md) |
+| `@import` / `@mock` annotation highlighting (distinct colours) | ✅ | [brightscript-support.md](./brightscript-support.md) |
+| Language configuration (brackets, comments, indent rules) | ✅ | [brightscript-support.md](./brightscript-support.md) |
+| Code snippets — general BrightScript + test framework | ✅ | [brightscript-support.md](./brightscript-support.md) |
 
 ## Completions
 
 | Feature | Status | Doc |
 |---|---|---|
-| BrightScript built-in functions and keywords | ✅ Implemented | [language-server.md](./language-server.md) |
-| User-defined functions from file scope (`@import` chain, XML siblings, extends chain) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Local variables (function parameters, assignments, for-loop vars) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `as <type>` annotations (primitive types + ro\* components) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `CreateObject("…")` component name completions (inside string only) | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
-| Component member completion via `CreateObject` / typed-param / numeric literal type inference | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
-| Inner method completion on dot-access (`obj.` and `Constructor().`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `m.top.` member completion (own XML interface, parent components, SG node catalog) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `@import` / `@mock` annotation snippets and path auto-complete | ✅ Implemented | [language-server.md](./language-server.md) |
-| Kopytko module exports with auto-insert `@import` | ✅ Implemented | [language-server.md](./language-server.md) |
-| Configurable identifier casing (builtins, keywords, types, methods, user functions) | ✅ Implemented | [language-server.md](./language-server.md) |
+| Built-in functions and keywords | ✅ | [language-server.md](./language-server.md) |
+| User-defined functions in scope (`@import` chain, XML siblings, `extends` chain) | ✅ | [language-server.md](./language-server.md) |
+| Local variables (params, assignments, for-loop vars) | ✅ | [language-server.md](./language-server.md) |
+| `as <type>` annotations (primitives + `ro*` components) | ✅ | [language-server.md](./language-server.md) |
+| `CreateObject("…")` component names (inside string only) | ✅ | [brightscript-components.md](./brightscript-components.md) |
+| Member completion via type inference (`CreateObject` / typed-param / numeric literal) | ✅ | [brightscript-components.md](./brightscript-components.md) |
+| Dot-access member completion (`obj.`, `Constructor().`) | ✅ | [language-server.md](./language-server.md) |
+| `m.top.` members (own XML interface, parent components, SG node catalog) | ✅ | [language-server.md](./language-server.md) |
+| `@import` / `@mock` snippets with path auto-complete | ✅ | [language-server.md](./language-server.md) |
+| Kopytko module exports with auto-insert `@import` | ✅ | [language-server.md](./language-server.md) |
+
+> Inserted identifiers respect the configured casing — see [Formatting & Casing](#formatting--casing).
 
 ## Hover & Navigation
 
 | Feature | Status | Doc |
 |---|---|---|
-| Hover docs for built-in functions, component names, and component methods | ✅ Implemented | [language-server.md](./language-server.md) |
-| Hover docs for user-defined functions (signature, source file) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Hover docs for Kopytko module exports | ✅ Implemented | [language-server.md](./language-server.md) |
-| Hover type info for numeric literals and variables assigned from them | ✅ Implemented | [language-server.md](./language-server.md) |
-| Component catalog with firmware `since`, deprecation, Roku docs links | ✅ Implemented | [brightscript-components.md](./brightscript-components.md) |
-| Go-to-definition for `@import`/`@mock` paths and user-defined functions | ✅ Implemented | [language-server.md](./language-server.md) |
-| Signature help (`textDocument/signatureHelp`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Find All References — workspace-wide symbol references (via VS Code built-in) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Outline view — functions, subs, and AA methods | ✅ Implemented | [language-server.md](./language-server.md) |
-| Workspace symbol search (`Ctrl+T`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Document links — `@import` / `@mock` as clickable URLs | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
+| Hover docs — builtins, components, component methods | ✅ | [language-server.md](./language-server.md) |
+| Hover docs — user functions (signature + source file) | ✅ | [language-server.md](./language-server.md) |
+| Hover docs — Kopytko module exports | ✅ | [language-server.md](./language-server.md) |
+| Hover type info — numeric literals and variables assigned from them | ✅ | [language-server.md](./language-server.md) |
+| Component catalog with firmware `since`, deprecation, Roku docs links | ✅ | [brightscript-components.md](./brightscript-components.md) |
+| Go-to-definition — `@import`/`@mock` paths and user functions | ✅ | [language-server.md](./language-server.md) |
+| Signature help | ✅ | [language-server.md](./language-server.md) |
+| Find All References — workspace-wide | ✅ | [language-server.md](./language-server.md) |
+| Outline / Document symbols — functions, subs, AA methods | ✅ | [language-server.md](./language-server.md) |
+| Workspace symbol search (`Ctrl+T`) | ✅ | [language-server.md](./language-server.md) |
+| Document links — `@import` / `@mock` as clickable paths | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
 
 ## Diagnostics
 
-| Feature | Status | Doc |
-|---|---|---|
-| Undefined function calls (`identifier/undefined-function`) — suppressed for the entire `main.brs` file and inside Roku entry-point functions | ✅ Implemented | [language-server.md](./language-server.md) |
-| Undefined variables (`identifier/undefined-variable`) with per-function scope isolation — outer variables are not visible inside inner anonymous functions (no closures) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Unused function parameters with `_` prefix quick-fix (`identifier/unused-parameter`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Unused local variables warning (`identifier/unused-variable`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Built-in function arity check (`identifier/wrong-arg-count`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `CreateObject` unknown component (`createobject/unknown-component`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Loop flow control validation (`syntax/flow-outside-loop`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Trailing comma syntax errors (`syntax/trailing-comma`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `catch` variable scope — variable defined by `catch e` / `catch (e)` is recognised in the catch block | ✅ Implemented | [language-server.md](./language-server.md) |
-| `throw` validation — warns for non-string/non-AA values and AAs missing `message` field (`throw/invalid-value`, `throw/missing-message`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `@import` diagnostics — unresolved, duplicate, unused, malformed, build-generated | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| Conditional compilation lines (`#if`, `#const`) skipped by diagnostics | ✅ Implemented | [language-server.md](./language-server.md) |
-| SceneGraph `extends` inheritance in diagnostic scope | ✅ Implemented | [language-server.md](./language-server.md) |
-| XML sibling scope and pattern sibling scope for diagnostics | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| Component name lookup by `<component name>` attribute (handles dotted filenames) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Observer callback validation (`callback/undefined-observer-callback`) — verifies `observeField`/`observeFieldScoped` 2nd argument names a reachable function | ✅ Implemented | [language-server.md](./language-server.md) |
-| Kopytko events callback validation (`callback/undefined-event-callback`) — verifies `events: {}` values in template render objects name reachable functions | ✅ Implemented | [language-server.md](./language-server.md) |
+Backed by the standalone linter's 24 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
+
+| Group | Rules | Status | Doc |
+|---|---|---|---|
+| Imports | unresolved · duplicate · unused · missing-path · path-not-absolute · build-generated · missing-promise-deps | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Identifiers | undefined-function · undefined-variable · shadows-builtin · unused-parameter · unused-variable · wrong-arg-count | ✅ | [language-server.md](./language-server.md) |
+| Syntax | trailing-comma · flow-outside-loop | ✅ | [language-server.md](./language-server.md) |
+| Type annotations | missing-return-type · missing-param-type | ✅ | [language-server.md](./language-server.md) |
+| `throw` | invalid-value · missing-message | ✅ | [language-server.md](./language-server.md) |
+| `CreateObject` | unknown-component | ✅ | [language-server.md](./language-server.md) |
+| Callbacks | undefined-observer-callback · undefined-event-callback | ✅ | [language-server.md](./language-server.md) |
+| Test structure | missing-return-ts · missing-mock-annotation | ✅ | [language-server.md](./language-server.md) |
+
+**Scope-resolution details that keep diagnostics accurate:**
+
+| Detail | Status |
+|---|---|
+| Per-function scope isolation (no closures — inner anonymous functions can't see outer locals) | ✅ |
+| `main.brs` and Roku entry-point functions exempt from undefined-function | ✅ |
+| `catch e` / `catch (e)` variable recognised inside the catch block | ✅ |
+| `#if` / `#const` conditional-compilation lines skipped | ✅ |
+| SceneGraph `extends` inheritance included in scope | ✅ |
+| XML sibling and pattern-sibling scope included | ✅ |
+| Component lookup by `<component name>` attribute (handles dotted filenames) | ✅ |
 
 ## Refactoring & Formatting
 
 | Feature | Status | Doc |
 |---|---|---|
-| Rename symbol (`textDocument/rename`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Code actions — quick fixes for import diagnostics, unused parameters, and unused variables | ✅ Implemented | [language-server.md](./language-server.md) |
-| Document formatting — multi-pass engine with 60+ configurable rules | ✅ Implemented | [formatting.md](./formatting.md) |
-| Conditional compilation indentation (`#if`/`#else if`/`#else`/`#end if`, `#const`) | ✅ Implemented | [formatting.md](./formatting.md) |
-| Increment (`++`) and decrement (`--`) operators preserved by spacing pass | ✅ Implemented | [formatting.md](./formatting.md) |
-| Comment lines never affect indentation depth (commented-out blocks are inert) | ✅ Implemented | [formatting.md](./formatting.md) |
-| Method-chain continuation (`.method(…)`) lines indent one level deeper than the chain start | ✅ Implemented | [formatting.md](./formatting.md) |
-| `emptyLineBeforeReturn` skips blank between a comment and its following return | ✅ Implemented | [formatting.md](./formatting.md) |
-| Standalone formatter CLI (`kopytko-format --check`, `--write`) | ✅ Implemented | [kopytko-formatter README](../packages/kopytko-formatter/README.md) |
-| CLI ignore patterns (`--ignore`, config `ignore` array) | ✅ Implemented | [formatting.md](./formatting.md#cli--ci-usage) |
-| Granular identifier casing with exact-casing overrides | ✅ Implemented | [language-server.md](./language-server.md) |
-| `Function` after `as` uses type casing, not keyword casing | ✅ Implemented | [language-server.md](./language-server.md) |
-| `@import` / `@mock` sorting and `emptyLineAfterImports` | ✅ Implemented | [formatting.md](./formatting.md) |
-| Catch parentheses always stripped (`catch (e)` → `catch e`) | ✅ Implemented | [formatting.md](./formatting.md) |
-| `associativeArrayCommaSpacing` — control spaces around commas in inline `{}` associative arrays | ✅ Implemented | [formatting.md](./formatting.md) |
+| Rename symbol (workspace-wide) | ✅ | [language-server.md](./language-server.md) |
+| Code actions — quick fixes for imports, unused params, unused vars | ✅ | [language-server.md](./language-server.md) |
+
+### Formatting & Casing
+
+Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared by the editor and the `kopytko-format` CLI. Full settings: [formatting.md](./formatting.md).
+
+| Feature | Status |
+|---|---|
+| Document formatting — `kopytko.format.*` rules | ✅ |
+| Granular identifier casing with exact-casing overrides (`Function` after `as` uses type casing) | ✅ |
+| Conditional-compilation indentation (`#if`/`#else if`/`#else`/`#end if`, `#const`) | ✅ |
+| `++` / `--` preserved; comment lines never affect indent depth | ✅ |
+| Method-chain continuation indented one level deeper | ✅ |
+| `emptyLineBeforeReturn` skips the blank between a comment and its return | ✅ |
+| `@import` / `@mock` sorting and `emptyLineAfterImports` | ✅ |
+| Catch parentheses always stripped (`catch (e)` → `catch e`) | ✅ |
+| `associativeArrayCommaSpacing` — spaces around commas in inline `{}` | ✅ |
+| Standalone CLI (`kopytko-format --check` / `--write`) with ignore patterns | ✅ |
 
 ## Standalone Linter (CI)
 
 | Feature | Status | Doc |
 |---|---|---|
-| Standalone linter package (`kopytko-linter`) with all 25 diagnostic rules | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
-| CLI tool (`kopytko-lint --check`) for CI pipelines | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
-| Configurable per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
-| Three output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
-| Library API: `lintProject()` and `lintFile()` | ✅ Implemented | [kopytko-linter README](../packages/kopytko-linter/README.md) |
-| Extension `diagnosticsProvider` uses `kopytko-linter` as thin LSP adapter | ✅ Implemented | [language-server.md](./language-server.md) |
+| `kopytko-linter` package — all 24 rules, shared with the editor | ✅ | [kopytko-linter README](../packages/linter/README.md) |
+| `kopytko-lint --check` CLI for CI pipelines | ✅ | [kopytko-linter README](../packages/linter/README.md) |
+| Per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ | [kopytko-linter README](../packages/linter/README.md) |
+| Output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ | [kopytko-linter README](../packages/linter/README.md) |
+| Library API: `lintProject()` / `lintFile()` | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 
 ## Kopytko Import Resolution
 
 | Feature | Status | Doc |
 |---|---|---|
-| `@import` / `@mock` annotation parsing and resolution (internal, external, transitive) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| `kopytkoModuleDir` and `sourceDir` support | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| Configurable `generatedPaths` glob patterns | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| `generatedModules` — declare functions in build-generated imports (suppresses both path and undefined-function errors) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| Sibling file scope (`kopytko.imports.siblingPatterns`) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| Dynamic Kopytko module catalog (runtime scan of installed packages) | ✅ Implemented | [language-server.md](./language-server.md) |
-| `.kopytkorc` JSON schema validation | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
+| `@import` / `@mock` parsing & resolution (internal, external, transitive) | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| `kopytkoModuleDir` and `sourceDir` support | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Configurable `generatedPaths` globs and `generatedModules` declarations | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Sibling file scope (`kopytko.imports.siblingPatterns`) | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Dynamic Kopytko module catalog (runtime package scan) | ✅ | [language-server.md](./language-server.md) |
+| `.kopytkorc` JSON schema validation | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
 
 ## Kopytko Unit Testing Framework
 
 | Feature | Status | Doc |
 |---|---|---|
-| Test file detection and scope resolution (tested file, extends, XML siblings, split suites) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Nested `_tests/` subdirectory support | ✅ Implemented | [language-server.md](./language-server.md) |
-| `@mock` annotation support (links, completions, highlighting, sorting) | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| `@mock` auto-import of `_mocks/*.mock.brs` and `_mocks/*.config.brs` functions | ✅ Implemented | [kopytko-imports.md](./kopytko-imports.md) |
-| Test framework completions (`expect()` matchers, `mockFunction()` methods, globals) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Test framework hover docs | ✅ Implemented | [language-server.md](./language-server.md) |
-| Test case symbols in Outline (`it()`, `test()`, `itEach()`) | ✅ Implemented | [language-server.md](./language-server.md) |
-| Test diagnostics — missing `return ts`, missing `@mock` for `mockFunction` calls | ✅ Implemented | [language-server.md](./language-server.md) |
+| Test file detection & scope (tested file, extends, XML siblings, split suites, nested `_tests/`) | ✅ | [language-server.md](./language-server.md) |
+| `@mock` support (links, completions, highlighting, sorting) | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| `@mock` auto-import of `_mocks/*.mock.brs` and `_mocks/*.config.brs` | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Framework completions (`expect()` matchers, `mockFunction()` methods, globals) + hover docs | ✅ | [language-server.md](./language-server.md) |
+| Test cases in Outline (`it()`, `test()`, `itEach()`) | ✅ | [language-server.md](./language-server.md) |
+| Test diagnostics — missing `return ts`, missing `@mock` for `mockFunction` calls | ✅ | [language-server.md](./language-server.md) |
 
 ## Roku Device Management
 
 | Feature | Status | Doc |
 |---|---|---|
-| SSDP device discovery (active M-SEARCH + passive NOTIFY) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Network change detection and auto-rescan | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Sleep/wake detection with auto-rescan | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Device health checks via ECP | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Sidebar tree view with device info | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Favorite/saved devices (persisted globally) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Manual device entry by IP | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Secure password storage (OS keychain via SecretStorage) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Set/unset active device for debug/deploy | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Per-device environment selection from .kopytkorc | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Package upload via sidebar UI (play icon, `Ctrl+Shift+F5` keybinding for active device) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Start debug session from sidebar (debug-alt icon per device, equivalent to F5) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Context menu actions (copy IP, open web portal, set password) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Registry viewer (read device registry via ECP, all channels) | ✅ Implemented | [device-discovery.md](./device-discovery.md) |
-| Device info webview panel | ⬜ Planned | — |
-| Remote control | ⬜ Planned | — |
+| SSDP discovery (active M-SEARCH + passive NOTIFY) | ✅ | [device-discovery.md](./device-discovery.md) |
+| Auto-rescan on network change and sleep/wake | ✅ | [device-discovery.md](./device-discovery.md) |
+| Device health checks via ECP | ✅ | [device-discovery.md](./device-discovery.md) |
+| Sidebar tree view with device info | ✅ | [device-discovery.md](./device-discovery.md) |
+| Favorite/saved devices (persisted) and manual entry by IP | ✅ | [device-discovery.md](./device-discovery.md) |
+| Secure password storage (OS keychain via SecretStorage) | ✅ | [device-discovery.md](./device-discovery.md) |
+| Active device for debug/deploy + per-device `.kopytkorc` environment | ✅ | [device-discovery.md](./device-discovery.md) |
+| Package upload from sidebar (`Ctrl+Shift+F5`) and start-debug per device | ✅ | [device-discovery.md](./device-discovery.md) |
+| Context-menu actions (copy IP, open web portal, set password) | ✅ | [device-discovery.md](./device-discovery.md) |
+| Registry viewer (read device registry via ECP) | ✅ | [device-discovery.md](./device-discovery.md) |
 
 ## Debugging
 
 | Feature | Status | Doc |
 |---|---|---|
-| Build and deploy via project's kopytko-packager with `remotedebug=1` manifest injection | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Socket-based debug protocol (port 8081, protocol 3.3.0) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Dynamic breakpoints (add/remove at runtime, no source injection) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Conditional breakpoints (BrightScript expressions) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Hit-count breakpoints | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Breakpoint verification events | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Exception breakpoints (caught/uncaught) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Variable inspection — typed, expandable containers, virtual variables | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Multi-thread inspection (SceneGraph threads) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Call stack with per-thread support | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Stepping (over, into, out) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Pause command (STOP) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Debug console REPL (EXECUTE command) | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Hover-to-evaluate | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Compile errors as VS Code diagnostics | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
-| Program output via dedicated IO channel | ✅ Implemented | [roku-debug.md](./roku-debug.md) |
+| Build & deploy via kopytko-packager with `remotedebug=1` manifest injection | ✅ | [roku-debug.md](./roku-debug.md) |
+| Socket debug protocol (port 8081, protocol 3.3.0) | ✅ | [roku-debug.md](./roku-debug.md) |
+| Breakpoints — dynamic, conditional, hit-count, verified, exception (caught/uncaught) | ✅ | [roku-debug.md](./roku-debug.md) |
+| Variable inspection — typed, expandable containers, virtual variables | ✅ | [roku-debug.md](./roku-debug.md) |
+| Multi-thread inspection (SceneGraph threads) + per-thread call stack | ✅ | [roku-debug.md](./roku-debug.md) |
+| Stepping (over/into/out), pause (STOP) | ✅ | [roku-debug.md](./roku-debug.md) |
+| Debug console REPL (EXECUTE) and hover-to-evaluate | ✅ | [roku-debug.md](./roku-debug.md) |
+| Compile errors as diagnostics; program output via IO channel | ✅ | [roku-debug.md](./roku-debug.md) |
 
 ## Performance & Caching
 
-| Feature | Status | Notes |
+| Feature | Notes |
+|---|---|
+| Per-document LRU cache | `utils/documentCache.ts` caches lines, CST, type map, imports, and functions per `{uri, version, length}`. Providers read through it. |
+| Cross-document file parse cache | `utils/fileParseCache.ts` parses each `.brs`/`.xml` once and shares it; the edited document always parses its live buffer. |
+| Component-XML resolution cache | `findComponentXml` memoizes `componentName → XML path` (incl. negatives). |
+| Import-path directory cache | Each directory listed once per session via `readCachedDir`. |
+| Granular cache invalidation | A watched-file change evicts only the changed files; package re-walk only on `package.json`/`node_modules` changes. |
+
+---
+
+## Planned / Nice-to-have
+
+Ideas grouped by readiness. The parser already ships four analysis modules that are **not yet wired to any editor feature** — `buildCallGraph`, `analyzeContext` (`m`-field tracking), `inferTypesFromAst`, and `getSymbolInfo` — so several high-value items below are mostly UI/plumbing work over an engine that already exists.
+
+### A. Buildable now on existing parser tools
+
+| Feature | What it does | Engine it uses |
 |---|---|---|
-| Per-document cache (true LRU) | ✅ Implemented | `utils/documentCache.ts` caches split lines, parsed CST, type map, imports, and collected functions per `{uri, version, length}`, evicting the least-recently-used document. Every provider reads through it (`getCachedLines`, `getCachedParseResult`, `getCachedAllFunctions`, …) rather than recomputing. |
-| Cross-document file parse cache | ✅ Implemented | `utils/fileParseCache.ts` reads and parses each `.brs`/`.xml` file once and shares the text + definitions across all documents and providers. Find References, Rename, and the `@import`/sibling/extends collectors consume it instead of re-reading from disk. The edited document always parses its own live buffer. |
-| Component-XML resolution cache | ✅ Implemented | `findComponentXml` memoizes `componentName → XML path` (including negative results), keyed by search roots, avoiding repeated recursive directory walks during `extends`-chain resolution. |
-| Import-path directory cache | ✅ Implemented | Import-path completion lists each directory once per session via `readCachedDir`. |
-| Granular cache invalidation | ✅ Implemented | A watched-file change evicts only the changed files from the file cache and recomputes per-document state, keeping unaffected files warm. Plain settings changes no longer trigger a full installed-package re-walk (that runs once at startup; `package.json`/`node_modules` changes still rescan). |
+| **Call Hierarchy** | VS Code "Show Call Hierarchy" — incoming/outgoing calls for any function. | `buildCallGraph` (already records callers, callees, arg counts) |
+| **Dead-code diagnostic** | Warn on functions never called anywhere in the workspace. | `buildCallGraph` + `WorkspaceFunctionIndex` |
+| **Unreachable-code diagnostic** | Flag statements after `return`/`stop`/`throw`/`goto` in a block. | CST/AST walk |
+| **`m`-field diagnostics** | Warn on reads of an `m.field` never assigned (typo catch), and inconsistent `m.field` types. | `analyzeContext` (already tracks field assignments + inferred types) |
+| **Inlay hints** | Inline parameter-name hints at call sites and inferred-type hints on `=` assignments. | `inferTypesFromAst` + call graph |
+| **Document highlight** | Highlight every occurrence of the symbol under the cursor (scope-aware, skips strings). | `buildScopes` / `resolve` |
+| **Folding ranges** | Fold functions, `if`/`for`/`while` blocks, and `@import` blocks from the CST (vs today's indentation heuristic). | CST node ranges |
+| **Selection range** | Smart expand/shrink selection along AST boundaries. | CST node ranges |
+| **Semantic tokens** | Parser-driven highlighting that separates params, locals, calls, and `m`-fields more reliably than the TextMate grammar. | `buildScopes` |
+| **More quick-fixes** | "Create missing function" stub from an undefined-function call; "Add `@import`" for a function found in another module; "Add type annotation" inferring the type. | scope + import resolver + `inferTypesFromAst` |
 
-## Planned / Future
+### B. Higher-value, larger build
 
-### Roku Device & Debugging
+| Feature | What it does | Notes |
+|---|---|---|
+| **Test Explorer integration** | Discover Kopytko `it()`/`test()`/`itEach()` cases in VS Code's Testing panel; run on the active device; show pass/fail inline. | Reuses existing test-scope detection; needs a device test runner bridge. |
+| **CodeLens** | Reference counts and a "Run test" lens above test cases; "N callers" above functions. | Reference counts come from the workspace index; call counts from the call graph. |
+| **Rename file → update `@import`s** | Auto-rewrite affected `@import`/`@mock` paths when a `.brs`/`.xml` is moved or renamed. | Import resolver already maps both directions. |
+| **Type hierarchy** | Navigate SceneGraph `extends` chains (super/sub components). | XML `extends` parsing already exists. |
+| **Workspace audit command** | One-shot report of unused exports, unresolved imports, and dead functions across the project. | Call graph + import resolver + workspace index. |
+
+### C. Roku device & debugging roadmap
 
 | Feature | Notes |
 |---|---|
-| Device info webview panel | Detailed device information in a dedicated webview panel. |
-| Remote control | Send key presses to the active Roku from the command palette or a webview panel. |
-| Channel screenshot | Capture a screenshot via ECP and open in VS Code. |
-| Roku log streaming panel | Always-on output channel streaming Roku syslog, independent of debug sessions. |
-
-### Debugger — future enhancements
-
-See [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities) for the full roadmap including source map support, profiling, SceneGraph inspector, logpoints, and more.
+| Device info webview panel | Detailed device info in a dedicated panel. |
+| Remote control | Send key presses to the active Roku from a panel / command palette. |
+| Channel screenshot | Capture via ECP and open in VS Code. |
+| Roku log streaming panel | Always-on syslog channel, independent of debug sessions. |
+| Debugger enhancements | Source maps, profiling, SceneGraph inspector, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |
