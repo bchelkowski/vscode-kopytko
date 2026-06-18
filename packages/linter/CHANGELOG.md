@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.3] - 2026-06-18
+
+### Fixed
+- Align SARIF output with --check run
+
 ## [1.1.2] - 2026-06-18
 
 ### Added
