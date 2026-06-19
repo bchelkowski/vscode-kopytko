@@ -85,6 +85,7 @@ let generatedPaths: string[] = [];
 let generatedModules: GeneratedModuleConfig[] = [];
 let siblingPatterns: string[][] = [];
 let readOnlyPaths: string[] = [];
+let lintReadOnlyPaths: string[] = [];
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const initOptions = params.initializationOptions ?? {};
   const workspaceFolders: string[] = initOptions.workspaceFolders ?? [];
@@ -220,6 +221,7 @@ async function refreshConfiguration(rescanPackages: boolean): Promise<void> {
   generatedModules = importCfg.generatedModules;
   siblingPatterns = importCfg.siblingPatterns;
   readOnlyPaths = await fetchReadOnlyPaths();
+  lintReadOnlyPaths = await fetchLintReadOnlyPaths();
   formattingProvider.setReadOnlyCheck(isReadOnlyPath);
   invalidateAllCaches();
   // The installed Kopytko package list and the module catalog depend on
@@ -269,6 +271,23 @@ async function fetchReadOnlyPaths(): Promise<string[]> {
     const formatPaths = formatCfg?.readOnlyPaths;
     if (Array.isArray(formatPaths) && formatPaths.length > 0) {
       return formatPaths.filter((p: unknown) => typeof p === 'string');
+    }
+    // Shared fallback
+    const cfg = await connection.workspace.getConfiguration('kopytko');
+    const paths = cfg?.readOnlyPaths;
+    return Array.isArray(paths) ? paths.filter((p: unknown) => typeof p === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchLintReadOnlyPaths(): Promise<string[]> {
+  try {
+    // Lint-specific takes priority over shared fallback
+    const lintCfg = await connection.workspace.getConfiguration('kopytko.lint');
+    const lintPaths = lintCfg?.readOnlyPaths;
+    if (Array.isArray(lintPaths) && lintPaths.length > 0) {
+      return lintPaths.filter((p: unknown) => typeof p === 'string');
     }
     // Shared fallback
     const cfg = await connection.workspace.getConfiguration('kopytko');
@@ -340,6 +359,11 @@ function validateDocument(document: TextDocument): void {
     return;
   }
 
+  if (isLintReadOnlyPath(document.uri)) {
+    connection.sendDiagnostics({ uri: document.uri, diagnostics: [] });
+    return;
+  }
+
   try {
     const diagnostics: Diagnostic[] = diagnosticsProvider.provideDiagnostics(document, generatedPaths, generatedModules, siblingPatterns);
     connection.sendDiagnostics({ uri: document.uri, diagnostics });
@@ -358,11 +382,18 @@ function getBrsDocument(uri: string): TextDocument | undefined {
   return document && isBrightScriptDocument(document) ? document : undefined;
 }
 
-/** Checks if a document URI matches any readOnlyPaths glob pattern. */
+/** Checks if a document URI matches any readOnlyPaths glob pattern (formatter). */
 function isReadOnlyPath(uri: string): boolean {
   if (readOnlyPaths.length === 0) return false;
   const fsPath = URI.parse(uri).fsPath.replace(/\\/g, '/');
   return readOnlyPaths.some((pattern) => findMatchingGlob(fsPath, [pattern]) !== undefined);
+}
+
+/** Checks if a document URI matches any lintReadOnlyPaths glob pattern (linter). */
+function isLintReadOnlyPath(uri: string): boolean {
+  if (lintReadOnlyPaths.length === 0) return false;
+  const fsPath = URI.parse(uri).fsPath.replace(/\\/g, '/');
+  return lintReadOnlyPaths.some((pattern) => findMatchingGlob(fsPath, [pattern]) !== undefined);
 }
 
 // Completion
