@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.2.4] - 2026-06-19
+
+### Added
+- Add WorkspaceCallIndex to power dead-code diagnostic
+
+### Fixed
+- Implement kopytko.lint.readOnlyPaths to skip linting only
+
 ## [1.2.3] - 2026-06-19
 
 - Release 1.2.3
