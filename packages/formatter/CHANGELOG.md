@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.5] - 2026-06-19
+
+### Fixed
+- Use hasOwn in casingPass exact override to avoid prototype chain lookup
+
 ## [1.1.4] - 2026-06-19
 
 ### Fixed
