@@ -132,6 +132,24 @@ describe('CST Passes', () => {
       expect(output).to.contain('Invalid');
     });
 
+    it('exact override does not corrupt any Object.prototype property name used as identifier', () => {
+      // Exhaustive check: none of the standard Object.prototype inherited names should
+      // be treated as an exact casing key when the user only set { invalid: "Invalid" }.
+      const protoProps = ['constructor', 'toString', 'valueOf', 'hasOwnProperty',
+                          'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString'];
+      const config: CasingConfig = { ...DEFAULT_CASING_CONFIG, exact: { invalid: 'Invalid' } };
+
+      for (const prop of protoProps) {
+        const source = `sub ${prop}()\n  x = invalid\nend sub\n`;
+        const result = parse(source);
+        const edits = casingPass(config)(result.root, source);
+        const output = applyEdits(source, edits);
+        expect(output, `${prop}: identifier must survive`).to.contain(prop);
+        expect(output, `${prop}: no [native code] injection`).not.to.contain('[native code]');
+        expect(output, `${prop}: invalid → Invalid`).to.contain('Invalid');
+      }
+    });
+
     it('preserve means no changes', () => {
       const source = 'IF x THEN Print "HELLO" END IF';
       const config: CasingConfig = { ...DEFAULT_CASING_CONFIG }; // all preserve

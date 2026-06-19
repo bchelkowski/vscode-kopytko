@@ -2195,5 +2195,68 @@ describe('kopytko-formatter', () => {
         'end sub',
       ].join('\n'));
     });
+
+    it('exact casing with "invalid" key does not corrupt files that define sub constructor()', () => {
+      // Regression: { invalid: "Invalid" } is a plain JS object. A bare
+      // config.exact["constructor"] lookup walks Object.prototype and returns the
+      // native Object constructor function. applyEdits coerced it to the string
+      // "function Object() { [native code] }", which verifySyntax caught as a
+      // parse error and silently reverted ALL formatting — blocking every Kopytko
+      // component because every one defines `sub constructor()`.
+      const input = [
+        'sub constructor()',
+        '    if (m.data = invalid)',
+        '      m.doWork()',
+        '    endif',
+        'end sub',
+      ];
+      const casing: CasingConfig = {
+        ...DEFAULT_CASING_CONFIG,
+        keyword: 'lower-case',
+        literal: 'lower-case',
+        exact: { invalid: 'Invalid' },
+      };
+      const result = format(input, { indentSize: 2, endKeywordStyle: 'spaced', parenthesisIfCase: 'always' }, casing);
+      // Must make formatting changes (not silently revert due to prototype pollution)
+      expect(result).not.to.equal(input.join('\n'));
+      // constructor identifier must survive untouched
+      expect(result).to.contain('sub constructor()');
+      // [native code] must never appear
+      expect(result).not.to.contain('[native code]');
+      // exact override must apply
+      expect(result).to.contain('Invalid');
+    });
+
+    it('checkFormatting is not tricked into reporting clean when exact casing would corrupt', () => {
+      // Same root cause — checkFormatting calls formatText internally. If formatText
+      // silently returns source unchanged (due to prototype pollution), checkFormatting
+      // incorrectly reports the file as already formatted.
+      const source = 'sub constructor()\n    if (m.data = invalid)\n      return\n    endif\nend sub\n';
+      const casing: CasingConfig = {
+        ...DEFAULT_CASING_CONFIG,
+        keyword: 'lower-case',
+        exact: { invalid: 'Invalid' },
+      };
+      const config = { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2, endKeywordStyle: 'spaced' as const };
+      // Source has 4-space indent + "invalid" lowercase → not clean per these settings
+      expect(checkFormatting(source, config, casing)).to.equal(false);
+    });
+  });
+
+  describe('casingPass exact — Object.prototype property safety', () => {
+    // Verify that none of the standard Object.prototype inherited properties
+    // are accidentally treated as exact casing overrides.
+    const PROTO_PROPS = ['constructor', 'toString', 'valueOf', 'hasOwnProperty',
+                         'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString'];
+
+    for (const prop of PROTO_PROPS) {
+      it(`exact: { invalid: "Invalid" } does not corrupt identifier "${prop}"`, () => {
+        const src = `sub ${prop}()\n  x = invalid\nend sub\n`;
+        const casing: CasingConfig = { ...DEFAULT_CASING_CONFIG, exact: { invalid: 'Invalid' } };
+        const result = formatText(src, { ...DEFAULT_FORMATTING_CONFIG, insertFinalNewline: false }, casing);
+        expect(result).to.contain(prop);
+        expect(result).not.to.contain('[native code]');
+      });
+    }
   });
 });
