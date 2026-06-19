@@ -68,8 +68,9 @@ function processToken(
 
   const lower = token.text.toLowerCase();
 
-  // Exact overrides
-  if (config.exact && config.exact[lower]) {
+  // Exact overrides — use hasOwn to avoid inheriting Object.prototype properties
+  // (e.g. { invalid: "Invalid" }["constructor"] would otherwise return Object).
+  if (config.exact && Object.prototype.hasOwnProperty.call(config.exact, lower)) {
     const desired = config.exact[lower];
     if (desired !== token.text) {
       edits.push({ pos: token.pos, end: token.end, newText: desired });

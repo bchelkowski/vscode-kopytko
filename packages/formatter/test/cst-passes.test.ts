@@ -118,6 +118,20 @@ describe('CST Passes', () => {
       expect(output).to.contain('MyCustomFunc');
     });
 
+    it('exact override does not match Object.prototype inherited properties like constructor', () => {
+      // { invalid: "Invalid" } inherits Object.prototype.constructor — without hasOwn
+      // the casingPass would replace the BrightScript `constructor` identifier with
+      // the JS Object function, producing "function Object() { [native code] }".
+      const source = 'sub constructor()\n  x = invalid\nend sub\n';
+      const config: CasingConfig = { ...DEFAULT_CASING_CONFIG, exact: { invalid: 'Invalid' } };
+      const result = parse(source);
+      const edits = casingPass(config)(result.root, source);
+      const output = applyEdits(source, edits);
+      expect(output).to.contain('constructor');
+      expect(output).not.to.contain('[native code]');
+      expect(output).to.contain('Invalid');
+    });
+
     it('preserve means no changes', () => {
       const source = 'IF x THEN Print "HELLO" END IF';
       const config: CasingConfig = { ...DEFAULT_CASING_CONFIG }; // all preserve
