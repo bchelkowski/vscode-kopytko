@@ -26,13 +26,13 @@ const COMPONENT_CONTENT = [
 describe('WorkspaceFunctionIndex — source/ directory caching', () => {
   let readdirStub: sinon.SinonStub;
   let readFileStub: sinon.SinonStub;
-  let existsStub: sinon.SinonStub;
+  let _existsStub: sinon.SinonStub;
   let index: WorkspaceFunctionIndex;
 
   beforeEach(() => {
     readdirStub = sinon.stub(fsWrapper, 'readdirTyped');
     readFileStub = sinon.stub(fsWrapper, 'readFileSync');
-    existsStub = sinon.stub(fsWrapper, 'existsSync').returns(false);
+    _existsStub = sinon.stub(fsWrapper, 'existsSync').returns(false);
     readdirStub.returns([]);
 
     // Workspace structure: app/source/Helpers.brs + app/components/Button.brs
