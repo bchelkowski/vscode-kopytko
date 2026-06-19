@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.4] - 2026-06-19
+
+### Fixed
+- Do not block formatting when source has pre-existing parse errors
+
 ## [1.1.3] - 2026-06-19
 
 ### Fixed
