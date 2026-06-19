@@ -139,11 +139,12 @@ export function formatText(
 
   // ── Syntax safety verification ──────────────────────────────────────────
   // Parse the formatted output to detect if formatting broke the syntax.
-  // If errors are found, return the original source unchanged.
+  // Only fall back to the original if formatting introduced NEW errors — pre-existing
+  // parse errors in the source (e.g. unsupported syntax) must not block formatting.
   if (config.verifySyntax !== false) {
+    const originalErrorCount = parse(source).diagnostics.length;
     const result = parse(newText);
-    if (result.diagnostics.length > 0) {
-      // Formatting introduced syntax errors — fall back to original source
+    if (result.diagnostics.length > originalErrorCount) {
       return source;
     }
   }

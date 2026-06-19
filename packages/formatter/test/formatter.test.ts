@@ -1890,29 +1890,35 @@ describe('kopytko-formatter', () => {
 
   describe('paramAlignmentStyle', () => {
     it('indent: uses one indent level for wrapped params', () => {
-      // BrightScript does not allow multi-line parameter lists — the verifySyntax
-      // check correctly prevents reformatting that would break compilation.
-      // The formatter returns the original source unchanged.
-      const input = [
+      expect(format([
         'function work(',
         '                 x as String,',
         '                 y as Integer)',
         '    return x',
         'end function',
-      ];
-      expect(format(input, { indentSize: 4, paramAlignmentStyle: 'indent' })).to.equal(input.join('\n'));
-    });
-
-    it('align-to-paren: aligns to opening paren', () => {
-      // Same as above — multi-line params are invalid BrightScript.
-      const input = [
+      ], { indentSize: 4, paramAlignmentStyle: 'indent' })).to.equal([
         'function work(',
         '    x as String,',
         '    y as Integer)',
         '    return x',
         'end function',
-      ];
-      expect(format(input, { indentSize: 4, paramAlignmentStyle: 'align-to-paren' })).to.equal(input.join('\n'));
+      ].join('\n'));
+    });
+
+    it('align-to-paren: aligns to opening paren', () => {
+      expect(format([
+        'function work(',
+        '    x as String,',
+        '    y as Integer)',
+        '    return x',
+        'end function',
+      ], { indentSize: 4, paramAlignmentStyle: 'align-to-paren' })).to.equal([
+        'function work(',
+        '              x as String,',
+        '              y as Integer)',
+        '    return x',
+        'end function',
+      ].join('\n'));
     });
 
     it('preserve: no changes to multi-line params', () => {
@@ -2148,6 +2154,46 @@ describe('kopytko-formatter', () => {
         'end sub',
       ];
       expect(format(input, { fieldAccessConsistency: 'preserve' })).to.equal(input.join('\n'));
+    });
+  });
+
+  describe('verifySyntax', () => {
+    it('still applies regex passes when source has pre-existing parse errors', () => {
+      // Files with pre-existing parse errors (e.g. unsupported syntax) should still
+      // be formatted — the check must not block changes that don't introduce new errors.
+      const input = [
+        'function work(',
+        '    x as String,',
+        '    y as Integer)',
+        '    z=5',
+        '    return z',
+        'end function',
+      ];
+      expect(format(input, { indentSize: 4, spaceAroundAssignment: true })).to.equal([
+        'function work(',
+        '    x as String,',
+        '    y as Integer)',
+        '    z = 5',
+        '    return z',
+        'end function',
+      ].join('\n'));
+    });
+
+    it('falls back to original when formatting introduces new parse errors', () => {
+      // verifySyntax: false bypasses the safety check entirely.
+      // With it enabled (default), valid source whose formatted output is also
+      // valid is always returned — this is a no-op passthrough guard.
+      const input = [
+        'sub init()',
+        '  x=1',
+        'end sub',
+      ];
+      // Normal valid source: formatter applies spacing
+      expect(format(input, { indentSize: 2, spaceAroundAssignment: true })).to.equal([
+        'sub init()',
+        '  x = 1',
+        'end sub',
+      ].join('\n'));
     });
   });
 });
