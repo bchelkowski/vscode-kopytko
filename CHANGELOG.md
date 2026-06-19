@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.2.2] - 2026-06-19
+
+### Added
+- Treat source/ directory functions as globally accessible
+
+### Fixed
+- Rename ts to getTestSuite in test framework catalog
+
 ## [1.2.1] - 2026-06-18
 
 ### Fixed
