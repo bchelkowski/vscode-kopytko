@@ -810,6 +810,14 @@ describe('kopytko-formatter', () => {
       expect(result).to.include('context.arrayUtils.filter');
       expect(result).to.not.include('context.ArrayUtils');
     });
+
+    it('does not add space after .not when used as a property accessor', () => {
+      const result = format(
+        ['sub t()', '  result = expect(value).not.toBe(invalid)', 'end sub'],
+        { indentSize: 2, unarySpacing: true },
+      );
+      expect(result).to.include('expect(value).not.toBe(invalid)');
+    });
   });
 
   // ── emptyLineBeforeReturn fixes ─────────────────────────────────────────

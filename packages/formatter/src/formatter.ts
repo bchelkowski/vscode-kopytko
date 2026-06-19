@@ -551,7 +551,7 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
   }
 
   if (config.unarySpacing) {
-    r = r.replace(/\bnot\b(?=\S)/gi, 'not ');
+    r = r.replace(/(?<!\.)\bnot\b(?=\S)/gi, 'not ');
   }
 
   if (config.forLoopSpacing && /^for\b/i.test(fullLine.trim())) {
