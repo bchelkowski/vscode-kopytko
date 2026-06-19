@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.4.0] - 2026-06-19
+
+### Added
+- Add identifier/unused-function dead-code diagnostic rule
+
 ## [1.3.2] - 2026-06-18
 
 - Release 1.3.2
