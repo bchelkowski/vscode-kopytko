@@ -21,6 +21,7 @@ import {
   type KopytkoImport,
 } from 'kopytko-linter';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { WorkspaceCallIndex } from '../utils/workspaceCallIndex';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 
 /**
@@ -61,6 +62,7 @@ export class BrightScriptDiagnosticsProvider {
     private readonly importResolver: KopytkoImportResolver,
     private readonly workspaceIndex?: WorkspaceFunctionIndex,
     private readonly catalog?: KopytkoModuleCatalog,
+    private readonly callIndex?: WorkspaceCallIndex,
   ) {}
 
   provideDiagnostics(
@@ -108,6 +110,7 @@ export class BrightScriptDiagnosticsProvider {
 
     const context: LintContext = {
       knownFuncNames,
+      calledWorkwideFuncNames: this.callIndex?.getCalledNames(),
 
       parseImports: (text: string): KopytkoImport[] => {
         // When called with sibling content, parse it; for the current document use the cache

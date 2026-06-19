@@ -25,6 +25,7 @@ VS Code Extension Host
               ├── KopytkoImportResolver
               ├── KopytkoModuleCatalog
               ├── WorkspaceFunctionIndex
+              ├── WorkspaceCallIndex
               └── (brightscript/builtins, brightscript/components,
                    brightscript/functionIndex, brightscript/xmlScriptParser,
                    brightscript/globMatcher, brightscript/casingUtils,
@@ -39,7 +40,8 @@ VS Code Extension Host
 The server avoids recomputation on hot paths (completion fires per keystroke, hover per mouse-move) through several cooperating caches:
 
 - **Per-document cache** (`utils/documentCache.ts`) — keyed by `{uri, version, contentLength}`, stores the split lines, parsed CST, scope tree, type map, `@import` list, and the collected function / inner-method sets for a document, evicting the least-recently-used entry. Providers read through the `getCached*` helpers instead of calling `split()`, `parse()`, `buildScopes()`, or the collectors directly.
-- **Cross-document file parse cache** (`utils/fileParseCache.ts`) — reads and parses each `.brs`/`.xml` file **once** and shares its text (`readCachedFileText`), function definitions (`getCachedFunctionDefs`), and inner methods (`getCachedInnerMethodDefs`) across every document and provider. `WorkspaceFunctionIndex`, Find References, Rename, and the import-chain collectors all consume it; `readCachedDir` similarly caches directory listings for import-path completion. The document under the cursor always parses its own **live** buffer — the cache is only consulted for other (imported / sibling / `extends`) files, so an unsaved edit is never served stale.
+- **Cross-document file parse cache** (`utils/fileParseCache.ts`) — reads and parses each `.brs`/`.xml` file **once** and shares its text (`readCachedFileText`), function definitions (`getCachedFunctionDefs`), and inner methods (`getCachedInnerMethodDefs`) across every document and provider. `WorkspaceFunctionIndex`, `WorkspaceCallIndex`, Find References, Rename, and the import-chain collectors all consume it; `readCachedDir` similarly caches directory listings for import-path completion. The document under the cursor always parses its own **live** buffer — the cache is only consulted for other (imported / sibling / `extends`) files, so an unsaved edit is never served stale.
+- **`WorkspaceCallIndex`** (`utils/workspaceCallIndex.ts`) — built once at startup after `WorkspaceFunctionIndex`, then updated incrementally on file changes. Maintains a per-file set of called function names (direct calls, `observeField`/`observeFieldScoped`/`callFunc` string callbacks, Kopytko `events: { prop: "fn" }` AA patterns, and SceneGraph `<interface><function>` XML declarations); `getCalledNames()` returns a lazily-built workspace-wide union. Consumed by the `identifier/unused-function` diagnostic rule, which reads the pre-built set in O(1) — no computation at keystroke time.
 - **Component-XML resolution cache** — `findComponentXml` memoizes `componentName → XML path` (including misses), keyed by search roots, avoiding repeated recursive directory walks while resolving `extends` chains.
 
 **Invalidation.** `invalidateAllCaches()` clears everything (document caches + file parse cache + component cache) and runs on configuration changes. On a watched-file change the server is more surgical: it evicts only the changed files from the file parse cache (`WorkspaceFunctionIndex.updateFile`/`removeFile` for `.brs`, `invalidateFileParseCache` for `.xml`) and then calls `invalidateDocumentCaches()`, which recomputes per-document derived state while keeping unaffected files warm. A `package.json`/`node_modules` change falls back to a full clear because it can touch many files without firing individual events. Diagnostics are additionally debounced (300 ms) via `scheduleValidation()`.
@@ -255,6 +257,28 @@ Note: in BrightScript, `=` serves as both assignment and comparison. The checker
 - Variables inside nested anonymous functions — BrightScript has no closures, so inner-scope references are isolated.
 
 No quick-fix is offered — the user decides whether to remove the variable, prefix it with `_`, or restructure the code.
+
+#### Unused function diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `identifier/unused-function` | **Off by default** | A top-level named function is defined but never called anywhere in the workspace. |
+
+**Off by default** — enable by setting the severity in `kopytko-linter.json` or `.vscode/settings.json`:
+```json
+{ "rules": { "identifier/unused-function": "hint" } }
+```
+
+**How it works:** `WorkspaceCallIndex` is built at startup and updated incrementally on file saves. It collects all function names that appear as call targets (direct calls, `observeField`/`observeFieldScoped` string callbacks, `callFunc` string arguments, Kopytko `events: { prop: "fn" }` AA patterns, and `<interface><function>` XML declarations). The diagnostic rule checks each top-level `FunctionDeclaration` against this workspace-wide set.
+
+**Not flagged:**
+- Functions in `source/` directories (globally accessible at Roku runtime, may be called from XML)
+- Test files
+- `init` and `onKeyEvent` (Roku lifecycle entry points)
+- Functions starting with `_` (private convention; often assigned to AA fields as method references)
+- Anonymous inline `function() … end function` expressions (not named top-level declarations)
+
+**Known limitation:** functions referenced by name but not called (e.g. `callback = myFn`) are not detected. The `hint` severity is intentional — suppress individual cases with `' kopytko-disable-next-line identifier/unused-function`.
 
 #### CreateObject argument validation
 

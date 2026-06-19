@@ -56,11 +56,13 @@ import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
 import { invalidateAllCaches, invalidateDocumentCaches, getCachedAllFunctions } from './utils/documentCache';
 import { invalidateFileParseCache } from './utils/fileParseCache';
 import { WorkspaceFunctionIndex } from './utils/workspaceFunctionIndex';
+import { WorkspaceCallIndex } from './utils/workspaceCallIndex';
 import { findMatchingGlob } from 'kopytko-brightscript-parser';
 
 const connection: Connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments<TextDocument>(TextDocument);
 const workspaceIndex = new WorkspaceFunctionIndex();
+const workspaceCallIndex = new WorkspaceCallIndex();
 
 let importResolver: KopytkoImportResolver;
 let catalog: KopytkoModuleCatalog;
@@ -91,7 +93,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 
   importResolver = new KopytkoImportResolver({ workspaceFolders, sourceDir, resolveModules });
   catalog = new KopytkoModuleCatalog();
-  diagnosticsProvider = new BrightScriptDiagnosticsProvider(importResolver, workspaceIndex, catalog);
+  diagnosticsProvider = new BrightScriptDiagnosticsProvider(importResolver, workspaceIndex, catalog, workspaceCallIndex);
   completionProvider = new BrightScriptCompletionProvider(importResolver, catalog, workspaceIndex);
   hoverProvider = new BrightScriptHoverProvider(catalog, importResolver, workspaceIndex);
   definitionProvider = new BrightScriptDefinitionProvider(importResolver, workspaceIndex);
@@ -148,6 +150,7 @@ connection.onInitialized(async () => {
   });
   await refreshConfiguration(true);
   workspaceIndex.build(importResolver.getWorkspaceFolders());
+  workspaceCallIndex.build(importResolver.getWorkspaceFolders());
   // Re-validate all documents that may have been validated before config loaded
   for (const document of documents.all()) {
     scheduleValidation(document);
@@ -180,11 +183,18 @@ connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
     if (change.uri.endsWith('.brs')) {
       if (change.type === FileChangeType.Deleted) {
         workspaceIndex.removeFile(fsPath);
+        workspaceCallIndex.removeFile(fsPath);
       } else {
         workspaceIndex.updateFile(fsPath);
+        workspaceCallIndex.updateFile(fsPath);
       }
     } else if (change.uri.endsWith('.xml')) {
       invalidateFileParseCache(fsPath);
+      if (change.type === FileChangeType.Deleted) {
+        workspaceCallIndex.removeFile(fsPath);
+      } else {
+        workspaceCallIndex.updateFile(fsPath);
+      }
     }
   }
 

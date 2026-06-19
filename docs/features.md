@@ -54,12 +54,12 @@ Canonical list of extension and package features. Each row links to its topic do
 
 ## Diagnostics
 
-Backed by the standalone linter's 24 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
+Backed by the standalone linter's 27 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
 
 | Group | Rules | Status | Doc |
 |---|---|---|---|
 | Imports | unresolved · duplicate · unused · missing-path · path-not-absolute · build-generated · missing-promise-deps | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
-| Identifiers | undefined-function · undefined-variable · shadows-builtin · shadows-function · unused-parameter · unused-variable · wrong-arg-count | ✅ | [language-server.md](./language-server.md) |
+| Identifiers | undefined-function · undefined-variable · shadows-builtin · shadows-function · unused-parameter · unused-variable · wrong-arg-count · **unused-function** (off by default) | ✅ | [language-server.md](./language-server.md) |
 | Syntax | trailing-comma · flow-outside-loop | ✅ | [language-server.md](./language-server.md) |
 | Type annotations | missing-return-type · missing-param-type | ✅ | [language-server.md](./language-server.md) |
 | `throw` | invalid-value · missing-message | ✅ | [language-server.md](./language-server.md) |
@@ -171,6 +171,8 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 |---|---|
 | Per-document LRU cache | `utils/documentCache.ts` caches lines, CST, type map, imports, and functions per `{uri, version, length}`. Providers read through it. |
 | Cross-document file parse cache | `utils/fileParseCache.ts` parses each `.brs`/`.xml` once and shares it; the edited document always parses its live buffer. |
+| Workspace function index | `utils/workspaceFunctionIndex.ts` — built at startup, updated incrementally; O(1) function name lookups for diagnostics, Find References, Rename. |
+| Workspace call index | `utils/workspaceCallIndex.ts` — built at startup, updated incrementally; provides workspace-wide union of all called function names (used by `identifier/unused-function`). No per-keystroke computation. |
 | Component-XML resolution cache | `findComponentXml` memoizes `componentName → XML path` (incl. negatives). |
 | Import-path directory cache | Each directory listed once per session via `readCachedDir`. |
 | Granular cache invalidation | A watched-file change evicts only the changed files; package re-walk only on `package.json`/`node_modules` changes. |
@@ -186,7 +188,6 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 | Feature | What it does | Engine it uses |
 |---|---|---|
 | **Call Hierarchy** | VS Code "Show Call Hierarchy" — incoming/outgoing calls for any function. | `buildCallGraph` (already records callers, callees, arg counts) |
-| **Dead-code diagnostic** | Warn on functions never called anywhere in the workspace. | `buildCallGraph` + `WorkspaceFunctionIndex` |
 | **Unreachable-code diagnostic** | Flag statements after `return`/`stop`/`throw`/`goto` in a block. | CST/AST walk |
 | **`m`-field diagnostics** | Warn on reads of an `m.field` never assigned (typo catch), and inconsistent `m.field` types. | `analyzeContext` (already tracks field assignments + inferred types) |
 | **Inlay hints** | Inline parameter-name hints at call sites and inferred-type hints on `=` assignments. | `inferTypesFromAst` + call graph |
