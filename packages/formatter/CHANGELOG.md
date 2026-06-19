@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.3] - 2026-06-19
+
+### Fixed
+- Do not add space after .not used as property accessor
+
 ## [1.1.2] - 2026-06-18
 
 ### Fixed
