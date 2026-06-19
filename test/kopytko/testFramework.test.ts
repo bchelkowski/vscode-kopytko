@@ -74,7 +74,7 @@ describe('kopytko/testFramework catalog', () => {
       expect(names).to.include('afterAll');
       expect(names).to.include('expect');
       expect(names).to.include('mockFunction');
-      expect(names).to.include('ts');
+      expect(names).to.include('getTestSuite');
     });
 
     it('includes test utilities', () => {
