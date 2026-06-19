@@ -3,9 +3,9 @@ import { parseLinterConfig, DEFAULT_LINTER_CONFIG, DEFAULT_RULE_CONFIG } from '.
 
 describe('config', () => {
   describe('DEFAULT_RULE_CONFIG', () => {
-    it('has 26 rules defined', () => {
+    it('has 27 rules defined', () => {
       const ruleCount = Object.keys(DEFAULT_RULE_CONFIG).length;
-      expect(ruleCount).to.equal(26);
+      expect(ruleCount).to.equal(27);
     });
 
     it('includes all import rules', () => {
@@ -15,7 +15,7 @@ describe('config', () => {
 
     it('includes all identifier rules', () => {
       const idRules = Object.keys(DEFAULT_RULE_CONFIG).filter(k => k.startsWith('identifier/'));
-      expect(idRules).to.have.lengthOf(7);
+      expect(idRules).to.have.lengthOf(8);
     });
 
     it('includes throw, createobject, syntax, and test rules', () => {
@@ -50,7 +50,7 @@ describe('config', () => {
       const config = parseLinterConfig({});
       expect(config.sourceDir).to.equal('src');
       expect(config.resolveModules).to.equal(true);
-      expect(Object.keys(config.rules).length).to.equal(26);
+      expect(Object.keys(config.rules).length).to.equal(27);
     });
 
     it('overrides a rule severity', () => {
@@ -106,7 +106,7 @@ describe('config', () => {
 
     it('ignores non-object rules field', () => {
       const config = parseLinterConfig({ rules: 'invalid' });
-      expect(Object.keys(config.rules).length).to.equal(26);
+      expect(Object.keys(config.rules).length).to.equal(27);
     });
   });
 });

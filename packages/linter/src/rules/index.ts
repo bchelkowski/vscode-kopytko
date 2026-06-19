@@ -16,6 +16,7 @@ import {
   checkTestFileStructureAst,
   checkEventCallbacksAst,
   checkImportsAst,
+  checkDeadFunctionsAst,
 } from './astRules';
 
 /** All rule groups — AST-based via brightscript-parser. */
@@ -27,6 +28,7 @@ export const ALL_RULE_GROUPS: RuleDefinition[] = [
   { code: 'identifier/shadows-function', defaultSeverity: 'error', fn: checkShadowedFunctionsAst },
   { code: 'identifier/unused-parameter', defaultSeverity: 'hint', fn: checkUnusedParametersAst },
   { code: 'identifier/unused-variable', defaultSeverity: 'warning', fn: checkUnusedVariablesAst },
+  { code: 'identifier/unused-function', defaultSeverity: 'hint', fn: checkDeadFunctionsAst },
   { code: 'identifier/wrong-arg-count', defaultSeverity: 'error', fn: checkWrongArgCountAst },
   { code: 'throw/*', defaultSeverity: 'warning', fn: checkThrowStatementsAst },
   { code: 'createobject/unknown-component', defaultSeverity: 'warning', fn: checkCreateObjectArgsAst },

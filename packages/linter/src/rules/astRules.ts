@@ -1226,3 +1226,51 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
 
   return diagnostics;
 }
+
+// ─── Dead-code diagnostic ───────────────────────────────────────────────────
+
+/**
+ * AST-based: detect top-level functions never called anywhere in the workspace.
+ * Requires `lintContext.calledWorkwideFuncNames` to be populated by the extension
+ * (via WorkspaceCallIndex). Returns [] in CLI mode where it is absent.
+ */
+export function checkDeadFunctionsAst(ctx: RuleContext): LintDiagnostic[] {
+  const { filePath, config, parseResult, lintContext } = ctx;
+  if (config['identifier/unused-function'] === 'off') return [];
+  if (!parseResult) return [];
+  if (!lintContext.calledWorkwideFuncNames) return [];
+  if (filePath.replace(/\\/g, '/').includes('/source/')) return [];
+  if (lintContext.isTestFile(filePath)) return [];
+
+  const called = lintContext.calledWorkwideFuncNames;
+  const diagnostics: LintDiagnostic[] = [];
+
+  walk(parseResult.root, {
+    visitFunctionDeclaration(node) {
+      if (node.syntax.parent?.kind !== SyntaxKind.SourceFile) return;
+
+      const name = node.name;
+      const nameLower = name.toLowerCase();
+      if (nameLower === 'init') return;
+      if (nameLower === 'onkeyevent') return;
+      if (name.startsWith('_')) return;
+      if (called.has(nameLower)) return;
+
+      const nameToken = node.nameToken;
+      if (!nameToken) return;
+
+      diagnostics.push({
+        severity: (config['identifier/unused-function'] as LintSeverity) ?? 'hint',
+        code: 'identifier/unused-function',
+        message: `Function '${name}' is defined but never called anywhere in the workspace.`,
+        line: nameToken.line,
+        column: nameToken.column,
+        endLine: nameToken.line,
+        endColumn: nameToken.column + name.length,
+        filePath,
+      });
+    },
+  });
+
+  return diagnostics;
+}

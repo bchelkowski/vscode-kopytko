@@ -15,6 +15,7 @@ import {
   checkObserverCallbacksAst,
   checkTestFileStructureAst,
   checkImportsAst,
+  checkDeadFunctionsAst,
 } from '../../src/rules/astRules';
 import type { RuleContext, LintDiagnostic } from '../../src/types';
 import type { LintContext } from '../../src/context';
@@ -802,5 +803,129 @@ describe('AST-based lint rules', () => {
       const ctx = makeGeneratedCtx({ 'import/build-generated': 'off', 'import/unresolved': 'error' });
       const diags = checkImportsAst(ctx);
       expect(codes(diags)).to.include('import/unresolved');
+    });
+  });
+
+  describe('checkDeadFunctionsAst', () => {
+    function makeDeadCtx(
+      source: string,
+      calledNames: Set<string> | undefined,
+      opts: { filePath?: string; configOverrides?: Record<string, string> } = {},
+    ): RuleContext {
+      const filePath = opts.filePath ?? '/test/components/Button.brs';
+      const lines = source.split(/\r?\n/);
+      const parseResult = parse(source);
+      const config: Record<string, string> = {
+        'identifier/unused-function': 'hint',
+        ...opts.configOverrides,
+      };
+      return {
+        filePath,
+        lines,
+        imports: [],
+        config,
+        lintContext: {
+          knownFuncNames: new Set(),
+          calledWorkwideFuncNames: calledNames,
+          isTestFile: (fp: string) => fp.includes('.test.') || fp.includes('spec'),
+        } as unknown as LintContext,
+        parseResult,
+      };
+    }
+
+    it('reports identifier/unused-function on an uncalled top-level function', () => {
+      const src = 'function unusedFn()\nend function\n';
+      const ctx = makeDeadCtx(src, new Set<string>());
+      const diags = checkDeadFunctionsAst(ctx);
+      expect(codes(diags)).to.include('identifier/unused-function');
+      expect(diags[0].message).to.include('unusedFn');
+    });
+
+    it('does not report a function that is in calledWorkwideFuncNames', () => {
+      const src = 'function myFn()\nend function\n';
+      const ctx = makeDeadCtx(src, new Set(['myfn']));
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('returns [] when calledWorkwideFuncNames is undefined (CLI mode)', () => {
+      const src = 'function unusedFn()\nend function\n';
+      const ctx = makeDeadCtx(src, undefined);
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('returns [] when rule is off', () => {
+      const src = 'function unusedFn()\nend function\n';
+      const ctx = makeDeadCtx(src, new Set<string>(), { configOverrides: { 'identifier/unused-function': 'off' } });
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('does not report init', () => {
+      const src = 'sub init()\nend sub\n';
+      const ctx = makeDeadCtx(src, new Set<string>());
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('does not report onKeyEvent', () => {
+      const src = 'function onKeyEvent(key as String, press as Boolean) as Boolean\n  return false\nend function\n';
+      const ctx = makeDeadCtx(src, new Set<string>());
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('does not report functions starting with _ (private convention)', () => {
+      const src = 'sub _privateHelper()\nend sub\n';
+      const ctx = makeDeadCtx(src, new Set<string>());
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('does not report functions in a source/ directory', () => {
+      const src = 'function globalUtil()\nend function\n';
+      const ctx = makeDeadCtx(src, new Set<string>(), { filePath: '/workspace/app/source/Utils.brs' });
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('does not report functions in a test file', () => {
+      const src = 'function TestSuite()\nend function\n';
+      const ctx = makeDeadCtx(src, new Set<string>(), { filePath: '/test/Button.test.brs' });
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('diagnostic range points at the function name token', () => {
+      const src = 'function myDeadFn()\nend function\n';
+      const ctx = makeDeadCtx(src, new Set<string>());
+      const diags = checkDeadFunctionsAst(ctx);
+      expect(diags).to.have.length(1);
+      expect(diags[0].line).to.equal(0);
+      expect(diags[0].column).to.be.greaterThan(0);
+      expect(diags[0].endColumn).to.equal(diags[0].column + 'myDeadFn'.length);
+    });
+
+    it('does not flag anonymous FunctionExpression values', () => {
+      const src = [
+        'sub init()',
+        '  m.onClick = function()',
+        '    print "clicked"',
+        '  end function',
+        'end sub',
+      ].join('\n');
+      const ctx = makeDeadCtx(src, new Set<string>());
+      expect(checkDeadFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('reports multiple unused functions', () => {
+      const src = [
+        'function unusedA()',
+        'end function',
+        'function unusedB()',
+        'end function',
+        'function usedC()',
+        'end function',
+      ].join('\n');
+      const ctx = makeDeadCtx(src, new Set(['usedc']));
+      const diags = checkDeadFunctionsAst(ctx);
+      expect(diags).to.have.length(2);
+      expect(codes(diags)).to.deep.equal(['identifier/unused-function', 'identifier/unused-function']);
+      expect(diags.map(d => d.message)).to.satisfy((msgs: string[]) =>
+        msgs.some(m => m.includes('unusedA')) && msgs.some(m => m.includes('unusedB')),
+      );
     });
   });

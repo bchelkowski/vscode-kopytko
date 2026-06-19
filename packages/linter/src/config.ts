@@ -29,6 +29,7 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'identifier/shadows-function': 'error',
   'identifier/unused-parameter': 'warning',
   'identifier/unused-variable': 'warning',
+  'identifier/unused-function': 'off',
   'throw/invalid-value': 'warning',
   'throw/missing-message': 'warning',
   'createobject/unknown-component': 'warning',

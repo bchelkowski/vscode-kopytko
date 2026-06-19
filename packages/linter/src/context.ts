@@ -8,6 +8,9 @@ import type { GeneratedModuleConfig, KopytkoImport } from './types';
  */
 export interface LintContext {
   knownFuncNames: Set<string>;
+  /** Workspace-wide union of all function names that appear as call targets in any .brs file.
+   * Undefined in CLI mode — rules must degrade gracefully when this is absent. */
+  calledWorkwideFuncNames?: Set<string>;
 
   parseImports(text: string): KopytkoImport[];
   resolveImportPath(importPath: string, documentPath: string, fromModule?: string): string | null;
