@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.0.3] - 2026-06-23
+
+### Changed
+- Optimize hot paths and group statement dispatch
+
 ## [1.0.2] - 2026-06-17
 
 ### Fixed
