@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */import { SyntaxNode, TriviaKind, isToken, isNode } from 'kopytko-brightscript-parser';
-import type { Token, Trivia } from 'kopytko-brightscript-parser';
+import type { SyntaxNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 export function lineCommentPositionPass(position: 'above' | 'preserve'): (root: SyntaxNode, source: string) => TextEdit[] {

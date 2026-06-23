@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Keyword and identifier casing.
  *
  * Applies casing normalization to keywords, builtins, and user functions.
@@ -11,7 +11,7 @@ import type { Token } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 import {
   BRIGHTSCRIPT_BUILTINS, getKeywordCategory,
-  CasingConfig, applyCasing, CasingOption, resolveKeywordCasing,
+  CasingConfig, applyCasing, resolveKeywordCasing,
 } from 'kopytko-brightscript-parser';
 
 const builtinMap = new Map<string, string>(
@@ -29,7 +29,7 @@ export function casingPass(
   casingConfig: CasingConfig,
   userFunctions: Map<string, string> = new Map(),
 ): (root: SyntaxNode, source: string) => TextEdit[] {
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
 
     function visit(node: SyntaxNode, afterDot: boolean): void {
@@ -178,24 +178,6 @@ function visitAAField(node: SyntaxNode, edits: TextEdit[], config: CasingConfig)
     if (isNode(child)) {
       // Process value side normally
       visitNormal(child, edits, config, new Map());
-    }
-  }
-}
-
-/** For DotExpression: apply casing to the object but not the member after dot. */
-function visitDotExpression(node: SyntaxNode, edits: TextEdit[], config: CasingConfig, userFunctions: Map<string, string>): void {
-  let afterDot = false;
-  for (const child of node.children) {
-    if (isToken(child)) {
-      if (!afterDot) {
-        processToken(child, false, false, node, edits, config, userFunctions);
-      }
-      afterDot = child.kind === TokenKind.Dot;
-    } else if (isNode(child)) {
-      if (!afterDot) {
-        visitNormal(child, edits, config, userFunctions);
-      }
-      afterDot = false;
     }
   }
 }

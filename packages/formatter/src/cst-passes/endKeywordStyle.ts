@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: End keyword style.
  *
  * Converts between compact (`endif`, `endfor`) and spaced (`end if`, `end for`)
@@ -51,7 +51,7 @@ const END_KEYWORD_KINDS = new Set<TokenKind>([
  * @param style - 'spaced' converts `endif` → `end if`, 'compact' does the reverse.
  */
 export function endKeywordStylePass(style: 'spaced' | 'compact'): (root: SyntaxNode, source: string) => TextEdit[] {
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
 
     walkTokens(root, (token: Token) => {

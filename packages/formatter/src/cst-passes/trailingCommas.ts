@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Trailing commas.
  *
  * Controls trailing commas in array and AA literals:
@@ -6,8 +6,7 @@
  * - 'never': remove trailing comma after last element
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, TokenKind, isNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 type TrailingCommaStyle = 'always' | 'never' | 'preserve';
@@ -15,7 +14,7 @@ type TrailingCommaStyle = 'always' | 'never' | 'preserve';
 export function trailingCommaPass(style: TrailingCommaStyle): (root: SyntaxNode, source: string) => TextEdit[] {
   if (style === 'preserve') return () => [];
 
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
 
     function visit(node: SyntaxNode): void {

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Indentation.
  *
  * Applies consistent indentation based on nesting depth.
@@ -6,7 +6,7 @@
  * leading whitespace accordingly.
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, isToken, isNode } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
@@ -77,8 +77,6 @@ function computeDepths(node: SyntaxNode, depth: number, lineDepths: Map<number, 
         lineDepths.set(child.line, depth);
       }
     } else if (isNode(child)) {
-      const childDepth = INDENT_OPENERS.has(child.kind) ? depth + 1 : depth;
-
       // For block openers, the first line (the keyword itself) stays at current depth
       if (INDENT_OPENERS.has(child.kind)) {
         // Opening keyword line stays at `depth`

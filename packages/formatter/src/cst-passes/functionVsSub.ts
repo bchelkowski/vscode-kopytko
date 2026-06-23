@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Function vs Sub for void.
  *
  * Converts between `function`/`sub` for void procedures:
@@ -6,8 +6,7 @@
  * - 'function': converts `sub foo() ... end sub` to `function foo() as Void ... end function`
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, TokenKind, isNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 type FuncVsSub = 'function' | 'sub' | 'preserve';
@@ -15,7 +14,7 @@ type FuncVsSub = 'function' | 'sub' | 'preserve';
 export function functionVsSubPass(style: FuncVsSub): (root: SyntaxNode, source: string) => TextEdit[] {
   if (style === 'preserve') return () => [];
 
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
 
     function visit(node: SyntaxNode): void {

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Print statement removal.
  *
  * Removes all `print` and `?` statements from the source.
@@ -12,7 +12,6 @@
  */
 
 import { SyntaxNode, SyntaxKind, isNode, isToken } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 /**
@@ -20,7 +19,7 @@ import { TextEdit } from './infrastructure';
  * Finds all PrintStatement nodes and removes them (including their line).
  */
 export function printStatementRemovalPass(): (root: SyntaxNode, source: string) => TextEdit[] {
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
 
     function findPrintStatements(node: SyntaxNode): void {

@@ -1,11 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
+import { SyntaxNode, TokenKind } from 'kopytko-brightscript-parser';
 import { TextEdit, walkTokens } from './infrastructure';
 
 type ObserveStyle = 'always-scoped' | 'warn' | 'preserve';
 
 export function observeFieldStylePass(style: ObserveStyle): (root: SyntaxNode, source: string) => TextEdit[] {
   if (style === 'preserve') return () => [];
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
     walkTokens(root, (token) => {
       if (token.kind !== TokenKind.Identifier) return;

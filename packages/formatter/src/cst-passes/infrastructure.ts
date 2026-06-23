@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST-based formatting infrastructure.
  *
  * Each pass walks the CST and produces a list of text edits (replacements).
@@ -9,8 +9,8 @@
  * code inside string literals or comments.
  */
 
-import { parse, SyntaxNode, isNode, isToken, TokenKind } from 'kopytko-brightscript-parser';
-import type { Token, SyntaxChild, ParseResult } from 'kopytko-brightscript-parser';
+import { parse, SyntaxNode, isNode, isToken } from 'kopytko-brightscript-parser';
+import type { Token } from 'kopytko-brightscript-parser';
 
 /** A text replacement at a specific byte range in the source. */
 export interface TextEdit {

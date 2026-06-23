@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Then style.
  *
  * Controls the presence of `then` keyword after `if`/`else if` conditions:
@@ -10,7 +10,7 @@
 
 import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit } from './infrastructure';
 
 type ThenStyle = 'always' | 'never' | 'multiline-only' | 'singleline-only' | 'preserve';
 

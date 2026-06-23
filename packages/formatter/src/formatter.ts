@@ -5,6 +5,7 @@ import { FormattingConfig } from './config';
 import { parse } from 'kopytko-brightscript-parser';
 import {
   applyEdits,
+  runCstPasses,
   endKeywordStylePass,
   casingPass,
   commentNormalizationPass,
@@ -14,6 +15,7 @@ import {
   trailingWhitespacePass,
 } from './cst-passes/index';
 import type { CstPass } from './cst-passes/index';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 
 /** Reverse mapping: spaced form → compact. */
 
@@ -36,6 +38,7 @@ export function formatText(
   userFunctions: FunctionDefinition[] = [],
 ): string {
   let lines = source.split(/\r?\n/);
+  const parseCache = new Map<string, ParseResult>();
 
   const detectedEnding = detectLineEnding(source);
   const lineEndStr = resolveLineEnding(config.lineEnding, detectedEnding);
@@ -50,20 +53,22 @@ export function formatText(
 
   // Pass 2 — Comment normalization (CST)
   lines = runCstOnLines(lines, lineEndStr,
-    commentNormalizationPass({ commentStyle: config.commentStyle, spaceAfterCommentMarker: config.spaceAfterCommentMarker }));
+    commentNormalizationPass({ commentStyle: config.commentStyle, spaceAfterCommentMarker: config.spaceAfterCommentMarker }), parseCache);
 
-  // Pass 3 — End keyword style (CST) + function vs sub (CST)
+  // Pass 3/4a — Consecutive style CST passes share a parse.
+  const styleCstPasses: CstPass[] = [];
   if (config.endKeywordStyle !== 'preserve') {
-    lines = runCstOnLines(lines, lineEndStr, endKeywordStylePass(config.endKeywordStyle));
+    styleCstPasses.push(endKeywordStylePass(config.endKeywordStyle));
   }
   if (config.functionVsSubForVoid !== 'preserve' && config.functionVsSubForVoid !== 'allow-void') {
-    lines = runCstOnLines(lines, lineEndStr, functionVsSubPass(config.functionVsSubForVoid));
+    styleCstPasses.push(functionVsSubPass(config.functionVsSubForVoid));
   }
-
-  // Pass 4 — Then style (CST) + parenthesis if case (regex) + catch paren strip (regex)
   if (config.thenStyle !== 'preserve') {
-    lines = runCstOnLines(lines, lineEndStr, thenStylePass(config.thenStyle));
+    styleCstPasses.push(thenStylePass(config.thenStyle));
   }
+  lines = runCstOnLines(lines, lineEndStr, styleCstPasses, parseCache);
+
+  // Pass 4 — Parenthesis if case (regex) + catch paren strip (regex)
   lines = passParenthesisIfCase(lines, config);
   lines = passStripCatchParens(lines);
 
@@ -72,7 +77,7 @@ export function formatText(
 
   // Pass 5 — Print statement handling (CST)
   if (config.printStatement === 'remove') {
-    lines = runCstOnLines(lines, lineEndStr, printStatementRemovalPass());
+    lines = runCstOnLines(lines, lineEndStr, printStatementRemovalPass(), parseCache);
   }
 
   // Pass 5b — Line comment position (regex)
@@ -86,9 +91,6 @@ export function formatText(
 
   // Pass 6c — String concatenation style (regex)
   lines = passStringConcatStyle(lines, config);
-
-  // Pass 7 — Casing (CST)
-  lines = runCstOnLines(lines, lineEndStr, casingPass(casing, userFuncMap));
 
   // Pass 7b — Split array open bracket (regex)
   lines = passSplitArrayOpenBracket(lines, config);
@@ -114,9 +116,13 @@ export function formatText(
   // Pass 9b — Empty lines between methods (regex)
   lines = passEmptyLinesBetweenMethods(lines, config);
 
+  // Pass 10a — Casing (CST). Running this after structural regex passes lets
+  // following CST passes reuse the same parse when casing is already correct.
+  lines = runCstOnLines(lines, lineEndStr, casingPass(casing, userFuncMap), parseCache);
+
   // Pass 10 — Trailing whitespace (CST)
   if (config.trimTrailingWhitespace) {
-    lines = runCstOnLines(lines, lineEndStr, trailingWhitespacePass());
+    lines = runCstOnLines(lines, lineEndStr, trailingWhitespacePass(), parseCache);
   }
 
   // Pass 11 — Comment width (regex)
@@ -142,8 +148,8 @@ export function formatText(
   // Only fall back to the original if formatting introduced NEW errors — pre-existing
   // parse errors in the source (e.g. unsupported syntax) must not block formatting.
   if (config.verifySyntax !== false) {
-    const originalErrorCount = parse(source).diagnostics.length;
-    const result = parse(newText);
+    const originalErrorCount = parseCached(source, parseCache).diagnostics.length;
+    const result = parseCached(newText, parseCache);
     if (result.diagnostics.length > originalErrorCount) {
       return source;
     }
@@ -175,14 +181,35 @@ export function checkFormatting(
  * Joins lines → runs CST pass → splits back to lines.
  * Falls back to original lines if the source has parse errors.
  */
-function runCstOnLines(lines: string[], lineEnd: string, pass: CstPass): string[] {
+function runCstOnLines(
+  lines: string[],
+  lineEnd: string,
+  passOrPasses: CstPass | CstPass[],
+  parseCache: Map<string, ParseResult>,
+): string[] {
+  const passes = Array.isArray(passOrPasses) ? passOrPasses : [passOrPasses];
+  if (passes.length === 0) return lines;
   const source = lines.join(lineEnd);
-  const parseResult = parse(source);
+  if (passes.length > 1) {
+    const result = runCstPasses(source, passes);
+    return result === source ? lines : result.split(/\r?\n/);
+  }
+
+  const parseResult = parseCached(source, parseCache);
   if (parseResult.diagnostics.length > 0) return lines; // can't CST-transform broken code
-  const edits = pass(parseResult.root, source);
+  const edits = passes[0](parseResult.root, source);
   if (edits.length === 0) return lines;
   const result = applyEdits(source, edits);
   return result.split(/\r?\n/);
+}
+
+function parseCached(source: string, parseCache: Map<string, ParseResult>): ParseResult {
+  let result = parseCache.get(source);
+  if (!result) {
+    result = parse(source);
+    parseCache.set(source, result);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

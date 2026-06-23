@@ -1,11 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Blank line normalization.
  *
  * Controls maximum consecutive blank lines and blank lines between functions.
  * Works by finding sequences of LineBreak trivia and trimming excess.
  */
 
-import { SyntaxNode, SyntaxKind, isToken, isNode, TriviaKind } from 'kopytko-brightscript-parser';
+import type { SyntaxNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 interface BlankLineConfig {

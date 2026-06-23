@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Import sorting.
  *
  * Sorts `' @import` and `' @mock` annotations at the top of the file.
@@ -35,7 +35,7 @@ export function importSortingPass(config: ImportSortConfig): (root: SyntaxNode, 
     return () => [];
   }
 
-  return (root: SyntaxNode, source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     // Find all import/mock comment lines at the top of the file.
     // In our CST, these are trivia attached to the first token.
     const firstToken = findFirstToken(root);

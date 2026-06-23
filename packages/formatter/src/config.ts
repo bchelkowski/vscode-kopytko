@@ -214,88 +214,31 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
 
 /** Reads a FormattingConfig from a raw VS Code settings object. */
 export function parseFormattingConfig(cfg: Record<string, unknown> | null | undefined): FormattingConfig {
-  if (!cfg) return { ...DEFAULT_FORMATTING_CONFIG };
+  const result: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG };
+  if (!cfg) return result;
 
-  const d = DEFAULT_FORMATTING_CONFIG;
-  const str = (key: string, def: string): string => {
-    const v = cfg[key];
-    return typeof v === 'string' ? v : def;
-  };
-  const num = (key: string, def: number): number => {
-    const v = cfg[key];
-    return typeof v === 'number' ? v : def;
-  };
-  const bool = (key: string, def: boolean): boolean => {
-    const v = cfg[key];
-    return typeof v === 'boolean' ? v : def;
-  };
+  for (const key of Object.keys(DEFAULT_FORMATTING_CONFIG) as (keyof FormattingConfig)[]) {
+    if (key === 'emptyLineBeforeReturn') continue;
 
-  return {
-    indentSize: num('indentSize', d.indentSize),
-    useTabs: bool('useTabs', d.useTabs),
-    lineEnding: str('lineEnding', d.lineEnding) as FormattingConfig['lineEnding'],
-    trimTrailingWhitespace: bool('trimTrailingWhitespace', d.trimTrailingWhitespace),
-    insertFinalNewline: bool('insertFinalNewline', d.insertFinalNewline),
-    maxEmptyLines: num('maxEmptyLines', d.maxEmptyLines),
-    emptyLinesBetweenFunctions: num('emptyLinesBetweenFunctions', d.emptyLinesBetweenFunctions),
-    emptyLinesBetweenMethods: num('emptyLinesBetweenMethods', d.emptyLinesBetweenMethods),
-    emptyLinesAtBlockBoundaries: str('emptyLinesAtBlockBoundaries', d.emptyLinesAtBlockBoundaries) as FormattingConfig['emptyLinesAtBlockBoundaries'],
+    const value = cfg[key];
+    const defaultValue = DEFAULT_FORMATTING_CONFIG[key];
+    if (typeof defaultValue === 'number' && typeof value === 'number') {
+      (result as Record<keyof FormattingConfig, unknown>)[key] = value;
+    } else if (typeof defaultValue === 'boolean' && typeof value === 'boolean') {
+      (result as Record<keyof FormattingConfig, unknown>)[key] = value;
+    } else if (typeof defaultValue === 'string' && typeof value === 'string') {
+      (result as Record<keyof FormattingConfig, unknown>)[key] = value;
+    }
+  }
 
-    endKeywordStyle: str('endKeywordStyle', d.endKeywordStyle) as FormattingConfig['endKeywordStyle'],
-    thenStyle: str('thenStyle', d.thenStyle) as FormattingConfig['thenStyle'],
+  const emptyLineBeforeReturn = cfg.emptyLineBeforeReturn;
+  if (emptyLineBeforeReturn === 'always' || emptyLineBeforeReturn === 'not-alone') {
+    result.emptyLineBeforeReturn = emptyLineBeforeReturn;
+  } else if (emptyLineBeforeReturn === true) {
+    result.emptyLineBeforeReturn = 'always';
+  } else {
+    result.emptyLineBeforeReturn = false;
+  }
 
-    functionVsSubForVoid: str('functionVsSubForVoid', d.functionVsSubForVoid) as FormattingConfig['functionVsSubForVoid'],
-    spaceBeforeNamedFunctionParens: bool('spaceBeforeNamedFunctionParens', d.spaceBeforeNamedFunctionParens),
-    spaceBeforeAnonymousFunctionParens: bool('spaceBeforeAnonymousFunctionParens', d.spaceBeforeAnonymousFunctionParens),
-    spaceBeforeCallParens: bool('spaceBeforeCallParens', d.spaceBeforeCallParens),
-    spaceInsideParens: str('spaceInsideParens', d.spaceInsideParens) as FormattingConfig['spaceInsideParens'],
-    paramAlignmentStyle: str('paramAlignmentStyle', d.paramAlignmentStyle) as FormattingConfig['paramAlignmentStyle'],
-
-    maxLineLength: num('maxLineLength', d.maxLineLength),
-    wrapLongStrings: str('wrapLongStrings', d.wrapLongStrings) as FormattingConfig['wrapLongStrings'],
-    stringConcatStyle: str('stringConcatStyle', d.stringConcatStyle) as FormattingConfig['stringConcatStyle'],
-
-    associativeArrayBracketSpacing: bool('associativeArrayBracketSpacing', d.associativeArrayBracketSpacing),
-    associativeArrayCommaSpacing: str('associativeArrayCommaSpacing', d.associativeArrayCommaSpacing) as FormattingConfig['associativeArrayCommaSpacing'],
-    trailingComma: str('trailingComma', d.trailingComma) as FormattingConfig['trailingComma'],
-    arrayCommaStyle: str('arrayCommaStyle', d.arrayCommaStyle) as FormattingConfig['arrayCommaStyle'],
-    associativeArrayCommaStyle: str('associativeArrayCommaStyle', d.associativeArrayCommaStyle) as FormattingConfig['associativeArrayCommaStyle'],
-    arraySplitOpenBracket: bool('arraySplitOpenBracket', d.arraySplitOpenBracket),
-    associativeArraySingleLineThreshold: num('associativeArraySingleLineThreshold', d.associativeArraySingleLineThreshold),
-
-    spaceAroundOperators: bool('spaceAroundOperators', d.spaceAroundOperators),
-    spaceAroundAssignment: bool('spaceAroundAssignment', d.spaceAroundAssignment),
-    unarySpacing: bool('unarySpacing', d.unarySpacing),
-
-    commentStyle: str('commentStyle', d.commentStyle) as FormattingConfig['commentStyle'],
-    spaceAfterCommentMarker: bool('spaceAfterCommentMarker', d.spaceAfterCommentMarker),
-    commentWidth: num('commentWidth', d.commentWidth),
-
-    sortImports: bool('sortImports', d.sortImports),
-    emptyLineAfterImports: bool('emptyLineAfterImports', d.emptyLineAfterImports),
-
-    emptyLineAfterFunctionOpen: bool('emptyLineAfterFunctionOpen', d.emptyLineAfterFunctionOpen),
-    emptyLineBeforeFunctionClose: bool('emptyLineBeforeFunctionClose', d.emptyLineBeforeFunctionClose),
-    emptyLineBeforeReturn: (() => {
-      const v = cfg['emptyLineBeforeReturn'];
-      if (v === 'always' || v === 'not-alone') return v;
-      if (v === true) return 'always';
-      return false;
-    })(),
-    emptyLineBeforeComment: bool('emptyLineBeforeComment', d.emptyLineBeforeComment),
-
-    parenthesisIfCase: str('parenthesisIfCase', d.parenthesisIfCase) as FormattingConfig['parenthesisIfCase'],
-    elseOnNewLine: bool('elseOnNewLine', d.elseOnNewLine),
-    forLoopSpacing: bool('forLoopSpacing', d.forLoopSpacing),
-
-    printStatement: str('printStatement', d.printStatement) as FormattingConfig['printStatement'],
-    lineCommentPosition: str('lineCommentPosition', d.lineCommentPosition) as FormattingConfig['lineCommentPosition'],
-
-    observeFieldStyle: str('observeFieldStyle', d.observeFieldStyle) as FormattingConfig['observeFieldStyle'],
-    mPrefixStyle: str('mPrefixStyle', d.mPrefixStyle) as FormattingConfig['mPrefixStyle'],
-    alignAssignments: bool('alignAssignments', d.alignAssignments),
-    fieldAccessConsistency: str('fieldAccessConsistency', d.fieldAccessConsistency) as FormattingConfig['fieldAccessConsistency'],
-
-    verifySyntax: bool('verifySyntax', d.verifySyntax),
-  };
+  return result;
 }

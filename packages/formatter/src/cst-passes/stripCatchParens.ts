@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, TokenKind, isNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 export function stripCatchParensPass(): (root: SyntaxNode, source: string) => TextEdit[] {
-  return (root: SyntaxNode, source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
     function visit(node: SyntaxNode): void {
       if (node.kind === SyntaxKind.CatchClause) {

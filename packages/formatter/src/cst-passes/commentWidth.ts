@@ -1,10 +1,10 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */import { SyntaxNode, TriviaKind, isToken, isNode } from 'kopytko-brightscript-parser';
+import { SyntaxNode, TriviaKind, isToken, isNode } from 'kopytko-brightscript-parser';
 import type { Trivia } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 export function commentWidthPass(maxWidth: number): (root: SyntaxNode, source: string) => TextEdit[] {
   if (maxWidth <= 0) return () => [];
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
     function walkTrivia(node: SyntaxNode): void {
       for (const child of node.children) {

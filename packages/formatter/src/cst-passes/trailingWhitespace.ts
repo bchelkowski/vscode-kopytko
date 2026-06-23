@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Trailing whitespace removal.
  *
  * Removes trailing spaces/tabs from the end of lines.
  * Works on whitespace trivia that appears before a LineBreak trivia.
  */
 
-import { SyntaxNode, TriviaKind, isToken, isNode } from 'kopytko-brightscript-parser';
-import type { Token, Trivia } from 'kopytko-brightscript-parser';
+import type { SyntaxNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 /**

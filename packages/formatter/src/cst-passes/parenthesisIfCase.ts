@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 type ParenStyle = 'always' | 'never' | 'preserve';
 
 export function parenthesisIfCasePass(style: ParenStyle): (root: SyntaxNode, source: string) => TextEdit[] {
   if (style === 'preserve') return () => [];
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
     function visit(node: SyntaxNode): void {
       if (node.kind === SyntaxKind.IfStatement || node.kind === SyntaxKind.ElseIfClause) {

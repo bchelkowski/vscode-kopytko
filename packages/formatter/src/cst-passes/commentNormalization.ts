@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars *//**
+/**
  * CST Pass: Comment normalization.
  *
  * - Convert between `'` and `rem` comment styles
@@ -10,7 +10,7 @@
  */
 
 import { SyntaxNode, TriviaKind, isToken, isNode } from 'kopytko-brightscript-parser';
-import type { Token, Trivia } from 'kopytko-brightscript-parser';
+import type { Trivia } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 
 type CommentStyle = "'" | 'rem' | 'preserve';
@@ -29,7 +29,7 @@ export function commentNormalizationPass(config: CommentNormConfig): (root: Synt
     return () => [];
   }
 
-  return (root: SyntaxNode, _source: string): TextEdit[] => {
+  return (root: SyntaxNode): TextEdit[] => {
     const edits: TextEdit[] = [];
 
     function processTrivia(trivia: Trivia): void {
