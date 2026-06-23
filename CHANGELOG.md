@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [1.2.6] - 2026-06-23
+
+### Added
+- Wire new linter rules, fix references false positives, add m.top field validation
+
+### Fixed
+- Fix 2 bugs in diagnosticsProvider found in code review
+
+### Changed
+- Split activation and debug adapter, fix client resource leaks
+- Decompose LSP server and share symbol resolution
+
 ## [1.2.5] - 2026-06-19
 
 - Release 1.2.5
