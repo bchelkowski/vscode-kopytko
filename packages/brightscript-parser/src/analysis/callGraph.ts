@@ -8,9 +8,10 @@
  * - Understanding argument passing chains
  */
 
-import { SyntaxNode } from '../syntaxNode.js';
+import { SyntaxNode, isNode } from '../syntaxNode.js';
 
 import { walk } from '../visitor.js';
+import { SyntaxKind } from '../syntaxKind.js';
 import {
   FunctionDeclaration, CallExpression,
   DotExpression, IdentifierExpression,
@@ -72,7 +73,7 @@ export interface CallGraph {
 export function buildCallGraph(root: SyntaxNode): CallGraph {
   const functions = new Map<string, FunctionInfo>();
   const allCalls: CallSite[] = [];
-  let currentFunction = '';
+  const functionStack: string[] = [];
 
   // First pass: collect all function declarations
   walk(root, {
@@ -91,61 +92,94 @@ export function buildCallGraph(root: SyntaxNode): CallGraph {
     },
   });
 
-  // Second pass: collect all call sites
-  walk(root, {
-    visitFunctionDeclaration(node: FunctionDeclaration) {
-      currentFunction = node.name.toLowerCase();
-    },
-    visitCallExpression(node: CallExpression) {
-      const callee = node.callee;
-      if (!callee) return;
+  // Second pass: collect all call sites. This uses an explicit enter/leave
+  // traversal so calls after nested functions are attributed to the outer scope.
+  collectCallSites(root);
 
-      let calleeName = '';
-      let calleeOriginal = '';
-      let isMethodCall = false;
-      let receiver: string | undefined;
-      let line = 0, column = 0;
+  function collectCallSites(node: SyntaxNode): void {
+    let pushedFunction = false;
+    if (node.kind === SyntaxKind.FunctionDeclaration) {
+      functionStack.push(new FunctionDeclaration(node).name.toLowerCase());
+      pushedFunction = true;
+    } else if (node.kind === SyntaxKind.FunctionExpression) {
+      functionStack.push('');
+      pushedFunction = true;
+    }
 
-      if (callee instanceof IdentifierExpression) {
-        calleeName = callee.name.toLowerCase();
-        calleeOriginal = callee.name;
-        const t = callee.nameToken;
-        if (t) { line = t.line; column = t.column; }
-      } else if (callee instanceof DotExpression) {
-        calleeName = callee.member.toLowerCase();
-        calleeOriginal = callee.member;
-        isMethodCall = true;
-        const obj = callee.object;
-        if (obj instanceof IdentifierExpression) {
-          receiver = obj.name.toLowerCase();
-        }
-        const t = callee.memberToken;
-        if (t) { line = t.line; column = t.column; }
+    if (node.kind === SyntaxKind.CallExpression) {
+      collectCallExpression(new CallExpression(node));
+    }
+
+    for (const child of node.children) {
+      if (isNode(child)) {
+        collectCallSites(child);
       }
+    }
 
-      if (!calleeName) return;
+    if (pushedFunction) {
+      functionStack.pop();
+    }
+  }
 
-      const site: CallSite = {
-        calleeName, calleeOriginal,
-        argCount: node.args.length,
-        line, column,
-        enclosingFunction: currentFunction,
-        isMethodCall,
-        receiver,
-      };
+  function collectCallExpression(node: CallExpression): void {
+    const callee = node.callee;
+    if (!callee) return;
 
-      allCalls.push(site);
-      const fnInfo = functions.get(currentFunction);
-      if (fnInfo) fnInfo.calls.push(site);
-    },
-  });
+    let calleeName = '';
+    let calleeOriginal = '';
+    let isMethodCall = false;
+    let receiver: string | undefined;
+    let line = 0, column = 0;
+
+    if (callee instanceof IdentifierExpression) {
+      calleeName = callee.name.toLowerCase();
+      calleeOriginal = callee.name;
+      const t = callee.nameToken;
+      if (t) { line = t.line; column = t.column; }
+    } else if (callee instanceof DotExpression) {
+      calleeName = callee.member.toLowerCase();
+      calleeOriginal = callee.member;
+      isMethodCall = true;
+      const obj = callee.object;
+      if (obj instanceof IdentifierExpression) {
+        receiver = obj.name.toLowerCase();
+      }
+      const t = callee.memberToken;
+      if (t) { line = t.line; column = t.column; }
+    }
+
+    if (!calleeName) return;
+
+    const enclosingFunction = functionStack[functionStack.length - 1] ?? '';
+    const site: CallSite = {
+      calleeName, calleeOriginal,
+      argCount: node.args.length,
+      line, column,
+      enclosingFunction,
+      isMethodCall,
+      receiver,
+    };
+
+    allCalls.push(site);
+    const fnInfo = functions.get(enclosingFunction);
+    if (fnInfo) fnInfo.calls.push(site);
+  }
+
+  const callersByCallee = new Map<string, CallSite[]>();
+  for (const call of allCalls) {
+    const calls = callersByCallee.get(call.calleeName);
+    if (calls) {
+      calls.push(call);
+    } else {
+      callersByCallee.set(call.calleeName, [call]);
+    }
+  }
 
   return {
     functions,
     allCalls,
     findCallers(funcName: string): CallSite[] {
-      const lower = funcName.toLowerCase();
-      return allCalls.filter(c => c.calleeName === lower);
+      return callersByCallee.get(funcName.toLowerCase()) ?? [];
     },
     findCallees(funcName: string): CallSite[] {
       const fn = functions.get(funcName.toLowerCase());

@@ -114,9 +114,13 @@ export function findScopeAtLine(scope: Scope, line: number): Scope {
 export function resolve(name: string, scope: Scope): Declaration | undefined {
   const lower = name.toLowerCase();
   if (ALWAYS_VALID.has(lower)) return undefined; // implicitly valid
-  const decl = scope.declarations.get(lower);
-  if (decl) return decl;
-  if (scope.parent) return resolve(name, scope.parent);
+
+  let current: Scope | null = scope;
+  while (current) {
+    const decl = current.declarations.get(lower);
+    if (decl) return decl;
+    current = current.parent;
+  }
   return undefined;
 }
 

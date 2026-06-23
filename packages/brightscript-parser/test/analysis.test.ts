@@ -86,6 +86,26 @@ describe('Call Graph', () => {
     expect(fn.paramTypes).to.deep.equal(['Integer', 'Integer']);
     expect(fn.returnType).to.equal('Integer');
   });
+
+  it('attributes calls after nested functions to the enclosing scope', () => {
+    const r = parse([
+      'function outer()',
+      '  beforeCall()',
+      '  function inner()',
+      '    innerCall()',
+      '  end function',
+      '  afterCall()',
+      'end function',
+      'topCall()',
+    ].join('\n'));
+    const cg = buildCallGraph(r.root);
+
+    expect(cg.findCallers('beforeCall')[0].enclosingFunction).to.equal('outer');
+    expect(cg.findCallers('innerCall')[0].enclosingFunction).to.equal('inner');
+    expect(cg.findCallers('afterCall')[0].enclosingFunction).to.equal('outer');
+    expect(cg.findCallers('topCall')[0].enclosingFunction).to.equal('');
+    expect(cg.findCallees('outer').map(c => c.calleeName)).to.deep.equal(['beforecall', 'aftercall']);
+  });
 });
 
 describe('Context Analysis', () => {
@@ -119,6 +139,27 @@ describe('Context Analysis', () => {
     expect(nameField?.typeName).to.equal('String');
     const activeField = ctx.getAllFields().find(f => f.name === 'active');
     expect(activeField?.typeName).to.equal('Boolean');
+  });
+
+  it('attributes fields after nested functions to the enclosing or global scope', () => {
+    const r = parse([
+      'sub outer()',
+      '  m.before = 1',
+      '  function inner()',
+      '    m.inner = 2',
+      '  end function',
+      '  m.after = 3',
+      'end sub',
+      'm.top = 4',
+    ].join('\n'));
+    const ctx = analyzeContext(r.root);
+    const fieldsByName = new Map(ctx.getAllFields().map(f => [f.name, f.assignedInFunction]));
+
+    expect(fieldsByName.get('before')).to.equal('outer');
+    expect(fieldsByName.get('inner')).to.equal('inner');
+    expect(fieldsByName.get('after')).to.equal('outer');
+    expect(fieldsByName.get('top')).to.equal('');
+    expect(ctx.getFieldsInFunction('outer').map(f => f.name)).to.deep.equal(['before', 'after']);
   });
 });
 

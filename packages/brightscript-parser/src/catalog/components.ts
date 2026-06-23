@@ -1875,62 +1875,49 @@ export function findInterface(name: string): BrightScriptInterface | undefined {
   return _interfaceMap.get(name.toLowerCase());
 }
 
-/** Cache for getComponentMethods — the catalog is static so results never change. */
-const _methodsCache = new Map<string, BrightScriptMethod[]>();
+const _componentMethods = new Map<string, BrightScriptMethod[]>();
+const _componentMethodInterfaces = new Map<string, Map<string, BrightScriptInterface>>();
+
+for (const component of BRIGHTSCRIPT_COMPONENTS) {
+  const methods: BrightScriptMethod[] = [];
+  const methodInterfaces = new Map<string, BrightScriptInterface>();
+  const seen = new Set<string>();
+
+  for (const ifName of component.interfaces) {
+    const iface = findInterface(ifName);
+    if (!iface) continue;
+
+    for (const method of iface.methods) {
+      const methodName = method.name.toLowerCase();
+      if (!methodInterfaces.has(methodName)) {
+        methodInterfaces.set(methodName, iface);
+      }
+      if (!seen.has(methodName)) {
+        seen.add(methodName);
+        methods.push(method);
+      }
+    }
+  }
+
+  const componentName = component.name.toLowerCase();
+  _componentMethods.set(componentName, methods);
+  _componentMethodInterfaces.set(componentName, methodInterfaces);
+}
 
 /**
  * Returns the deduplicated list of BrightScriptMethod objects for all
  * interfaces implemented by the named component.
  */
 export function getComponentMethods(componentName: string): BrightScriptMethod[] {
-  const key = componentName.toLowerCase();
-  const cached = _methodsCache.get(key);
-  if (cached) return cached;
-
-  const component = findComponent(componentName);
-  if (!component) return [];
-
-  const seen = new Set<string>();
-  const methods: BrightScriptMethod[] = [];
-
-  for (const ifName of component.interfaces) {
-    const iface = findInterface(ifName);
-    if (!iface) continue;
-    for (const method of iface.methods) {
-      if (!seen.has(method.name.toLowerCase())) {
-        seen.add(method.name.toLowerCase());
-        methods.push(method);
-      }
-    }
-  }
-
-  _methodsCache.set(key, methods);
-  return methods;
+  return _componentMethods.get(componentName.toLowerCase()) ?? [];
 }
-
-/** Cache for findMethodInterface lookups. */
-const _methodIfaceCache = new Map<string, BrightScriptInterface | undefined>();
 
 /**
  * Returns the name of the interface that defines methodName on componentName,
  * or undefined if not found.
  */
 export function findMethodInterface(componentName: string, methodName: string): BrightScriptInterface | undefined {
-  const cacheKey = `${componentName.toLowerCase()}|${methodName.toLowerCase()}`;
-  if (_methodIfaceCache.has(cacheKey)) return _methodIfaceCache.get(cacheKey);
-
-  const component = findComponent(componentName);
-  if (!component) { _methodIfaceCache.set(cacheKey, undefined); return undefined; }
-
-  const lowerMethod = methodName.toLowerCase();
-  for (const ifName of component.interfaces) {
-    const iface = findInterface(ifName);
-    if (!iface) continue;
-    const found = iface.methods.find((m) => m.name.toLowerCase() === lowerMethod);
-    if (found) { _methodIfaceCache.set(cacheKey, iface); return iface; }
-  }
-  _methodIfaceCache.set(cacheKey, undefined);
-  return undefined;
+  return _componentMethodInterfaces.get(componentName.toLowerCase())?.get(methodName.toLowerCase());
 }
 
 /**

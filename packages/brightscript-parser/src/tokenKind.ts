@@ -201,10 +201,9 @@ export const KEYWORD_MAP = new Map<string, TokenKind>([
   ['while', TokenKind.While],
 ]);
 
+const KEYWORD_KINDS = new Set<TokenKind>(KEYWORD_MAP.values());
+
 /** Returns true if the token kind is a keyword (not an identifier or literal). */
 export function isKeyword(kind: TokenKind): boolean {
-  for (const v of KEYWORD_MAP.values()) {
-    if (v === kind) return true;
-  }
-  return false;
+  return KEYWORD_KINDS.has(kind);
 }

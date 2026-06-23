@@ -28,6 +28,8 @@ export class SyntaxNode {
   readonly kind: SyntaxKind;
   readonly children: SyntaxChild[];
   parent: SyntaxNode | null = null;
+  private _childNodes: SyntaxNode[] | undefined;
+  private _childTokens: Token[] | undefined;
 
   constructor(kind: SyntaxKind, children: SyntaxChild[] = []) {
     this.kind = kind;
@@ -68,15 +70,19 @@ export class SyntaxNode {
    * original source byte-for-byte.
    */
   getText(): string {
-    let result = '';
+    const chunks: string[] = [];
+    this.appendText(chunks);
+    return chunks.join('');
+  }
+
+  private appendText(chunks: string[]): void {
     for (const child of this.children) {
       if (isToken(child)) {
-        result += tokenFullText(child);
+        chunks.push(tokenFullText(child));
       } else {
-        result += child.getText();
+        child.appendText(chunks);
       }
     }
-    return result;
   }
 
   /** Finds the first direct child node with the given SyntaxKind, or undefined. */
@@ -115,11 +121,11 @@ export class SyntaxNode {
 
   /** Returns all direct child nodes (filtering out tokens). */
   get childNodes(): SyntaxNode[] {
-    return this.children.filter(isNode);
+    return this._childNodes ??= this.children.filter(isNode);
   }
 
   /** Returns all direct child tokens (filtering out nodes). */
   get childTokens(): Token[] {
-    return this.children.filter(isToken);
+    return this._childTokens ??= this.children.filter(isToken);
   }
 }

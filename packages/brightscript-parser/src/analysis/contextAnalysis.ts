@@ -17,11 +17,10 @@
  * - Warnings when m.field types are inconsistent
  */
 
-import { SyntaxNode } from '../syntaxNode.js';
+import { SyntaxNode, isNode } from '../syntaxNode.js';
 import { TokenKind } from '../tokenKind.js';
+import { SyntaxKind } from '../syntaxKind.js';
 
-
-import { walk } from '../visitor.js';
 import {
   FunctionDeclaration, AssignmentStatement,
   DotExpression, IdentifierExpression, CallExpression,
@@ -88,60 +87,85 @@ export function analyzeContext(root: SyntaxNode): ContextAnalysis {
   const contextFields: ContextField[] = [];
   const functionBindings: FunctionBinding[] = [];
   const inlineAAFunctions: { aaFieldName: string; line: number }[] = [];
-  let currentFunction = '';
+  const functionStack: string[] = [];
 
-  walk(root, {
-    visitFunctionDeclaration(node: FunctionDeclaration) {
-      currentFunction = node.name.toLowerCase();
-    },
+  // Use an explicit enter/leave traversal so statements after nested functions
+  // are attributed to the enclosing function rather than the nested one.
+  collectContext(root);
 
-    visitAssignmentStatement(node: AssignmentStatement) {
-      const target = node.target;
-      if (!target) return;
+  function collectContext(node: SyntaxNode): void {
+    let pushedFunction = false;
+    if (node.kind === SyntaxKind.FunctionDeclaration) {
+      functionStack.push(new FunctionDeclaration(node).name.toLowerCase());
+      pushedFunction = true;
+    } else if (node.kind === SyntaxKind.FunctionExpression) {
+      functionStack.push('');
+      pushedFunction = true;
+    }
 
-      // m.field = value → context field assignment
-      if (target instanceof DotExpression) {
-        const obj = target.object;
-        if (obj instanceof IdentifierExpression && obj.name.toLowerCase() === 'm') {
-          const fieldName = target.member;
-          const t = target.memberToken;
-          const typeName = inferSimpleType(node.value);
-          contextFields.push({
-            name: fieldName.toLowerCase(),
-            originalName: fieldName,
-            typeName,
-            assignedInFunction: currentFunction,
-            line: t?.line ?? 0,
-            column: t?.column ?? 0,
-          });
-        }
+    if (node.kind === SyntaxKind.AssignmentStatement) {
+      collectAssignment(new AssignmentStatement(node));
+    } else if (node.kind === SyntaxKind.AAField) {
+      collectAAField(new AAField(node));
+    }
 
-        // aa.field = someFunction → function binding
-        if (obj instanceof IdentifierExpression && obj.name.toLowerCase() !== 'm') {
-          const value = node.value;
-          if (value instanceof IdentifierExpression) {
-            functionBindings.push({
-              aaName: obj.name.toLowerCase(),
-              fieldName: target.member.toLowerCase(),
-              functionName: value.name.toLowerCase(),
-              line: target.memberToken?.line ?? 0,
-            });
-          }
-        }
+    for (const child of node.children) {
+      if (isNode(child)) {
+        collectContext(child);
       }
-    },
+    }
 
-    visitAAField(node: AAField) {
-      // { key: function() ... } → inline AA function
-      const value = node.value;
-      if (value instanceof FunctionExpression) {
-        inlineAAFunctions.push({
-          aaFieldName: node.key.toLowerCase(),
-          line: node.keyToken?.line ?? 0,
+    if (pushedFunction) {
+      functionStack.pop();
+    }
+  }
+
+  function collectAssignment(node: AssignmentStatement): void {
+    const target = node.target;
+    if (!target) return;
+
+    // m.field = value → context field assignment
+    if (target instanceof DotExpression) {
+      const obj = target.object;
+      if (obj instanceof IdentifierExpression && obj.name.toLowerCase() === 'm') {
+        const fieldName = target.member;
+        const t = target.memberToken;
+        const typeName = inferSimpleType(node.value);
+        contextFields.push({
+          name: fieldName.toLowerCase(),
+          originalName: fieldName,
+          typeName,
+          assignedInFunction: functionStack[functionStack.length - 1] ?? '',
+          line: t?.line ?? 0,
+          column: t?.column ?? 0,
         });
       }
-    },
-  });
+
+      // aa.field = someFunction → function binding
+      if (obj instanceof IdentifierExpression && obj.name.toLowerCase() !== 'm') {
+        const value = node.value;
+        if (value instanceof IdentifierExpression) {
+          functionBindings.push({
+            aaName: obj.name.toLowerCase(),
+            fieldName: target.member.toLowerCase(),
+            functionName: value.name.toLowerCase(),
+            line: target.memberToken?.line ?? 0,
+          });
+        }
+      }
+    }
+  }
+
+  function collectAAField(node: AAField): void {
+    // { key: function() ... } → inline AA function
+    const value = node.value;
+    if (value instanceof FunctionExpression) {
+      inlineAAFunctions.push({
+        aaFieldName: node.key.toLowerCase(),
+        line: node.keyToken?.line ?? 0,
+      });
+    }
+  }
 
   return {
     contextFields,

@@ -241,12 +241,40 @@ class Parser {
   private parseStatement(): SyntaxNode | null {
     const kind = this.peekKind();
 
+    const declaration = this.parseDeclarationStatement(kind);
+    if (declaration) return declaration;
+
+    const block = this.parseBlockStatement(kind);
+    if (block) return block;
+
+    const controlFlow = this.parseControlFlowStatement(kind);
+    if (controlFlow) return controlFlow;
+
+    const simple = this.parseSimpleStatement(kind);
+    if (simple) return simple;
+
+    const conditional = this.parseConditionalCompilationStatement(kind);
+    if (conditional) return conditional;
+
+    if (kind === TokenKind.Eof) return null;
+
+    // Could be: assignment, label, or expression statement
+    return this.parseAssignmentOrExpressionStatement();
+  }
+
+  private parseDeclarationStatement(kind: TokenKind): SyntaxNode | undefined {
     switch (kind) {
       case TokenKind.Function:
       case TokenKind.Sub:
         // Could be a named declaration (statement) or anonymous expression
         return this.parseFunctionOrExpressionStatement();
+      default:
+        return undefined;
+    }
+  }
 
+  private parseBlockStatement(kind: TokenKind): SyntaxNode | undefined {
+    switch (kind) {
       case TokenKind.If:
         return this.parseIfStatement();
 
@@ -258,25 +286,18 @@ class Parser {
 
       case TokenKind.Try:
         return this.parseTryStatement();
+      default:
+        return undefined;
+    }
+  }
 
+  private parseControlFlowStatement(kind: TokenKind): SyntaxNode | undefined {
+    switch (kind) {
       case TokenKind.Return:
         return this.parseReturnStatement();
 
-      case TokenKind.Print:
-      case TokenKind.QuestionMark:
-        return this.parsePrintStatement();
-
       case TokenKind.Throw:
         return this.parseThrowStatement();
-
-      case TokenKind.Dim:
-        return this.parseDimStatement();
-
-      case TokenKind.Stop:
-        return new SyntaxNode(SyntaxKind.StopStatement, [this.advance()]);
-
-      case TokenKind.End:
-        return new SyntaxNode(SyntaxKind.EndStatement, [this.advance()]);
 
       case TokenKind.Goto:
         return this.parseGotoStatement();
@@ -289,7 +310,32 @@ class Parser {
 
       case TokenKind.Continue:
         return this.parseContinueStatement();
+      default:
+        return undefined;
+    }
+  }
 
+  private parseSimpleStatement(kind: TokenKind): SyntaxNode | undefined {
+    switch (kind) {
+      case TokenKind.Print:
+      case TokenKind.QuestionMark:
+        return this.parsePrintStatement();
+
+      case TokenKind.Dim:
+        return this.parseDimStatement();
+
+      case TokenKind.Stop:
+        return new SyntaxNode(SyntaxKind.StopStatement, [this.advance()]);
+
+      case TokenKind.End:
+        return new SyntaxNode(SyntaxKind.EndStatement, [this.advance()]);
+      default:
+        return undefined;
+    }
+  }
+
+  private parseConditionalCompilationStatement(kind: TokenKind): SyntaxNode | undefined {
+    switch (kind) {
       case TokenKind.HashIf:
         return this.parseConditionalCompilation();
 
@@ -298,13 +344,8 @@ class Parser {
 
       case TokenKind.HashError:
         return new SyntaxNode(SyntaxKind.HashErrorStatement, [this.advance()]);
-
-      case TokenKind.Eof:
-        return null;
-
       default:
-        // Could be: assignment, label, or expression statement
-        return this.parseAssignmentOrExpressionStatement();
+        return undefined;
     }
   }
 
@@ -908,7 +949,21 @@ class Parser {
   // ── Assignment or expression statement ────────────────────────────────
 
   private parseAssignmentOrExpressionStatement(): SyntaxNode {
-    // Check for label: `identifier:` (on its own line)
+    const label = this.parseLabelStatementIfPresent();
+    if (label) return label;
+
+    const lhsNode = this.parseAssignmentLeftHandSide();
+
+    const assignment = this.parseAssignmentStatementIfPresent(lhsNode);
+    if (assignment) return assignment;
+
+    const increment = this.parseIncrementExpressionStatementIfPresent(lhsNode);
+    if (increment) return increment;
+
+    return this.parseExpressionStatementFromParsedLeft(lhsNode);
+  }
+
+  private parseLabelStatementIfPresent(): SyntaxNode | undefined {
     if (this.check(TokenKind.Identifier) && this.peekAt(1).kind === TokenKind.Colon) {
       const afterColon = this.peekAt(2);
       if (afterColon.kind === TokenKind.Eof || afterColon.line > this.peekAt(1).line) {
@@ -916,39 +971,58 @@ class Parser {
         return new SyntaxNode(SyntaxKind.LabelStatement, children);
       }
     }
+    return undefined;
+  }
 
+  private parseAssignmentLeftHandSide(): SyntaxChild {
     // Parse the left-hand side as a postfix expression only (not full expression).
     // This avoids consuming `=` as a comparison operator.
     const lhs = this.parsePostfixExpression();
-    const lhsNode = this.nodeFromExpr(lhs);
+    return this.nodeFromExpr(lhs);
+  }
 
-    // Check for assignment: =, +=, -=, etc.
-    if (this.check(TokenKind.Equal) || COMPOUND_ASSIGN_OPS.has(this.peekKind())) {
+  private parseAssignmentStatementIfPresent(lhsNode: SyntaxChild): SyntaxNode | undefined {
+    if (this.isAssignmentOperator(this.peekKind())) {
       const children: SyntaxChild[] = [lhsNode];
       children.push(this.advance()); // = or +=, etc.
       children.push(this.nodeFromExpr(this.parseExpression()));
       return new SyntaxNode(SyntaxKind.AssignmentStatement, children);
     }
+    return undefined;
+  }
 
-    // Check for ++ / --
+  private isAssignmentOperator(kind: TokenKind): boolean {
+    return kind === TokenKind.Equal || COMPOUND_ASSIGN_OPS.has(kind);
+  }
+
+  private parseIncrementExpressionStatementIfPresent(lhsNode: SyntaxChild): SyntaxNode | undefined {
     if (this.match(TokenKind.PlusPlus, TokenKind.MinusMinus)) {
       const children: SyntaxChild[] = [lhsNode, this.advance()];
       return new SyntaxNode(SyntaxKind.ExpressionStatement, children);
     }
+    return undefined;
+  }
 
+  private parseExpressionStatementFromParsedLeft(lhsNode: SyntaxChild): SyntaxNode {
     // Not an assignment — this could be a bare function call or an expression
     // that uses binary operators. We already parsed the LHS as postfix only,
     // so if there are binary operators remaining on this line, we need to
     // continue parsing them.
     let expr: SyntaxChild = lhsNode;
-    if (!this.isAtEnd() && this.isOnSameLine() && !this.check(TokenKind.Colon)
-        && !isBlockEnder(this.peekKind())) {
+    if (this.shouldContinueExpressionOnSameLine()) {
       // There are more tokens — wrap lhs into a full binary expression parse.
       // We can't re-parse, so just consume remaining operators on this line.
       expr = this.continueAsBinaryExpression(expr);
     }
 
     return new SyntaxNode(SyntaxKind.ExpressionStatement, [expr]);
+  }
+
+  private shouldContinueExpressionOnSameLine(): boolean {
+    return !this.isAtEnd()
+      && this.isOnSameLine()
+      && !this.check(TokenKind.Colon)
+      && !isBlockEnder(this.peekKind());
   }
 
   /**
@@ -1141,32 +1215,11 @@ class Parser {
   private parseArgumentList(): SyntaxNode {
     const openParen = this.advance(); // (
     const children: SyntaxChild[] = [openParen];
-    const openLine = openParen.line;
-
-    if (!this.check(TokenKind.RightParen) && !this.isAtEnd()) {
-      children.push(this.nodeFromExpr(this.parseExpression()));
-      while (this.check(TokenKind.Comma)) {
-        children.push(this.advance()); // ,
-        children.push(this.nodeFromExpr(this.parseExpression()));
-      }
-    }
-
-    if (this.check(TokenKind.RightParen)) {
-      const closeParen = this.advance();
-      children.push(closeParen);
-      // Validate: args must be on one line unless they contain multi-line
-      // constructs (anonymous function, AA literal, array literal)
-      if (closeParen.line !== openLine) {
-        const hasMultiLine = children.some(c =>
-          isNode(c) && containsMultiLineConstruct(c)
-        );
-        if (!hasMultiLine) {
-          this.error('Function call arguments must be on one line', closeParen);
-        }
-      }
-    } else {
-      this.error('Expected ")"', this.peek());
-    }
+    this.parseDelimitedExpressionList(children, TokenKind.RightParen, {
+      openLine: openParen.line,
+      multilineErrorMessage: 'Function call arguments must be on one line',
+      missingCloseMessage: 'Expected ")"',
+    });
 
     return new SyntaxNode(SyntaxKind.ArgumentList, children);
   }
@@ -1185,27 +1238,48 @@ class Parser {
       if (this.check(TokenKind.RightBracket)) children.push(this.advance());
     } else if (op.kind === TokenKind.QuestionParen) {
       // ?(args) — parse like argument list but ?( was already consumed as one token
-      const openLine = op.line;
-      if (!this.check(TokenKind.RightParen) && !this.isAtEnd()) {
-        children.push(this.nodeFromExpr(this.parseExpression()));
-        while (this.check(TokenKind.Comma)) {
-          children.push(this.advance());
-          children.push(this.nodeFromExpr(this.parseExpression()));
-        }
-      }
-      if (this.check(TokenKind.RightParen)) {
-        const closeParen = this.advance();
-        children.push(closeParen);
-        if (closeParen.line !== openLine) {
-          const hasMultiLine = children.some(c => isNode(c) && containsMultiLineConstruct(c));
-          if (!hasMultiLine) {
-            this.error('Function call arguments must be on one line', closeParen);
-          }
-        }
-      }
+      this.parseDelimitedExpressionList(children, TokenKind.RightParen, {
+        openLine: op.line,
+        multilineErrorMessage: 'Function call arguments must be on one line',
+      });
     }
 
     return new SyntaxNode(SyntaxKind.OptionalChainingExpression, children);
+  }
+
+  private parseDelimitedExpressionList(
+    children: SyntaxChild[],
+    closeKind: TokenKind,
+    options: {
+      openLine?: number;
+      multilineErrorMessage?: string;
+      missingCloseMessage?: string;
+    } = {},
+  ): void {
+    if (!this.check(closeKind) && !this.isAtEnd()) {
+      children.push(this.nodeFromExpr(this.parseExpression()));
+      while (this.check(TokenKind.Comma)) {
+        children.push(this.advance()); // ,
+        children.push(this.nodeFromExpr(this.parseExpression()));
+      }
+    }
+
+    if (this.check(closeKind)) {
+      const closeToken = this.advance();
+      children.push(closeToken);
+      if (options.openLine !== undefined
+          && options.multilineErrorMessage
+          && closeToken.line !== options.openLine) {
+        const hasMultiLine = children.some(c =>
+          isNode(c) && containsMultiLineConstruct(c)
+        );
+        if (!hasMultiLine) {
+          this.error(options.multilineErrorMessage, closeToken);
+        }
+      }
+    } else if (options.missingCloseMessage) {
+      this.error(options.missingCloseMessage, this.peek());
+    }
   }
 
   // ── Primary expressions ───────────────────────────────────────────────
@@ -1369,7 +1443,7 @@ class Parser {
   /** Wraps a SyntaxChild in a node if it's a bare token, preserving nodes as-is. */
   private nodeFromExpr(child: SyntaxChild): SyntaxChild {
     // If it's already a SyntaxNode, return as-is
-    if ('children' in child) return child;
+    if (isNode(child)) return child;
     // Bare token → wrap in a minimal expression node
     return new SyntaxNode(SyntaxKind.LiteralExpression, [child]);
   }
