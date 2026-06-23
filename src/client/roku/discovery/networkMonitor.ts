@@ -96,6 +96,7 @@ export class NetworkMonitor extends EventEmitter<NetworkMonitorEvents> {
   private startPolling(intervalMs: number): void {
     this.clearPolling();
     this.pollTimer = setInterval(() => this.checkNetwork(), intervalMs);
+    this.pollTimer.unref?.();
   }
 
   private clearPolling(): void {
@@ -135,6 +136,7 @@ export class NetworkMonitor extends EventEmitter<NetworkMonitorEvents> {
   private startSleepDetection(): void {
     this.lastSleepCheck = Date.now();
     this.sleepTimer = setInterval(() => this.checkSleep(), SLEEP_CHECK_MS);
+    this.sleepTimer.unref?.();
   }
 
   private clearSleepDetection(): void {

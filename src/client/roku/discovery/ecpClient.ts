@@ -1,7 +1,5 @@
-import * as http from 'http';
-import * as crypto from 'crypto';
-
 import { RokuApp } from '../types';
+import { buildDigestAuthHeader, httpGet, parseDigestChallenge } from '../net/httpClient';
 
 const DEFAULT_ECP_PORT = 8060;
 const DEFAULT_TIMEOUT_MS = 3000;
@@ -24,90 +22,6 @@ function extractXmlTags(xml: string): Record<string, string> {
   }
 
   return result;
-}
-
-/**
- * Performs an HTTP GET request and resolves with the status code and response body.
- */
-function httpGet(
-  url: string,
-  timeoutMs: number,
-  headers?: Record<string, string>,
-): Promise<{ statusCode: number; body: string; headers: http.IncomingHttpHeaders }> {
-  return new Promise((resolve, reject) => {
-    const req = http.get(url, { headers, timeout: timeoutMs }, (res) => {
-      let body = '';
-      res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-      res.on('end', () => {
-        resolve({ statusCode: res.statusCode ?? 0, body, headers: res.headers });
-      });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error(`Request to ${url} timed out after ${timeoutMs}ms`));
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
-
-/**
- * Computes an MD5 hex digest of the given string.
- */
-function md5(data: string): string {
-  return crypto.createHash('md5').update(data).digest('hex');
-}
-
-/**
- * Parses a `WWW-Authenticate: Digest ...` header into its key-value parameters.
- */
-function parseDigestChallenge(header: string): Record<string, string> {
-  const params: Record<string, string> = {};
-  const paramPattern = /(\w+)="([^"]*?)"/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = paramPattern.exec(header)) !== null) {
-    params[match[1]] = match[2];
-  }
-
-  return params;
-}
-
-/**
- * Builds an HTTP Digest Authorization header value.
- *
- * Supports both qop="auth" (RFC 2617 full form with cnonce/nc) and the
- * legacy form without qop. Roku devices use qop="auth".
- *
- * @see RFC 2617 — HTTP Digest Access Authentication
- */
-function buildDigestAuthHeader(
-  username: string,
-  password: string,
-  realm: string,
-  nonce: string,
-  method: string,
-  uri: string,
-  qop?: string,
-): string {
-  const ha1 = md5(`${username}:${realm}:${password}`);
-  const ha2 = md5(`${method}:${uri}`);
-
-  if (qop && qop.split(',').map((q) => q.trim()).includes('auth')) {
-    const cnonce = crypto.randomBytes(4).toString('hex');
-    const nc = '00000001';
-    const response = md5(`${ha1}:${nonce}:${nc}:${cnonce}:auth:${ha2}`);
-    return (
-      `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", ` +
-      `qop=auth, nc=${nc}, cnonce="${cnonce}", response="${response}"`
-    );
-  }
-
-  const response = md5(`${ha1}:${nonce}:${ha2}`);
-  return `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
 }
 
 /**

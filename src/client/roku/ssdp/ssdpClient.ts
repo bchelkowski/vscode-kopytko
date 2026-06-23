@@ -104,18 +104,20 @@ export class SsdpClient extends EventEmitter {
       const resetSettle = () => {
         if (settleTimer) clearTimeout(settleTimer);
         settleTimer = setTimeout(endScan, SETTLE_DELAY);
+        this.unrefTimer(settleTimer);
         this.scanTimers.push(settleTimer);
       };
 
       // Hard timeout
       const hardTimer = setTimeout(endScan, timeoutMs);
+      this.unrefTimer(hardTimer);
       this.scanTimers.push(hardTimer);
 
       // Bind one socket per interface for M-SEARCH
       const bindPromises = addresses.map((addr) =>
         this.createSocket(addr).then((socket) => {
           sockets.push(socket);
-          this.activeSockets.push(socket);
+          this.trackActiveSocket(socket);
 
           socket.on('message', (msg) => {
             const text = msg.toString();
@@ -235,6 +237,7 @@ export class SsdpClient extends EventEmitter {
       this.aliveDebounce.delete(device.ip);
       this.emit('found', device);
     }, ALIVE_DEBOUNCE);
+    this.unrefTimer(timer);
 
     this.aliveDebounce.set(device.ip, timer);
   }
@@ -284,6 +287,7 @@ export class SsdpClient extends EventEmitter {
       send();
     } else {
       const timer = setTimeout(send, delayMs);
+      this.unrefTimer(timer);
       this.scanTimers.push(timer);
     }
   }
@@ -384,12 +388,24 @@ export class SsdpClient extends EventEmitter {
     return err.code === 'ENODEV' || err.code === 'EADDRNOTAVAIL';
   }
 
+  private trackActiveSocket(socket: dgram.Socket): void {
+    this.activeSockets.push(socket);
+    socket.once('close', () => {
+      this.activeSockets = this.activeSockets.filter((s) => s !== socket);
+    });
+  }
+
   private safeClose(socket: dgram.Socket): void {
+    this.activeSockets = this.activeSockets.filter((s) => s !== socket);
     try {
       socket.close();
     } catch {
       // Already closed — nothing to do
     }
+  }
+
+  private unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+    timer.unref?.();
   }
 
   private clearTimers(): void {

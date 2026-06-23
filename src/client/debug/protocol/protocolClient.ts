@@ -56,6 +56,10 @@ export class ProtocolClient extends EventEmitter {
   private _pendingRequests = new Map<number, PendingRequest>();
   private _protocolVersion: ProtocolVersion = { major: 0, minor: 0, patch: 0 };
   private _connected = false;
+  private _connectRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private _handshakeTimer: ReturnType<typeof setTimeout> | undefined;
+  private _connectReject: ((err: Error) => void) | undefined;
+  private _closing = false;
 
   get protocolVersion(): ProtocolVersion {
     return this._protocolVersion;
@@ -70,22 +74,55 @@ export class ProtocolClient extends EventEmitter {
    * Retries the TCP connection for up to CONNECTION_TIMEOUT_MS.
    */
   connect(host: string, port = DEBUGGER_PORT): Promise<HandshakeResponse> {
+    this._closing = false;
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const settleReject = (err: Error): void => {
+        if (settled) return;
+        settled = true;
+        this._connectReject = undefined;
+        this._clearConnectTimers();
+        reject(err);
+      };
+      const settleResolve = (handshake: HandshakeResponse): void => {
+        if (settled) return;
+        settled = true;
+        this._connectReject = undefined;
+        this._clearConnectTimers();
+        resolve(handshake);
+      };
+
+      this._connectReject = settleReject;
       const deadline = Date.now() + CONNECTION_TIMEOUT_MS;
 
       const tryConnect = (): void => {
+        this._connectRetryTimer = undefined;
+        if (this._closing) {
+          settleReject(new Error('Connection closed'));
+          return;
+        }
         if (Date.now() > deadline) {
-          reject(new Error(`Connection to ${host}:${port} timed out after ${CONNECTION_TIMEOUT_MS}ms`));
+          settleReject(new Error(`Connection to ${host}:${port} timed out after ${CONNECTION_TIMEOUT_MS}ms`));
           return;
         }
 
         const socket = new net.Socket();
         socket.once('error', () => {
           socket.destroy();
-          setTimeout(tryConnect, 1000);
+          if (this._closing) {
+            settleReject(new Error('Connection closed'));
+            return;
+          }
+          this._connectRetryTimer = setTimeout(tryConnect, 1000);
+          this._connectRetryTimer.unref?.();
         });
 
         socket.connect(port, host, () => {
+          if (this._closing) {
+            socket.destroy();
+            settleReject(new Error('Connection closed'));
+            return;
+          }
           this._socket = socket;
           socket.removeAllListeners('error');
 
@@ -104,9 +141,9 @@ export class ProtocolClient extends EventEmitter {
                 this._processBuffer();
               }
 
-              resolve(handshake);
+              settleResolve(handshake);
             })
-            .catch(reject);
+            .catch(settleReject);
         });
       };
 
@@ -170,7 +207,11 @@ export class ProtocolClient extends EventEmitter {
   }
 
   close(): void {
+    this._closing = true;
     this._connected = false;
+    this._clearConnectTimers();
+    this._connectReject?.(new Error('Connection closed'));
+    this._connectReject = undefined;
     if (this._socket) {
       this._socket.destroy();
       this._socket = null;
@@ -191,6 +232,8 @@ export class ProtocolClient extends EventEmitter {
       const timeout = setTimeout(() => {
         reject(new Error('Handshake timed out'));
       }, HANDSHAKE_TIMEOUT_MS);
+      timeout.unref?.();
+      this._handshakeTimer = timeout;
 
       // Send magic to device
       const writer = new BinaryWriter();
@@ -222,6 +265,9 @@ export class ProtocolClient extends EventEmitter {
         }
 
         clearTimeout(timeout);
+        if (this._handshakeTimer === timeout) {
+          this._handshakeTimer = undefined;
+        }
         socket.removeListener('data', onData);
 
         // Store any leftover bytes for the main data handler
@@ -304,6 +350,17 @@ export class ProtocolClient extends EventEmitter {
           pending.resolve(payload);
         }
       }
+    }
+  }
+
+  private _clearConnectTimers(): void {
+    if (this._connectRetryTimer) {
+      clearTimeout(this._connectRetryTimer);
+      this._connectRetryTimer = undefined;
+    }
+    if (this._handshakeTimer) {
+      clearTimeout(this._handshakeTimer);
+      this._handshakeTimer = undefined;
     }
   }
 
