@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.7] - 2026-06-23
+
+### Fixed
+- Re-parse between batched CST passes to prevent position drift
+
 ## [1.1.6] - 2026-06-23
 
 ### Changed
