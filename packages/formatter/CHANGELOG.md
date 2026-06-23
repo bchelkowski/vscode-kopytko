@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.6] - 2026-06-23
+
+### Changed
+- Batch CST passes into a single parse and drop blanket eslint-disable
+
 ## [1.1.5] - 2026-06-19
 
 ### Fixed
