@@ -1161,6 +1161,46 @@ describe('AST-based lint rules', () => {
       ctx.lintContext = { ...ctx.lintContext, knownFuncNames: new Set(['helper']) } as unknown as LintContext;
       expect(checkDuplicateFunctionsAst(ctx)).to.have.length(0);
     });
+
+    // ── Regression tests for ancestor-override in extension mode ──
+
+    it('regression (extension mode): ancestor-override exempt via externalFuncNames + ancestorFuncNames', () => {
+      // Scenario: UserMessageTerms.template.brs defines render(); Kopytko base also defines
+      // render() which ends up in externalFuncNames via the ancestor chain. ancestorFuncNames
+      // must exempt it so the file's override is not flagged as a cross-scope duplicate.
+      const src = 'function render() as Object\n  return {}\nend function';
+      const ctx = makeCtx(src, { 'identifier/duplicate-function': 'error' });
+      ctx.lintContext = {
+        ...ctx.lintContext,
+        knownFuncNames: new Set(['render']),
+        externalFuncNames: new Set(['render']), // Kopytko base render appears as external
+        ancestorFuncNames: new Set(['render']), // it's an ancestor → must be exempted
+      } as unknown as LintContext;
+      expect(checkDuplicateFunctionsAst(ctx)).to.have.length(0);
+    });
+
+    it('regression (extension mode): import collision flagged while ancestor override is exempt', () => {
+      // 'render' is an ancestor function (can be overridden, no warning needed).
+      // 'helper' is an import collision (real duplicate, must still be flagged).
+      const src = [
+        'function helper() as Void',
+        'end function',
+        'function render() as Object',
+        '  return {}',
+        'end function',
+      ].join('\n');
+      const ctx = makeCtx(src, { 'identifier/duplicate-function': 'error' });
+      ctx.lintContext = {
+        ...ctx.lintContext,
+        knownFuncNames: new Set(['helper', 'render']),
+        externalFuncNames: new Set(['helper', 'render']),
+        ancestorFuncNames: new Set(['render']), // only 'render' is ancestored, not 'helper'
+      } as unknown as LintContext;
+      const diags = checkDuplicateFunctionsAst(ctx);
+      expect(codes(diags)).to.include('identifier/duplicate-function');
+      expect(diags).to.have.length(1);
+      expect(diags[0].message).to.include('helper'); // 'render' is protected, 'helper' is not
+    });
   });
 
   // ─── import/unused scope-aware fix ────────────────────────────────────────

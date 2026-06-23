@@ -41,10 +41,11 @@ export function applyEdits(source: string, edits: TextEdit[]): string {
 
 /**
  * Runs one or more CST passes on the source and returns the transformed text.
- * Parses once, applies all passes, returns the result.
+ * Re-parses after each pass that modifies the source so subsequent passes use
+ * correct token positions (avoids position drift when a pass changes text length).
  */
 export function runCstPasses(source: string, passes: CstPass[]): string {
-  const parseResult = parse(source);
+  let parseResult = parse(source);
   if (parseResult.diagnostics.length > 0) {
     // Source has syntax errors — don't transform
     return source;
@@ -55,6 +56,10 @@ export function runCstPasses(source: string, passes: CstPass[]): string {
     const edits = pass(parseResult.root, result);
     if (edits.length > 0) {
       result = applyEdits(result, edits);
+      const next = parse(result);
+      // If a pass somehow introduced a syntax error, stop rather than corrupting further
+      if (next.diagnostics.length > 0) break;
+      parseResult = next;
     }
   }
   return result;

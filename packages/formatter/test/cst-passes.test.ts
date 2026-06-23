@@ -5,6 +5,8 @@ import { casingPass } from '../src/cst-passes/casingPass';
 import { commentNormalizationPass } from '../src/cst-passes/commentNormalization';
 import { printStatementRemovalPass } from '../src/cst-passes/printStatementRemoval';
 import { importSortingPass } from '../src/cst-passes/importSorting';
+import { functionVsSubPass } from '../src/cst-passes/functionVsSub';
+import { thenStylePass } from '../src/cst-passes/thenStyle';
 import { applyEdits, runCstPasses } from '../src/cst-passes/infrastructure';
 import { DEFAULT_CASING_CONFIG } from '../src/casing';
 import type { CasingConfig } from '../src/casing';
@@ -175,6 +177,52 @@ describe('CST Passes', () => {
         endKeywordStylePass('spaced'),
       ]);
       expect(output).to.equal(source);
+    });
+
+    it('regression: pass 2 positions correct after pass 1 shrinks text (function→sub then removal)', () => {
+      // functionVsSubPass changes 'function' (8 chars) → 'sub' (3 chars) = −5 byte shift
+      // BEFORE 'then' on the next line. With the stale-position bug, thenStylePass uses
+      // the original 'then' position applied to the shifted result, corrupting 'return'.
+      const source = [
+        'function voidFunc()',
+        '  if x then',
+        '    return',
+        '  end if',
+        'end function',
+      ].join('\n');
+      const output = runCstPasses(source, [
+        functionVsSubPass('sub'),         // 'function' → 'sub': −5 chars before 'then'
+        thenStylePass('singleline-only'), // should remove ' then' from multi-line if
+      ]);
+      expect(output).to.contain('sub voidFunc()');       // pass 1 must have fired
+      expect(output).not.to.contain('if x then');        // pass 2 must have removed 'then'
+      expect(output).to.contain('if x');                 // condition remains
+      expect(output).to.contain('    return');           // indented 'return' keyword present
+      expect(output).not.to.match(/\beturn\b/);          // regression: 'eturn' (truncated 'return') must not appear as a standalone identifier
+    });
+
+    it('regression: pass 2 positions correct after pass 1 grows text (endsub→end sub then removal)', () => {
+      // endKeywordStylePass changes 'endsub' (6 chars) → 'end sub' (7 chars) = +1 byte shift
+      // BEFORE 'then' in the subsequent function. With the stale-position bug, thenStylePass
+      // applies the 'then' edit one position off and corrupts the code.
+      const source = [
+        'sub outer()',
+        'endsub',
+        '',
+        'function hasIf() as Integer',
+        '  if x then',
+        '    return 1',
+        '  end if',
+        'end function',
+      ].join('\n');
+      const output = runCstPasses(source, [
+        endKeywordStylePass('spaced'),    // 'endsub' → 'end sub': +1 char before 'then'
+        thenStylePass('singleline-only'), // should remove ' then' from multi-line if
+      ]);
+      expect(output).to.contain('end sub');          // pass 1 must have fired
+      expect(output).not.to.contain('if x then');   // pass 2 must have removed 'then'
+      expect(output).to.contain('if x');            // condition remains
+      expect(output).to.contain('return 1');        // 'return' keyword must not be corrupted
     });
   });
 

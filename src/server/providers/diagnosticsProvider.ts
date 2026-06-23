@@ -124,7 +124,14 @@ export class BrightScriptDiagnosticsProvider {
       // External = everything knownFuncNames provides EXCEPT the current file's own functions.
       externalFuncNames = new Set([...knownFuncNames].filter(n => !ownFuncNamesLower.has(n)));
 
-      const ancestorDefs = collectFunctionsFromExtends(documentPath, this.importResolver);
+      const ancestorDefs = [...collectFunctionsFromExtends(documentPath, this.importResolver)];
+      // Template/component files may share a directory XML (e.g. view.xml) with sibling BRS
+      // files. collectFunctionsFromExtends already scans all XMLs in the directory, but the
+      // sibling's XML may resolve a different extends chain. Mirror what getCachedKnownFuncNames
+      // does so ancestorFuncNames is symmetric with knownFuncNames.
+      for (const sibPath of findSiblingFiles(documentPath, siblingPatterns)) {
+        ancestorDefs.push(...collectFunctionsFromExtends(sibPath, this.importResolver));
+      }
       ancestorFuncNames = ancestorDefs.length > 0
         ? new Set(ancestorDefs.map(f => f.nameLower))
         : undefined;

@@ -75,13 +75,29 @@ export function runLint(
   };
 }
 
-/** Overrides the context's knownFuncNames for a specific file. */
+/** Overrides the context's knownFuncNames, externalFuncNames, and ancestorFuncNames for a specific file. */
 export function createFileContext(baseContext: LintContext, filePath: string): LintContext {
-  const contextWithFunctions = baseContext as LintContext & { _allFunctions?: Map<string, Set<string>> };
-  const fileKnown = contextWithFunctions._allFunctions?.get(nodePath.normalize(filePath)) ?? new Set<string>();
+  const ctx = baseContext as LintContext & {
+    _allFunctions?: Map<string, Set<string>>;
+    _ownFunctions?: Map<string, string[]>;
+    _ancestorFunctions?: Map<string, Set<string>>;
+  };
+  const normalizedPath = nodePath.normalize(filePath);
+  const fileKnown = ctx._allFunctions?.get(normalizedPath) ?? new Set<string>();
+  const fileOwn = ctx._ownFunctions?.get(normalizedPath);
+  const fileAncestors = ctx._ancestorFunctions?.get(normalizedPath);
+
+  // externalFuncNames = everything knownFuncNames provides EXCEPT the current file's own
+  // functions. This prevents the duplicate-function rule from flagging a function as a
+  // cross-scope duplicate of itself when knownFuncNames includes the file's own functions.
+  const externalFuncNames = fileOwn
+    ? new Set([...fileKnown].filter(n => !fileOwn.includes(n)))
+    : undefined;
 
   return {
     ...baseContext,
     knownFuncNames: fileKnown,
+    externalFuncNames,
+    ancestorFuncNames: fileAncestors?.size ? fileAncestors : undefined,
   };
 }

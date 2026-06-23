@@ -302,6 +302,10 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
   } = params;
 
   const allFunctions = new Map<string, Set<string>>();
+  // ancestor-only functions per file: functions that come exclusively from the extends chain
+  // (not from the file's own definitions, imports, or XML siblings). Used by createFileContext
+  // to populate ancestorFuncNames so the duplicate-function rule can exempt ancestor overrides.
+  const ancestorFunctionsMap = new Map<string, Set<string>>();
 
   const readFileCached = (filePath: string): string | null => {
     const normalized = nodePath.normalize(filePath);
@@ -394,6 +398,7 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
   for (const file of brsFiles) {
     const normalizedFile = nodePath.normalize(file);
     const known = new Set<string>();
+    const ancestors = new Set<string>(); // extends-chain functions only (for ancestorFuncNames)
     for (const fn of (fileFunctions.get(normalizedFile) ?? [])) known.add(fn);
 
     // Add test framework globals for test and mock files
@@ -477,6 +482,7 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
       if (parentComponentName) {
         for (const fn of collectFromExtendsChain(parentComponentName.toLowerCase())) {
           known.add(fn);
+          ancestors.add(fn); // these are overrideable ancestor functions
         }
       }
     }
@@ -496,7 +502,10 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
         if (!sxmlText) continue;
         const parentName = parseXmlExtends(sxmlText);
         if (parentName) {
-          for (const fn of collectFromExtendsChain(parentName.toLowerCase())) known.add(fn);
+          for (const fn of collectFromExtendsChain(parentName.toLowerCase())) {
+            known.add(fn);
+            ancestors.add(fn); // sibling's ancestor chain is also overrideable
+          }
         }
       }
     }
@@ -535,7 +544,10 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
           // Extends chain
           const parentName = parseXmlExtends(txmlText);
           if (parentName) {
-            for (const fn of collectFromExtendsChain(parentName.toLowerCase())) known.add(fn);
+            for (const fn of collectFromExtendsChain(parentName.toLowerCase())) {
+              known.add(fn);
+              ancestors.add(fn);
+            }
           }
         }
 
@@ -562,6 +574,7 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     }
 
     allFunctions.set(normalizedFile, known);
+    if (ancestors.size > 0) ancestorFunctionsMap.set(normalizedFile, ancestors);
   }
 
   // Collect functions from source/ directories (globally accessible by Roku convention).
@@ -621,7 +634,11 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
   };
 
   return {
-    context: Object.assign(context, { _allFunctions: allFunctions }) as LintContext,
+    context: Object.assign(context, {
+      _allFunctions: allFunctions,
+      _ownFunctions: fileFunctions,
+      _ancestorFunctions: ancestorFunctionsMap,
+    }) as LintContext,
     brsFiles,
     fileContentsCache,
   };
