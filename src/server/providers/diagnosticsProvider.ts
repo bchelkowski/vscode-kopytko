@@ -20,6 +20,8 @@ import {
   type LinterConfig,
   type KopytkoImport,
 } from 'kopytko-linter';
+import { collectFunctionsFromExtends } from '../brightscript/functionIndex';
+import { collectMtopItems } from '../brightscript/mtopResolver';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { WorkspaceCallIndex } from '../utils/workspaceCallIndex';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
@@ -108,9 +110,27 @@ export class BrightScriptDiagnosticsProvider {
       if (moduleSourceNames.size > 0) knownFuncNames = new Set([...knownFuncNames, ...moduleSourceNames]);
     }
 
+    const ancestorDefs = collectFunctionsFromExtends(documentPath, this.importResolver);
+    const ancestorFuncNames = ancestorDefs.length > 0
+      ? new Set(ancestorDefs.map(f => f.nameLower))
+      : undefined;
+
+    // Memoize m.top field collection within this single provideDiagnostics call.
+    let cachedMtopFields: Set<string> | null | undefined;
+    const getMtopFields = (filePath: string): Set<string> | null => {
+      if (cachedMtopFields !== undefined) return cachedMtopFields;
+      const { fields } = collectMtopItems(filePath, this.importResolver);
+      cachedMtopFields = fields.length > 0
+        ? new Set(fields.map(f => f.name.toLowerCase()))
+        : null;
+      return cachedMtopFields;
+    };
+
     const context: LintContext = {
       knownFuncNames,
       calledWorkwideFuncNames: this.callIndex?.getCalledNames(),
+      ancestorFuncNames,
+      getMtopFields,
 
       parseImports: (text: string): KopytkoImport[] => {
         // When called with sibling content, parse it; for the current document use the cache

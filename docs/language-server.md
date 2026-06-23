@@ -280,6 +280,55 @@ No quick-fix is offered — the user decides whether to remove the variable, pre
 
 **Known limitation:** functions referenced by name but not called (e.g. `callback = myFn`) are not detected. The `hint` severity is intentional — suppress individual cases with `' kopytko-disable-next-line identifier/unused-function`.
 
+#### Loop variable leak diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `identifier/loop-variable-leak` | Warning | A variable whose first assignment is inside a loop body is read after the loop ends. |
+
+BrightScript is function-scoped, not block-scoped. A variable first assigned inside a `for`, `for each`, or `while` body is technically accessible after the loop ends, but relying on this is fragile — if the loop never executes, the variable is `invalid` at the post-loop read site.
+
+**Flagged:** any read or write of a variable after the loop that contains the variable's first assignment.
+
+**Not flagged:** if the variable has any assignment at a line _before_ the loop starts, it was intentionally pre-defined and is safe to use after the loop.
+
+**Scope boundary:** only checks the direct `FunctionDeclaration` scope. `FunctionExpression` (anonymous function) child scopes are skipped — they cannot capture outer-function variables due to BrightScript's no-closures semantics.
+
+#### Duplicate function name diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `identifier/duplicate-function` | Error | A function declaration uses the same name as a function already visible in scope. |
+
+Declaring a function with a name that collides with an `@import`-ed function, a sibling `.brs` function, or a `/source/` function causes a silent name collision at Roku runtime (the later definition wins). Two functions with the same name in the same file are also flagged.
+
+**Exception:** functions from the component `extends` chain may be intentionally re-implemented (overriding the parent). These are identified via `ancestorFuncNames` (populated by the extension from `collectFunctionsFromExtends`) and are not flagged.
+
+**Skipped:** files inside the `/source/` directory participate in global flat scope and may intentionally replace SDK-level functions.
+
+#### m.top undefined field diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `mtop/undefined-field` | Warning | `m.top.<fieldName>` accesses a field not declared in the component's XML `<interface>` or any ancestor component / SG node. |
+
+This rule is **extension-mode only** — it requires companion XML files to be present and is not available in the standalone CLI linter. The extension resolves valid field names by:
+1. Parsing the component's own XML `<interface>` fields and `<function>` declarations.
+2. Recursively walking the `extends` hierarchy through user-defined parent components.
+3. When the hierarchy reaches a Roku built-in SG node (e.g. `Group`, `Label`, `Video`), including all fields and methods from the SG node catalog.
+
+Read accesses (`return m.top.field`) and write accesses (`m.top.field = value`) are both checked.
+
+#### Unreachable code diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `syntax/unreachable-code` | Warning | A statement follows a `return`, `throw`, `stop`, `end`, `exit for`, `exit while`, `continue for`, or `continue while` in the same block. |
+
+Only the **first** unreachable statement in each block is flagged to avoid noise. The rule checks every statement list in the AST: function bodies, `if`/`else if`/`else` branches, `for`, `for each`, and `while` bodies, and `try`/`catch` bodies.
+
+**Limitation:** no full control-flow analysis. Patterns like "all branches return" are not detected across `if/else` chains — the rule only flags linear dead code within a single statement sequence.
+
 #### CreateObject argument validation
 
 | Code | Severity | Description |
@@ -607,7 +656,10 @@ Use VS Code's built-in **Find All References** (`Shift+F12`) or **Peek Reference
 
 1. VS Code sends `textDocument/references` to the language server.
 2. The server (`BrightScriptReferencesProvider`) recursively walks every workspace folder, visiting all `.brs` / `.bs` files. `node_modules` and hidden directories (names starting with `.`) are skipped.
-3. For each file, every line is scanned with a word-boundary regex (`\b{word}\b`, case-insensitive). Lines that match a `function`/`sub` definition signature for the searched symbol are excluded — only call sites are returned.
+3. For each file, the server uses the AST (cached parse result from `fileParseCache`) and walks `IdentifierExpression` nodes. Only standalone identifier references are returned — the following are **excluded** by the AST structure and are not false positives:
+   - **Dot-member access** (`obj.funcName`) — the member name is a bare `Token` in the `DotExpression` node, not an `IdentifierExpression`.
+   - **Associative-array keys** (`{ funcName: value }`) — the key is a bare `Token` in the `AAField` node, not an `IdentifierExpression`.
+   - **Function/sub declaration sites** (`function funcName(…)`) — the name is `FunctionDeclaration.nameToken`, not an `IdentifierExpression`.
 4. All matching `Location` objects are returned to VS Code, which displays them in the References panel.
 
 ### Rename Symbol (`textDocument/rename`)

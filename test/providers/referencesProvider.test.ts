@@ -214,4 +214,76 @@ describe('BrightScriptReferencesProvider', () => {
 
     expect(result).to.have.length(2);
   });
+
+  it('does NOT include dot-member access as a reference (false positive fix)', () => {
+    readdirTypedStub.withArgs('/workspace').returns([
+      { name: 'F.brs', isDirectory: false },
+    ]);
+    // "myFunc" appears as a dot-member (obj.myFunc) and as a real call (myFunc())
+    readFileStub.withArgs('/workspace/F.brs', 'utf-8').returns(
+      'sub test()\n  obj.myFunc()\n  myFunc()\nend sub'
+    );
+    rebuildIndex();
+
+    const doc = makeDocument('myFunc()');
+    const result = provider.provideReferences(doc, makeParams(0, 2));
+
+    // Only the direct call "myFunc()" on line 2 should be included.
+    // "obj.myFunc()" on line 1 is a dot-member — its member token is NOT an IdentifierExpression.
+    const lines = result.map((l) => l.range.start.line);
+    expect(lines).to.include(2);
+    expect(lines).to.not.include(1);
+  });
+
+  it('does NOT include AA key as a reference (false positive fix)', () => {
+    readdirTypedStub.withArgs('/workspace').returns([
+      { name: 'G.brs', isDirectory: false },
+    ]);
+    // "myFunc" appears as an AA key and as a real call
+    readFileStub.withArgs('/workspace/G.brs', 'utf-8').returns(
+      'sub test()\n  data = { myFunc: 1 }\n  myFunc()\nend sub'
+    );
+    rebuildIndex();
+
+    const doc = makeDocument('myFunc()');
+    const result = provider.provideReferences(doc, makeParams(0, 2));
+
+    const lines = result.map((l) => l.range.start.line);
+    expect(lines).to.include(2);     // real call
+    expect(lines).to.not.include(1); // AA key — NOT an IdentifierExpression
+  });
+
+  it('does NOT include function declaration as a reference', () => {
+    readdirTypedStub.withArgs('/workspace').returns([
+      { name: 'H.brs', isDirectory: false },
+    ]);
+    readFileStub.withArgs('/workspace/H.brs', 'utf-8').returns(
+      'function myFunc()\nend function\nmyFunc()'
+    );
+    rebuildIndex();
+
+    const doc = makeDocument('myFunc()');
+    const result = provider.provideReferences(doc, makeParams(0, 2));
+
+    const lines = result.map((l) => l.range.start.line);
+    expect(lines).to.include(2);     // call site
+    expect(lines).to.not.include(0); // declaration — nameToken is not IdentifierExpression
+  });
+
+  it('DOES include function-pointer reference (not a call)', () => {
+    readdirTypedStub.withArgs('/workspace').returns([
+      { name: 'I.brs', isDirectory: false },
+    ]);
+    readFileStub.withArgs('/workspace/I.brs', 'utf-8').returns(
+      'function myFunc()\nend function\ncallback = myFunc'
+    );
+    rebuildIndex();
+
+    const doc = makeDocument('myFunc()');
+    const result = provider.provideReferences(doc, makeParams(0, 2));
+
+    // "callback = myFunc" — the right-hand side "myFunc" IS an IdentifierExpression
+    const lines = result.map((l) => l.range.start.line);
+    expect(lines).to.include(2);
+  });
 });

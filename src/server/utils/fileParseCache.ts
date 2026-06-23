@@ -6,6 +6,8 @@ import {
   FunctionDefinition,
   InnerMethodDefinition,
 } from '../brightscript/functionIndex';
+import { parse as parseBrs } from 'kopytko-brightscript-parser';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 
 /**
  * Cross-document, file-level read + parse cache, keyed by normalized path.
@@ -33,6 +35,7 @@ interface FileRecord {
   text: string;
   funcDefs?: FunctionDefinition[];
   innerDefs?: InnerMethodDefinition[];
+  parseResult?: ParseResult;
 }
 
 const _cache = new Map<string, FileRecord>();
@@ -130,6 +133,24 @@ export function readCachedDir(dir: string): ReturnType<typeof fsWrapper.readdirT
   if (!entries) return undefined;
   _dirCache.set(key, entries);
   return entries;
+}
+
+/**
+ * Returns a lazily-parsed AST (`ParseResult`) for `filePath` (cached).
+ * Unlike `getCachedFunctionDefs` this returns the full CST so providers
+ * can walk it (e.g. Find References). Returns `undefined` when the file
+ * cannot be read.
+ *
+ * NOTE: The name `getCachedParseResult` also exists in `documentCache.ts`
+ * for the active TextDocument.  This variant takes a file-path string and
+ * is intended for workspace-wide scanning of files that are not currently
+ * open in the editor.
+ */
+export function getCachedFileParseResult(filePath: string): ParseResult | undefined {
+  const record = ensureRecord(filePath);
+  if (!record) return undefined;
+  if (!record.parseResult) record.parseResult = parseBrs(record.text);
+  return record.parseResult;
 }
 
 /** Evicts a single file's cached text + parses (call when that file changes on disk). */

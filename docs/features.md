@@ -54,18 +54,19 @@ Canonical list of extension and package features. Each row links to its topic do
 
 ## Diagnostics
 
-Backed by the standalone linter's 27 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
+Backed by the standalone linter's 31 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
 
 | Group | Rules | Status | Doc |
 |---|---|---|---|
 | Imports | unresolved · duplicate · unused · missing-path · path-not-absolute · build-generated · missing-promise-deps | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
-| Identifiers | undefined-function · undefined-variable · shadows-builtin · shadows-function · unused-parameter · unused-variable · wrong-arg-count · **unused-function** (off by default) | ✅ | [language-server.md](./language-server.md) |
-| Syntax | trailing-comma · flow-outside-loop | ✅ | [language-server.md](./language-server.md) |
+| Identifiers | undefined-function · undefined-variable · shadows-builtin · shadows-function · unused-parameter · unused-variable · wrong-arg-count · **unused-function** (off by default) · **loop-variable-leak** · **duplicate-function** | ✅ | [language-server.md](./language-server.md) |
+| Syntax | trailing-comma · flow-outside-loop · **unreachable-code** | ✅ | [language-server.md](./language-server.md) |
 | Type annotations | missing-return-type · missing-param-type | ✅ | [language-server.md](./language-server.md) |
 | `throw` | invalid-value · missing-message | ✅ | [language-server.md](./language-server.md) |
 | `CreateObject` | unknown-component | ✅ | [language-server.md](./language-server.md) |
 | Callbacks | undefined-observer-callback · undefined-event-callback | ✅ | [language-server.md](./language-server.md) |
 | Test structure | missing-return-ts · missing-mock-annotation | ✅ | [language-server.md](./language-server.md) |
+| m.top fields | **undefined-field** (extension mode only — warns on `m.top.<field>` not in XML interface or ancestor chain) | ✅ | [language-server.md](./language-server.md) |
 | Inline suppression | `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` comments; glob patterns supported; omit rule to suppress all | ✅ | — |
 
 **Scope-resolution details that keep diagnostics accurate:**
@@ -109,7 +110,7 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 
 | Feature | Status | Doc |
 |---|---|---|
-| `kopytko-linter` package — all 24 rules, shared with the editor | ✅ | [kopytko-linter README](../packages/linter/README.md) |
+| `kopytko-linter` package — all 31 rules, shared with the editor | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 | `kopytko-lint --check` CLI for CI pipelines | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 | Per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 | Output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ | [kopytko-linter README](../packages/linter/README.md) |
