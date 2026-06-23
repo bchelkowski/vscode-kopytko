@@ -8,11 +8,11 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { readCachedFileText } from '../utils/fileParseCache';
-import { getDocumentPath } from '../utils/textUtils';
 import { getWordAtPosition, escapeRegex } from 'kopytko-brightscript-parser';
 import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'kopytko-brightscript-parser';
-import { getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
+import { getCachedLines } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { SymbolResolver } from './shared/symbolResolver';
 
 const BUILTIN_NAMES = new Set(BRIGHTSCRIPT_BUILTINS.map((b) => b.name.toLowerCase()));
 const KEYWORD_NAMES = new Set(BRIGHTSCRIPT_KEYWORDS.map((k) => k.toLowerCase()));
@@ -21,10 +21,14 @@ const KEYWORD_NAMES = new Set(BRIGHTSCRIPT_KEYWORDS.map((k) => k.toLowerCase()))
 const VALID_IDENTIFIER_RE = /^[a-zA-Z_]\w*$/;
 
 export class BrightScriptRenameProvider {
+  private readonly symbolResolver: SymbolResolver;
+
   constructor(
-    private readonly importResolver: KopytkoImportResolver,
+    importResolver: KopytkoImportResolver,
     private readonly _index?: WorkspaceFunctionIndex,
-  ) {}
+  ) {
+    this.symbolResolver = new SymbolResolver(undefined, importResolver, _index);
+  }
 
   /**
    * Called by VS Code before showing the rename input box.
@@ -69,13 +73,12 @@ export class BrightScriptRenameProvider {
     if (isProtected(info.word)) return null;
 
     const { word } = info;
-    const documentPath = getDocumentPath(document);
 
-    // Determine whether the identifier is a top-level function/sub name.
-    const allFunctions = getCachedAllFunctions(document, documentPath, this.importResolver, []);
-    const isFunctionName = allFunctions.some((f) => f.nameLower === word.toLowerCase());
-
-    if (isFunctionName) {
+    // Determine whether the identifier is a visible top-level function/sub name.
+    const functionSymbol = this.symbolResolver.resolveFunctionSymbol(document, word, [], {
+      includeWorkspaceFunctions: false,
+    });
+    if (functionSymbol?.kind === 'userFunction') {
       return this._renameWorkspaceWide(word, newName);
     }
 
@@ -94,6 +97,8 @@ export class BrightScriptRenameProvider {
     for (const filePath of files) {
       const fileText = readCachedFileText(filePath);
       if (fileText === undefined) continue;
+      // Workspace-wide renames operate on cached on-disk file text, not an open
+      // TextDocument, so splitting here does not bypass the document cache.
       const fileLines = fileText.split(/\r?\n/);
       const edits: TextEdit[] = [];
       for (let lineIdx = 0; lineIdx < fileLines.length; lineIdx++) {

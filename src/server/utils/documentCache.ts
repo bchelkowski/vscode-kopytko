@@ -229,7 +229,7 @@ export function getCachedAllFunctions(
   const siblingKey = JSON.stringify(siblingPatterns);
   if (!entry.allFunctions || entry.allFuncSiblingKey !== siblingKey) {
     entry.allFunctions = collectAllFunctions(
-      documentPath, document.getText(), importResolver, new Set(), siblingPatterns,
+      documentPath, document.getText(), importResolver, new Set(), siblingPatterns, getCachedLines(document),
     );
     entry.allFuncSiblingKey = siblingKey;
   }
@@ -250,7 +250,7 @@ export function getCachedAllInnerMethods(
   const siblingKey = JSON.stringify(siblingPatterns);
   if (!entry.allInnerMethods || entry.allMethodsSiblingKey !== siblingKey) {
     entry.allInnerMethods = collectAllInnerMethods(
-      documentPath, document.getText(), importResolver, new Set(), siblingPatterns,
+      documentPath, document.getText(), importResolver, new Set(), siblingPatterns, getCachedLines(document),
     );
     entry.allMethodsSiblingKey = siblingKey;
   }

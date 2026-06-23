@@ -5,15 +5,12 @@ import {
   Position,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { URI } from 'vscode-uri';
-import { findBuiltin } from 'kopytko-brightscript-parser';
-import { getComponentMethods } from 'kopytko-brightscript-parser';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
-import { resolveReceiverType } from '../brightscript/typeInference';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { stripStringLiterals } from '../utils/textUtils';
-import { getCachedTypeMap, getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
+import { getCachedLines } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { SymbolResolver } from './shared/symbolResolver';
 
 interface ActiveCall {
   funcName: string;
@@ -30,11 +27,15 @@ interface ActiveCall {
  *   - User-defined functions (same file + @import chain + XML siblings)
  */
 export class BrightScriptSignatureHelpProvider {
+  private readonly symbolResolver: SymbolResolver;
+
   constructor(
-    private readonly importResolver: KopytkoImportResolver,
-    private readonly _catalog: KopytkoModuleCatalog,
-    private readonly _workspaceIndex?: WorkspaceFunctionIndex,
-  ) {}
+    importResolver: KopytkoImportResolver,
+    catalog: KopytkoModuleCatalog,
+    workspaceIndex?: WorkspaceFunctionIndex,
+  ) {
+    this.symbolResolver = new SymbolResolver(catalog, importResolver, workspaceIndex);
+  }
 
   provideSignatureHelp(document: TextDocument, position: Position, siblingPatterns: string[][] = []): SignatureHelp | null {
     const lines = getCachedLines(document);
@@ -47,48 +48,22 @@ export class BrightScriptSignatureHelpProvider {
 
     const { funcName, receiverName, activeParam } = call;
 
-    // 1. Component method — resolve receiver type from type inference
-    if (receiverName) {
-      const typeMap = getCachedTypeMap(document);
-      const componentType = resolveReceiverType(receiverName, typeMap);
-      if (componentType) {
-        const methods = getComponentMethods(componentType);
-        const method = methods.find((m) => m.name.toLowerCase() === funcName.toLowerCase());
-        if (method) {
-          return buildSignatureHelp(method.signature, activeParam);
-        }
-      }
-    }
+    const resolved = this.symbolResolver.resolveByName(document, funcName, receiverName, siblingPatterns);
+    if (!resolved) return null;
 
-    // 2. BrightScript built-in
-    const builtin = findBuiltin(funcName);
-    if (builtin) {
-      return buildSignatureHelp(builtin.signature, activeParam);
+    switch (resolved.kind) {
+      case 'componentMethod':
+        return buildSignatureHelp(resolved.method.signature, activeParam);
+      case 'builtin':
+        return buildSignatureHelp(resolved.builtin.signature, activeParam);
+      case 'kopytkoExport':
+        return buildSignatureHelp(resolved.entry.signature, activeParam);
+      case 'userFunction':
+      case 'sourceFunction':
+        return buildSignatureHelp(resolved.definition.signature, activeParam);
+      default:
+        return null;
     }
-
-    // 3. Kopytko module export
-    const kopytkoExport = this._catalog.findExport(funcName);
-    if (kopytkoExport?.signature) {
-      return buildSignatureHelp(kopytkoExport.signature, activeParam);
-    }
-
-    // 4. User-defined function (same file + @import chain + XML siblings + pattern siblings)
-    const documentPath = URI.parse(document.uri).fsPath;
-    const allFunctions = getCachedAllFunctions(document, documentPath, this.importResolver, siblingPatterns);
-    const userFunc = allFunctions.find((f) => f.nameLower === funcName.toLowerCase());
-    if (userFunc?.signature) {
-      return buildSignatureHelp(userFunc.signature, activeParam);
-    }
-
-    // 5. source/ directory function (globally accessible, not in @import chain)
-    if (this._workspaceIndex) {
-      const match = this._workspaceIndex.findSourceDirFunction(funcName.toLowerCase());
-      if (match?.signature) {
-        return buildSignatureHelp(match.signature, activeParam);
-      }
-    }
-
-    return null;
   }
 }
 

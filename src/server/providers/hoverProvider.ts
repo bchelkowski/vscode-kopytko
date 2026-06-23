@@ -1,19 +1,13 @@
 import { Hover, MarkupKind, Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { findBuiltin } from 'kopytko-brightscript-parser';
 import {
-  findComponent,
   getComponentMethods,
-  findMethodInterface,
   CATALOG_LAST_VERIFIED,
 } from 'kopytko-brightscript-parser';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
-import { resolveReceiverType, getInlineCreateObjectType } from '../brightscript/typeInference';
 import { inferNumericLiteralType } from 'kopytko-brightscript-parser';
-import { getDocumentPath } from '../utils/textUtils';
-import { getWordAtPosition } from 'kopytko-brightscript-parser';
-import { getCachedTypeMap, getCachedAllFunctions, getCachedLines } from '../utils/documentCache';
+import { getCachedTypeMap, getCachedLines } from '../utils/documentCache';
 import {
   isTestFile,
   buildTestApiMap,
@@ -22,6 +16,7 @@ import {
   TestApiEntry,
 } from '../kopytko/testFramework';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { ResolvedSymbol, SymbolResolver, resolveWordContext } from './shared/symbolResolver';
 
 /**
  * Provides hover documentation for:
@@ -31,11 +26,15 @@ import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
  *   - Kopytko module exports (setState, navigate, …)
  */
 export class BrightScriptHoverProvider {
+  private readonly symbolResolver: SymbolResolver;
+
   constructor(
-    private readonly _catalog: KopytkoModuleCatalog,
-    private readonly _importResolver?: KopytkoImportResolver,
-    private readonly _workspaceIndex?: WorkspaceFunctionIndex,
-  ) {}
+    catalog: KopytkoModuleCatalog,
+    importResolver?: KopytkoImportResolver,
+    workspaceIndex?: WorkspaceFunctionIndex,
+  ) {
+    this.symbolResolver = new SymbolResolver(catalog, importResolver, workspaceIndex);
+  }
 
   provideHover(document: TextDocument, position: Position, siblingPatterns: string[][] = []): Hover | null {
     const lines = getCachedLines(document);
@@ -55,65 +54,15 @@ export class BrightScriptHoverProvider {
       }
     }
 
-    const word = getWordAtPosition(line, position.character);
+    const word = resolveWordContext(document, position);
     if (!word) return null;
 
-    // ── 1. Component name hover (e.g. user hovers over "roUrlTransfer") ──────
-    const component = findComponent(word.word);
-    if (component) {
-      const ifaceList = component.interfaces.join(', ');
-      const methodCount = getComponentMethods(word.word).length;
-      return markdown([
-        `**${component.name}** *(BrightScript component)*`,
-        '',
-        component.description,
-        '',
-        `*Interfaces:* \`${ifaceList}\`  ·  *${methodCount} methods*`,
-        '',
-        `[Roku docs](${component.docsUrl})`,
-        '',
-        `*Catalog verified: ${CATALOG_LAST_VERIFIED}*`,
-      ]);
-    }
-
-    // ── 2. Component member hover — infer receiver type from context ──────────
-    // Check inline CreateObject("roXxx").method pattern first
-    const inlineType = getInlineCreateObjectType(line, word.start);
-    if (inlineType) {
-      const methods = getComponentMethods(inlineType);
-      const method = methods.find((m) => m.name.toLowerCase() === word.word.toLowerCase());
-      if (method) {
-        const iface = findMethodInterface(inlineType, method.name);
-        return buildMethodHover(method, inlineType, iface);
-      }
-    }
-
-    const typeMap = getCachedTypeMap(document);
-    const memberHover = tryMemberHover(line, word, typeMap);
-    if (memberHover) return memberHover;
-
-    // ── 3. BrightScript built-in function ─────────────────────────────────────
-    const builtin = findBuiltin(word.word);
-    if (builtin) {
-      return markdown([
-        `**${builtin.name}** *(BrightScript built-in · ${builtin.category})*`,
-        '',
-        `\`\`\`brightscript\n${builtin.signature}\n\`\`\``,
-        '',
-        builtin.description,
-      ]);
-    }
-
-    // ── 4. Kopytko module export ───────────────────────────────────────────────
-    const kopytkoExport = this._catalog.findExport(word.word);
-    if (kopytkoExport) {
-      const moduleName = deriveModuleName(kopytkoExport.importPath);
-      return markdown([
-        `**${kopytkoExport.name}** *(${moduleName} — \`${kopytkoExport.npmPackage}\`)*`,
-        '',
-        `\`\`\`brightscript\n${kopytkoExport.signature}\n\`\`\``,
-      ]);
-    }
+    const primary = this.symbolResolver.resolveAtPosition(document, position, siblingPatterns, {
+      includeUserFunctions: false,
+      includeWorkspaceFunctions: false,
+    });
+    const primaryHover = primary ? hoverForResolvedSymbol(primary) : null;
+    if (primaryHover) return primaryHover;
 
     // ── 4b. Test framework functions (expect matchers, mockFunction, etc.) ────
     if (isTestFile(document.uri)) {
@@ -121,35 +70,12 @@ export class BrightScriptHoverProvider {
       if (testHover) return testHover;
     }
 
-    // ── 5. User-defined function (same file + @import chain + siblings) ──────
-    if (this._importResolver) {
-      const documentPath = getDocumentPath(document);
-      const allFunctions = getCachedAllFunctions(document, documentPath, this._importResolver, siblingPatterns);
-      const userFunc = allFunctions.find((f) => f.nameLower === word.word.toLowerCase());
-      if (userFunc) {
-        const relativePath = userFunc.filePath.replace(/\\/g, '/').replace(/.*\/app\//, '');
-        return markdown([
-          `**${userFunc.name}** *(${relativePath})*`,
-          '',
-          `\`\`\`brightscript\n${userFunc.signature}\n\`\`\``,
-        ]);
-      }
-    }
-
-    // ── 5b. source/ directory function (globally accessible, not in @import chain) ──
-    if (this._workspaceIndex) {
-      const match = this._workspaceIndex.findSourceDirFunction(word.word.toLowerCase());
-      if (match) {
-        const rel = match.filePath.replace(/\\/g, '/').replace(/.*\/source\//, 'source/');
-        return markdown([
-          `**${match.name}** *(${rel})*`,
-          '',
-          `\`\`\`brightscript\n${match.signature}\n\`\`\``,
-        ]);
-      }
-    }
+    const functionSymbol = this.symbolResolver.resolveFunctionSymbol(document, word.word, siblingPatterns);
+    const functionHover = functionSymbol ? hoverForResolvedSymbol(functionSymbol) : null;
+    if (functionHover) return functionHover;
 
     // ── 6. Variable with inferred type (numeric literal assignments) ────────
+    const typeMap = getCachedTypeMap(document);
     const varType = typeMap.get(word.word.toLowerCase());
     if (varType && isPrimitiveType(varType)) {
       return markdown([
@@ -174,38 +100,67 @@ function markdown(lines: string[]): Hover {
   };
 }
 
-/**
- * Attempts to show method documentation when the cursor is on a method name
- * that follows a dot whose receiver has a known type.
- *
- * Strategy: scan left from the current word to find `receiverName.methodName`.
- */
-function tryMemberHover(
-  line: string,
-  wordInfo: { word: string; start: number; end: number },
-  typeMap: Map<string, string>
-): Hover | null {
-  if (wordInfo.start <= 0) return null;
 
-  // Check that the character immediately before the word is a dot
-  if (line[wordInfo.start - 1] !== '.') return null;
-
-  // Extract the receiver identifier before the dot
-  const beforeDot = line.substring(0, wordInfo.start - 1);
-  const receiverMatch = /(\w+)$/.exec(beforeDot);
-  if (!receiverMatch) return null;
-
-  const receiverName = receiverMatch[1];
-  const componentType = resolveReceiverType(receiverName, typeMap);
-  if (!componentType) return null;
-
-  // Find the method on that component
-  const methods = getComponentMethods(componentType);
-  const method = methods.find((m) => m.name.toLowerCase() === wordInfo.word.toLowerCase());
-  if (!method) return null;
-
-  const iface = findMethodInterface(componentType, method.name);
-  return buildMethodHover(method, componentType, iface);
+function hoverForResolvedSymbol(symbol: ResolvedSymbol): Hover | null {
+  switch (symbol.kind) {
+    case 'component': {
+      const ifaceList = symbol.component.interfaces.join(', ');
+      const methodCount = getComponentMethods(symbol.component.name).length;
+      return markdown([
+        `**${symbol.component.name}** *(BrightScript component)*`,
+        '',
+        symbol.component.description,
+        '',
+        `*Interfaces:* \`${ifaceList}\`  ·  *${methodCount} methods*`,
+        '',
+        `[Roku docs](${symbol.component.docsUrl})`,
+        '',
+        `*Catalog verified: ${CATALOG_LAST_VERIFIED}*`,
+      ]);
+    }
+    case 'componentMethod':
+      return buildMethodHover(symbol.method, symbol.componentType, symbol.iface);
+    case 'builtin':
+      return markdown([
+        `**${symbol.builtin.name}** *(BrightScript built-in · ${symbol.builtin.category})*`,
+        '',
+        `\`\`\`brightscript
+${symbol.builtin.signature}
+\`\`\``,
+        '',
+        symbol.builtin.description,
+      ]);
+    case 'kopytkoExport':
+      return markdown([
+        `**${symbol.entry.name}** *(${symbol.moduleName} — \`${symbol.entry.npmPackage}\`)*`,
+        '',
+        `\`\`\`brightscript
+${symbol.entry.signature}
+\`\`\``,
+      ]);
+    case 'userFunction': {
+      const relativePath = symbol.definition.filePath.replace(/\\/g, '/').replace(/.*\/app\//, '');
+      return markdown([
+        `**${symbol.definition.name}** *(${relativePath})*`,
+        '',
+        `\`\`\`brightscript
+${symbol.definition.signature}
+\`\`\``,
+      ]);
+    }
+    case 'sourceFunction': {
+      const rel = symbol.definition.filePath.replace(/\\/g, '/').replace(/.*\/source\//, 'source/');
+      return markdown([
+        `**${symbol.definition.name}** *(${rel})*`,
+        '',
+        `\`\`\`brightscript
+${symbol.definition.signature}
+\`\`\``,
+      ]);
+    }
+    default:
+      return null;
+  }
 }
 
 function buildMethodHover(
@@ -230,12 +185,6 @@ function buildMethodHover(
     deprecationNote,
     iface ? `\n[Roku docs — ${iface.name}](${iface.docsUrl})` : '',
   ]);
-}
-
-/** Derives a human-readable module name from an import path, e.g. `/Renderer.brs` → `Renderer`. */
-function deriveModuleName(importPath: string): string {
-  const base = importPath.split('/').pop() ?? importPath;
-  return base.endsWith('.brs') ? base.slice(0, -4) : base;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,13 +4,13 @@ import { URI } from 'vscode-uri';
 import { getCachedFileParseResult, readCachedFileText } from '../utils/fileParseCache';
 import { getWordAtPosition, walk, IdentifierExpression, parse as parseBrs } from 'kopytko-brightscript-parser';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { getCachedLines } from '../utils/documentCache';
 
 export class BrightScriptReferencesProvider {
   constructor(private readonly _index: WorkspaceFunctionIndex) {}
 
   provideReferences(document: TextDocument, params: ReferenceParams): Location[] {
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
+    const lines = getCachedLines(document);
     const lineText = lines[params.position.line] ?? '';
 
     const wordResult = getWordAtPosition(lineText, params.position.character);

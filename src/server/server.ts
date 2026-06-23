@@ -5,32 +5,11 @@ import {
   InitializeParams,
   InitializeResult,
   TextDocumentSyncKind,
-  CompletionItem,
-  CompletionParams,
-  Hover,
-  HoverParams,
-  DefinitionParams,
-  DocumentSymbol,
-  DocumentSymbolParams,
-  SymbolInformation,
-  WorkspaceSymbolParams,
-  ReferenceParams,
-  RenameParams,
-  PrepareRenameParams,
-  SignatureHelpParams,
-  CodeActionParams,
   CodeActionKind,
-  Location,
   DiagnosticSeverity,
   Diagnostic,
   TextDocumentChangeEvent,
   DidChangeConfigurationNotification,
-  TextEdit,
-  WorkspaceEdit,
-  DocumentFormattingParams,
-  DidChangeWatchedFilesParams,
-  FileChangeType,
-  SemanticTokensParams,
 } from 'vscode-languageserver/node';
 import type { Connection } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -53,11 +32,12 @@ import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensPr
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
 import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
-import { invalidateAllCaches, invalidateDocumentCaches, getCachedAllFunctions } from './utils/documentCache';
-import { invalidateFileParseCache } from './utils/fileParseCache';
+import { invalidateAllCaches } from './utils/documentCache';
 import { WorkspaceFunctionIndex } from './utils/workspaceFunctionIndex';
 import { WorkspaceCallIndex } from './utils/workspaceCallIndex';
 import { findMatchingGlob } from 'kopytko-brightscript-parser';
+import { registerHandlers } from './registerHandlers';
+import { CacheInvalidationService } from './services/cacheInvalidation';
 
 const connection: Connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments<TextDocument>(TextDocument);
@@ -79,6 +59,7 @@ let renameProvider: BrightScriptRenameProvider;
 let codeActionProvider: BrightScriptCodeActionProvider;
 let formattingProvider: BrightScriptFormattingProvider;
 let semanticTokensProvider: BrightScriptSemanticTokensProvider;
+let cacheInvalidationService: CacheInvalidationService;
 let casingConfig: CasingConfig = { ...DEFAULT_CASING_CONFIG };
 let formattingConfig: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG };
 let generatedPaths: string[] = [];
@@ -107,6 +88,44 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   codeActionProvider = new BrightScriptCodeActionProvider();
   formattingProvider = new BrightScriptFormattingProvider();
   semanticTokensProvider = new BrightScriptSemanticTokensProvider();
+  cacheInvalidationService = new CacheInvalidationService(connection, {
+    importResolver: () => importResolver,
+    catalog: () => catalog,
+    workspaceIndex,
+    workspaceCallIndex,
+    documents,
+    scheduleValidation,
+  });
+  cacheInvalidationService.registerWatchedFileHandler();
+  registerHandlers(
+    connection,
+    documents,
+    {
+      completionProvider,
+      hoverProvider,
+      definitionProvider,
+      documentLinkProvider,
+      referencesProvider,
+      signatureHelpProvider,
+      documentSymbolProvider,
+      workspaceSymbolProvider,
+      renameProvider,
+      codeActionProvider,
+      formattingProvider,
+      semanticTokensProvider,
+    },
+    {
+      casingConfig: () => casingConfig,
+      formattingConfig: () => formattingConfig,
+      generatedPaths: () => generatedPaths,
+      siblingPatterns: () => siblingPatterns,
+    },
+    {
+      importResolver: () => importResolver,
+      getBrsDocument,
+      isReadOnlyPath,
+    },
+  );
 
   return {
     capabilities: {
@@ -153,64 +172,11 @@ connection.onInitialized(async () => {
   workspaceIndex.build(importResolver.getWorkspaceFolders());
   workspaceCallIndex.build(importResolver.getWorkspaceFolders());
   // Re-validate all documents that may have been validated before config loaded
-  for (const document of documents.all()) {
-    scheduleValidation(document);
-  }
+  cacheInvalidationService.revalidateOpenDocuments();
 });
 
 connection.onDidChangeConfiguration(async () => {
-  await refreshConfiguration(false);
-  for (const document of documents.all()) {
-    scheduleValidation(document);
-  }
-});
-
-// Invalidate caches when files change on disk
-connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
-  const hasPackageChange = params.changes.some(
-    (c) => c.uri.endsWith('package.json') || c.uri.includes('node_modules')
-  );
-  if (hasPackageChange) {
-    importResolver.invalidatePackageCache();
-    catalog.scan(importResolver.getWorkspaceFolders()[0] ?? '/', importResolver);
-  }
-
-  // Update the workspace function index incrementally and evict changed files
-  // from the shared file parse cache. .brs files are handled by the index
-  // (updateFile/removeFile already evict the file cache); .xml files feed the
-  // collectors' extends/sibling resolution, so evict those explicitly.
-  for (const change of params.changes) {
-    const fsPath = URI.parse(change.uri).fsPath;
-    if (change.uri.endsWith('.brs')) {
-      if (change.type === FileChangeType.Deleted) {
-        workspaceIndex.removeFile(fsPath);
-        workspaceCallIndex.removeFile(fsPath);
-      } else {
-        workspaceIndex.updateFile(fsPath);
-        workspaceCallIndex.updateFile(fsPath);
-      }
-    } else if (change.uri.endsWith('.xml')) {
-      invalidateFileParseCache(fsPath);
-      if (change.type === FileChangeType.Deleted) {
-        workspaceCallIndex.removeFile(fsPath);
-      } else {
-        workspaceCallIndex.updateFile(fsPath);
-      }
-    }
-  }
-
-  // The changed .brs/.xml files were already evicted from the file parse cache
-  // above, so recompute only the per-document derived caches and keep the rest
-  // of the file cache warm. A package.json/node_modules change can touch many
-  // files that do not each fire a watch event, so fall back to a full clear.
-  if (hasPackageChange) {
-    invalidateAllCaches();
-  } else {
-    invalidateDocumentCaches();
-  }
-  for (const document of documents.all()) {
-    scheduleValidation(document);
-  }
+  await cacheInvalidationService.handleConfigurationChanged(() => refreshConfiguration(false));
 });
 
 async function refreshConfiguration(rescanPackages: boolean): Promise<void> {
@@ -395,117 +361,6 @@ function isLintReadOnlyPath(uri: string): boolean {
   const fsPath = URI.parse(uri).fsPath.replace(/\\/g, '/');
   return lintReadOnlyPaths.some((pattern) => findMatchingGlob(fsPath, [pattern]) !== undefined);
 }
-
-// Completion
-connection.onCompletion((params: CompletionParams): CompletionItem[] => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return [];
-  return completionProvider.provideCompletions(document, params.position, casingConfig, siblingPatterns);
-});
-
-connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
-  const data = item.data as { kind?: string; documentUri?: string; importPath?: string; npmPackage?: string } | undefined;
-  if (data?.kind === 'kopytkoExport' && data.documentUri && data.importPath && data.npmPackage) {
-    const document = documents.get(data.documentUri);
-    if (document) {
-      const importLine = `' @import ${data.importPath} from ${data.npmPackage}`;
-      const alreadyImported = document.getText().split(/\r?\n/).some(
-        (line) => line.trim() === importLine
-      );
-      if (!alreadyImported) {
-        item.additionalTextEdits = [
-          TextEdit.insert({ line: 0, character: 0 }, importLine + '\n'),
-        ];
-      }
-    }
-  }
-  return item;
-});
-
-// Hover
-connection.onHover((params: HoverParams): Hover | null => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return null;
-  return hoverProvider.provideHover(document, params.position, siblingPatterns);
-});
-
-// Go-to-definition
-connection.onDefinition((params: DefinitionParams): Location | Location[] | null => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return null;
-  return definitionProvider.provideDefinition(document, params.position, siblingPatterns);
-});
-
-// References (Find Usages)
-connection.onReferences((params: ReferenceParams): Location[] => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return [];
-  return referencesProvider.provideReferences(document, params);
-});
-
-// Signature help
-connection.onSignatureHelp((params: SignatureHelpParams) => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return null;
-  return signatureHelpProvider.provideSignatureHelp(document, params.position, siblingPatterns);
-});
-
-// Document symbols (Outline panel + breadcrumb)
-connection.onDocumentSymbol((params: DocumentSymbolParams): DocumentSymbol[] => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return [];
-  return documentSymbolProvider.provideDocumentSymbols(document);
-});
-
-// Workspace symbols (Ctrl+T symbol search)
-connection.onWorkspaceSymbol((params: WorkspaceSymbolParams): SymbolInformation[] => {
-  return workspaceSymbolProvider.provideWorkspaceSymbols(params.query);
-});
-
-// Rename symbol
-connection.onPrepareRename((params: PrepareRenameParams) => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return null;
-  return renameProvider.prepareRename(document, params.position);
-});
-
-connection.onRenameRequest((params: RenameParams): WorkspaceEdit | null => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return null;
-  return renameProvider.provideRename(document, params.position, params.newName);
-});
-
-// Code actions (quick fixes on import diagnostics)
-connection.onCodeAction((params: CodeActionParams) => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return [];
-  if (isReadOnlyPath(document.uri)) return [];
-  return codeActionProvider.provideCodeActions(document, params);
-});
-
-// Document links (@import as clickable URL)
-connection.onDocumentLinks((params) => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return [];
-  return documentLinkProvider.provideDocumentLinks(document, generatedPaths);
-});
-
-// Document formatting
-connection.onDocumentFormatting((params: DocumentFormattingParams): TextEdit[] => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return [];
-  if (isReadOnlyPath(document.uri)) return [];
-  const documentPath = URI.parse(document.uri).fsPath;
-  const allFunctions = getCachedAllFunctions(document, documentPath, importResolver, siblingPatterns);
-  return formattingProvider.provideDocumentFormatting(document, formattingConfig, casingConfig, allFunctions);
-});
-
-// Semantic tokens (full document)
-connection.languages.semanticTokens.on((params: SemanticTokensParams) => {
-  const document = getBrsDocument(params.textDocument.uri);
-  if (!document) return { data: [] };
-  return semanticTokensProvider.provideSemanticTokens(document);
-});
 
 // Wire up
 documents.listen(connection);

@@ -5,15 +5,19 @@ import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';
 import { getReceiverName } from '../brightscript/typeInference';
 import { getDocumentPath } from '../utils/textUtils';
-import { getWordAtPosition } from 'kopytko-brightscript-parser';
-import { getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
+import { getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
+import { SymbolResolver, functionLocation, resolveWordContext } from './shared/symbolResolver';
 
 export class BrightScriptDefinitionProvider {
+  private readonly symbolResolver: SymbolResolver;
+
   constructor(
     private readonly importResolver: KopytkoImportResolver,
-    private readonly workspaceIndex?: WorkspaceFunctionIndex,
-  ) {}
+    workspaceIndex?: WorkspaceFunctionIndex,
+  ) {
+    this.symbolResolver = new SymbolResolver(undefined, importResolver, workspaceIndex);
+  }
 
   provideDefinition(
     document: TextDocument,
@@ -41,7 +45,7 @@ export class BrightScriptDefinitionProvider {
     }
 
     // 2. Cursor on a function/sub name or AA method → find definition across all visible files
-    const wordInfo = getWordAtPosition(currentLine, position.character);
+    const wordInfo = resolveWordContext(document, position);
     if (wordInfo) {
       const { word, start } = wordInfo;
       const documentPath = getDocumentPath(document);
@@ -77,25 +81,11 @@ export class BrightScriptDefinitionProvider {
         }
       }
 
-      // Top-level function lookup (also covers m.topLevelFn() patterns)
-      const allFunctions = getCachedAllFunctions(document, documentPath, this.importResolver, siblingPatterns);
-      const funcMatch = allFunctions.find((f) => f.nameLower === word.toLowerCase());
-      if (funcMatch) {
-        return {
-          uri: URI.file(funcMatch.filePath).toString(),
-          range: Range.create(funcMatch.line, funcMatch.column, funcMatch.line, funcMatch.column + funcMatch.name.length),
-        };
-      }
-
-      // Fallback: source/ directory functions (globally accessible, not in @import chain)
-      if (this.workspaceIndex) {
-        const match = this.workspaceIndex.findSourceDirFunction(word.toLowerCase());
-        if (match) {
-          return {
-            uri: URI.file(match.filePath).toString(),
-            range: Range.create(match.line, match.column, match.line, match.column + match.name.length),
-          };
-        }
+      // Top-level function lookup (also covers m.topLevelFn() patterns), then
+      // source/ directory functions (globally accessible, not in @import chain).
+      const resolved = this.symbolResolver.resolveFunctionSymbol(document, word, siblingPatterns);
+      if (resolved?.kind === 'userFunction' || resolved?.kind === 'sourceFunction') {
+        return functionLocation(resolved.definition);
       }
     }
 

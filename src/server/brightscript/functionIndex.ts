@@ -62,10 +62,12 @@ function deduplicateByLocation<T extends { filePath: string; line: number; colum
  * Parses all top-level function/sub definitions from a BrightScript text.
  * Uses the brightscript-parser CST for accurate function detection.
  */
-export function parseFunctionDefs(text: string, filePath: string, _preLines?: string[]): FunctionDefinition[] {
+export function parseFunctionDefs(text: string, filePath: string, preLines?: string[]): FunctionDefinition[] {
   const result = parse(text);
   const defs: FunctionDefinition[] = [];
-  const lines = text.split(/\r?\n/);
+  // Open documents pass cached lines from documentCache; cold file-walk callers
+  // legitimately split raw on-disk text here because no TextDocument cache exists.
+  const lines = preLines ?? text.split(/\r?\n/);
 
   walk(result.root, {
     visitFunctionDeclaration(node: InstanceType<typeof FunctionDeclaration>) {
@@ -145,14 +147,14 @@ function _collectFunctionsFromImports(
  * The result is always spread into a fresh array by callers before mutation, so
  * the memoized array is never modified in place.
  */
-function ownFunctionDefs(filePath: string, fileText: string, isEntry: boolean): FunctionDefinition[] {
-  if (isEntry) return parseFunctionDefs(fileText, nodePath.normalize(filePath));
+function ownFunctionDefs(filePath: string, fileText: string, isEntry: boolean, entryLines?: string[]): FunctionDefinition[] {
+  if (isEntry) return parseFunctionDefs(fileText, nodePath.normalize(filePath), entryLines);
   return getCachedFunctionDefs(filePath) ?? parseFunctionDefs(fileText, nodePath.normalize(filePath));
 }
 
 /** Inner-method counterpart of {@link ownFunctionDefs}. */
-function ownInnerMethodDefs(filePath: string, fileText: string, isEntry: boolean): InnerMethodDefinition[] {
-  if (isEntry) return parseInnerMethodDefs(fileText, nodePath.normalize(filePath));
+function ownInnerMethodDefs(filePath: string, fileText: string, isEntry: boolean, entryLines?: string[]): InnerMethodDefinition[] {
+  if (isEntry) return parseInnerMethodDefs(fileText, nodePath.normalize(filePath), entryLines);
   return getCachedInnerMethodDefs(filePath) ?? parseInnerMethodDefs(fileText, nodePath.normalize(filePath));
 }
 
@@ -168,8 +170,9 @@ export function collectAllFunctions(
   importResolver: KopytkoImportResolver,
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
+  entryLines?: string[],
 ): FunctionDefinition[] {
-  return _collectAllFunctions(filePath, fileText, importResolver, visited, siblingPatterns, true);
+  return _collectAllFunctions(filePath, fileText, importResolver, visited, siblingPatterns, true, entryLines);
 }
 
 function _collectAllFunctions(
@@ -179,13 +182,14 @@ function _collectAllFunctions(
   visited: Set<string>,
   siblingPatterns: string[][],
   isEntry: boolean,
+  entryLines?: string[],
 ): FunctionDefinition[] {
   const normalPath = nodePath.normalize(filePath);
   const pathKey = normalizePathKey(filePath);
   if (visited.has(pathKey)) return [];
   visited.add(pathKey);
 
-  const defs: FunctionDefinition[] = [...ownFunctionDefs(filePath, fileText, isEntry)];
+  const defs: FunctionDefinition[] = [...ownFunctionDefs(filePath, fileText, isEntry, entryLines)];
 
   // 1. Collect from @import annotations
   const imports = importResolver.parseImports(fileText);
@@ -252,8 +256,10 @@ function _collectAllFunctions(
  * Parses all associative-array method assignments of the form
  * `<obj>.<name> = function|sub (...)` from a BrightScript text.
  */
-export function parseInnerMethodDefs(text: string, filePath: string): InnerMethodDefinition[] {
-  const lines = text.split(/\r?\n/);
+export function parseInnerMethodDefs(text: string, filePath: string, preLines?: string[]): InnerMethodDefinition[] {
+  // Open documents pass cached lines from documentCache; cold file-walk callers
+  // legitimately split raw on-disk text here because no TextDocument cache exists.
+  const lines = preLines ?? text.split(/\r?\n/);
   const funcDefs = parseFunctionDefs(text, filePath, lines);
   const defs: InnerMethodDefinition[] = [];
 
@@ -296,8 +302,9 @@ export function collectAllInnerMethods(
   importResolver: KopytkoImportResolver,
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
+  entryLines?: string[],
 ): InnerMethodDefinition[] {
-  return _collectAllInnerMethods(filePath, fileText, importResolver, visited, siblingPatterns, true);
+  return _collectAllInnerMethods(filePath, fileText, importResolver, visited, siblingPatterns, true, entryLines);
 }
 
 function _collectAllInnerMethods(
@@ -307,13 +314,14 @@ function _collectAllInnerMethods(
   visited: Set<string>,
   siblingPatterns: string[][],
   isEntry: boolean,
+  entryLines?: string[],
 ): InnerMethodDefinition[] {
   const normalPath = nodePath.normalize(filePath);
   const pathKey = normalizePathKey(filePath);
   if (visited.has(pathKey)) return [];
   visited.add(pathKey);
 
-  const defs: InnerMethodDefinition[] = [...ownInnerMethodDefs(filePath, fileText, isEntry)];
+  const defs: InnerMethodDefinition[] = [...ownInnerMethodDefs(filePath, fileText, isEntry, entryLines)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {
