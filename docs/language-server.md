@@ -9,8 +9,16 @@ VS Code Extension Host
   └── KopytkoLanguageClient (src/client/languageClient.ts)
         │  IPC
         └── Language Server Process (src/server/server.ts)
+              ├── registerHandlers.ts (connection.on* registration)
+              ├── services/cacheInvalidation.ts (watched-file/config invalidation)
               ├── BrightScriptDiagnosticsProvider
               ├── BrightScriptCompletionProvider
+              │     └── providers/completion/
+              │           ├── completionContexts.ts
+              │           ├── completionBuilders.ts
+              │           ├── memberCompletion.ts
+              │           ├── importCompletion.ts
+              │           └── testCompletion.ts
               ├── BrightScriptHoverProvider
               ├── BrightScriptDefinitionProvider
               ├── BrightScriptDocumentLinkProvider
@@ -22,18 +30,21 @@ VS Code Extension Host
               ├── BrightScriptCodeActionProvider
               ├── BrightScriptFormattingProvider
               ├── BrightScriptSemanticTokensProvider
+              ├── providers/shared/symbolResolver.ts
               ├── KopytkoImportResolver
               ├── KopytkoModuleCatalog
               ├── WorkspaceFunctionIndex
               ├── WorkspaceCallIndex
-              └── (brightscript/builtins, brightscript/components,
-                   brightscript/functionIndex, brightscript/xmlScriptParser,
-                   brightscript/globMatcher, brightscript/casingUtils,
-                   brightscript/typeInference, brightscript/numericLiterals,
-                   brightscript/patternSiblings,
+              └── (parser package catalogs: builtins, components, casing,
+                   numericLiterals, globMatcher;
+                   extension helpers: brightscript/functionIndex,
+                   brightscript/xmlScriptParser, brightscript/casingUtils,
+                   brightscript/typeInference, brightscript/patternSiblings,
                    brightscript/sgNodes, brightscript/mtopResolver,
                    utils/documentCache, utils/fileParseCache, utils/textUtils)
 ```
+
+`server.ts` now focuses on bootstrap: creating providers, declaring capabilities, loading configuration, and kicking off workspace indexes. `registerHandlers.ts` owns the LSP request/response handlers, while `CacheInvalidationService` owns watched-file and configuration invalidation. Hover, signature help, definition, and rename share `providers/shared/symbolResolver.ts` for built-in/component/Kopytko/user-function lookup.
 
 ## Caching & performance
 
@@ -44,7 +55,7 @@ The server avoids recomputation on hot paths (completion fires per keystroke, ho
 - **`WorkspaceCallIndex`** (`utils/workspaceCallIndex.ts`) — built once at startup after `WorkspaceFunctionIndex`, then updated incrementally on file changes. Maintains a per-file set of called function names (direct calls, `observeField`/`observeFieldScoped`/`callFunc` string callbacks, Kopytko `events: { prop: "fn" }` AA patterns, and SceneGraph `<interface><function>` XML declarations); `getCalledNames()` returns a lazily-built workspace-wide union. Consumed by the `identifier/unused-function` diagnostic rule, which reads the pre-built set in O(1) — no computation at keystroke time.
 - **Component-XML resolution cache** — `findComponentXml` memoizes `componentName → XML path` (including misses), keyed by search roots, avoiding repeated recursive directory walks while resolving `extends` chains.
 
-**Invalidation.** `invalidateAllCaches()` clears everything (document caches + file parse cache + component cache) and runs on configuration changes. On a watched-file change the server is more surgical: it evicts only the changed files from the file parse cache (`WorkspaceFunctionIndex.updateFile`/`removeFile` for `.brs`, `invalidateFileParseCache` for `.xml`) and then calls `invalidateDocumentCaches()`, which recomputes per-document derived state while keeping unaffected files warm. A `package.json`/`node_modules` change falls back to a full clear because it can touch many files without firing individual events. Diagnostics are additionally debounced (300 ms) via `scheduleValidation()`.
+**Invalidation.** `CacheInvalidationService` coordinates invalidation. Configuration changes refresh settings, clear caches through `refreshConfiguration()`, and revalidate open documents. On a watched-file change the service is more surgical: it updates/removes `.brs` files in `WorkspaceFunctionIndex` and `WorkspaceCallIndex`, evicts changed `.xml` files from the file parse cache, then calls `invalidateDocumentCaches()` so per-document derived state is recomputed while unaffected files stay warm. A `package.json`/`node_modules` change invalidates the package cache, rescans `KopytkoModuleCatalog`, and falls back to `invalidateAllCaches()` because many package files can change without individual events. Diagnostics are additionally debounced (300 ms) via `scheduleValidation()`.
 
 ## Capabilities
 
@@ -52,7 +63,7 @@ The server avoids recomputation on hot paths (completion fires per keystroke, ho
 
 Returns Markdown documentation when the cursor is over:
 
-- **BrightScript built-in functions** — signature, category badge, description sourced from `src/server/brightscript/builtins.ts`
+- **BrightScript built-in functions** — signature, category badge, description sourced from `packages/brightscript-parser/src/catalog/builtins.ts`
 - **BrightScript component names** — description, interface list, Roku docs link, catalog last-verified date
 - **BrightScript component methods** — signature, return type, interface attribution, Roku docs link
 - **BrightScript numeric literals** — type identification for all literal formats: hex integers (`&HFF` → Integer), floats (`2.01`, `1.23E+30`, `2!` → Float), doubles (`1.23D-12`, `2.3#` → Double), long integers (`42&`, `&hABCDEF&` → LongInteger)
@@ -145,7 +156,7 @@ Triggered by `(` and `,`. Shows a parameter hint popup while the cursor is insid
 **Covered sources (evaluated in priority order):**
 
 1. **Component methods** — type-inferred from `CreateObject` or typed parameter annotations; same inference as completion and hover.
-2. **BrightScript built-in functions** — signatures from `src/server/brightscript/builtins.ts`.
+2. **BrightScript built-in functions** — signatures from `packages/brightscript-parser/src/catalog/builtins.ts`.
 3. **Kopytko module exports** — signatures from the dynamic `KopytkoModuleCatalog` (see below).
 4. **User-defined functions** — walks the same scope as go-to-definition: the current file, files transitively reachable via `@import`, and XML sibling scripts.
 5. **`source/` directory functions** — fallback lookup via `WorkspaceFunctionIndex` (O(1) cached).
@@ -197,7 +208,7 @@ BrightScript XML component siblings that share the same `<script>` tag list but 
 |---|---|---|
 | `identifier/wrong-arg-count` | Error | A BrightScript built-in function is called with the wrong number of arguments (e.g. `LCase("x", "y")` passes 2 args to a 1-arg function). |
 
-Arity is derived from the parameter list in `src/server/brightscript/builtins.ts`. Parameters declared with a default value (e.g. `base = 10 as Integer`) count as optional; parameters without a default are required. Both the minimum and maximum are checked.
+Arity is derived from the parameter list in `packages/brightscript-parser/src/catalog/builtins.ts`. Parameters declared with a default value (e.g. `base = 10 as Integer`) count as optional; parameters without a default are required. Both the minimum and maximum are checked.
 
 This diagnostic is only emitted for built-ins listed in the catalog. User-defined functions and Kopytko module exports are not checked for arity (their signatures are not tracked with sufficient precision).
 
@@ -503,7 +514,7 @@ The `KopytkoModuleCatalog` (`src/server/kopytko/moduleCatalog.ts`) replaces the 
 
 ### How it works
 
-1. At server startup (`onInitialized`) and again on every `onDidChangeConfiguration` event, `catalog.scan(rootPath, importResolver)` is called.
+1. At server startup (`onInitialized`), `catalog.scan(rootPath, importResolver)` is called. Later package changes (`package.json`/`node_modules`) invalidate the package cache and rescan the catalog; ordinary settings changes do not re-walk packages.
 2. The scan calls `getInstalledKopytkoPackages` to find all packages with a `kopytkoModuleDir` field in their `package.json`.
 3. For each package, `resolvePackageBaseDir` locates the source root. Every `.brs` file under that root is parsed with `parseFunctionDefs` to extract function and sub declarations.
 4. Each declaration is stored as a `KopytkoExportEntry` with `name`, `signature`, `importPath` (path relative to the package source root), and `npmPackage`.
@@ -512,8 +523,8 @@ The `KopytkoModuleCatalog` (`src/server/kopytko/moduleCatalog.ts`) replaces the 
 
 | Consumer | How it uses the catalog |
 |---|---|
-| `BrightScriptHoverProvider` | Calls `catalog.findExport(word)` to show hover documentation when the cursor is on a Kopytko function name. |
-| `BrightScriptSignatureHelpProvider` | Calls `catalog.findExport(funcName)` to provide parameter hints for Kopytko functions. |
+| `BrightScriptHoverProvider` | Uses `SymbolResolver` (backed by `catalog.findExport`) to show hover documentation when the cursor is on a Kopytko function name. |
+| `BrightScriptSignatureHelpProvider` | Uses `SymbolResolver` (backed by `catalog.findExport`) to provide parameter hints for Kopytko functions. |
 | `BrightScriptCompletionProvider` | Uses `catalog.getEntries()` to provide Kopytko export completions without re-scanning packages. |
 
 ### Hover card format
@@ -655,8 +666,8 @@ Use VS Code's built-in **Find All References** (`Shift+F12`) or **Peek Reference
 **How it works:**
 
 1. VS Code sends `textDocument/references` to the language server.
-2. The server (`BrightScriptReferencesProvider`) recursively walks every workspace folder, visiting all `.brs` / `.bs` files. `node_modules` and hidden directories (names starting with `.`) are skipped.
-3. For each file, the server uses the AST (cached parse result from `fileParseCache`) and walks `IdentifierExpression` nodes. Only standalone identifier references are returned — the following are **excluded** by the AST structure and are not false positives:
+2. The server (`BrightScriptReferencesProvider`) asks `WorkspaceFunctionIndex.getFiles()` for the already-indexed workspace file list instead of walking the filesystem in the provider.
+3. For each file, the server uses the AST (cached parse result from `fileParseCache`, parsing cached text only as a fallback) and walks `IdentifierExpression` nodes. Only standalone identifier references are returned — the following are **excluded** by the AST structure and are not false positives:
    - **Dot-member access** (`obj.funcName`) — the member name is a bare `Token` in the `DotExpression` node, not an `IdentifierExpression`.
    - **Associative-array keys** (`{ funcName: value }`) — the key is a bare `Token` in the `AAField` node, not an `IdentifierExpression`.
    - **Function/sub declaration sites** (`function funcName(…)`) — the name is `FunctionDeclaration.nameToken`, not an `IdentifierExpression`.
@@ -674,9 +685,9 @@ Invoked by pressing **F2** (or right-click → **Rename Symbol**) on any user-de
 
 3. The server validates the new name is a legal BrightScript identifier (`[a-zA-Z_]\w*`). If not, it returns `null`.
 
-4. It recursively walks every workspace folder, visiting all `.brs` files. `node_modules` and hidden directories are skipped.
+4. For workspace-wide function/sub renames, it uses `WorkspaceFunctionIndex.getFiles()` and cached on-disk file text (`readCachedFileText`) instead of walking the filesystem in the provider. Local variable/parameter renames operate only on the live document's enclosing function body.
 
-5. For each file, every line is scanned with a word-boundary regex (`\bOldName\b`, case-insensitive). **Every match is replaced** — including the definition line.
+5. The target lines are scanned with a word-boundary regex (`\bOldName\b`, case-insensitive). **Every match in scope is replaced** — including the definition line.
 
 6. A `WorkspaceEdit` with `changes` grouped by file URI is returned. VS Code applies all edits atomically.
 
@@ -687,7 +698,7 @@ Invoked by pressing **F2** (or right-click → **Rename Symbol**) on any user-de
 | Top-level function or sub name | Workspace-wide — all `.brs` files in every workspace folder. BrightScript top-level functions are effectively global identifiers, so renames must propagate across all callers. |
 | Local variable or parameter | Innermost enclosing function body in the current file only. Variables are function-scoped in BrightScript; a `count` in `funcA` is entirely unrelated to a `count` in `funcB`. |
 
-The provider determines which case applies by calling `collectAllFunctions` to check whether the identifier under the cursor is a known top-level function definition. If it is not, the enclosing function body is found by scanning backwards for the nearest unclosed `function`/`sub` keyword and forwards for the matching `end function`/`end sub`.
+The provider determines which case applies with the shared `SymbolResolver`, using the current file/import scope to check whether the identifier under the cursor is a visible top-level function definition. If it is not, the enclosing function body is found by scanning backwards for the nearest unclosed `function`/`sub` keyword and forwards for the matching `end function`/`end sub`.
 
 **What is NOT renamed:**
 - BrightScript built-in functions (`Abs`, `CreateObject`, …) — `prepareRename` rejects these.
@@ -698,19 +709,13 @@ The provider determines which case applies by calling `collectAllFunctions` to c
 
 ### Document Formatting (`textDocument/formatting`)
 
-Formats the entire `.brs` file. Two operations are applied:
+Formats the entire `.brs` file using the standalone `kopytko-formatter` package in `packages/formatter/`. The formatter is a hybrid multi-pass engine: structure-aware CST passes handle token/node-sensitive edits, while text/regex passes remain inline in `formatter.ts` for rules that are simpler line transformations. Consecutive CST style passes are batched through `runCstPasses`, and per-format parse caching avoids reparsing for every enabled rule.
 
-1. **Indentation normalisation** — adjusts leading whitespace to the configured number of spaces per level (`kopytko.format.indentSize`, default `4`). Indent depth is tracked across `function`/`sub`, `if…then`, `for`, `while`, and `try…catch` blocks. `else`/`elseif`/`catch` deindent to the same level as their opening keyword. Single-line `if … then <statement>` does not increase indent.
-
-2. **Casing normalisation** — applies the configured casing rules to:
-   - **Keywords** (controlled by `kopytko.casing.keyword`): `function`, `sub`, `if`, `then`, `end`, `for`, `while`, `return`, etc.
-   - **Built-in function names** (controlled by `kopytko.casing.builtin`): `CreateObject`, `Len`, `UCase`, etc. The canonical catalog name is used as the base for casing transforms.
-
-String literal contents and trailing comments (`'…`) are preserved verbatim — casing rules are only applied to the code portion of each line.
+String literal contents and trailing comments (`'…`) are preserved by structure-aware passes and by text passes that operate only on the code portion of each line.
 
 **Usage:** Run via the VS Code command *Format Document* (`Shift+Alt+F`), or enable `"editor.formatOnSave": true` in your settings.
 
-**Implementation:** `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts`.
+**Implementation:** `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts` is a thin LSP adapter around `formatText()`.
 
 See [formatting.md](./formatting.md) for the complete formatting rule reference.
 
@@ -739,9 +744,10 @@ Parser-driven syntax highlighting that classifies each identifier from the scope
 ## Adding New Providers
 
 1. Create the provider class in `src/server/providers/`.
-2. Wire it up in `src/server/server.ts` (instantiate, register the appropriate `connection.on*` handler, declare the capability in `onInitialize`).
-3. Add unit tests in `test/providers/`.
-4. Document the new capability in this file and update `docs/features.md`.
+2. Wire it up in `src/server/server.ts` (instantiate the provider and declare the capability in `onInitialize`).
+3. Register the appropriate `connection.on*` handler in `src/server/registerHandlers.ts`.
+4. Add unit tests in `test/providers/`.
+5. Document the new capability in this file and update `docs/features.md`.
 
 ## Kopytko Unit Testing Framework Support
 

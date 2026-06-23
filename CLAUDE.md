@@ -26,7 +26,7 @@ packages/
 │   │   ├── lexer.ts                Hand-written character scanner
 │   │   ├── syntaxKind.ts           CST node type enum (~50 kinds)
 │   │   ├── syntaxNode.ts           Lossless CST node class
-│   │   ├── parser.ts               Recursive descent parser → CST
+│   │   ├── parser.ts               Recursive descent parser → CST (grouped statement dispatch)
 │   │   ├── ast.ts                  Typed AST wrappers (40+ node types)
 │   │   ├── visitor.ts              AstVisitor + walk() + findAll()
 │   │   ├── scope.ts                Scope analysis (buildScopes, resolve)
@@ -34,53 +34,62 @@ packages/
 │   ├── test/                       384 tests (lexer, parser, AST, scope)
 │   └── docs/
 │       └── syntax-reference.md     BrightScript syntax catalog (valid/invalid)
-├── kopytko-formatter/              Standalone BrightScript formatter (CLI + library)
+├── formatter/                      Standalone BrightScript formatter (CLI + library)
 │   ├── src/
 │   │   ├── index.ts                Public API (formatText, checkFormatting)
-│   │   ├── formatter.ts            Formatting engine (CST passes + regex text formatting)
-│   │   ├── cst-passes/             CST-based formatting passes (12 passes)
+│   │   ├── formatter.ts            Hybrid engine (batched CST passes + inline text passes)
+│   │   ├── cst-passes/             27 structure-aware pass files + infrastructure
+│   │   │   ├── index.ts            Export list for all CST passes
 │   │   │   ├── infrastructure.ts   TextEdit, applyEdits, runCstPasses, walkTokens
-│   │   │   ├── endKeywordStyle.ts  endif ↔ end if
-│   │   │   ├── casingPass.ts       Keyword/builtin/identifier casing
-│   │   │   ├── commentNormalization.ts  rem ↔ ', space after marker
-│   │   │   ├── printStatementRemoval.ts  Remove print/? statements
-│   │   │   ├── importSorting.ts    Sort @import annotations
-│   │   │   ├── trailingWhitespace.ts  Remove trailing spaces
-│   │   │   ├── thenStyle.ts        Add/remove then keyword
-│   │   │   ├── functionVsSub.ts    Convert function ↔ sub for void
-│   │   │   ├── blankLines.ts       Limit consecutive blank lines
-│   │   │   ├── spacing.ts          Space around operators
-│   │   │   ├── indentation.ts      Depth-based indentation
-│   │   │   └── trailingCommas.ts   Add/remove trailing commas
+│   │   │   └── ...                 casing, spacing, indentation, imports, comments, wrapping
 │   │   ├── config.ts               FormattingConfig interface + defaults
 │   │   ├── casing.ts               CasingConfig + transforms
 │   │   ├── builtins.ts             BrightScript built-in function catalog
 │   │   └── types.ts                FunctionDefinition interface
 │   ├── bin/kopytko-format.ts        CLI entry point
 │   └── test/                        227 tests (formatting + CST passes)
-├── kopytko-linter/                 Standalone BrightScript linter (CLI + library)
+├── linter/                         Standalone BrightScript linter (CLI + library)
 │   ├── src/
-│   │   ├── linter.ts               Lint engine (parses with brightscript-parser)
+│   │   ├── linter.ts               Public API (lintProject; re-exports lintFile helpers)
+│   │   ├── lintRunner.ts           Per-file dispatch + shared file analysis
+│   │   ├── projectIndexer.ts       Project/package scanning and discovery
+│   │   ├── analysis/
+│   │   │   ├── fileAnalysis.ts     Single AST walk: scopes/nodes shared by all rules
+│   │   │   └── ...                 Import, function, XML, sibling, test utilities
 │   │   ├── rules/
-│   │   │   ├── astRules.ts         AST-based rules (15 rules using parser)
+│   │   │   ├── ast/                One descriptor module per AST rule
+│   │   │   │   ├── index.ts        Self-describing AST rule registry
+│   │   │   │   └── legacyRules.ts  Shared implementations re-exported by descriptors
 │   │   │   ├── syntaxRules.ts      Trailing comma check (pre-parse)
-│   │   │   └── index.ts            Rule registry│   │   └── analysis/               Legacy analysis utilities (superseded by parser)
+│   │   │   └── index.ts            Rule registry composition
 │   └── test/                        447 tests
 src/
-├── extension.ts                    Extension entry point
-├── client/                         VS Code client (debug adapter, device discovery, tree views)
+├── extension.ts                    Extension entry point; delegates activation wiring to client/activation
+├── client/                         VS Code client (activation, debug adapter, device discovery, tree views)
+│   ├── activation/                 language server, discovery, command, registry, debug registration
+│   ├── debug/
+│   │   ├── brightScriptDebugAdapter.ts  DAP request adapter
+│   │   ├── sessionController.ts    Deploy/connect/session lifecycle
+│   │   ├── protocolEventMapper.ts  Roku protocol update → DAP mapping
+│   │   └── services/               Breakpoints, variables, path mapping
+│   └── roku/
+│       └── net/httpClient.ts       Shared HTTP + digest-auth helpers
 └── server/
-    ├── server.ts                   LSP entry point (all handlers, debounce, cache wiring)
+    ├── server.ts                   LSP bootstrap, provider construction, capabilities
+    ├── registerHandlers.ts         All connection.on* handler registration
+    ├── services/
+    │   └── cacheInvalidation.ts    Watched-file/config invalidation and revalidation
     ├── providers/                  12 LSP providers (one per capability)
+    │   ├── completionProvider.ts   Coordinator for completion helper modules
+    │   ├── completion/             Context detection, builders, imports, members, tests
+    │   ├── shared/symbolResolver.ts  Shared hover/signature/definition/rename resolver
     │   └── formattingProvider.ts   Thin LSP adapter → calls kopytko-formatter
-    ├── brightscript/               BrightScript catalogs and parsers
-    │   ├── builtins.ts             58 built-in functions, 53 keywords, keyword categories
-    │   ├── components.ts           60 ro* components, 78 interfaces
+    ├── brightscript/               Extension-specific BrightScript helpers
     │   ├── sgNodes.ts              86 SceneGraph nodes
     │   ├── functionIndex.ts        Function/sub parser + multi-scope collector
     │   ├── typeInference.ts        CreateObject / typed-param type resolver
-    │   ├── casingUtils.ts          Identifier casing (6 options + exact overrides)
-    │   └── ...                     globMatcher, mtopResolver, patternSiblings, xmlScriptParser
+    │   ├── casingUtils.ts          Parser casing API re-exports + VS Code snippet casing
+    │   └── ...                     formattingConfig, mtopResolver, patternSiblings, xmlScriptParser
     ├── kopytko/
     │   ├── importResolver.ts       @import parser and resolver (with package cache)
     │   ├── moduleCatalog.ts        Dynamic Kopytko module export scanner
@@ -88,7 +97,9 @@ src/
     └── utils/
         ├── brsFileCollector.ts     File walker
         ├── documentCache.ts        Per-document cache + getCachedParseResult()
+        ├── fileParseCache.ts       Cross-document file text/parse/function cache
         ├── workspaceFunctionIndex.ts  Built at startup, updated incrementally
+        ├── workspaceCallIndex.ts   Workspace-wide called-name index
         ├── workspaceUtils.ts       Search-root builder
         ├── fsWrapper.ts            Thin fs wrapper (enables Sinon stubbing in tests)
         └── textUtils.ts            Shared helpers (getWord, escapeRegex, stripStringLiterals)
@@ -112,10 +123,10 @@ npm run lint             # ESLint
 
 ### kopytko-formatter package
 
-The formatting engine lives in `packages/kopytko-formatter/` — a standalone npm package usable as a CLI tool and library, independent of VS Code.
+The formatting engine lives in `packages/formatter/` — a standalone npm package usable as a CLI tool and library, independent of VS Code.
 
 ```bash
-cd packages/kopytko-formatter
+cd packages/formatter
 npm install              # install package dependencies
 npm test                 # run 140+ formatter tests
 npm run build            # compile to dist/
@@ -177,7 +188,7 @@ A change is complete when:
 | [docs/formatting.md](docs/formatting.md) | Document formatting rules, all `kopytko.format.*` settings |
 | [docs/device-discovery.md](docs/device-discovery.md) | Device discovery architecture, commands, network scoping, password management |
 | [docs/roku-debug.md](docs/roku-debug.md) | Device discovery, debugger, launch config |
-| [packages/kopytko-formatter/README.md](packages/kopytko-formatter/README.md) | Standalone formatter: CLI usage, library API, CI integration |
+| [packages/formatter/README.md](packages/formatter/README.md) | Standalone formatter: CLI usage, library API, CI integration |
 | [docs/publishing.md](docs/publishing.md) | Step-by-step npm and VS Code Marketplace publishing guide |
 
 **Every change that adds, modifies, or removes a feature must update `docs/features.md` and the relevant topic doc.**
@@ -193,7 +204,7 @@ All new features must follow these patterns:
 3. **Static data cached** — `getInstalledKopytkoPackages()` and `resolvePackageBaseDir()` are cached in the import resolver. `KopytkoModuleCatalog` scans once at startup. Both invalidate via `onDidChangeWatchedFiles`.
 4. **Workspace function index** — `WorkspaceFunctionIndex` provides the file list for Find References and Rename. Never walk the workspace with `collectBrsFiles` in a provider.
 5. **Map-backed catalog lookups** — `findComponent()`, `findBuiltin()`, `getComponentMethods()` are O(1) and cached.
-6. **File watcher invalidation** — `onDidChangeWatchedFiles` in `server.ts` clears caches on disk changes. Document caches auto-invalidate on version change.
+6. **File watcher invalidation** — `CacheInvalidationService` handles `onDidChangeWatchedFiles` and clears/updates caches on disk changes. Document caches auto-invalidate on version change.
 
 ---
 
@@ -217,18 +228,18 @@ All new features must follow these patterns:
 ## Adding a new LSP feature
 
 1. Create `src/server/providers/<name>Provider.ts`.
-2. Wire in `server.ts` (instantiate, register handler, declare capability).
+2. Wire in `server.ts` (instantiate and declare capability) and `registerHandlers.ts` (register the handler).
 3. **Use the document cache** — import from `utils/documentCache.ts`.
 4. Add tests in `test/providers/<name>Provider.test.ts`.
 5. Update `docs/features.md` (mark ✅) and `docs/language-server.md`.
 
 ## Expanding BrightScript built-ins
 
-Edit `src/server/brightscript/builtins.ts`. Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add test assertions in `test/brightscript/builtins.test.ts`.
+Edit `packages/brightscript-parser/src/catalog/builtins.ts`. Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add test assertions in the matching builtins tests.
 
 ## Maintaining the component catalog
 
-Edit `src/server/brightscript/components.ts`. Set `since` for new methods, `deprecated: true` for removed ones. **Update `CATALOG_LAST_VERIFIED`** only after verifying against live Roku docs. Update `docs/brightscript-components.md` and `test/brightscript/components.test.ts`.
+Edit `packages/brightscript-parser/src/catalog/components.ts`. Set `since` for new methods, `deprecated: true` for removed ones. **Update `CATALOG_LAST_VERIFIED`** only after verifying against live Roku docs. Update `docs/brightscript-components.md` and the matching component catalog tests.
 
 ## Expanding Kopytko module catalog
 
@@ -236,10 +247,10 @@ The dynamic `KopytkoModuleCatalog` in `src/server/kopytko/moduleCatalog.ts` scan
 
 ## Formatter architecture
 
-The formatting engine is extracted into the standalone `packages/kopytko-formatter/` package. The extension's `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package.
+The formatting engine is extracted into the standalone `packages/formatter/` package. The extension's `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package. The engine is hybrid: CST-safe passes are exported from `src/cst-passes/index.ts` and inline text/regex passes remain in `formatter.ts`. Consecutive CST style passes are batched through `runCstPasses`, and parse results are cached per intermediate source so typical formatting parses around twice instead of repeatedly parsing per rule. Pass files are lint-clean TypeScript modules; do not add blanket unused-var disables.
 
-**To modify formatting rules:** edit `packages/kopytko-formatter/src/formatter.ts`. Run tests with `cd packages/kopytko-formatter && npm test`.
+**To modify formatting rules:** edit `packages/formatter/src/formatter.ts` and/or add a pass in `packages/formatter/src/cst-passes/`, then export it from `cst-passes/index.ts`. Run tests with `cd packages/formatter && npm test`.
 
-**To add a new formatting option:** add the field to `FormattingConfig` in `packages/kopytko-formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
+**To add a new formatting option:** add the field to `FormattingConfig` in `packages/formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
 
-**Shared sources:** The `brightscript-parser` package is the canonical source for builtins, components, casing, numericLiterals, and globMatcher. Both `kopytko-formatter` and `kopytko-linter` import from it. The extension's `src/server/brightscript/` retains only extension-specific files (functionIndex for cross-file scope, typeInference for cursor helpers, xmlScriptParser for file system operations).
+**Shared sources:** The `brightscript-parser` package is the canonical source for builtins, components, casing, numericLiterals, and globMatcher. Both `kopytko-formatter` and `kopytko-linter` import from it. The extension's `src/server/brightscript/` retains only extension-specific files (formatting config adapter, functionIndex for cross-file scope, typeInference for cursor helpers, xmlScriptParser for file system operations).

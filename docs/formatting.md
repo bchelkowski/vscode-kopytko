@@ -2,19 +2,9 @@
 
 ## Overview
 
-The BrightScript formatter is a **multi-pass engine** that rewrites `.brs` files through eleven sequential passes:
+The BrightScript formatter is a **hybrid multi-pass engine** that rewrites `.brs` files with structure-aware CST passes plus inline text/regex passes. `packages/formatter/src/cst-passes/index.ts` exports 27 CST pass files; `packages/formatter/src/formatter.ts` composes the enabled rules and keeps text-oriented transformations inline where they are still simpler.
 
-1. Import sorting
-2. Comment normalization
-3. End keyword style / function-vs-sub
-4. Then style / parenthesis-if-case
-5. Print statement handling
-6. Spacing rules
-7. Keyword / builtin / user-function casing
-8. Indentation
-9. Blank line rules
-10. Trailing whitespace & final newline
-11. Comment width
+CST passes run through a small bridge that joins the current lines, applies token/node-position edits, and splits back to lines. Consecutive style passes (`endKeywordStyle`, `functionVsSubForVoid`, `thenStyle`) are batched through `runCstPasses`, while single-pass CST transforms reuse a per-format parse cache. This parse-once batching keeps typical formatting to roughly two parser runs instead of repeatedly reparsing for every rule. Pass files are regular linted TypeScript modules; they no longer carry a blanket unused-variable ESLint disable.
 
 **All rules are opt-in.** Defaults are chosen to preserve existing style — the formatter produces zero edits on an already-clean file until you enable rules explicitly.
 
@@ -22,9 +12,9 @@ String literal contents and trailing comments (`'…`) are preserved verbatim �
 
 **Usage:** Run via *Format Document* (`Shift+Alt+F`), or enable `"editor.formatOnSave": true` in your VS Code settings.
 
-**CLI usage:** The formatter is also available as a standalone CLI tool via the `kopytko-formatter` npm package. See the [kopytko-formatter README](../packages/kopytko-formatter/README.md) for CI integration and library API.
+**CLI usage:** The formatter is also available as a standalone CLI tool via the `kopytko-formatter` npm package. See the [kopytko-formatter README](../packages/formatter/README.md) for CI integration and library API.
 
-**Implementation:** The formatting engine lives in `packages/kopytko-formatter/src/formatter.ts`. The extension's `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package.
+**Implementation:** The formatting engine lives in `packages/formatter/src/formatter.ts`. The extension's `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package.
 
 ---
 
@@ -1581,4 +1571,4 @@ const formatted = formatText(source, { ...DEFAULT_FORMATTING_CONFIG, indentSize:
 const isClean = checkFormatting(source, DEFAULT_FORMATTING_CONFIG);
 ```
 
-See the [kopytko-formatter README](../packages/kopytko-formatter/README.md) for the full API reference.
+See the [kopytko-formatter README](../packages/formatter/README.md) for the full API reference.
