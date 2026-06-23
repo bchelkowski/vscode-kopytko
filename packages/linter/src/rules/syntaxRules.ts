@@ -1,4 +1,4 @@
-import type { LintDiagnostic, RuleContext } from '../types';
+import type { LintDiagnostic, RuleContext, RuleDefinition } from '../types';
 import { findComponent } from 'kopytko-brightscript-parser';
 import { isNumericLiteral } from '../analysis/numericLiterals';
 
@@ -223,3 +223,9 @@ export function checkLoopFlowControl(ctx: RuleContext): LintDiagnostic[] {
 
   return diagnostics;
 }
+
+export const trailingCommaSyntaxRule: RuleDefinition = {
+  code: 'syntax/trailing-comma',
+  defaultSeverity: 'error',
+  fn: checkTrailingCommaSyntaxErrors,
+};

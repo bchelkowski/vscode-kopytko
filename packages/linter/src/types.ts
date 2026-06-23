@@ -1,4 +1,5 @@
 import type { LintContext } from './context';
+import type { FileAnalysis } from './analysis/fileAnalysis';
 import type { ParseResult } from 'kopytko-brightscript-parser';
 
 export type LintSeverity = 'error' | 'warning' | 'info' | 'hint';
@@ -66,6 +67,8 @@ export interface RuleContext {
   lintContext: LintContext;
   /** Parsed CST — available for rules that use AST-based analysis. */
   parseResult?: ParseResult;
+  /** Shared per-file AST/scope analysis built once by lintFile. */
+  analysis?: FileAnalysis;
 }
 
 export type RuleConfig = Record<string, LintSeverity | 'off'>;
