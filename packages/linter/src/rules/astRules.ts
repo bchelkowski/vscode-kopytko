@@ -15,7 +15,11 @@ import {
   CallExpression,
   IdentifierExpression, ThrowStatement, Parameter,
   AALiteral, LiteralExpression,
-  buildScopes, resolve,
+  DotExpression, FunctionDeclaration,
+  ForStatement, ForEachStatement, WhileStatement,
+  IfStatement, ElseIfClause, ElseClause, TryStatement, CatchClause,
+  buildScopes, resolve, findScopeAtLine,
+  isNode, isToken,
   findComponent, matchesGlob, parse as parseBrs,
 } from 'kopytko-brightscript-parser';
 import type { Scope, Declaration, ParseResult } from 'kopytko-brightscript-parser';
@@ -1046,13 +1050,26 @@ function isFunctionFromImportUsed(
 /**
  * Check if any identifier in `funcNames` is referenced in an already-parsed tree —
  * either as a direct call (`asd()`) or as a value (`callback = asd`).
+ *
+ * Scope-aware: skips references where the name is locally declared (variable or
+ * parameter), because those shadow the imported function and do not constitute usage.
+ * `resolve()` walks the file's scope chain; imported functions are not in the tree,
+ * so it returns `undefined` for them — only locally declared names resolve.
  */
 function hasReferenceToAnyInTree(parseResult: ParseResult, funcNames: Set<string>): boolean {
+  const rootScope = buildScopes(parseResult.root);
   let found = false;
   walk(parseResult.root, {
     visitIdentifierExpression(node: IdentifierExpression) {
       if (found) return;
-      if (funcNames.has(node.name.toLowerCase())) found = true;
+      const nameLower = node.name.toLowerCase();
+      if (!funcNames.has(nameLower)) return;
+      // If the name resolves to a local declaration, it shadows the import — skip.
+      const token = node.nameToken;
+      const line = token?.line ?? -1;
+      const enclosingScope = findScopeAtLine(rootScope, line);
+      if (resolve(nameLower, enclosingScope)) return;
+      found = true;
     },
   });
   return found;
@@ -1184,6 +1201,7 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
   }
 
   // import/missing-promise-deps: warn when .resolvedValue()/.rejectedValue() used without the required import
+
   if (config['import/missing-promise-deps'] !== 'off' && lintContext.isTestFile(filePath)) {
     // Collect imports from current file and siblings (split suites share imports at runtime)
     const allImports = [...imports];
@@ -1269,6 +1287,328 @@ export function checkDeadFunctionsAst(ctx: RuleContext): LintDiagnostic[] {
         endColumn: nameToken.column + name.length,
         filePath,
       });
+    },
+  });
+
+  return diagnostics;
+}
+
+// ─── Shared token/line helpers ──────────────────────────────────────────────
+
+function getFirstToken(node: SyntaxNode): import('kopytko-brightscript-parser').Token | undefined {
+  for (const child of node.children) {
+    if (isToken(child)) return child;
+    if (isNode(child)) {
+      const t = getFirstToken(child);
+      if (t) return t;
+    }
+  }
+  return undefined;
+}
+
+function getFirstTokenLine(node: SyntaxNode): number {
+  const t = getFirstToken(node);
+  return t ? t.line : -1;
+}
+
+function getLastTokenLine(node: SyntaxNode): number {
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    const child = node.children[i];
+    if (isToken(child)) return child.line;
+    if (isNode(child)) {
+      const line = getLastTokenLine(child);
+      if (line >= 0) return line;
+    }
+  }
+  return -1;
+}
+
+// ─── Loop variable leak ─────────────────────────────────────────────────────
+
+interface LoopRange { startLine: number; endLine: number; }
+
+function collectLoopRanges(funcNode: SyntaxNode): LoopRange[] {
+  const ranges: LoopRange[] = [];
+
+  // Manual CST traversal — avoids using walk() so the "stop at nested functions"
+  // boundary does not fire on the root FunctionDeclaration node itself.
+  function traverseNode(node: SyntaxNode): void {
+    for (const child of node.children) {
+      if (!isNode(child)) continue;
+      const kind = child.kind;
+      if (kind === SyntaxKind.FunctionDeclaration || kind === SyntaxKind.FunctionExpression) {
+        continue; // Do not descend into nested function bodies
+      }
+      if (
+        kind === SyntaxKind.ForStatement ||
+        kind === SyntaxKind.ForEachStatement ||
+        kind === SyntaxKind.WhileStatement
+      ) {
+        const start = getFirstTokenLine(child);
+        const end = getLastTokenLine(child);
+        if (start >= 0 && end >= 0) ranges.push({ startLine: start, endLine: end });
+        traverseNode(child); // Recurse into the loop body for nested loops
+      } else {
+        traverseNode(child);
+      }
+    }
+  }
+
+  traverseNode(funcNode);
+  return ranges;
+}
+
+/**
+ * AST-based: detect variables first assigned inside a loop body that are referenced
+ * after the loop ends. BrightScript is function-scoped so the variable is technically
+ * accessible, but relying on it is fragile when the loop may not execute.
+ *
+ * Only checks FunctionDeclaration scopes. FunctionExpression scopes (anonymous functions)
+ * cannot capture outer-function variables due to BrightScript's no-closures semantics.
+ */
+export function checkLoopVariableLeakAst(ctx: RuleContext): LintDiagnostic[] {
+  const { filePath, config, parseResult } = ctx;
+  if (config['identifier/loop-variable-leak'] === 'off') return [];
+  if (!parseResult) return [];
+
+  const diagnostics: LintDiagnostic[] = [];
+  const rootScope = buildScopes(parseResult.root);
+
+  function checkFunctionScope(funcScope: Scope): void {
+    if (!funcScope.owner) return;
+    if (funcScope.owner.kind !== SyntaxKind.FunctionDeclaration) return;
+
+    const loopRanges = collectLoopRanges(funcScope.owner);
+    if (loopRanges.length === 0) return;
+
+    for (const [, decl] of funcScope.declarations) {
+      if (decl.kind !== 'variable' && decl.kind !== 'for-variable') continue;
+
+      const containingLoop = loopRanges.find(
+        r => decl.line >= r.startLine && decl.line <= r.endLine,
+      );
+      if (!containingLoop) continue;
+
+      for (const ref of funcScope.references) {
+        if (ref.nameLower !== decl.nameLower) continue;
+        if (ref.line === decl.line && ref.column === decl.column) continue;
+        if (ref.line > containingLoop.endLine) {
+          diagnostics.push({
+            severity: (config['identifier/loop-variable-leak'] as LintSeverity) ?? 'warning',
+            code: 'identifier/loop-variable-leak',
+            message: `'${decl.name}' is first assigned inside a loop body and may be undefined if the loop never executes. Define it before the loop.`,
+            line: ref.line, column: ref.column,
+            endLine: ref.line, endColumn: ref.column + decl.name.length,
+            filePath,
+          });
+        }
+      }
+    }
+  }
+
+  function walkScopes(scope: Scope): void {
+    checkFunctionScope(scope);
+    for (const child of scope.children) walkScopes(child);
+  }
+
+  walkScopes(rootScope);
+  return diagnostics;
+}
+
+// ─── Duplicate function name ────────────────────────────────────────────────
+
+/**
+ * AST-based: detect function declarations whose name collides with a function
+ * already visible in scope (from @import, sibling files, /source/) or declared
+ * earlier in the same file. Ancestor-component overrides (from the `extends`
+ * chain) are exempt when `lintContext.ancestorFuncNames` is populated.
+ */
+export function checkDuplicateFunctionsAst(ctx: RuleContext): LintDiagnostic[] {
+  const { filePath, config, parseResult, lintContext } = ctx;
+  if (config['identifier/duplicate-function'] === 'off') return [];
+  if (!parseResult) return [];
+  if (/[/\\]source[/\\]/i.test(filePath)) return [];
+
+  const diagnostics: LintDiagnostic[] = [];
+  const knownFuncNames = lintContext.knownFuncNames;
+  const ancestorFuncNames = lintContext.ancestorFuncNames;
+  const seenInFile = new Map<string, string>(); // nameLower → original name
+
+  walk(parseResult.root, {
+    visitFunctionDeclaration(node: FunctionDeclaration) {
+      if (node.syntax.parent?.kind !== SyntaxKind.SourceFile) return;
+
+      const nameToken = node.nameToken;
+      if (!nameToken) return;
+      const nameLower = node.name.toLowerCase();
+
+      // Same-file duplicate (second definition wins at runtime — flag it)
+      if (seenInFile.has(nameLower)) {
+        diagnostics.push({
+          severity: (config['identifier/duplicate-function'] as LintSeverity) ?? 'error',
+          code: 'identifier/duplicate-function',
+          message: `Function '${node.name}' is already declared in this file (as '${seenInFile.get(nameLower)}'). The second definition silently overrides the first.`,
+          line: nameToken.line, column: nameToken.column,
+          endLine: nameToken.line, endColumn: nameToken.column + nameToken.text.length,
+          filePath,
+        });
+        return;
+      }
+      seenInFile.set(nameLower, node.name);
+
+      // Cross-scope duplicate: name exists in imports/siblings/source
+      if (!knownFuncNames.has(nameLower)) return;
+      // Ancestor override is allowed
+      if (ancestorFuncNames && ancestorFuncNames.has(nameLower)) return;
+
+      diagnostics.push({
+        severity: (config['identifier/duplicate-function'] as LintSeverity) ?? 'error',
+        code: 'identifier/duplicate-function',
+        message: `Function '${node.name}' is already defined in a reachable scope (via @import or sibling file). This will silently override the existing function at runtime.`,
+        line: nameToken.line, column: nameToken.column,
+        endLine: nameToken.line, endColumn: nameToken.column + nameToken.text.length,
+        filePath,
+      });
+    },
+  });
+
+  return diagnostics;
+}
+
+// ─── m.top undefined field ──────────────────────────────────────────────────
+
+/**
+ * AST-based: detect `m.top.fieldName` accesses where `fieldName` is not declared
+ * in the component's XML interface or any ancestor component / SG node.
+ * Only runs when `lintContext.getMtopFields` is populated (extension mode).
+ */
+export function checkMtopFieldAccessAst(ctx: RuleContext): LintDiagnostic[] {
+  const { filePath, config, parseResult, lintContext } = ctx;
+  if (config['mtop/undefined-field'] === 'off') return [];
+  if (!parseResult) return [];
+  if (!lintContext.getMtopFields) return [];
+
+  const validFields = lintContext.getMtopFields(filePath);
+  if (!validFields) return [];
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  walk(parseResult.root, {
+    visitDotExpression(node: DotExpression) {
+      // Match the pattern: m.top.<fieldName>
+      const obj = node.object;
+      if (!(obj instanceof DotExpression)) return;
+
+      const innerObj = obj.object;
+      if (!(innerObj instanceof IdentifierExpression)) return;
+      if (innerObj.name.toLowerCase() !== 'm') return;
+      if (obj.member.toLowerCase() !== 'top') return;
+
+      const fieldName = node.member.toLowerCase();
+      if (validFields.has(fieldName)) return;
+
+      const memberToken = node.memberToken;
+      if (!memberToken) return;
+
+      diagnostics.push({
+        severity: (config['mtop/undefined-field'] as LintSeverity) ?? 'warning',
+        code: 'mtop/undefined-field',
+        message: `'${node.member}' is not declared in this component's XML interface or any ancestor component.`,
+        line: memberToken.line, column: memberToken.column,
+        endLine: memberToken.line, endColumn: memberToken.column + memberToken.text.length,
+        filePath,
+      });
+    },
+  });
+
+  return diagnostics;
+}
+
+// ─── Unreachable code ───────────────────────────────────────────────────────
+
+const TERMINATING_SYNTAX_KINDS = new Set<SyntaxKind>([
+  SyntaxKind.ReturnStatement,
+  SyntaxKind.ThrowStatement,
+  SyntaxKind.StopStatement,
+  SyntaxKind.EndStatement,
+  SyntaxKind.ExitForStatement,
+  SyntaxKind.ExitWhileStatement,
+  SyntaxKind.ContinueForStatement,
+  SyntaxKind.ContinueWhileStatement,
+]);
+
+function checkBodyForUnreachable(
+  body: import('kopytko-brightscript-parser').AstNode[],
+  diagnostics: LintDiagnostic[],
+  config: Record<string, unknown>,
+  filePath: string,
+): void {
+  let terminatorIdx = -1;
+  for (let i = 0; i < body.length; i++) {
+    if (TERMINATING_SYNTAX_KINDS.has(body[i].syntax.kind)) {
+      terminatorIdx = i;
+      break;
+    }
+  }
+  if (terminatorIdx < 0 || terminatorIdx >= body.length - 1) return;
+
+  const unreachable = body[terminatorIdx + 1];
+  const firstToken = getFirstToken(unreachable.syntax);
+  if (!firstToken) return;
+
+  diagnostics.push({
+    severity: (config['syntax/unreachable-code'] as LintSeverity) ?? 'warning',
+    code: 'syntax/unreachable-code',
+    message: 'This code is unreachable — it follows a `return`, `throw`, or other terminating statement.',
+    line: firstToken.line, column: firstToken.column,
+    endLine: firstToken.line, endColumn: Number.MAX_SAFE_INTEGER,
+    filePath,
+  });
+}
+
+/**
+ * AST-based: detect statements that follow a terminating statement (`return`,
+ * `throw`, `stop`, `exit for`, etc.) in the same linear block.
+ * Reports only the first unreachable statement to avoid noise.
+ * Does not perform full control-flow analysis (no cross-branch detection).
+ */
+export function checkUnreachableCodeAst(ctx: RuleContext): LintDiagnostic[] {
+  const { filePath, config, parseResult } = ctx;
+  if (config['syntax/unreachable-code'] === 'off') return [];
+  if (!parseResult) return [];
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  walk(parseResult.root, {
+    visitFunctionDeclaration(node: FunctionDeclaration) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitFunctionExpression(node) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitIfStatement(node: IfStatement) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitElseIfClause(node: ElseIfClause) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitElseClause(node: ElseClause) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitForStatement(node: ForStatement) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitForEachStatement(node: ForEachStatement) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitWhileStatement(node: WhileStatement) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitTryStatement(node: TryStatement) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
+    },
+    visitCatchClause(node: CatchClause) {
+      checkBodyForUnreachable(node.body, diagnostics, config, filePath);
     },
   });
 

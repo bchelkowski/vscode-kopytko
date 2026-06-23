@@ -103,6 +103,10 @@ function getRuleDescription(code: string): string {
     'identifier/unused-variable': 'Variable is assigned but never read',
     'callback/undefined-observer-callback': 'Observer callback function is not defined',
     'callback/undefined-event-callback': 'Event callback function is not defined',
+    'identifier/loop-variable-leak': 'Variable first assigned inside a loop is used after the loop',
+    'identifier/duplicate-function': 'Function name collides with one already visible in scope',
+    'mtop/undefined-field': 'm.top field not declared in component XML interface or ancestor',
+    'syntax/unreachable-code': 'Code after a return, throw, or other terminating statement',
   };
   return descriptions[code] ?? code;
 }

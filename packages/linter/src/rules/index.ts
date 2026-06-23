@@ -17,6 +17,10 @@ import {
   checkEventCallbacksAst,
   checkImportsAst,
   checkDeadFunctionsAst,
+  checkLoopVariableLeakAst,
+  checkDuplicateFunctionsAst,
+  checkMtopFieldAccessAst,
+  checkUnreachableCodeAst,
 } from './astRules';
 
 /** All rule groups — AST-based via brightscript-parser. */
@@ -38,4 +42,8 @@ export const ALL_RULE_GROUPS: RuleDefinition[] = [
   { code: 'type/*', defaultSeverity: 'warning', fn: checkMissingTypeAnnotationsAst },
   { code: 'callback/undefined-observer-callback', defaultSeverity: 'error', fn: checkObserverCallbacksAst },
   { code: 'callback/undefined-event-callback', defaultSeverity: 'error', fn: checkEventCallbacksAst },
+  { code: 'identifier/loop-variable-leak', defaultSeverity: 'warning', fn: checkLoopVariableLeakAst },
+  { code: 'identifier/duplicate-function', defaultSeverity: 'error', fn: checkDuplicateFunctionsAst },
+  { code: 'mtop/undefined-field', defaultSeverity: 'warning', fn: checkMtopFieldAccessAst },
+  { code: 'syntax/unreachable-code', defaultSeverity: 'warning', fn: checkUnreachableCodeAst },
 ];

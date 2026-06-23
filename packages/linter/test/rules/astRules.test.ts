@@ -16,6 +16,10 @@ import {
   checkTestFileStructureAst,
   checkImportsAst,
   checkDeadFunctionsAst,
+  checkLoopVariableLeakAst,
+  checkDuplicateFunctionsAst,
+  checkMtopFieldAccessAst,
+  checkUnreachableCodeAst,
 } from '../../src/rules/astRules';
 import type { RuleContext, LintDiagnostic } from '../../src/types';
 import type { LintContext } from '../../src/context';
@@ -927,5 +931,471 @@ describe('AST-based lint rules', () => {
       expect(diags.map(d => d.message)).to.satisfy((msgs: string[]) =>
         msgs.some(m => m.includes('unusedA')) && msgs.some(m => m.includes('unusedB')),
       );
+    });
+  });
+
+  // ─── checkLoopVariableLeakAst ─────────────────────────────────────────────
+
+  describe('checkLoopVariableLeakAst', () => {
+    function makeLeakCtx(source: string): RuleContext {
+      return makeCtx(source, { 'identifier/loop-variable-leak': 'warning' });
+    }
+
+    it('warns when for-loop counter is used after the loop', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 10',
+        '  end for',
+        '  print i',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+      expect(diags[0].line).to.equal(3);
+    });
+
+    it('warns when variable first assigned inside for-loop body is used after', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 10',
+        '    result = i * 2',
+        '  end for',
+        '  return result',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+      expect(diags[0].line).to.equal(4);
+    });
+
+    it('warns when for-each iterator is used after the loop', () => {
+      const src = [
+        'function test()',
+        '  for each item in myList',
+        '    process(item)',
+        '  end for',
+        '  return item',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+      expect(diags[0].line).to.equal(4);
+    });
+
+    it('warns when while-loop variable leaks outside', () => {
+      const src = [
+        'function test()',
+        '  while true',
+        '    value = computeValue()',
+        '    if value > 0 then exit while',
+        '  end while',
+        '  return value',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+    });
+
+    it('warns when inner loop variable leaks to enclosing function scope', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 3',
+        '    for j = 0 to 3',
+        '      cell = grid[i][j]',
+        '    end for',
+        '  end for',
+        '  print cell',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+    });
+
+    it('does not warn when variable is defined BEFORE the loop', () => {
+      const src = [
+        'function test()',
+        '  result = 0',
+        '  for i = 0 to 10',
+        '    result += i',
+        '  end for',
+        '  return result',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn when variable is used only inside the loop', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 10',
+        '    temp = i * 2',
+        '    print temp',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn when for-each variable is used only inside body', () => {
+      const src = [
+        'function test()',
+        '  for each x in items',
+        '    print x',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('returns empty when rule is off', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 5',
+        '  end for',
+        '  print i',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeCtx(src, { 'identifier/loop-variable-leak': 'off' }))).to.have.length(0);
+    });
+
+    it('does not descend into FunctionExpression locals — no-closure boundary', () => {
+      const src = [
+        'function test()',
+        '  callback = function()',
+        '    local = 1',
+        '    print local',
+        '  end function',
+        '  callback()',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+  });
+
+  // ─── checkDuplicateFunctionsAst ───────────────────────────────────────────
+
+  describe('checkDuplicateFunctionsAst', () => {
+    function makeDupCtx(
+      source: string,
+      known: string[] = [],
+      ancestors?: string[],
+    ): RuleContext {
+      const ctx = makeCtx(source, { 'identifier/duplicate-function': 'error' });
+      ctx.lintContext = {
+        ...ctx.lintContext,
+        knownFuncNames: new Set(known),
+        ancestorFuncNames: ancestors !== undefined ? new Set(ancestors) : undefined,
+      } as unknown as LintContext;
+      return ctx;
+    }
+
+    it('reports error when function name collides with an imported function', () => {
+      const src = 'function Helper() as Void\nend function';
+      const diags = checkDuplicateFunctionsAst(makeDupCtx(src, ['helper']));
+      expect(codes(diags)).to.include('identifier/duplicate-function');
+      expect(diags[0].message).to.include('Helper');
+    });
+
+    it('reports error when two functions have the same name in the same file', () => {
+      const src = [
+        'function Duplicate() as Void',
+        'end function',
+        'function duplicate() as Void',
+        'end function',
+      ].join('\n');
+      const diags = checkDuplicateFunctionsAst(makeDupCtx(src));
+      expect(codes(diags)).to.include('identifier/duplicate-function');
+      expect(diags.some((d: import('../../src/types').LintDiagnostic) => d.message.toLowerCase().includes('duplicate'))).to.be.true;
+    });
+
+    it('does not report when function name is unique', () => {
+      const src = 'function MySpecificLogic() as Void\nend function';
+      expect(checkDuplicateFunctionsAst(makeDupCtx(src, ['otherFunc']))).to.have.length(0);
+    });
+
+    it('does not report when function overrides an ancestor', () => {
+      const src = 'function onInit() as Void\nend function';
+      expect(checkDuplicateFunctionsAst(makeDupCtx(src, ['oninit'], ['oninit']))).to.have.length(0);
+    });
+
+    it('reports when collision exists and ancestorFuncNames is not set', () => {
+      const src = 'function helper() as Void\nend function';
+      expect(codes(checkDuplicateFunctionsAst(makeDupCtx(src, ['helper'], undefined)))).to.include('identifier/duplicate-function');
+    });
+
+    it('does not report when rule is off', () => {
+      const ctx = makeCtx('function Helper() as Void\nend function', { 'identifier/duplicate-function': 'off' });
+      ctx.lintContext = { ...ctx.lintContext, knownFuncNames: new Set(['helper']) } as unknown as LintContext;
+      expect(checkDuplicateFunctionsAst(ctx)).to.have.length(0);
+    });
+  });
+
+  // ─── import/unused scope-aware fix ────────────────────────────────────────
+
+  describe('import/unused — scope-aware local-shadow fix', () => {
+    function makeImportCtxFor(source: string, importedFuncs: string[]): RuleContext {
+      const ctx = makeCtx(source, { 'import/unused': 'warning' });
+      ctx.imports = [{
+        raw: "' @import /utils/helper.brs",
+        importPath: '/utils/helper.brs',
+        line: 1,
+        isMock: false,
+      }];
+      ctx.lintContext = {
+        knownFuncNames: new Set(),
+        calledWorkwideFuncNames: undefined,
+        parseImports: () => [],
+        resolveImportPath: () => '/resolved/helper.brs',
+        importExists: () => true,
+        readFile: () => null,
+        parseFunctionsFromFile: () => importedFuncs,
+        getSiblingFiles: () => [],
+        getTestSiblings: () => [],
+        isTestFile: () => false,
+        generatedPaths: [],
+        generatedModules: [],
+        siblingPatterns: [],
+      } as unknown as LintContext;
+      return ctx;
+    }
+
+    it('does NOT flag import/unused when the imported function is genuinely called', () => {
+      const src = [
+        "' @import /utils/helper.brs",
+        'sub doSomething()',
+        '  result = helper()',
+        'end sub',
+      ].join('\n');
+      expect(codes(checkImportsAst(makeImportCtxFor(src, ['helper'])))).to.not.include('import/unused');
+    });
+
+    it('DOES flag import/unused when a local variable shadows the imported function name', () => {
+      const src = [
+        "' @import /utils/helper.brs",
+        'sub doSomething()',
+        '  helper = { value: 1 }',
+        '  print helper.value',
+        'end sub',
+      ].join('\n');
+      expect(codes(checkImportsAst(makeImportCtxFor(src, ['helper'])))).to.include('import/unused');
+    });
+
+    it('DOES flag import/unused when a parameter shadows the imported function name', () => {
+      const src = [
+        "' @import /utils/helper.brs",
+        'sub doSomething(helper as String)',
+        '  print helper',
+        'end sub',
+      ].join('\n');
+      expect(codes(checkImportsAst(makeImportCtxFor(src, ['helper'])))).to.include('import/unused');
+    });
+
+    it('does NOT flag import/unused when function is used as a value (callback pointer)', () => {
+      const src = [
+        "' @import /utils/helper.brs",
+        'sub doSomething()',
+        '  observer = helper',
+        'end sub',
+      ].join('\n');
+      expect(codes(checkImportsAst(makeImportCtxFor(src, ['helper'])))).to.not.include('import/unused');
+    });
+  });
+
+  // ─── checkMtopFieldAccessAst ──────────────────────────────────────────────
+
+  describe('checkMtopFieldAccessAst', () => {
+    function makeMtopCtx(source: string, validFields: string[] | null): RuleContext {
+      const fieldSet = validFields ? new Set(validFields.map((f: string) => f.toLowerCase())) : null;
+      const ctx = makeCtx(source, { 'mtop/undefined-field': 'warning' });
+      ctx.lintContext = {
+        ...ctx.lintContext,
+        getMtopFields: () => fieldSet,
+      } as unknown as LintContext;
+      return ctx;
+    }
+
+    it('warns when writing to an undeclared m.top field', () => {
+      const src = 'sub init()\n  m.top.nonExistentField = "hello"\nend sub';
+      const diags = checkMtopFieldAccessAst(makeMtopCtx(src, ['title', 'opacity']));
+      expect(codes(diags)).to.include('mtop/undefined-field');
+      expect(diags[0].message).to.include('nonExistentField');
+    });
+
+    it('warns when reading from an undeclared m.top field', () => {
+      const src = 'function getVal()\n  return m.top.typoField\nend function';
+      const diags = checkMtopFieldAccessAst(makeMtopCtx(src, ['title']));
+      expect(codes(diags)).to.include('mtop/undefined-field');
+    });
+
+    it('does not warn when accessing a declared XML interface field', () => {
+      const src = 'sub init()\n  m.top.title = "Hello"\nend sub';
+      expect(checkMtopFieldAccessAst(makeMtopCtx(src, ['title', 'opacity']))).to.have.length(0);
+    });
+
+    it('does not warn when accessing an inherited ancestor field', () => {
+      const src = 'sub init()\n  m.top.opacity = 1.0\nend sub';
+      expect(checkMtopFieldAccessAst(makeMtopCtx(src, ['title', 'opacity', 'boundingRect']))).to.have.length(0);
+    });
+
+    it('is case-insensitive for field names', () => {
+      const src = 'sub init()\n  m.top.Title = "hello"\nend sub';
+      expect(checkMtopFieldAccessAst(makeMtopCtx(src, ['title']))).to.have.length(0);
+    });
+
+    it('skips when getMtopFields is not provided', () => {
+      const src = 'sub init()\n  m.top.anything = 1\nend sub';
+      expect(checkMtopFieldAccessAst(makeCtx(src, { 'mtop/undefined-field': 'warning' }))).to.have.length(0);
+    });
+
+    it('skips when getMtopFields returns null (no companion XML)', () => {
+      expect(checkMtopFieldAccessAst(makeMtopCtx('sub init()\n  m.top.anything = 1\nend sub', null))).to.have.length(0);
+    });
+
+    it('does not warn when rule is off', () => {
+      const fieldSet = new Set(['title']);
+      const ctx = makeCtx('sub init()\n  m.top.undeclared = 1\nend sub', { 'mtop/undefined-field': 'off' });
+      ctx.lintContext = { ...ctx.lintContext, getMtopFields: () => fieldSet } as unknown as LintContext;
+      expect(checkMtopFieldAccessAst(ctx)).to.have.length(0);
+    });
+  });
+
+  // ─── checkUnreachableCodeAst ──────────────────────────────────────────────
+
+  describe('checkUnreachableCodeAst', () => {
+    function makeUnreachCtx(source: string): RuleContext {
+      return makeCtx(source, { 'syntax/unreachable-code': 'warning' });
+    }
+
+    it('warns on code after return in a function body', () => {
+      const src = [
+        'function getValue() as Integer',
+        '  return 42',
+        '  print "unreachable"',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(codes(diags)).to.include('syntax/unreachable-code');
+      expect(diags[0].line).to.equal(2);
+    });
+
+    it('warns on code after throw', () => {
+      const src = [
+        'function fail()',
+        '  throw { message: "bad" }',
+        '  doSomething()',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(codes(diags)).to.include('syntax/unreachable-code');
+    });
+
+    it('warns only on the FIRST unreachable statement, not subsequent ones', () => {
+      const src = [
+        'function test()',
+        '  return 1',
+        '  x = 2',
+        '  y = 3',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(diags).to.have.length(1);
+      expect(diags[0].line).to.equal(2);
+    });
+
+    it('warns on unreachable code after exit for', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 10',
+        '    exit for',
+        '    doSomething()',
+        '  end for',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(codes(diags)).to.include('syntax/unreachable-code');
+      expect(diags[0].line).to.equal(3);
+    });
+
+    it('warns on unreachable code after exit while', () => {
+      const src = [
+        'function test()',
+        '  while true',
+        '    exit while',
+        '    doMore()',
+        '  end while',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(codes(diags)).to.include('syntax/unreachable-code');
+    });
+
+    it('warns on unreachable code inside an if-branch', () => {
+      const src = [
+        'function test()',
+        '  if x = 1 then',
+        '    return "yes"',
+        '    doCleanup()',
+        '  end if',
+        '  return "no"',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(codes(diags)).to.include('syntax/unreachable-code');
+      expect(diags[0].line).to.equal(3);
+    });
+
+    it('does not warn when return is the last statement', () => {
+      const src = [
+        'function getValue() as Integer',
+        '  x = computeX()',
+        '  return x',
+        'end function',
+      ].join('\n');
+      expect(checkUnreachableCodeAst(makeUnreachCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn when branches each return but no dead code within', () => {
+      const src = [
+        'function getValue(flag as Boolean) as Integer',
+        '  if flag then',
+        '    return 1',
+        '  else',
+        '    return 2',
+        '  end if',
+        'end function',
+      ].join('\n');
+      expect(checkUnreachableCodeAst(makeUnreachCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn when exit for is last in a loop body', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 10',
+        '    if i = 5 then exit for',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkUnreachableCodeAst(makeUnreachCtx(src))).to.have.length(0);
+    });
+
+    it('warns on code after stop', () => {
+      const src = [
+        'function test()',
+        '  stop',
+        '  print "unreachable"',
+        'end function',
+      ].join('\n');
+      const diags = checkUnreachableCodeAst(makeUnreachCtx(src));
+      expect(codes(diags)).to.include('syntax/unreachable-code');
+    });
+
+    it('does not warn when rule is off', () => {
+      const src = [
+        'function test()',
+        '  return 1',
+        '  print "dead"',
+        'end function',
+      ].join('\n');
+      expect(checkUnreachableCodeAst(makeCtx(src, { 'syntax/unreachable-code': 'off' }))).to.have.length(0);
     });
   });

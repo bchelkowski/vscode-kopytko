@@ -41,6 +41,10 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'type/missing-param-type': 'warning',
   'callback/undefined-observer-callback': 'error',
   'callback/undefined-event-callback': 'error',
+  'identifier/loop-variable-leak': 'warning',
+  'identifier/duplicate-function': 'error',
+  'mtop/undefined-field': 'warning',
+  'syntax/unreachable-code': 'warning',
 };
 
 export const DEFAULT_LINTER_CONFIG: LinterConfig = {
