@@ -15,6 +15,14 @@ export interface LintContext {
    * Undefined in CLI mode or for files without a companion XML — rules skip the override exemption. */
   ancestorFuncNames?: Set<string>;
   /**
+   * Function names reachable from EXTERNAL sources only (imports, sibling files, /source/).
+   * Does NOT include the current file's own function names, unlike `knownFuncNames`.
+   * When set (extension mode), `identifier/duplicate-function` uses this for cross-scope collision
+   * detection to avoid false positives on the file's own declarations.
+   * When absent (tests, CLI), the rule falls back to `knownFuncNames`.
+   */
+  externalFuncNames?: Set<string>;
+  /**
    * Returns the set of valid lowercased `m.top` field names for a component `.brs` file,
    * including all ancestor component and Roku SG node fields.
    * Returns `null` when the file has no companion XML or in CLI mode.

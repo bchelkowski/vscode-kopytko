@@ -1010,12 +1010,14 @@ function isFunctionFromImportUsed(
   currentContent: string,
   currentParseResult: ParseResult | undefined,
   lintContext: LintContext,
+  currentFileScope?: Scope,
 ): boolean {
   const funcNamesLower = new Set(importedFuncNames.map(n => n.toLowerCase()));
 
-  // Check usage in current file using the already-parsed result
+  // Check usage in current file using the already-parsed result.
+  // Pass the pre-built scope so buildScopes is not called again for each import.
   if (currentParseResult) {
-    if (hasReferenceToAnyInTree(currentParseResult, funcNamesLower)) return true;
+    if (hasReferenceToAnyInTree(currentParseResult, funcNamesLower, currentFileScope)) return true;
   } else if (currentContent) {
     if (hasReferenceToAny(currentContent, funcNamesLower)) return true;
   }
@@ -1056,8 +1058,13 @@ function isFunctionFromImportUsed(
  * `resolve()` walks the file's scope chain; imported functions are not in the tree,
  * so it returns `undefined` for them — only locally declared names resolve.
  */
-function hasReferenceToAnyInTree(parseResult: ParseResult, funcNames: Set<string>): boolean {
-  const rootScope = buildScopes(parseResult.root);
+/**
+ * @param prebuiltScope — pre-built scope tree for `parseResult.root`. When the caller
+ * already holds a scope (e.g., the current-file scope built once for the full import
+ * loop), passing it avoids a redundant `buildScopes` call.
+ */
+function hasReferenceToAnyInTree(parseResult: ParseResult, funcNames: Set<string>, prebuiltScope?: Scope): boolean {
+  const rootScope = prebuiltScope ?? buildScopes(parseResult.root);
   let found = false;
   walk(parseResult.root, {
     visitIdentifierExpression(node: IdentifierExpression) {
@@ -1100,6 +1107,10 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
   const currentContent = lines.join('\n');
   const diagnostics: LintDiagnostic[] = [];
   const seenImportKeys = new Set<string>();
+
+  // Build the scope for the current file once so isFunctionFromImportUsed can pass it
+  // to hasReferenceToAnyInTree without rebuilding it for every resolved @import.
+  const currentFileScope = parseResult ? buildScopes(parseResult.root) : undefined;
 
   for (const imp of imports) {
     const lineIndex = imp.line - 1;
@@ -1150,7 +1161,7 @@ export function checkImportsAst(ctx: RuleContext): LintDiagnostic[] {
         const funcs = lintContext.parseFunctionsFromFile(resolved);
         if (funcs.length > 0) {
           // Check usage in current file + sibling files
-          const isUsed = isFunctionFromImportUsed(funcs, filePath, currentContent, parseResult, lintContext);
+          const isUsed = isFunctionFromImportUsed(funcs, filePath, currentContent, parseResult, lintContext, currentFileScope);
           if (!isUsed) {
             diagnostics.push({
               severity: (config['import/unused'] as LintSeverity) ?? 'warning',
@@ -1382,11 +1393,19 @@ export function checkLoopVariableLeakAst(ctx: RuleContext): LintDiagnostic[] {
     if (loopRanges.length === 0) return;
 
     for (const [, decl] of funcScope.declarations) {
-      if (decl.kind !== 'variable' && decl.kind !== 'for-variable') continue;
+      if (decl.kind !== 'variable' && decl.kind !== 'for-variable' && decl.kind !== 'dim-variable') continue;
 
-      const containingLoop = loopRanges.find(
-        r => decl.line >= r.startLine && decl.line <= r.endLine,
-      );
+      // Find the INNERMOST (smallest range) loop that contains the declaration line.
+      // loopRanges is in outer-first order, so .find() would return the outer loop —
+      // causing false negatives for variables used between an inner and outer loop's end.
+      let containingLoop: LoopRange | undefined;
+      for (const r of loopRanges) {
+        if (decl.line >= r.startLine && decl.line <= r.endLine) {
+          if (!containingLoop || (r.endLine - r.startLine) < (containingLoop.endLine - containingLoop.startLine)) {
+            containingLoop = r;
+          }
+        }
+      }
       if (!containingLoop) continue;
 
       for (const ref of funcScope.references) {
@@ -1430,7 +1449,12 @@ export function checkDuplicateFunctionsAst(ctx: RuleContext): LintDiagnostic[] {
   if (/[/\\]source[/\\]/i.test(filePath)) return [];
 
   const diagnostics: LintDiagnostic[] = [];
-  const knownFuncNames = lintContext.knownFuncNames;
+  // externalFuncNames, when provided by the extension, contains only functions from
+  // imports/siblings/source — NOT from the current file. This avoids false positives
+  // that arise because knownFuncNames always includes the file's own functions.
+  // In tests and CLI mode (where externalFuncNames is absent), we fall back to
+  // knownFuncNames which preserves the pre-existing behavior.
+  const crossScopeNames = lintContext.externalFuncNames ?? lintContext.knownFuncNames;
   const ancestorFuncNames = lintContext.ancestorFuncNames;
   const seenInFile = new Map<string, string>(); // nameLower → original name
 
@@ -1456,8 +1480,8 @@ export function checkDuplicateFunctionsAst(ctx: RuleContext): LintDiagnostic[] {
       }
       seenInFile.set(nameLower, node.name);
 
-      // Cross-scope duplicate: name exists in imports/siblings/source
-      if (!knownFuncNames.has(nameLower)) return;
+      // Cross-scope duplicate: name exists in external scope (imports, siblings, /source/).
+      if (!crossScopeNames.has(nameLower)) return;
       // Ancestor override is allowed
       if (ancestorFuncNames && ancestorFuncNames.has(nameLower)) return;
 

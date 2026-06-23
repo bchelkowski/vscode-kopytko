@@ -1011,6 +1011,24 @@ describe('AST-based lint rules', () => {
       expect(codes(diags)).to.include('identifier/loop-variable-leak');
     });
 
+    it('warns when inner-loop variable is used between inner and outer loop ends (innermost-range fix)', () => {
+      // With find()-based outer-loop matching (the bug), references between inner
+      // and outer loop ends are invisible because outerLoop.endLine is used.
+      // The innermost-range fix ensures inner loop's endLine is used instead.
+      const src = [
+        'function test()',
+        '  for i = 0 to 3',       // outer: lines 1-6
+        '    for j = 0 to 3',     // inner: lines 2-5
+        '      cell = grid[i][j]', // cell defined in inner loop, line 3
+        '    end for',
+        '    print cell',          // line 5 — after inner loop, inside outer loop
+        '  end for',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+    });
+
     it('does not warn when variable is defined BEFORE the loop', () => {
       const src = [
         'function test()',
@@ -1111,6 +1129,21 @@ describe('AST-based lint rules', () => {
     it('does not report when function name is unique', () => {
       const src = 'function MySpecificLogic() as Void\nend function';
       expect(checkDuplicateFunctionsAst(makeDupCtx(src, ['otherFunc']))).to.have.length(0);
+    });
+
+    it('does not false-positive when knownFuncNames includes own-file functions (regression)', () => {
+      // In extension mode, knownFuncNames includes the current file's own functions.
+      // externalFuncNames is set to only external functions (empty when no imports),
+      // so the rule must NOT flag a function as a duplicate of itself.
+      const src = 'function myFunc() as Void\nend function';
+      const ctx = makeCtx(src, { 'identifier/duplicate-function': 'error' });
+      ctx.lintContext = {
+        ...ctx.lintContext,
+        knownFuncNames: new Set(['myfunc']),  // includes own-file fn (as in extension mode)
+        externalFuncNames: new Set(),          // no external imports → empty external set
+        ancestorFuncNames: undefined,
+      } as unknown as LintContext;
+      expect(checkDuplicateFunctionsAst(ctx)).to.have.length(0);
     });
 
     it('does not report when function overrides an ancestor', () => {
