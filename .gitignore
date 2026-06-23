@@ -1,8 +1,11 @@
+.claude/
+.nyc_output/
+coverage/
 node_modules/
 out/
 out-test/
-.nyc_output/
-coverage/
-*.vsix
-.env
+
 .DS_Store
+.env
+
+*.vsix
