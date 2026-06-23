@@ -110,26 +110,44 @@ export class BrightScriptDiagnosticsProvider {
       if (moduleSourceNames.size > 0) knownFuncNames = new Set([...knownFuncNames, ...moduleSourceNames]);
     }
 
-    const ancestorDefs = collectFunctionsFromExtends(documentPath, this.importResolver);
-    const ancestorFuncNames = ancestorDefs.length > 0
-      ? new Set(ancestorDefs.map(f => f.nameLower))
-      : undefined;
+    // Compute externalFuncNames (imports + siblings + source, NOT own-file functions)
+    // and ancestorFuncNames (extends chain only) for identifier/duplicate-function.
+    // Both are only needed when the rule is active; collectFunctionsFromExtends does
+    // a readdirSync per component so guard it against the default severity.
+    let ancestorFuncNames: Set<string> | undefined;
+    let externalFuncNames: Set<string> | undefined;
+    if (DEFAULT_LINTER_CONFIG.rules['identifier/duplicate-function'] !== 'off') {
+      // Own-file function names (lowercased) — used to exclude them from crossScopeNames.
+      const ownFuncNamesLower = new Set(
+        extParseFunctionDefs(content, documentPath).map(f => f.nameLower),
+      );
+      // External = everything knownFuncNames provides EXCEPT the current file's own functions.
+      externalFuncNames = new Set([...knownFuncNames].filter(n => !ownFuncNamesLower.has(n)));
 
-    // Memoize m.top field collection within this single provideDiagnostics call.
-    let cachedMtopFields: Set<string> | null | undefined;
+      const ancestorDefs = collectFunctionsFromExtends(documentPath, this.importResolver);
+      ancestorFuncNames = ancestorDefs.length > 0
+        ? new Set(ancestorDefs.map(f => f.nameLower))
+        : undefined;
+    }
+
+    // Memoize m.top field collection within this single provideDiagnostics call,
+    // keyed by filePath so that each component .brs file gets its own field set.
+    const mtopFieldsCache = new Map<string, Set<string> | null>();
     const getMtopFields = (filePath: string): Set<string> | null => {
-      if (cachedMtopFields !== undefined) return cachedMtopFields;
+      if (mtopFieldsCache.has(filePath)) return mtopFieldsCache.get(filePath)!;
       const { fields } = collectMtopItems(filePath, this.importResolver);
-      cachedMtopFields = fields.length > 0
+      const result = fields.length > 0
         ? new Set(fields.map(f => f.name.toLowerCase()))
         : null;
-      return cachedMtopFields;
+      mtopFieldsCache.set(filePath, result);
+      return result;
     };
 
     const context: LintContext = {
       knownFuncNames,
       calledWorkwideFuncNames: this.callIndex?.getCalledNames(),
       ancestorFuncNames,
+      externalFuncNames,
       getMtopFields,
 
       parseImports: (text: string): KopytkoImport[] => {
