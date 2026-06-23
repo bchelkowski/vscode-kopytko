@@ -1,6 +1,17 @@
 # Changelog
 
 
+## [1.5.0] - 2026-06-23
+
+### Added
+- Add loop-variable-leak, duplicate-function, unreachable-code rules; fix import/unused false positives
+
+### Fixed
+- Fix 4 bugs found in code review of new lint rules
+
+### Changed
+- Single-pass file analysis and per-rule descriptor modules
+
 ## [1.4.0] - 2026-06-19
 
 ### Added
