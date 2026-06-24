@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.6.0] - 2026-06-24
+
+### Added
+- Add goto as unreachable terminator, m-field diagnostics, migrate unreachableCode out of legacyRules
+
 ## [1.5.3] - 2026-06-24
 
 - Release 1.5.3
