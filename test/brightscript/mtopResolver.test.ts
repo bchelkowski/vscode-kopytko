@@ -161,5 +161,29 @@ describe('mtopResolver', () => {
       expect(result.fields).to.deep.equal([]);
       expect(result.methods).to.deep.equal([]);
     });
+
+    it('matches brs path when XML uses a pkg:/ URI resolved against the workspace', () => {
+      // The XML lists the script as pkg:/components/MyComp/MyComp.brs and the
+      // brs path is the resolved absolute path — these must match even if one
+      // uses forward slashes and the other comes from path.join.
+      const resolver = makeResolver({ workspaceFolders: ['/project'], sourceDir: 'app' });
+
+      readdirStub.withArgs('/project/app/components/MyComp').returns(['MyComp.xml']);
+      readFileStub.withArgs('/project/app/components/MyComp/MyComp.xml', 'utf-8').returns(`
+        <component name="MyComp" extends="Node">
+          <interface>
+            <field id="visible" type="boolean" />
+          </interface>
+          <script type="text/brightscript" uri="pkg:/components/MyComp/MyComp.brs" />
+        </component>`);
+      existsStub.withArgs('/project/app/components/MyComp/MyComp.brs').returns(true);
+      readdirTypedStub.returns([]);
+
+      const result = collectMtopItems(
+        '/project/app/components/MyComp/MyComp.brs',
+        resolver,
+      );
+      expect(result.fields.map((f) => f.name)).to.include('visible');
+    });
   });
 });

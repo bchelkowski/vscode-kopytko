@@ -95,6 +95,11 @@ function sgMethodToMtop(m: SgNodeMethod): MtopMethod {
  *  2. User-defined parent components (via `extends`) recursively
  *  3. Roku native SG node fields/methods when the chain reaches a catalog entry
  */
+function normalizePath(p: string): string {
+  const n = nodePath.normalize(p);
+  return process.platform === 'linux' ? n : n.toLowerCase();
+}
+
 export function collectMtopItems(
   brsPath: string,
   importResolver: KopytkoImportResolver,
@@ -107,6 +112,8 @@ export function collectMtopItems(
 
   const brsDir = nodePath.dirname(brsPath);
   const brsBasename = nodePath.basename(brsPath);
+  const normalizedBrsPath = normalizePath(brsPath);
+
   let xmlCandidates: string[] = [];
   try {
     xmlCandidates = fsWrapper.readdirSync(brsDir)
@@ -119,7 +126,7 @@ export function collectMtopItems(
     if (xmlText === undefined) continue;
     if (!xmlText.includes(brsBasename)) continue;
     const listed = getScriptPathsFromXml(xmlPath, workspaceFolders, sourceDir);
-    if (!listed.includes(brsPath)) continue;
+    if (!listed.some(p => normalizePath(p) === normalizedBrsPath)) continue;
 
     collectFromXmlChain(xmlPath, importResolver, fields, methods, visitedXmls);
   }
