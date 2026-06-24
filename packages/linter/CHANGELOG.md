@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.5.2] - 2026-06-24
+
+### Fixed
+- Fix loop-variable-leak false positives for writes and re-assignments
+
 ## [1.5.1] - 2026-06-23
 
 - Release 1.5.1
