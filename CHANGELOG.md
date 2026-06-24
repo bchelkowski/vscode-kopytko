@@ -1,6 +1,30 @@
 # Changelog
 
 
+## [1.3.1] - 2026-06-24
+
+### Added
+- Add call hierarchy provider
+- Add CST-driven folding range and selection range providers
+
+### Fixed
+- Remove unused isNode imports in folding and selection range providers
+- Include SG node methods in m.top valid-member set
+- Normalize paths in collectMtopItems to fix mtop/undefined-field on Windows
+
+### Maintenance
+- Bump kopytko-linter to v1.6.6
+- Bump kopytko-formatter to v1.1.12
+- Bump kopytko-linter to v1.6.5
+- Bump kopytko-formatter to v1.1.11
+- Bump kopytko-linter to v1.6.4
+- Bump kopytko-linter to v1.6.3
+- Bump kopytko-linter to v1.6.2
+- Bump kopytko-formatter to v1.1.10
+- Bump kopytko-linter to v1.6.1
+- Bump kopytko-linter to v1.6.0
+- Add .gitattributes file
+
 ## [1.3.0] - 2026-06-24
 
 - Release 1.3.0
