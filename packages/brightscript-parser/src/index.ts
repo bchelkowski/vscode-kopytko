@@ -115,3 +115,7 @@ export type { ContextAnalysis, ContextField, FunctionBinding, FunctionContext } 
 // Symbol info (rich hover/definition data for builtins and user functions)
 export { getSymbolInfo } from './analysis/symbolInfo.js';
 export type { SymbolInfo } from './analysis/symbolInfo.js';
+
+// Roku SceneGraph node catalog (Node, Group, Task, ContentNode, etc.)
+export { SG_NODES, findSgNode, getAllSgNodeFields, getAllSgNodeMethods } from './catalog/sgNodes.js';
+export type { SgNodeField, SgNodeMethod, SgNodeDefinition } from './catalog/sgNodes.js';
