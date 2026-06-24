@@ -32,7 +32,7 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "kopytko-brightscript-parser": "^1.1.0",
+    "kopytko-brightscript-parser": "^1.1.1",
     "kopytko-formatter": "^1.1.8",
     "kopytko-linter": "^1.5.2",
     "vscode-languageclient": "^10.0.0",
