@@ -148,7 +148,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           TAG="kopytko-linter-v${VERSION}"
           git add packages/linter/package.json packages/linter/package-lock.json packages/linter/CHANGELOG.md
-          git commit -m "chore(kopytko-linter): release v${VERSION}"
+          git commit -m "chore(linter): release v${VERSION}"
           git tag "$TAG" -m "kopytko-linter v${VERSION}"
           git push origin HEAD --tags
 
