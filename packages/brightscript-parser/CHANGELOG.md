@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.1.4] - 2026-06-24
+
+### Fixed
+- Comprehensive SG catalog audit from Roku docs
+- Complete RowList field catalog
+
 ## [1.1.3] - 2026-06-24
 
 ### Fixed
