@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.0] - 2026-06-24
+
+### Added
+- Add isWrite to Reference for write/read distinction
+
 ## [1.0.3] - 2026-06-23
 
 ### Changed
