@@ -1188,6 +1188,34 @@ describe('AST-based lint rules', () => {
       expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
     });
 
+    it('does not warn when the same variable name is used as the iterator in two sequential for-each loops', () => {
+      const src = [
+        'function test()',
+        '  for each item in listA',
+        '    process(item)',
+        '  end for',
+        '  for each item in listB',
+        '    process(item)',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn when the same counter is used in two sequential for loops', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 5',
+        '    print i',
+        '  end for',
+        '  for i = 0 to 10',
+        '    print i',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
     it('does not warn for while loop variable re-assigned then read inside the same while (case 5)', () => {
       // id is first declared in the for loop; re-assigned inside while, then read in the
       // same while-body block — the re-assignment guarantees id is defined before the read.
