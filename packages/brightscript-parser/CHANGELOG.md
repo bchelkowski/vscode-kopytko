@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.1.3] - 2026-06-24
+
+### Fixed
+- Fill catalog gaps found via Roku docs
+- Add Task node to SG catalog
+
 ## [1.1.2] - 2026-06-24
 
 ### Added
