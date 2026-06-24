@@ -900,37 +900,3 @@ Powered by `buildCallGraph` from `brightscript-parser`, which records all direct
 
 The workspace scan uses `WorkspaceFunctionIndex.getFiles()`, which covers all `.brs` files in the workspace roots. Cached parse results (`getCachedFileParseResult`) are reused; files not yet parsed are read via `readCachedFileText` and parsed on demand.
 
----
-
-## `m`-Field Diagnostics
-
-**Rules:** `m/uninitialized-field` and `m/inconsistent-field-type`
-**File:** `packages/linter/src/rules/ast/mFieldDiagnostics.ts`
-**Engine:** `analyzeContext` from `brightscript-parser` (tracks all `m.field = value` assignments with inferred types)
-
-Both rules are `warning` severity by default and participate in the inline-suppression system.
-
-### `m/uninitialized-field`
-
-Warns when `m.fieldName` is **read** but `fieldName` is never assigned anywhere in the file. This catches typos in field names (e.g. `m.tittle` instead of `m.title`).
-
-```brightscript
-sub update()
-  print m.tittle  ' ⚠ m.tittle is read but never assigned in this file.
-end sub
-```
-
-The following built-in SceneGraph fields on `m` are exempt: `top`, `global`, `id`, `focusedChild`, `focusableWhenUnfocused`.
-
-### `m/inconsistent-field-type`
-
-Warns when `m.fieldName` is assigned two or more distinct **inferred** types across the file (e.g. assigned `String` in `init` but `Integer` in `update`). Types are inferred from literals and `CreateObject` calls; assignments from complex expressions are not type-checked.
-
-```brightscript
-sub init()
-  m.count = "zero"  ' ⚠ m.count is assigned inconsistent types: String, Integer.
-end sub
-sub update()
-  m.count = 42
-end sub
-```

@@ -1,12 +1,12 @@
 import {
-  buildScopes, walk, analyzeContext,
+  buildScopes, walk,
   CallExpression, DotExpression, FunctionDeclaration, FunctionExpression, IdentifierExpression,
   ThrowStatement, ReturnStatement, Parameter, LiteralExpression, AAField,
   ExitForStatement, ExitWhileStatement, ContinueForStatement, ContinueWhileStatement,
   ForStatement, ForEachStatement, WhileStatement,
   IfStatement, ElseIfClause, ElseClause, TryStatement, CatchClause,
 } from 'kopytko-brightscript-parser';
-import type { ParseResult, Scope, ContextAnalysis } from 'kopytko-brightscript-parser';
+import type { ParseResult, Scope } from 'kopytko-brightscript-parser';
 
 export interface FileAnalysis {
   rootScope: Scope;
@@ -32,7 +32,6 @@ export interface FileAnalysis {
   exitWhileStatements: ExitWhileStatement[];
   continueForStatements: ContinueForStatement[];
   continueWhileStatements: ContinueWhileStatement[];
-  contextAnalysis: ContextAnalysis;
 }
 
 export function analyzeFile(parseResult: ParseResult): FileAnalysis {
@@ -60,7 +59,6 @@ export function analyzeFile(parseResult: ParseResult): FileAnalysis {
     exitWhileStatements: [],
     continueForStatements: [],
     continueWhileStatements: [],
-    contextAnalysis: analyzeContext(parseResult.root),
   };
 
   walk(parseResult.root, {

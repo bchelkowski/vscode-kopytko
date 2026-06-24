@@ -20,8 +20,6 @@ import {
   checkDuplicateFunctionsAst,
   checkMtopFieldAccessAst,
   checkUnreachableCodeAst,
-  checkMFieldUninitializedAst,
-  checkMFieldInconsistentTypeAst,
 } from '../../src/rules/astRules';
 import type { RuleContext, LintDiagnostic } from '../../src/types';
 import type { LintContext } from '../../src/context';
@@ -1635,108 +1633,5 @@ describe('AST-based lint rules', () => {
         'end function',
       ].join('\n');
       expect(checkUnreachableCodeAst(makeCtx(src, { 'syntax/unreachable-code': 'off' }))).to.have.length(0);
-    });
-  });
-
-  // ─── checkMFieldUninitializedAst ─────────────────────────────────────────
-
-  describe('checkMFieldUninitializedAst', () => {
-    function makeMCtx(source: string): RuleContext {
-      return makeCtx(source, { 'm/uninitialized-field': 'warning' });
-    }
-
-    it('no diagnostic when m.field is read after assignment in the same file', () => {
-      const src = [
-        'sub init()',
-        '  m.data = "hello"',
-        'end sub',
-        'sub update()',
-        '  print m.data',
-        'end sub',
-      ].join('\n');
-      expect(checkMFieldUninitializedAst(makeMCtx(src))).to.have.length(0);
-    });
-
-    it('warns when m.field is read but never assigned', () => {
-      const src = [
-        'sub update()',
-        '  print m.typo',
-        'end sub',
-      ].join('\n');
-      const diags = checkMFieldUninitializedAst(makeMCtx(src));
-      expect(codes(diags)).to.include('m/uninitialized-field');
-    });
-
-    it('no diagnostic for m.top (SceneGraph auto-field)', () => {
-      const src = [
-        'sub init()',
-        '  m.top.observeField("field", "handler")',
-        'end sub',
-      ].join('\n');
-      expect(checkMFieldUninitializedAst(makeMCtx(src))).to.have.length(0);
-    });
-
-    it('no diagnostic for m.global (SceneGraph auto-field)', () => {
-      const src = [
-        'sub init()',
-        '  print m.global.someValue',
-        'end sub',
-      ].join('\n');
-      expect(checkMFieldUninitializedAst(makeMCtx(src))).to.have.length(0);
-    });
-
-    it('no diagnostic when rule is off', () => {
-      const src = 'sub s()\n  print m.nope\nend sub';
-      expect(checkMFieldUninitializedAst(makeCtx(src, { 'm/uninitialized-field': 'off' }))).to.have.length(0);
-    });
-  });
-
-  // ─── checkMFieldInconsistentTypeAst ──────────────────────────────────────
-
-  describe('checkMFieldInconsistentTypeAst', () => {
-    function makeMCtx(source: string): RuleContext {
-      return makeCtx(source, { 'm/inconsistent-field-type': 'warning' });
-    }
-
-    it('no diagnostic when field is always the same type', () => {
-      const src = [
-        'sub init()',
-        '  m.data = "hello"',
-        'end sub',
-        'sub reset()',
-        '  m.data = "world"',
-        'end sub',
-      ].join('\n');
-      expect(checkMFieldInconsistentTypeAst(makeMCtx(src))).to.have.length(0);
-    });
-
-    it('warns when field is assigned String in one function and Integer in another', () => {
-      const src = [
-        'sub init()',
-        '  m.count = "zero"',
-        'end sub',
-        'sub update()',
-        '  m.count = 42',
-        'end sub',
-      ].join('\n');
-      const diags = checkMFieldInconsistentTypeAst(makeMCtx(src));
-      expect(codes(diags)).to.include('m/inconsistent-field-type');
-    });
-
-    it('no diagnostic when type is not inferrable', () => {
-      const src = [
-        'sub init()',
-        '  m.data = someFunction()',
-        'end sub',
-        'sub update()',
-        '  m.data = otherFunction()',
-        'end sub',
-      ].join('\n');
-      expect(checkMFieldInconsistentTypeAst(makeMCtx(src))).to.have.length(0);
-    });
-
-    it('no diagnostic when rule is off', () => {
-      const src = 'sub a()\n  m.x = 1\nend sub\nsub b()\n  m.x = "s"\nend sub';
-      expect(checkMFieldInconsistentTypeAst(makeCtx(src, { 'm/inconsistent-field-type': 'off' }))).to.have.length(0);
     });
   });
