@@ -51,6 +51,8 @@ Canonical list of extension and package features. Each row links to its topic do
 | Outline / Document symbols — functions, subs, AA methods | ✅ | [language-server.md](./language-server.md) |
 | Workspace symbol search (`Ctrl+T`) | ✅ | [language-server.md](./language-server.md) |
 | Document links — `@import` / `@mock` as clickable paths | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Folding ranges — CST-driven folds for functions, `if`/`for`/`while`/`try` blocks, and `@import` groups | ✅ | [language-server.md](./language-server.md) |
+| Selection range — smart expand/shrink selection along AST boundaries (`Shift+Alt+→` / `Shift+Alt+←`) | ✅ | [language-server.md](./language-server.md) |
 
 ## Diagnostics
 
@@ -193,8 +195,6 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 | **`m`-field diagnostics** | Warn on reads of an `m.field` never assigned (typo catch), and inconsistent `m.field` types. | `analyzeContext` (already tracks field assignments + inferred types) |
 | **Inlay hints** | Inline parameter-name hints at call sites and inferred-type hints on `=` assignments. | `inferTypesFromAst` + call graph |
 | **Document highlight** | Highlight every occurrence of the symbol under the cursor (scope-aware, skips strings). | `buildScopes` / `resolve` |
-| **Folding ranges** | Fold functions, `if`/`for`/`while` blocks, and `@import` blocks from the CST (vs today's indentation heuristic). | CST node ranges |
-| **Selection range** | Smart expand/shrink selection along AST boundaries. | CST node ranges |
 | **More quick-fixes** | "Create missing function" stub from an undefined-function call; "Add `@import`" for a function found in another module; "Add type annotation" inferring the type. | scope + import resolver + `inferTypesFromAst` |
 
 ### B. Higher-value, larger build

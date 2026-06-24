@@ -30,6 +30,8 @@ VS Code Extension Host
               ├── BrightScriptCodeActionProvider
               ├── BrightScriptFormattingProvider
               ├── BrightScriptSemanticTokensProvider
+              ├── BrightScriptFoldingRangeProvider
+              ├── BrightScriptSelectionRangeProvider
               ├── providers/shared/symbolResolver.ts
               ├── KopytkoImportResolver
               ├── KopytkoModuleCatalog
@@ -740,6 +742,42 @@ Parser-driven syntax highlighting that classifies each identifier from the scope
 **Client:** none required. The stock `LanguageClient` auto-registers the feature from the server's advertised capability, and the four legend types are standard and themed by default (`editor.semanticHighlighting.enabled` is on by default).
 
 **Implementation:** `BrightScriptSemanticTokensProvider` in `src/server/providers/semanticTokensProvider.ts`; scope tree cached via `getCachedScopeTree` in `src/server/utils/documentCache.ts`.
+
+### Folding Ranges (`textDocument/foldingRange`)
+
+CST-driven folding that replaces VS Code's indentation heuristic for BrightScript files.
+
+**What folds:**
+
+| Construct | Folds from … to … |
+|---|---|
+| `function` / `sub` declaration | `function`/`sub` keyword line → `end function`/`end sub` line |
+| Anonymous `function` / `sub` expression | same |
+| `if` statement | `if` line → `end if` line |
+| `else if` clause | `else if` line → end of its body |
+| `else` clause | `else` line → end of its body |
+| `for` loop | `for` line → `end for`/`next` line |
+| `for each` loop | `for each` line → `end for`/`next` line |
+| `while` loop | `while` line → `end while` line |
+| `try` statement | `try` line → `end try` line |
+| `catch` clause | `catch` line → end of its body |
+| Contiguous `@import` / `@mock` block | first annotation line → last annotation line (kind: `imports`) |
+
+Single-line constructs (where start and end are on the same line) are never emitted. Nested blocks each get their own fold point independently.
+
+**How it works.** `BrightScriptFoldingRangeProvider` performs a single AST `walk` over the cached CST, collecting one `FoldingRange` per block node by reading the `line` property on the first and last tokens of each node. `@import`/`@mock` blocks are detected by a separate linear scan of the document lines (they are comment lines, not grammar nodes). The provider never throws — parse errors return whatever ranges were collected before the failure.
+
+**Implementation:** `BrightScriptFoldingRangeProvider` in `src/server/providers/foldingRangeProvider.ts`.
+
+### Selection Range (`textDocument/selectionRange`)
+
+Smart expand/shrink selection walking AST ancestor boundaries, exposed by VS Code as **Expand Selection** (`Shift+Alt+→`) and **Shrink Selection** (`Shift+Alt+←`).
+
+**How it works.** For each cursor position, `BrightScriptSelectionRangeProvider` calls `findNodeAtPosition` (from the parser package) to locate the deepest CST node at that position along with the full ancestor chain from root to deepest node. Each ancestor is converted to a `Range` using its first and last token positions. If the cursor falls on a specific token, that token's range is appended as the innermost entry. Consecutive duplicate ranges are removed. The resulting range list (outermost to innermost) is chained into a `SelectionRange` tree where each node's `parent` points to the next-larger enclosing range, matching the LSP contract (`parent.range` always contains `this.range`). The innermost range is returned to the client as the starting selection.
+
+Repeated `Shift+Alt+→` presses walk the `parent` chain outward — from token → expression → statement → block → function → file.
+
+**Implementation:** `BrightScriptSelectionRangeProvider` in `src/server/providers/selectionRangeProvider.ts`.
 
 ## Adding New Providers
 
