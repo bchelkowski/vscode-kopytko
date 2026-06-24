@@ -4,7 +4,6 @@ import {
   findNodeAtPosition,
   SyntaxNode,
   isToken,
-  isNode,
 } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
 import { getCachedParseResult } from '../utils/documentCache';

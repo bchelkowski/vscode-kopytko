@@ -4,7 +4,6 @@ import {
   walk,
   SyntaxNode,
   isToken,
-  isNode,
 } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
 import { getCachedParseResult, getCachedLines } from '../utils/documentCache';
