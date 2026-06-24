@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.6.4] - 2026-06-24
+
+### Fixed
+- Skip m.top method calls in mtop/undefined-field rule
+
 ## [1.6.3] - 2026-06-24
 
 - Release 1.6.3
