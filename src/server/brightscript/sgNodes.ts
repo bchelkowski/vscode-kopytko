@@ -574,6 +574,19 @@ export const SG_NODES: Record<string, SgNodeDefinition> = {
     methods: [],
   },
 
+  Task: {
+    name: 'Task',
+    extends: 'Node',
+    description: 'Runs a function in a separate thread. Communicate with the main thread via shared fields.',
+    docsUrl: 'https://developer.roku.com/docs/references/scenegraph/control-nodes/task.md',
+    fields: [
+      { name: 'functionName', type: 'string', description: 'Name of the function to execute in the task thread.' },
+      { name: 'control', type: 'string', description: 'Write "RUN" to start the task, "STOP" to stop it.' },
+      { name: 'state', type: 'string', description: '"init", "run", "stop", or "done". Read-only.', readonly: true },
+    ],
+    methods: [],
+  },
+
   AnimationBase: {
     name: 'AnimationBase',
     extends: 'Node',
