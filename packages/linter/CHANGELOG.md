@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.6.2] - 2026-06-24
+
+### Added
+- Wire getMtopFields in CLI context for mtop/undefined-field
+
 ## [1.6.1] - 2026-06-24
 
 - Release 1.6.1
