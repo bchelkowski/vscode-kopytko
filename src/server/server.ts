@@ -29,6 +29,8 @@ import { BrightScriptRenameProvider } from './providers/renameProvider';
 import { BrightScriptCodeActionProvider } from './providers/codeActionProvider';
 import { BrightScriptFormattingProvider } from './providers/formattingProvider';
 import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensProvider';
+import { BrightScriptFoldingRangeProvider } from './providers/foldingRangeProvider';
+import { BrightScriptSelectionRangeProvider } from './providers/selectionRangeProvider';
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
 import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
@@ -59,6 +61,8 @@ let renameProvider: BrightScriptRenameProvider;
 let codeActionProvider: BrightScriptCodeActionProvider;
 let formattingProvider: BrightScriptFormattingProvider;
 let semanticTokensProvider: BrightScriptSemanticTokensProvider;
+let foldingRangeProvider: BrightScriptFoldingRangeProvider;
+let selectionRangeProvider: BrightScriptSelectionRangeProvider;
 let cacheInvalidationService: CacheInvalidationService;
 let casingConfig: CasingConfig = { ...DEFAULT_CASING_CONFIG };
 let formattingConfig: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG };
@@ -88,6 +92,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   codeActionProvider = new BrightScriptCodeActionProvider();
   formattingProvider = new BrightScriptFormattingProvider();
   semanticTokensProvider = new BrightScriptSemanticTokensProvider();
+  foldingRangeProvider = new BrightScriptFoldingRangeProvider();
+  selectionRangeProvider = new BrightScriptSelectionRangeProvider();
   cacheInvalidationService = new CacheInvalidationService(connection, {
     importResolver: () => importResolver,
     catalog: () => catalog,
@@ -113,6 +119,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       codeActionProvider,
       formattingProvider,
       semanticTokensProvider,
+      foldingRangeProvider,
+      selectionRangeProvider,
     },
     {
       casingConfig: () => casingConfig,
@@ -154,6 +162,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
         legend: semanticTokensProvider.getLegend(),
         full: true,
       },
+      foldingRangeProvider: true,
+      selectionRangeProvider: true,
     },
     serverInfo: {
       name: 'Kopytko BrightScript Language Server',

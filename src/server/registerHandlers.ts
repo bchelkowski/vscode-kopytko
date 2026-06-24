@@ -7,12 +7,16 @@ import {
   DocumentFormattingParams,
   DocumentSymbol,
   DocumentSymbolParams,
+  FoldingRange,
+  FoldingRangeParams,
   Hover,
   HoverParams,
   Location,
   PrepareRenameParams,
   ReferenceParams,
   RenameParams,
+  SelectionRange,
+  SelectionRangeParams,
   SemanticTokensParams,
   SignatureHelpParams,
   SymbolInformation,
@@ -36,6 +40,8 @@ import { BrightScriptHoverProvider } from './providers/hoverProvider';
 import { BrightScriptReferencesProvider } from './providers/referencesProvider';
 import { BrightScriptRenameProvider } from './providers/renameProvider';
 import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensProvider';
+import { BrightScriptFoldingRangeProvider } from './providers/foldingRangeProvider';
+import { BrightScriptSelectionRangeProvider } from './providers/selectionRangeProvider';
 import { BrightScriptSignatureHelpProvider } from './providers/signatureHelpProvider';
 import { BrightScriptWorkspaceSymbolProvider } from './providers/workspaceSymbolProvider';
 import { getCachedAllFunctions, getCachedLines } from './utils/documentCache';
@@ -53,6 +59,8 @@ export interface ServerProviders {
   codeActionProvider: BrightScriptCodeActionProvider;
   formattingProvider: BrightScriptFormattingProvider;
   semanticTokensProvider: BrightScriptSemanticTokensProvider;
+  foldingRangeProvider: BrightScriptFoldingRangeProvider;
+  selectionRangeProvider: BrightScriptSelectionRangeProvider;
 }
 
 export interface HandlerState {
@@ -172,5 +180,17 @@ export function registerHandlers(
     const document = services.getBrsDocument(params.textDocument.uri);
     if (!document) return { data: [] };
     return providers.semanticTokensProvider.provideSemanticTokens(document);
+  });
+
+  connection.onFoldingRanges((params: FoldingRangeParams): FoldingRange[] => {
+    const document = services.getBrsDocument(params.textDocument.uri);
+    if (!document) return [];
+    return providers.foldingRangeProvider.provideFoldingRanges(document);
+  });
+
+  connection.onSelectionRanges((params: SelectionRangeParams): SelectionRange[] => {
+    const document = services.getBrsDocument(params.textDocument.uri);
+    if (!document) return [];
+    return providers.selectionRangeProvider.provideSelectionRanges(document, params.positions);
   });
 }
