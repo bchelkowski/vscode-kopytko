@@ -20,6 +20,8 @@ export { checkLoopVariableLeakAst, descriptor as loopVariableLeakRule } from './
 export { checkDuplicateFunctionsAst, descriptor as duplicateFunctionsRule } from './duplicateFunctions';
 export { checkMtopFieldAccessAst, descriptor as mtopFieldAccessRule } from './mtopFieldAccess';
 export { checkUnreachableCodeAst, descriptor as unreachableCodeRule } from './unreachableCode';
+export { checkMFieldUninitializedAst, uninitializedFieldDescriptor as mFieldUninitializedRule } from './mFieldDiagnostics';
+export { checkMFieldInconsistentTypeAst, inconsistentFieldTypeDescriptor as mFieldInconsistentTypeRule } from './mFieldDiagnostics';
 
 import { descriptor as createObjectArgsRule } from './createObjectArgs';
 import { descriptor as throwStatementsRule } from './throwStatements';
@@ -41,6 +43,7 @@ import { descriptor as loopVariableLeakRule } from './loopVariableLeak';
 import { descriptor as duplicateFunctionsRule } from './duplicateFunctions';
 import { descriptor as mtopFieldAccessRule } from './mtopFieldAccess';
 import { descriptor as unreachableCodeRule } from './unreachableCode';
+import { uninitializedFieldDescriptor as mFieldUninitializedRule, inconsistentFieldTypeDescriptor as mFieldInconsistentTypeRule } from './mFieldDiagnostics';
 import type { RuleDefinition } from '../../types';
 
 export const AST_RULES: RuleDefinition[] = [
@@ -64,4 +67,6 @@ export const AST_RULES: RuleDefinition[] = [
   duplicateFunctionsRule,
   mtopFieldAccessRule,
   unreachableCodeRule,
+  mFieldUninitializedRule,
+  mFieldInconsistentTypeRule,
 ];
