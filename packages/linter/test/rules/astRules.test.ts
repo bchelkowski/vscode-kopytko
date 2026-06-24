@@ -1088,6 +1088,128 @@ describe('AST-based lint rules', () => {
       ].join('\n');
       expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
     });
+
+    it('does not warn when loop variable is re-assigned with = after the loop (pure write)', () => {
+      const src = [
+        'function test()',
+        '  for each key in obj',
+        '    a = obj[key]',
+        '  end for',
+        '  a = invalid',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('still warns when loop variable is compound-assigned after the loop (reads old value)', () => {
+      const src = [
+        'function test()',
+        '  for i = 0 to 5',
+        '    total = i',
+        '  end for',
+        '  total += 1',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length.greaterThan(0);
+    });
+
+    it('does not warn for reads that follow a plain = re-assignment after the loop', () => {
+      const src = [
+        'function test()',
+        '  for each key in obj',
+        '    id = key',
+        '  end for',
+        '  id = computeId()',
+        '  doSomething(id)',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('still warns for a read that comes before any re-assignment after the loop', () => {
+      const src = [
+        'function test()',
+        '  for each key in obj',
+        '    id = key',
+        '  end for',
+        '  doSomething(id)',
+        '  id = computeId()',
+        'end function',
+      ].join('\n');
+      const diags = checkLoopVariableLeakAst(makeLeakCtx(src));
+      expect(codes(diags)).to.include('identifier/loop-variable-leak');
+      expect(diags[0].line).to.equal(4);
+    });
+
+    it('does not warn for variable used inside loop body with multi-line AA literal (case 1)', () => {
+      const src = [
+        'function test()',
+        '  b = []',
+        '  for each key in obj',
+        '    a = obj[key]',
+        '    b.push({',
+        '      name: key,',
+        '      someProp: {',
+        '        someA: a.someAA,',
+        '        someB: a.someBA,',
+        '      }',
+        '    })',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn for nested for-each — outer variable used in inner collection (case 2)', () => {
+      const src = [
+        'function test(tableRows)',
+        '  for each row in tableRows',
+        '    for each column in row.getChildren(-1, 0)',
+        '      for each item in column.getChildren(-1, 0)',
+        '        if (item.id = "something") then item.isSelected = true',
+        '      end for',
+        '    end for',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn for for-each variable used in if statement inside the loop body (case 3)', () => {
+      const src = [
+        'function test()',
+        '  for each item in items',
+        '    if (item.active)',
+        '      doSomething(item)',
+        '    end if',
+        '  end for',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
+
+    it('does not warn for while loop variable re-assigned then read inside the same while (case 5)', () => {
+      // id is first declared in the for loop; re-assigned inside while, then read in the
+      // same while-body block — the re-assignment guarantees id is defined before the read.
+      const src = [
+        'function test()',
+        '  for each key in obj',
+        '    id = key',
+        '  end for',
+        '  while (true)',
+        '    a = getSource()',
+        '    if (a <> invalid)',
+        '      id = a.toStr()',
+        '      b = someAA[id]',
+        '      if (b <> invalid)',
+        '        someOtherAA.delete(id)',
+        '      end if',
+        '    end if',
+        '  end while',
+        'end function',
+      ].join('\n');
+      expect(checkLoopVariableLeakAst(makeLeakCtx(src))).to.have.length(0);
+    });
   });
 
   // ─── checkDuplicateFunctionsAst ───────────────────────────────────────────

@@ -1375,6 +1375,14 @@ export function checkLoopVariableLeakAst(ctx: RuleContext): LintDiagnostic[] {
     const loopRanges = collectLoopRanges(funcScope.owner);
     if (loopRanges.length === 0) return;
 
+    // Pre-build a map of write-reference lines per variable for condition B.
+    const writeLinesByName = new Map<string, number[]>();
+    for (const ref of funcScope.references) {
+      if (!ref.isWrite) continue;
+      if (!writeLinesByName.has(ref.nameLower)) writeLinesByName.set(ref.nameLower, []);
+      writeLinesByName.get(ref.nameLower)!.push(ref.line);
+    }
+
     for (const [, decl] of funcScope.declarations) {
       if (decl.kind !== 'variable' && decl.kind !== 'for-variable' && decl.kind !== 'dim-variable') continue;
 
@@ -1395,6 +1403,13 @@ export function checkLoopVariableLeakAst(ctx: RuleContext): LintDiagnostic[] {
         if (ref.nameLower !== decl.nameLower) continue;
         if (ref.line === decl.line && ref.column === decl.column) continue;
         if (ref.line > containingLoop.endLine) {
+          // Condition A: this reference is a plain `=` write — not a read of a
+          // potentially-undefined value, so it is always safe.
+          if (ref.isWrite) continue;
+          // Condition B: a write to this variable exists between the containing loop's
+          // end and this reference — the variable was reset before this point.
+          const writeLines = writeLinesByName.get(decl.nameLower);
+          if (writeLines?.some(wl => wl > containingLoop!.endLine && wl < ref.line)) continue;
           diagnostics.push({
             severity: (config['identifier/loop-variable-leak'] as LintSeverity) ?? 'warning',
             code: 'identifier/loop-variable-leak',
