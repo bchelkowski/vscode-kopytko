@@ -1474,6 +1474,26 @@ describe('AST-based lint rules', () => {
       expect(checkMtopFieldAccessAst(makeMtopCtx('sub init()\n  m.top.anything = 1\nend sub', null))).to.have.length(0);
     });
 
+    it('does not warn on m.top.method() calls — built-in SG methods are not in <interface>', () => {
+      // observeField, hasFocus, isInFocusChain, subtype, etc. are Node built-ins
+      const src = [
+        'sub init()',
+        '  m.top.observeField("title", "onTitleChange")',
+        '  m.top.observeFieldScoped("count", "onCountChange")',
+        '  if m.top.isInFocusChain() then',
+        '    m.top.subtype()',
+        '  end if',
+        'end sub',
+      ].join('\n');
+      expect(checkMtopFieldAccessAst(makeMtopCtx(src, ['title']))).to.have.length(0);
+    });
+
+    it('still warns on undeclared field access (not a call)', () => {
+      const src = 'sub init()\n  x = m.top.nonExistentField\nend sub';
+      const diags = checkMtopFieldAccessAst(makeMtopCtx(src, ['title']));
+      expect(codes(diags)).to.include('mtop/undefined-field');
+    });
+
     it('does not warn when rule is off', () => {
       const fieldSet = new Set(['title']);
       const ctx = makeCtx('sub init()\n  m.top.undeclared = 1\nend sub', { 'mtop/undefined-field': 'off' });

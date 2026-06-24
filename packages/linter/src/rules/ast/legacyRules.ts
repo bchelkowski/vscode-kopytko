@@ -1523,6 +1523,9 @@ export function checkMtopFieldAccessAst(ctx: RuleContext): LintDiagnostic[] {
       if (innerObj.name.toLowerCase() !== 'm') continue;
       if (obj.member.toLowerCase() !== 'top') continue;
 
+      // m.top.method() — built-in SG methods are not declared in <interface>, skip
+      if (node.syntax.parent?.kind === SyntaxKind.CallExpression) continue;
+
       const fieldName = node.member.toLowerCase();
       if (validFields.has(fieldName)) continue;
 
