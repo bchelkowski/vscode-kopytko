@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.2] - 2026-06-24
+
+### Added
+- Add Roku SceneGraph node catalog
+
 ## [1.1.1] - 2026-06-24
 
 ### Added
