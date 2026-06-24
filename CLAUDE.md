@@ -221,7 +221,8 @@ All new features must follow these patterns:
 | `feat(linter):` / `fix(linter):` / `refactor(linter):` | Linter CHANGELOG |
 | `feat(brightscript-parser):` / `fix(brightscript-parser):` / `refactor(brightscript-parser):` | BrightScript Parser CHANGELOG |
 | Breaking change: add `!` after the scope — e.g. `feat(vscode-kopytko)!:` | `### Breaking Changes` section |
-| `chore:`, `test:`, unscoped commits | Not included in any changelog |
+| `chore(vscode-kopytko):` / `chore(formatter):` / `chore(linter):` / `chore(brightscript-parser):` | `### Maintenance` section |
+| `test:`, `chore:` (unscoped), unscoped commits | Not included in any changelog |
 
 ---
 

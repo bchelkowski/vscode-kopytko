@@ -83,6 +83,7 @@ jobs:
           FIXED=$(pick "fix")
           CHANGED=$(echo "$SUBJECTS" | grep -E "^(refactor|perf)\($SCOPE\)!?:" \
             | sed -E "s/^(refactor|perf)\($SCOPE\)!?: (.)/- \u\2/" | sed -E "s/^- (.)/- \1/")
+          MAINTENANCE=$(pick "chore")
 
           ENTRY_FILE=$(mktemp)
           echo "## [$VERSION] - $DATE" >> "$ENTRY_FILE"
@@ -105,6 +106,11 @@ jobs:
             echo "" >> "$ENTRY_FILE"
             echo "### Changed" >> "$ENTRY_FILE"
             echo "$CHANGED" >> "$ENTRY_FILE"
+          fi
+          if [ -n "$MAINTENANCE" ]; then
+            echo "" >> "$ENTRY_FILE"
+            echo "### Maintenance" >> "$ENTRY_FILE"
+            echo "$MAINTENANCE" >> "$ENTRY_FILE"
           fi
           if [ "$(wc -l < "$ENTRY_FILE")" -eq 1 ]; then
             echo "" >> "$ENTRY_FILE"

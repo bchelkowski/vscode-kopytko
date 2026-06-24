@@ -83,6 +83,7 @@ jobs:
           FIXED=$(pick "fix")
           CHANGED=$(echo "$SUBJECTS" | grep -E "^(refactor|perf)\($SCOPE\)!?:" \
             | sed -E "s/^(refactor|perf)\($SCOPE\)!?: (.)/- \u\2/" | sed -E "s/^- (.)/- \1/")
+          MAINTENANCE=$(pick "chore")
 
           # Build entry into a temp file to preserve newlines
           ENTRY_FILE=$(mktemp)
@@ -106,6 +107,11 @@ jobs:
             echo "" >> "$ENTRY_FILE"
             echo "### Changed" >> "$ENTRY_FILE"
             echo "$CHANGED" >> "$ENTRY_FILE"
+          fi
+          if [ -n "$MAINTENANCE" ]; then
+            echo "" >> "$ENTRY_FILE"
+            echo "### Maintenance" >> "$ENTRY_FILE"
+            echo "$MAINTENANCE" >> "$ENTRY_FILE"
           fi
           # If no matching commits, write a plain fallback line
           if [ "$(wc -l < "$ENTRY_FILE")" -eq 1 ]; then
