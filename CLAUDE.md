@@ -29,9 +29,9 @@ packages/
 │   │   ├── parser.ts               Recursive descent parser → CST (grouped statement dispatch)
 │   │   ├── ast.ts                  Typed AST wrappers (40+ node types)
 │   │   ├── visitor.ts              AstVisitor + walk() + findAll()
-│   │   ├── scope.ts                Scope analysis (buildScopes, resolve)
+│   │   ├── scope.ts                Scope analysis (buildScopes, resolve); Reference.isWrite distinguishes pure writes from reads
 │   │   └── diagnostics.ts          Parse error types
-│   ├── test/                       384 tests (lexer, parser, AST, scope)
+│   ├── test/                       437 tests (lexer, parser, AST, scope)
 │   └── docs/
 │       └── syntax-reference.md     BrightScript syntax catalog (valid/invalid)
 ├── formatter/                      Standalone BrightScript formatter (CLI + library)
@@ -62,7 +62,7 @@ packages/
 │   │   │   │   └── legacyRules.ts  Shared implementations re-exported by descriptors
 │   │   │   ├── syntaxRules.ts      Trailing comma check (pre-parse)
 │   │   │   └── index.ts            Rule registry composition
-│   └── test/                        447 tests
+│   └── test/                        427 tests
 src/
 ├── extension.ts                    Extension entry point; delegates activation wiring to client/activation
 ├── client/                         VS Code client (activation, debug adapter, device discovery, tree views)
@@ -245,6 +245,52 @@ Edit `packages/brightscript-parser/src/catalog/components.ts`. Set `since` for n
 
 The dynamic `KopytkoModuleCatalog` in `src/server/kopytko/moduleCatalog.ts` scans installed packages at runtime. Tests in `test/kopytko/moduleCatalog.test.ts`.
 
+## Package architecture — where logic belongs
+
+The three packages have strict, non-overlapping responsibilities. When adding or moving code, apply this rule:
+
+| Question | Answer |
+|---|---|
+| "Does this come from reading/analysing a `.brs` file?" | **brightscript-parser** |
+| "Does this transform source text to make it prettier?" | **formatter** |
+| "Does this check a rule and report a diagnostic?" | **linter** |
+
+### `brightscript-parser` — source of truth for all file information
+
+The parser is the shared foundation. It must expose every structural fact that any consumer (formatter, linter, LSP extension) could need. **If a consumer is re-deriving something from the CST that the parser could have computed once, move it to the parser.**
+
+What belongs here:
+- Lexer, CST, AST, typed node wrappers
+- Scope analysis: `buildScopes`, `resolve`, `findScopeAtLine`
+  - `Scope.references` carries `Reference.isWrite` — whether a reference is a pure `=` write vs a read
+- Catalogs: builtins, components, casing rules, numeric literals, glob matching
+- Parse diagnostics
+- Any other per-file structural fact (e.g. import declarations, type annotations, declaration kinds)
+
+What does NOT belong here: formatting config, linting config, rule logic, diagnostic codes.
+
+### `formatter` — formatting logic only
+
+The formatter imports the parser (for CST traversal and catalogs) but adds nothing to the parser's analysis. Its own code is exclusively about transforming whitespace, casing, indentation, and wrapping — never about what the code *means*.
+
+What belongs here: CST passes that modify text, `FormattingConfig`, the CLI wrapper.
+
+What does NOT belong here: scope analysis, variable tracking, semantic checks, any logic that could be reused by the linter or extension.
+
+### `linter` — rule execution only
+
+The linter imports the parser for everything file-analysis related (scope, AST, catalogs) and adds only rule-dispatch infrastructure on top. Rules themselves should be thin: consume the parser's output, check one property, emit a diagnostic.
+
+What belongs here: rule descriptors, `checkXxx` functions, `lintRunner`, `fileAnalysis` (which caches the parser's scope/AST for rule reuse), project indexer, suppression logic.
+
+What does NOT belong here: CST traversal helpers that re-derive facts the parser already exposes, duplicate scope-walking code, formatting config.
+
+### Practical check
+
+Before adding a helper to the formatter or linter, ask: *"Would another tool ever need this?"* If yes, it belongs in the parser. Examples of things that started in the linter/formatter but belong in the parser: `Reference.isWrite` (added after the linter needed it to distinguish writes from reads in the loop-variable-leak rule).
+
+---
+
 ## Formatter architecture
 
 The formatting engine is extracted into the standalone `packages/formatter/` package. The extension's `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package. The engine is hybrid: CST-safe passes are exported from `src/cst-passes/index.ts` and inline text/regex passes remain in `formatter.ts`. Consecutive CST style passes are batched through `runCstPasses`, and parse results are cached per intermediate source so typical formatting parses around twice instead of repeatedly parsing per rule. Pass files are lint-clean TypeScript modules; do not add blanket unused-var disables.
@@ -253,4 +299,4 @@ The formatting engine is extracted into the standalone `packages/formatter/` pac
 
 **To add a new formatting option:** add the field to `FormattingConfig` in `packages/formatter/src/config.ts`, wire it in `formatter.ts`, add VS Code setting in root `package.json` under `contributes.configuration`, and update `docs/formatting.md`.
 
-**Shared sources:** The `brightscript-parser` package is the canonical source for builtins, components, casing, numericLiterals, and globMatcher. Both `kopytko-formatter` and `kopytko-linter` import from it. The extension's `src/server/brightscript/` retains only extension-specific files (formatting config adapter, functionIndex for cross-file scope, typeInference for cursor helpers, xmlScriptParser for file system operations).
+**Shared sources:** The `brightscript-parser` package is the canonical source for all file-structural information (see "Package architecture" above). Both `kopytko-formatter` and `kopytko-linter` import from it. The extension's `src/server/brightscript/` retains only extension-specific files (formatting config adapter, functionIndex for cross-file scope, typeInference for cursor helpers, xmlScriptParser for file system operations).
