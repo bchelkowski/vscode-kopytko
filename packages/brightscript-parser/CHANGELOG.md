@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.1] - 2026-06-24
+
+### Added
+- Emit isWrite reference for for/for-each iterators
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
