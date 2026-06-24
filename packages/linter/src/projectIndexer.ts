@@ -8,7 +8,7 @@ import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
 import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName, parseXmlInterface } from './analysis/xmlParser';
-import { findSgNode, getAllSgNodeFields } from 'kopytko-brightscript-parser';
+import { findSgNode, getAllSgNodeFields, getAllSgNodeMethods } from 'kopytko-brightscript-parser';
 import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
@@ -320,6 +320,7 @@ function buildGetMtopFields(
 
     // Built-in SG node (Node, Group, Task, ContentNode, etc.)
     for (const f of getAllSgNodeFields(parentName)) fields.add(f.name.toLowerCase());
+    for (const m of getAllSgNodeMethods(parentName)) fields.add(m.name.toLowerCase());
     return fields;
   }
 

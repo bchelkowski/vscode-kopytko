@@ -142,9 +142,9 @@ export class BrightScriptDiagnosticsProvider {
     const mtopFieldsCache = new Map<string, Set<string> | null>();
     const getMtopFields = (filePath: string): Set<string> | null => {
       if (mtopFieldsCache.has(filePath)) return mtopFieldsCache.get(filePath)!;
-      const { fields } = collectMtopItems(filePath, this.importResolver);
+      const { fields, methods } = collectMtopItems(filePath, this.importResolver);
       const result = fields.length > 0
-        ? new Set(fields.map(f => f.name.toLowerCase()))
+        ? new Set([...fields.map(f => f.name.toLowerCase()), ...methods.map(m => m.name.toLowerCase())])
         : null;
       mtopFieldsCache.set(filePath, result);
       return result;
