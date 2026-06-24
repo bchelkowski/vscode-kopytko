@@ -32,6 +32,7 @@ VS Code Extension Host
               ├── BrightScriptSemanticTokensProvider
               ├── BrightScriptFoldingRangeProvider
               ├── BrightScriptSelectionRangeProvider
+              ├── BrightScriptCallHierarchyProvider
               ├── providers/shared/symbolResolver.ts
               ├── KopytkoImportResolver
               ├── KopytkoModuleCatalog
@@ -876,3 +877,60 @@ Test case names appear in the Outline panel as children of their enclosing `Test
 ### API Catalog
 
 The full test API catalog lives in `src/server/kopytko/testFramework.ts` with typed entries for all matchers, mock methods, suite methods, and global helpers. Each entry includes `name`, `signature`, `returnType`, and `description`.
+
+---
+
+## Call Hierarchy
+
+**Provider:** `src/server/providers/callHierarchyProvider.ts`
+**Capability:** `callHierarchyProvider: true`
+**Trigger:** `Shift+Alt+H` on any function name, or right-click → "Show Call Hierarchy"
+
+Powered by `buildCallGraph` from `brightscript-parser`, which records all direct call sites (function name, line, column, argument count) in two passes over the CST.
+
+### Behaviour
+
+| Request | What it returns |
+|---|---|
+| `callHierarchy/prepare` | A `CallHierarchyItem` for the function at the cursor (name, URI, selectionRange). Resolves via `WorkspaceFunctionIndex` first; falls back to walking the current document's AST. |
+| `callHierarchy/incomingCalls` | All functions in the workspace that call the target function. Each entry carries the caller's `CallHierarchyItem` and a `fromRanges` array pinpointing the exact call sites. File-scope calls (outside any function) are omitted. |
+| `callHierarchy/outgoingCalls` | All functions called by the target function, with `fromRanges` pointing to each call site within it. Callee URIs are resolved from `WorkspaceFunctionIndex` where available. |
+
+### Scope
+
+The workspace scan uses `WorkspaceFunctionIndex.getFiles()`, which covers all `.brs` files in the workspace roots. Cached parse results (`getCachedFileParseResult`) are reused; files not yet parsed are read via `readCachedFileText` and parsed on demand.
+
+---
+
+## `m`-Field Diagnostics
+
+**Rules:** `m/uninitialized-field` and `m/inconsistent-field-type`
+**File:** `packages/linter/src/rules/ast/mFieldDiagnostics.ts`
+**Engine:** `analyzeContext` from `brightscript-parser` (tracks all `m.field = value` assignments with inferred types)
+
+Both rules are `warning` severity by default and participate in the inline-suppression system.
+
+### `m/uninitialized-field`
+
+Warns when `m.fieldName` is **read** but `fieldName` is never assigned anywhere in the file. This catches typos in field names (e.g. `m.tittle` instead of `m.title`).
+
+```brightscript
+sub update()
+  print m.tittle  ' ⚠ m.tittle is read but never assigned in this file.
+end sub
+```
+
+The following built-in SceneGraph fields on `m` are exempt: `top`, `global`, `id`, `focusedChild`, `focusableWhenUnfocused`.
+
+### `m/inconsistent-field-type`
+
+Warns when `m.fieldName` is assigned two or more distinct **inferred** types across the file (e.g. assigned `String` in `init` but `Integer` in `update`). Types are inferred from literals and `CreateObject` calls; assignments from complex expressions are not type-checked.
+
+```brightscript
+sub init()
+  m.count = "zero"  ' ⚠ m.count is assigned inconsistent types: String, Integer.
+end sub
+sub update()
+  m.count = 42
+end sub
+```

@@ -42,6 +42,7 @@ import { BrightScriptRenameProvider } from './providers/renameProvider';
 import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensProvider';
 import { BrightScriptFoldingRangeProvider } from './providers/foldingRangeProvider';
 import { BrightScriptSelectionRangeProvider } from './providers/selectionRangeProvider';
+import { BrightScriptCallHierarchyProvider } from './providers/callHierarchyProvider';
 import { BrightScriptSignatureHelpProvider } from './providers/signatureHelpProvider';
 import { BrightScriptWorkspaceSymbolProvider } from './providers/workspaceSymbolProvider';
 import { getCachedAllFunctions, getCachedLines } from './utils/documentCache';
@@ -61,6 +62,7 @@ export interface ServerProviders {
   semanticTokensProvider: BrightScriptSemanticTokensProvider;
   foldingRangeProvider: BrightScriptFoldingRangeProvider;
   selectionRangeProvider: BrightScriptSelectionRangeProvider;
+  callHierarchyProvider: BrightScriptCallHierarchyProvider;
 }
 
 export interface HandlerState {
@@ -193,4 +195,18 @@ export function registerHandlers(
     if (!document) return [];
     return providers.selectionRangeProvider.provideSelectionRanges(document, params.positions);
   });
+
+  connection.languages.callHierarchy.onPrepare((params) => {
+    const document = services.getBrsDocument(params.textDocument.uri);
+    if (!document) return null;
+    return providers.callHierarchyProvider.prepare(document, params.position);
+  });
+
+  connection.languages.callHierarchy.onIncomingCalls((params) =>
+    providers.callHierarchyProvider.incomingCalls(params.item)
+  );
+
+  connection.languages.callHierarchy.onOutgoingCalls((params) =>
+    providers.callHierarchyProvider.outgoingCalls(params.item)
+  );
 }

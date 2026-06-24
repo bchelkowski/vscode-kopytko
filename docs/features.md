@@ -53,6 +53,7 @@ Canonical list of extension and package features. Each row links to its topic do
 | Document links — `@import` / `@mock` as clickable paths | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
 | Folding ranges — CST-driven folds for functions, `if`/`for`/`while`/`try` blocks, and `@import` groups | ✅ | [language-server.md](./language-server.md) |
 | Selection range — smart expand/shrink selection along AST boundaries (`Shift+Alt+→` / `Shift+Alt+←`) | ✅ | [language-server.md](./language-server.md) |
+| Call hierarchy — incoming and outgoing calls for any function (`Shift+Alt+H` / right-click → "Show Call Hierarchy") | ✅ | [language-server.md](./language-server.md) |
 
 ## Diagnostics
 
@@ -69,6 +70,7 @@ Backed by the standalone linter's 31 rules (shared by the editor and CI). Full r
 | Callbacks | undefined-observer-callback · undefined-event-callback | ✅ | [language-server.md](./language-server.md) |
 | Test structure | missing-return-ts · missing-mock-annotation | ✅ | [language-server.md](./language-server.md) |
 | m.top fields | **undefined-field** (extension mode only — warns on `m.top.<field>` not in XML interface or ancestor chain) | ✅ | [language-server.md](./language-server.md) |
+| `m` fields | **uninitialized-field** — reads of `m.field` never assigned in the file (typo catch); **inconsistent-field-type** — field assigned different inferred types in different functions | ✅ | [language-server.md](./language-server.md) |
 | Inline suppression | `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` comments; glob patterns supported; omit rule to suppress all | ✅ | — |
 
 **Scope-resolution details that keep diagnostics accurate:**
@@ -190,9 +192,6 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 
 | Feature | What it does | Engine it uses |
 |---|---|---|
-| **Call Hierarchy** | VS Code "Show Call Hierarchy" — incoming/outgoing calls for any function. | `buildCallGraph` (already records callers, callees, arg counts) |
-| **Unreachable-code diagnostic** | Flag statements after `return`/`stop`/`throw`/`goto` in a block. | CST/AST walk |
-| **`m`-field diagnostics** | Warn on reads of an `m.field` never assigned (typo catch), and inconsistent `m.field` types. | `analyzeContext` (already tracks field assignments + inferred types) |
 | **Inlay hints** | Inline parameter-name hints at call sites and inferred-type hints on `=` assignments. | `inferTypesFromAst` + call graph |
 | **Document highlight** | Highlight every occurrence of the symbol under the cursor (scope-aware, skips strings). | `buildScopes` / `resolve` |
 | **More quick-fixes** | "Create missing function" stub from an undefined-function call; "Add `@import`" for a function found in another module; "Add type annotation" inferring the type. | scope + import resolver + `inferTypesFromAst` |
