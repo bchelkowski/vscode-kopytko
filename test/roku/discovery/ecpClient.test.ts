@@ -549,6 +549,188 @@ describe('EcpClient', () => {
       }
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // enableRendezvousTracking
+  // ---------------------------------------------------------------------------
+
+  describe('enableRendezvousTracking', () => {
+    it('posts to /query/sgrendezvous/track and returns true on confirmed response', async () => {
+      let requestMethod = '';
+      let requestPath = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestMethod = req.method || '';
+        requestPath = req.url || '';
+        res.writeHead(200, { 'Content-Type': 'text/xml' });
+        res.end('<rendezvous-tracking><tracking-enabled>true</tracking-enabled></rendezvous-tracking>');
+      });
+
+      try {
+        const result = await client.enableRendezvousTracking('127.0.0.1', port);
+        expect(result).to.be.true;
+        expect(requestMethod).to.equal('POST');
+        expect(requestPath).to.equal('/query/sgrendezvous/track');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false when response does not confirm tracking enabled', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<rendezvous-tracking><tracking-enabled>false</tracking-enabled></rendezvous-tracking>');
+      });
+
+      try {
+        const result = await client.enableRendezvousTracking('127.0.0.1', port);
+        expect(result).to.be.false;
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false on connection error', async () => {
+      const result = await client.enableRendezvousTracking('127.0.0.1', 1);
+      expect(result).to.be.false;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // disableRendezvousTracking
+  // ---------------------------------------------------------------------------
+
+  describe('disableRendezvousTracking', () => {
+    it('posts to /query/sgrendezvous/untrack and returns true on 200', async () => {
+      let requestPath = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url || '';
+        res.writeHead(200);
+        res.end('');
+      });
+
+      try {
+        const result = await client.disableRendezvousTracking('127.0.0.1', port);
+        expect(result).to.be.true;
+        expect(requestPath).to.equal('/query/sgrendezvous/untrack');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false on connection error', async () => {
+      const result = await client.disableRendezvousTracking('127.0.0.1', 1);
+      expect(result).to.be.false;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryRendezvousEvents
+  // ---------------------------------------------------------------------------
+
+  describe('queryRendezvousEvents', () => {
+    const RENDEZVOUS_XML = [
+      '<?xml version="1.0" encoding="UTF-8" ?>',
+      '<rendezvous-tracking>',
+      '  <tracking-enabled>true</tracking-enabled>',
+      '  <dropped-event-count>0</dropped-event-count>',
+      '  <rendezvous>',
+      '    <id>1</id>',
+      '    <start-time>100</start-time>',
+      '    <end-time>115</end-time>',
+      '    <line>42</line>',
+      '    <file>pkg:/components/Foo.brs</file>',
+      '  </rendezvous>',
+      '  <rendezvous>',
+      '    <id>2</id>',
+      '    <start-time>200</start-time>',
+      '    <end-time>208</end-time>',
+      '    <line>88</line>',
+      '    <file>pkg:/components/Bar.brs</file>',
+      '  </rendezvous>',
+      '</rendezvous-tracking>',
+    ].join('\n');
+
+    it('gets /query/sgrendezvous and parses events', async () => {
+      let requestPath = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url || '';
+        res.writeHead(200, { 'Content-Type': 'text/xml' });
+        res.end(RENDEZVOUS_XML);
+      });
+
+      try {
+        const events = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(requestPath).to.equal('/query/sgrendezvous');
+        expect(events).to.have.length(2);
+
+        expect(events[0].id).to.equal('1');
+        expect(events[0].startTimeMs).to.equal(100);
+        expect(events[0].endTimeMs).to.equal(115);
+        expect(events[0].line).to.equal(42);
+        expect(events[0].file).to.equal('pkg:/components/Foo.brs');
+
+        expect(events[1].id).to.equal('2');
+        expect(events[1].line).to.equal(88);
+        expect(events[1].file).to.equal('pkg:/components/Bar.brs');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns empty array on non-200 response', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(503);
+        res.end('');
+      });
+
+      try {
+        const events = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(events).to.have.length(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns empty array on connection error', async () => {
+      const events = await client.queryRendezvousEvents('127.0.0.1', 1);
+      expect(events).to.have.length(0);
+    });
+
+    it('returns empty array when XML has no event blocks', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<rendezvous-tracking><tracking-enabled>true</tracking-enabled></rendezvous-tracking>');
+      });
+
+      try {
+        const events = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(events).to.have.length(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('skips event blocks missing required fields', async () => {
+      const xml = [
+        '<rendezvous-tracking>',
+        '  <rendezvous><id>1</id><file>pkg:/Foo.brs</file></rendezvous>',
+        '  <rendezvous><id>2</id><start-time>100</start-time><end-time>110</end-time><line>5</line><file>pkg:/Bar.brs</file></rendezvous>',
+        '</rendezvous-tracking>',
+      ].join('\n');
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const events = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(events).to.have.length(1);
+        expect(events[0].line).to.equal(5);
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

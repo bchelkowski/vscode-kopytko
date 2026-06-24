@@ -912,6 +912,11 @@
           "id": "kopytko.rokuDevices",
           "icon": "images/roku-device.svg",
           "name": "Roku Devices"
+        },
+        {
+          "id": "kopytko.rendezvous",
+          "icon": "images/roku-device.svg",
+          "name": "Rendezvous Log"
         }
       ]
     },
@@ -1010,6 +1015,17 @@
         "title": "Start Debugging (F5)",
         "icon": "$(debug-alt)",
         "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.clearRendezvousLog",
+        "title": "Clear Rendezvous Log",
+        "icon": "$(clear-all)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.navigateToRendezvous",
+        "title": "Go to Rendezvous Location",
+        "category": "Kopytko"
       }
     ],
     "menus": {
@@ -1023,6 +1039,17 @@
           "command": "kopytko.addDevice",
           "when": "view == kopytko.rokuDevices",
           "group": "navigation@2"
+        },
+        {
+          "command": "kopytko.clearRendezvousLog",
+          "when": "view == kopytko.rendezvous",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "kopytko.navigateToRendezvous",
+          "when": "false"
         }
       ],
       "view/item/context": [

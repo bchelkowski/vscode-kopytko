@@ -1,5 +1,65 @@
 import { RokuApp } from '../types';
-import { buildDigestAuthHeader, httpGet, parseDigestChallenge } from '../net/httpClient';
+import { buildDigestAuthHeader, httpGet, httpPost, parseDigestChallenge } from '../net/httpClient';
+
+export interface RendezvousEvent {
+  id: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  line: number;
+  file: string;
+}
+
+/**
+ * Parses repeated rendezvous event blocks from a GET /query/sgrendezvous XML response.
+ * Splits on <rendezvous>...</rendezvous> (or <event>...</event>) boundaries and extracts
+ * leaf tag values from each block individually.
+ */
+function parseRendezvousXml(xml: string): RendezvousEvent[] {
+  const events: RendezvousEvent[] = [];
+
+  // Try <rendezvous>...</rendezvous> blocks first, fall back to <event>...</event>
+  const blockPattern = /<rendezvous\b[^>]*>([\s\S]*?)<\/rendezvous>|<event\b[^>]*>([\s\S]*?)<\/event>/gi;
+  let blockMatch: RegExpExecArray | null;
+
+  while ((blockMatch = blockPattern.exec(xml)) !== null) {
+    const block = blockMatch[1] ?? blockMatch[2];
+    const tags = extractXmlTagsLocal(block);
+
+    const id = tags['id'] ?? tags['rendezvous-id'] ?? '';
+    const startRaw = tags['start-time'] ?? tags['start-time-ms'] ?? '';
+    const endRaw = tags['end-time'] ?? tags['end-time-ms'] ?? '';
+    const lineRaw = tags['line'] ?? tags['line-number'] ?? '';
+    const file = tags['file'] ?? tags['file-path'] ?? tags['source-file'] ?? '';
+
+    if (!file || !lineRaw) continue;
+
+    const startTimeMs = parseInt(startRaw, 10);
+    const endTimeMs = parseInt(endRaw, 10);
+    const line = parseInt(lineRaw, 10);
+
+    if (isNaN(line)) continue;
+
+    events.push({
+      id,
+      startTimeMs: isNaN(startTimeMs) ? 0 : startTimeMs,
+      endTimeMs: isNaN(endTimeMs) ? 0 : endTimeMs,
+      line,
+      file,
+    });
+  }
+
+  return events;
+}
+
+function extractXmlTagsLocal(xml: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const tagPattern = /<([\w-]+)>([^<]*)<\/\1>/g;
+  let match: RegExpExecArray | null;
+  while ((match = tagPattern.exec(xml)) !== null) {
+    result[match[1]] = match[2];
+  }
+  return result;
+}
 
 const DEFAULT_ECP_PORT = 8060;
 const DEFAULT_TIMEOUT_MS = 3000;
@@ -168,6 +228,64 @@ export class EcpClient {
     }
 
     return body;
+  }
+
+  /**
+   * Enables rendezvous tracking on a Roku device via ECP.
+   *
+   * Sends `POST /query/sgrendezvous/track`. Returns `true` when the device
+   * confirms tracking is enabled.
+   */
+  async enableRendezvousTracking(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<boolean> {
+    try {
+      const url = `http://${ip}:${port}/query/sgrendezvous/track`;
+      const { body } = await httpPost(url, DEFAULT_TIMEOUT_MS);
+      return body.includes('<tracking-enabled>true</tracking-enabled>');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Disables rendezvous tracking on a Roku device via ECP.
+   *
+   * Sends `POST /query/sgrendezvous/untrack`. Returns `true` on success.
+   */
+  async disableRendezvousTracking(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<boolean> {
+    try {
+      const url = `http://${ip}:${port}/query/sgrendezvous/untrack`;
+      const { statusCode } = await httpPost(url, DEFAULT_TIMEOUT_MS);
+      return statusCode === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Queries queued rendezvous events from a Roku device via ECP.
+   *
+   * Sends `GET /query/sgrendezvous`. The device returns up to 1,000 events
+   * since tracking was enabled or since the previous query (draining the queue).
+   * Returns an empty array on network errors or when no events are queued.
+   */
+  async queryRendezvousEvents(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<RendezvousEvent[]> {
+    try {
+      const url = `http://${ip}:${port}/query/sgrendezvous`;
+      const { statusCode, body } = await httpGet(url, DEFAULT_TIMEOUT_MS);
+      if (statusCode !== 200) return [];
+      return parseRendezvousXml(body);
+    } catch {
+      return [];
+    }
   }
 
   /**

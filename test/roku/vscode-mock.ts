@@ -23,10 +23,18 @@ const vscodeStub = {
       this.emitter.removeAllListeners();
     }
   },
+  workspace: {
+    getConfiguration: (_section?: string) => ({
+      get: <T>(_key: string, defaultValue: T): T => defaultValue,
+    }),
+  },
   window: {
     state: { focused: true },
     onDidChangeWindowState: () => ({ dispose: () => {} }),
+    showWarningMessage: (..._args: unknown[]) => Promise.resolve(undefined),
+    showInformationMessage: (..._args: unknown[]) => Promise.resolve(undefined),
   },
+  TreeItemCheckboxState: { Checked: 1, Unchecked: 0 },
   Disposable: class {
     dispose() {}
   },

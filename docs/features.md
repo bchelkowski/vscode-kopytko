@@ -168,6 +168,7 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 | Stepping (over/into/out), pause (STOP) | ✅ | [roku-debug.md](./roku-debug.md) |
 | Debug console REPL (EXECUTE) and hover-to-evaluate | ✅ | [roku-debug.md](./roku-debug.md) |
 | Compile errors as diagnostics; program output via IO channel | ✅ | [roku-debug.md](./roku-debug.md) |
+| Rendezvous logging panel — per-device ECP toggle, live polling, events grouped by file:line with navigation | ✅ | [roku-debug.md](./roku-debug.md) |
 
 ## Performance & Caching
 

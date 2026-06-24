@@ -6,6 +6,7 @@ import { NetworkMonitor } from '../roku/discovery/networkMonitor';
 import { DeviceStore } from '../roku/persistence/deviceStore';
 import { CredentialStore } from '../roku/persistence/credentialStore';
 import { DeviceTreeProvider } from '../roku/views/deviceTreeProvider';
+import { RendezvousManager } from '../roku/rendezvous/rendezvousManager';
 import { getAvailableEnvironments } from '../roku/kopytkorc';
 
 export interface DiscoveryServices {
@@ -15,6 +16,7 @@ export interface DiscoveryServices {
   credentials: CredentialStore;
   discoveryChannel: vscode.OutputChannel;
   workspaceRoot: string;
+  rendezvousManager: RendezvousManager;
 }
 
 export function registerDiscovery(context: vscode.ExtensionContext): DiscoveryServices {
@@ -38,14 +40,16 @@ export function registerDiscovery(context: vscode.ExtensionContext): DiscoverySe
   });
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   const treeProvider = new DeviceTreeProvider(deviceManager, () => getAvailableEnvironments(workspaceRoot));
+  const rendezvousManager = new RendezvousManager(deviceManager, ecp, workspaceRoot, context.workspaceState);
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('kopytko.rokuDevices', treeProvider),
+    { dispose: () => rendezvousManager.dispose() },
   );
 
   if (discoveryEnabled) {
     deviceManager.initialize();
   }
 
-  return { deviceManager, treeProvider, ecp, credentials, discoveryChannel, workspaceRoot };
+  return { deviceManager, treeProvider, ecp, credentials, discoveryChannel, workspaceRoot, rendezvousManager };
 }

@@ -7,6 +7,55 @@ export interface HttpGetResponse {
   headers: http.IncomingHttpHeaders;
 }
 
+/** Performs an HTTP POST request and resolves with the status code and response body. */
+export function httpPost(
+  url: string,
+  timeoutMs: number,
+  body?: string,
+  headers?: Record<string, string>,
+): Promise<HttpGetResponse> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const options: http.RequestOptions = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'POST',
+      headers: { ...headers },
+      timeout: timeoutMs,
+    };
+
+    if (body) {
+      options.headers = {
+        ...options.headers,
+        'Content-Length': Buffer.byteLength(body).toString(),
+      };
+    }
+
+    const req = http.request(options, (res) => {
+      let responseBody = '';
+      res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
+      res.on('end', () => {
+        resolve({ statusCode: res.statusCode ?? 0, body: responseBody, headers: res.headers });
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Request to ${url} timed out after ${timeoutMs}ms`));
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    if (body) {
+      req.write(body);
+    }
+    req.end();
+  });
+}
+
 /** Performs an HTTP GET request and resolves with the status code and response body. */
 export function httpGet(
   url: string,
