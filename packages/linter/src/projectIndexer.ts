@@ -7,7 +7,8 @@ import { parseImports, ImportResolver } from './analysis/importParser';
 import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
-import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName } from './analysis/xmlParser';
+import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName, parseXmlInterface } from './analysis/xmlParser';
+import { findSgNode, getAllSgNodeFields } from 'kopytko-brightscript-parser';
 import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
@@ -275,6 +276,72 @@ export function buildProjectContext(projectRoot: string, config: LinterConfig): 
     componentNameToXml, xmlTextCache, brsToXmlParents,
     linterConfig: config,
   });
+}
+
+// ── m.top interface field resolution ────────────────────────────────────────
+
+/**
+ * Builds a `getMtopFields(filePath)` function for use in `LintContext`.
+ * Walks the component XML extends chain collecting all declared interface field
+ * and function names. Follows user-defined parent components via
+ * `componentNameToXml` and falls back to the built-in SG node catalog for the
+ * terminal entry in the chain (e.g. Group, Node, Task).
+ *
+ * Returns null when the file has no companion XML (not a component .brs file).
+ */
+function buildGetMtopFields(
+  brsToXmlParents: Map<string, string[]>,
+  xmlTextCache: Map<string, string>,
+  componentNameToXml: Map<string, string>,
+): (filePath: string) => Set<string> | null {
+  const cache = new Map<string, Set<string> | null>();
+
+  function collectFromXml(xmlPath: string, visited: Set<string>): Set<string> {
+    const fields = new Set<string>();
+    if (visited.has(xmlPath)) return fields;
+    visited.add(xmlPath);
+
+    const xmlText = xmlTextCache.get(xmlPath);
+    if (!xmlText) return fields;
+
+    const iface = parseXmlInterface(xmlText);
+    for (const f of iface.fields) fields.add(f.name.toLowerCase());
+    for (const fn of iface.functions) fields.add(fn.name.toLowerCase());
+
+    const parentName = parseXmlExtends(xmlText);
+    if (!parentName) return fields;
+
+    // User-defined parent component
+    const parentXmlPath = componentNameToXml.get(parentName.toLowerCase());
+    if (parentXmlPath) {
+      for (const f of collectFromXml(parentXmlPath, visited)) fields.add(f);
+      return fields;
+    }
+
+    // Built-in SG node (Node, Group, Task, ContentNode, etc.)
+    for (const f of getAllSgNodeFields(parentName)) fields.add(f.name.toLowerCase());
+    return fields;
+  }
+
+  return (filePath: string): Set<string> | null => {
+    const key = nodePath.normalize(filePath).toLowerCase();
+    if (cache.has(key)) return cache.get(key)!;
+
+    const parentXmls = brsToXmlParents.get(nodePath.normalize(filePath)) ?? [];
+    if (parentXmls.length === 0) {
+      cache.set(key, null);
+      return null;
+    }
+
+    const allFields = new Set<string>();
+    const visited = new Set<string>();
+    for (const xmlPath of parentXmls) {
+      for (const f of collectFromXml(xmlPath, visited)) allFields.add(f);
+    }
+    const result = allFields.size > 0 ? allFields : null;
+    cache.set(key, result);
+    return result;
+  };
 }
 
 // ── Shared logic for building per-file known functions ──
@@ -592,6 +659,8 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     }
   }
 
+  const getMtopFields = buildGetMtopFields(brsToXmlParents, xmlTextCache, componentNameToXml);
+
   const context: LintContext = {
     get knownFuncNames() { return new Set<string>(); },
 
@@ -627,6 +696,8 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     isTestFile(filePath: string): boolean {
       return isTestFile(filePath);
     },
+
+    getMtopFields,
 
     generatedPaths: config.generatedPaths,
     generatedModules: config.generatedModules,
