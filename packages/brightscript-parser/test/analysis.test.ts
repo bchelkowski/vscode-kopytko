@@ -384,4 +384,12 @@ describe('Reference.isWrite', () => {
     expect(refs.every((r: any) => r.isWrite)).to.be.true;
     expect(refs.length).to.equal(2);
   });
+
+  it('= used as comparison operator (BinaryExpression) is isWrite=false', () => {
+    // "if x = 1" — = is a comparison here, not assignment
+    const refs = refsFor('x', 'function f()\n  x = 0\n  if x = 1 then print x\n  end if\nend function');
+    const comparisonRef = refs.find((r: any) => r.line === 2 && !r.isWrite);
+    expect(comparisonRef).to.exist;
+    expect(comparisonRef!.isWrite).to.be.false;
+  });
 });
