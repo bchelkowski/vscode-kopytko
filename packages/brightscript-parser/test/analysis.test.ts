@@ -342,3 +342,46 @@ describe('Type Designator Variables', () => {
     expect(fnScope.declarations.size).to.equal(6);
   });
 });
+
+describe('Reference.isWrite', () => {
+  const { buildScopes } = require('../src/index.js');
+
+  function refsFor(name: string, src: string) {
+    const scope = buildScopes(require('../src/index.js').parse(src).root);
+    const fnScope = scope.children[0];
+    return fnScope.references.filter((r: any) => r.nameLower === name.toLowerCase());
+  }
+
+  it('marks plain = assignment LHS as isWrite=true', () => {
+    const refs = refsFor('x', 'function f()\n  x = 1\nend function');
+    expect(refs.length).to.equal(1);
+    expect(refs[0].isWrite).to.be.true;
+  });
+
+  it('marks read reference as isWrite=false', () => {
+    const refs = refsFor('x', 'function f()\n  x = 1\n  print x\nend function');
+    const readRef = refs.find((r: any) => !r.isWrite);
+    expect(readRef).to.exist;
+    expect(readRef!.isWrite).to.be.false;
+  });
+
+  it('marks compound += assignment LHS as isWrite=false (read-write)', () => {
+    const refs = refsFor('x', 'function f()\n  x = 0\n  x += 1\nend function');
+    const compoundRef = refs.find((r: any) => r.line === 2);
+    expect(compoundRef).to.exist;
+    expect(compoundRef!.isWrite).to.be.false;
+  });
+
+  it('does not mark non-identifier LHS (index access) as a write', () => {
+    const refs = refsFor('arr', 'function f()\n  arr = []\n  arr[0] = 1\nend function');
+    // arr in arr[0]=1 is a read (we read arr to get the array object)
+    const readRef = refs.find((r: any) => r.line === 2);
+    expect(readRef!.isWrite).to.be.false;
+  });
+
+  it('second plain = assignment to same variable is also isWrite=true', () => {
+    const refs = refsFor('x', 'function f()\n  x = 1\n  x = 2\nend function');
+    expect(refs.every((r: any) => r.isWrite)).to.be.true;
+    expect(refs.length).to.equal(2);
+  });
+});

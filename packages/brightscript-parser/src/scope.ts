@@ -52,6 +52,11 @@ export interface Reference {
   readonly column: number;
   /** The CST node containing this reference. */
   readonly node: SyntaxNode;
+  /**
+   * True when this reference is the sole target of a plain `=` assignment (pure write).
+   * False for reads and compound assignments (`+=`, `-=`, etc.) which also read the value.
+   */
+  readonly isWrite: boolean;
 }
 
 export interface Scope {
@@ -134,9 +139,36 @@ function collectFromNode(node: SyntaxNode, scope: Scope): void {
     case SyntaxKind.FunctionExpression:
       collectFunctionExpression(node, scope);
       return;
-    case SyntaxKind.AssignmentStatement:
+    case SyntaxKind.AssignmentStatement: {
       collectAssignment(node, scope);
-      break;
+      // Add the LHS reference with the correct isWrite flag, then recurse only into
+      // non-LHS children so the LHS identifier isn't double-counted.
+      const lhsNode = node.childNodes[0];
+      if (lhsNode?.kind === SyntaxKind.IdentifierExpression) {
+        // Plain `=` is a pure write; compound operators (`+=`, `-=`, etc.) also read.
+        const opToken = node.children.find(isToken);
+        const nameToken = lhsNode.findToken(TokenKind.Identifier);
+        if (nameToken) {
+          scope.references.push({
+            name: nameToken.text,
+            nameLower: nameToken.text.toLowerCase(),
+            line: nameToken.line,
+            column: nameToken.column,
+            node: lhsNode,
+            isWrite: opToken?.kind === TokenKind.Equal,
+          });
+        }
+        for (const child of node.children) {
+          if (isNode(child) && child !== lhsNode) collectFromNode(child, scope);
+        }
+      } else {
+        // Non-identifier LHS (index access, dot access) — all its refs are reads.
+        for (const child of node.children) {
+          if (isNode(child)) collectFromNode(child, scope);
+        }
+      }
+      return;
+    }
     case SyntaxKind.ForStatement:
       collectForVariable(node, scope);
       break;
@@ -402,6 +434,7 @@ function collectReferences(node: SyntaxNode, scope: Scope): void {
         line: token.line,
         column: token.column,
         node,
+        isWrite: false,
       });
     }
   }
@@ -417,6 +450,7 @@ function collectReferences(node: SyntaxNode, scope: Scope): void {
           line: token.line,
           column: token.column,
           node: callee,
+          isWrite: false,
         });
       }
     }
