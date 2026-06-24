@@ -345,7 +345,8 @@ function collectAssignment(node: SyntaxNode, scope: Scope): void {
 
 function collectForVariable(node: SyntaxNode, scope: Scope): void {
   const nameToken = node.findToken(TokenKind.Identifier);
-  if (nameToken && !scope.declarations.has(nameToken.text.toLowerCase())) {
+  if (!nameToken) return;
+  if (!scope.declarations.has(nameToken.text.toLowerCase())) {
     scope.declarations.set(nameToken.text.toLowerCase(), {
       name: nameToken.text,
       nameLower: nameToken.text.toLowerCase(),
@@ -355,6 +356,17 @@ function collectForVariable(node: SyntaxNode, scope: Scope): void {
       node,
     });
   }
+  // The for-counter is assigned at the start of every loop run — record as a write.
+  // For the first declaration this overlaps the decl site and is skipped by the rule's
+  // self-reference check; for re-use in a later loop it enables the intermediate-write path.
+  scope.references.push({
+    name: nameToken.text,
+    nameLower: nameToken.text.toLowerCase(),
+    line: nameToken.line,
+    column: nameToken.column,
+    node,
+    isWrite: true,
+  });
 }
 
 function collectForEachVariable(node: SyntaxNode, scope: Scope): void {
@@ -373,6 +385,15 @@ function collectForEachVariable(node: SyntaxNode, scope: Scope): void {
           node,
         });
       }
+      // The for-each assigns this variable before each iteration — record as a write.
+      scope.references.push({
+        name: child.text,
+        nameLower: child.text.toLowerCase(),
+        line: child.line,
+        column: child.column,
+        node,
+        isWrite: true,
+      });
       break;
     }
   }

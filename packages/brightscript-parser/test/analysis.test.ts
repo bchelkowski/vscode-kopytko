@@ -392,4 +392,27 @@ describe('Reference.isWrite', () => {
     expect(comparisonRef).to.exist;
     expect(comparisonRef!.isWrite).to.be.false;
   });
+
+  it('for-each iterator has isWrite=true reference at the for-each line', () => {
+    const refs = refsFor('item', 'function f()\n  for each item in items\n    print item\n  end for\nend function');
+    const writeRef = refs.find((r: any) => r.isWrite);
+    expect(writeRef).to.exist;
+    expect(writeRef!.line).to.equal(1); // line of "for each item in items"
+  });
+
+  it('for counter has isWrite=true reference at the for line', () => {
+    const refs = refsFor('i', 'function f()\n  for i = 0 to 10\n    print i\n  end for\nend function');
+    const writeRef = refs.find((r: any) => r.isWrite);
+    expect(writeRef).to.exist;
+    expect(writeRef!.line).to.equal(1);
+  });
+
+  it('re-used for-each iterator in second loop produces a second isWrite=true reference', () => {
+    const src = 'function f()\n  for each item in a\n  end for\n  for each item in b\n    print item\n  end for\nend function';
+    const refs = refsFor('item', src);
+    const writeRefs = refs.filter((r: any) => r.isWrite);
+    expect(writeRefs.length).to.equal(2); // one per for-each
+    expect(writeRefs[0].line).to.equal(1); // first for-each
+    expect(writeRefs[1].line).to.equal(3); // second for-each
+  });
 });
