@@ -3,6 +3,7 @@ import { RendezvousManager } from '../rendezvous/rendezvousManager';
 import {
   RendezvousToggleItem,
   RendezvousDropWarningItem,
+  RendezvousSortItem,
   RendezvousGroupItem,
   RendezvousEntryItem,
   RendezvousEmptyItem,
@@ -46,6 +47,8 @@ export class RendezvousTreeProvider implements vscode.TreeDataProvider<vscode.Tr
     const items: vscode.TreeItem[] = [new RendezvousToggleItem(this.manager.isEnabled)];
 
     if (this.manager.isEnabled) {
+      items.push(new RendezvousSortItem(this.manager.sortMode));
+
       if (this.manager.totalDropCount > 0) {
         items.push(new RendezvousDropWarningItem(this.manager.totalDropCount));
       }

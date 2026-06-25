@@ -1028,15 +1028,9 @@
         "category": "Kopytko"
       },
       {
-        "command": "kopytko.sortRendezvousByCount",
-        "title": "Sort by Occurrences",
-        "icon": "$(list-ordered)",
-        "category": "Kopytko"
-      },
-      {
-        "command": "kopytko.sortRendezvousByTime",
-        "title": "Sort by Total Time",
-        "icon": "$(watch)",
+        "command": "kopytko.toggleRendezvousSort",
+        "title": "Toggle Sort Order",
+        "icon": "$(arrow-swap)",
         "category": "Kopytko"
       }
     ],
@@ -1058,13 +1052,8 @@
           "group": "navigation@1"
         },
         {
-          "command": "kopytko.sortRendezvousByTime",
-          "when": "view == kopytko.rendezvous && kopytko.rendezvousSortMode == 'count'",
-          "group": "navigation@2"
-        },
-        {
-          "command": "kopytko.sortRendezvousByCount",
-          "when": "view == kopytko.rendezvous && kopytko.rendezvousSortMode == 'time'",
+          "command": "kopytko.toggleRendezvousSort",
+          "when": "view == kopytko.rendezvous",
           "group": "navigation@2"
         }
       ],
@@ -1074,11 +1063,7 @@
           "when": "false"
         },
         {
-          "command": "kopytko.sortRendezvousByCount",
-          "when": "false"
-        },
-        {
-          "command": "kopytko.sortRendezvousByTime",
+          "command": "kopytko.toggleRendezvousSort",
           "when": "false"
         }
       ],

@@ -3,8 +3,6 @@ import { RendezvousTreeProvider } from '../roku/views/rendezvousTreeProvider';
 import { RendezvousToggleItem } from '../roku/views/rendezvousTreeItems';
 import { DiscoveryServices } from './discovery';
 
-const SORT_CONTEXT_KEY = 'kopytko.rendezvousSortMode';
-
 export function registerRendezvous(
   context: vscode.ExtensionContext,
   services: DiscoveryServices,
@@ -15,9 +13,6 @@ export function registerRendezvous(
     treeDataProvider: provider,
     showCollapseAll: true,
   });
-
-  // Initialise context key so the correct sort button shows immediately.
-  vscode.commands.executeCommand('setContext', SORT_CONTEXT_KEY, rendezvousManager.sortMode);
 
   context.subscriptions.push(
     treeView,
@@ -33,13 +28,10 @@ export function registerRendezvous(
     vscode.commands.registerCommand('kopytko.clearRendezvousLog', () => {
       rendezvousManager.clear();
     }),
-    vscode.commands.registerCommand('kopytko.sortRendezvousByCount', () => {
-      rendezvousManager.setSortMode('count');
-      vscode.commands.executeCommand('setContext', SORT_CONTEXT_KEY, 'count');
-    }),
-    vscode.commands.registerCommand('kopytko.sortRendezvousByTime', () => {
-      rendezvousManager.setSortMode('time');
-      vscode.commands.executeCommand('setContext', SORT_CONTEXT_KEY, 'time');
+    vscode.commands.registerCommand('kopytko.toggleRendezvousSort', () => {
+      rendezvousManager.setSortMode(
+        rendezvousManager.sortMode === 'count' ? 'time' : 'count',
+      );
     }),
     vscode.commands.registerCommand(
       'kopytko.navigateToRendezvous',

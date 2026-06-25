@@ -79,6 +79,24 @@ export class RendezvousEntryItem extends vscode.TreeItem {
   }
 }
 
+/** Clickable row showing the active sort mode; clicking it toggles to the other mode. */
+export class RendezvousSortItem extends vscode.TreeItem {
+  constructor(sortMode: 'count' | 'time') {
+    const label = sortMode === 'count' ? 'Sort: by occurrences' : 'Sort: by total time';
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode.ThemeIcon('arrow-swap');
+    this.contextValue = 'rendezvousSort';
+    this.tooltip = sortMode === 'count'
+      ? 'Currently sorted by number of occurrences — click to sort by total time'
+      : 'Currently sorted by total duration — click to sort by occurrences';
+    this.command = {
+      title: 'Toggle Sort',
+      command: 'kopytko.toggleRendezvousSort',
+      arguments: [],
+    };
+  }
+}
+
 /** Shown when logging is enabled but no events have been captured yet. */
 export class RendezvousEmptyItem extends vscode.TreeItem {
   constructor() {
