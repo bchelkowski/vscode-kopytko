@@ -555,30 +555,30 @@ describe('EcpClient', () => {
   // ---------------------------------------------------------------------------
 
   describe('enableRendezvousTracking', () => {
-    it('posts to /query/sgrendezvous/track and returns true on confirmed response', async () => {
+    it('posts to /sgrendezvous/track and returns true on 200', async () => {
       let requestMethod = '';
       let requestPath = '';
       const { server, port } = await createTestServer((req, res) => {
         requestMethod = req.method || '';
         requestPath = req.url || '';
         res.writeHead(200, { 'Content-Type': 'text/xml' });
-        res.end('<rendezvous-tracking><tracking-enabled>true</tracking-enabled></rendezvous-tracking>');
+        res.end('<sgrendezvous><tracking-enabled>true</tracking-enabled><status>OK</status></sgrendezvous>');
       });
 
       try {
         const result = await client.enableRendezvousTracking('127.0.0.1', port);
         expect(result).to.be.true;
         expect(requestMethod).to.equal('POST');
-        expect(requestPath).to.equal('/query/sgrendezvous/track');
+        expect(requestPath).to.equal('/sgrendezvous/track');
       } finally {
         await closeServer(server);
       }
     });
 
-    it('returns false when response does not confirm tracking enabled', async () => {
+    it('returns false on non-200 status', async () => {
       const { server, port } = await createTestServer((_req, res) => {
-        res.writeHead(200);
-        res.end('<rendezvous-tracking><tracking-enabled>false</tracking-enabled></rendezvous-tracking>');
+        res.writeHead(404);
+        res.end('');
       });
 
       try {
@@ -600,7 +600,7 @@ describe('EcpClient', () => {
   // ---------------------------------------------------------------------------
 
   describe('disableRendezvousTracking', () => {
-    it('posts to /query/sgrendezvous/untrack and returns true on 200', async () => {
+    it('posts to /sgrendezvous/untrack and returns true on 200', async () => {
       let requestPath = '';
       const { server, port } = await createTestServer((req, res) => {
         requestPath = req.url || '';
@@ -611,7 +611,7 @@ describe('EcpClient', () => {
       try {
         const result = await client.disableRendezvousTracking('127.0.0.1', port);
         expect(result).to.be.true;
-        expect(requestPath).to.equal('/query/sgrendezvous/untrack');
+        expect(requestPath).to.equal('/sgrendezvous/untrack');
       } finally {
         await closeServer(server);
       }
@@ -628,26 +628,32 @@ describe('EcpClient', () => {
   // ---------------------------------------------------------------------------
 
   describe('queryRendezvousEvents', () => {
+    // Matches the real Roku device response format
     const RENDEZVOUS_XML = [
       '<?xml version="1.0" encoding="UTF-8" ?>',
-      '<rendezvous-tracking>',
-      '  <tracking-enabled>true</tracking-enabled>',
-      '  <dropped-event-count>0</dropped-event-count>',
-      '  <rendezvous>',
-      '    <id>1</id>',
-      '    <start-time>100</start-time>',
-      '    <end-time>115</end-time>',
-      '    <line>42</line>',
-      '    <file>pkg:/components/Foo.brs</file>',
-      '  </rendezvous>',
-      '  <rendezvous>',
-      '    <id>2</id>',
-      '    <start-time>200</start-time>',
-      '    <end-time>208</end-time>',
-      '    <line>88</line>',
-      '    <file>pkg:/components/Bar.brs</file>',
-      '  </rendezvous>',
-      '</rendezvous-tracking>',
+      '<sgrendezvous>',
+      '  <data>',
+      '    <tracking-enabled>true</tracking-enabled>',
+      '    <drop-count>0</drop-count>',
+      '    <count>2</count>',
+      '    <item>',
+      '      <id>1</id>',
+      '      <start-tm>100</start-tm>',
+      '      <end-tm>115</end-tm>',
+      '      <line-number>42</line-number>',
+      '      <file>pkg:/components/Foo.brs</file>',
+      '    </item>',
+      '    <item>',
+      '      <id>2</id>',
+      '      <start-tm>200</start-tm>',
+      '      <end-tm>208</end-tm>',
+      '      <line-number>88</line-number>',
+      '      <file>pkg:/components/Bar.brs</file>',
+      '    </item>',
+      '  </data>',
+      '  <timestamp>1782382759806</timestamp>',
+      '  <status>OK</status>',
+      '</sgrendezvous>',
     ].join('\n');
 
     it('gets /query/sgrendezvous and parses events', async () => {
@@ -696,10 +702,10 @@ describe('EcpClient', () => {
       expect(events).to.have.length(0);
     });
 
-    it('returns empty array when XML has no event blocks', async () => {
+    it('returns empty array when XML has no item blocks', async () => {
       const { server, port } = await createTestServer((_req, res) => {
         res.writeHead(200);
-        res.end('<rendezvous-tracking><tracking-enabled>true</tracking-enabled></rendezvous-tracking>');
+        res.end('<sgrendezvous><data><tracking-enabled>true</tracking-enabled><count>0</count></data></sgrendezvous>');
       });
 
       try {
@@ -710,12 +716,12 @@ describe('EcpClient', () => {
       }
     });
 
-    it('skips event blocks missing required fields', async () => {
+    it('skips item blocks missing required fields', async () => {
       const xml = [
-        '<rendezvous-tracking>',
-        '  <rendezvous><id>1</id><file>pkg:/Foo.brs</file></rendezvous>',
-        '  <rendezvous><id>2</id><start-time>100</start-time><end-time>110</end-time><line>5</line><file>pkg:/Bar.brs</file></rendezvous>',
-        '</rendezvous-tracking>',
+        '<sgrendezvous><data>',
+        '  <item><id>1</id><file>pkg:/Foo.brs</file></item>',
+        '  <item><id>2</id><start-tm>100</start-tm><end-tm>110</end-tm><line-number>5</line-number><file>pkg:/Bar.brs</file></item>',
+        '</data></sgrendezvous>',
       ].join('\n');
       const { server, port } = await createTestServer((_req, res) => {
         res.writeHead(200);

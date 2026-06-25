@@ -10,26 +10,27 @@ export interface RendezvousEvent {
 }
 
 /**
- * Parses repeated rendezvous event blocks from a GET /query/sgrendezvous XML response.
- * Splits on <rendezvous>...</rendezvous> (or <event>...</event>) boundaries and extracts
- * leaf tag values from each block individually.
+ * Parses rendezvous event items from a GET /query/sgrendezvous XML response.
+ *
+ * Actual device response structure:
+ * <sgrendezvous><data>
+ *   <item><id>1</id><start-tm>…</start-tm><end-tm>…</end-tm><line-number>…</line-number><file>…</file></item>
+ * </data></sgrendezvous>
  */
 function parseRendezvousXml(xml: string): RendezvousEvent[] {
   const events: RendezvousEvent[] = [];
 
-  // Try <rendezvous>...</rendezvous> blocks first, fall back to <event>...</event>
-  const blockPattern = /<rendezvous\b[^>]*>([\s\S]*?)<\/rendezvous>|<event\b[^>]*>([\s\S]*?)<\/event>/gi;
+  const blockPattern = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
   let blockMatch: RegExpExecArray | null;
 
   while ((blockMatch = blockPattern.exec(xml)) !== null) {
-    const block = blockMatch[1] ?? blockMatch[2];
-    const tags = extractXmlTagsLocal(block);
+    const tags = extractXmlTagsLocal(blockMatch[1]);
 
-    const id = tags['id'] ?? tags['rendezvous-id'] ?? '';
-    const startRaw = tags['start-time'] ?? tags['start-time-ms'] ?? '';
-    const endRaw = tags['end-time'] ?? tags['end-time-ms'] ?? '';
-    const lineRaw = tags['line'] ?? tags['line-number'] ?? '';
-    const file = tags['file'] ?? tags['file-path'] ?? tags['source-file'] ?? '';
+    const id = tags['id'] ?? '';
+    const startRaw = tags['start-tm'] ?? '';
+    const endRaw = tags['end-tm'] ?? '';
+    const lineRaw = tags['line-number'] ?? '';
+    const file = tags['file'] ?? '';
 
     if (!file || !lineRaw) continue;
 
@@ -233,7 +234,7 @@ export class EcpClient {
   /**
    * Enables rendezvous tracking on a Roku device via ECP.
    *
-   * Sends `POST /query/sgrendezvous/track`. Returns `true` when the device
+   * Sends `POST /sgrendezvous/track`. Returns `true` when the device
    * confirms tracking is enabled.
    */
   async enableRendezvousTracking(
@@ -241,9 +242,9 @@ export class EcpClient {
     port: number = DEFAULT_ECP_PORT,
   ): Promise<boolean> {
     try {
-      const url = `http://${ip}:${port}/query/sgrendezvous/track`;
-      const { body } = await httpPost(url, DEFAULT_TIMEOUT_MS);
-      return body.includes('<tracking-enabled>true</tracking-enabled>');
+      const url = `http://${ip}:${port}/sgrendezvous/track`;
+      const { statusCode } = await httpPost(url, DEFAULT_TIMEOUT_MS);
+      return statusCode === 200;
     } catch {
       return false;
     }
@@ -252,14 +253,14 @@ export class EcpClient {
   /**
    * Disables rendezvous tracking on a Roku device via ECP.
    *
-   * Sends `POST /query/sgrendezvous/untrack`. Returns `true` on success.
+   * Sends `POST /sgrendezvous/untrack`. Returns `true` on success.
    */
   async disableRendezvousTracking(
     ip: string,
     port: number = DEFAULT_ECP_PORT,
   ): Promise<boolean> {
     try {
-      const url = `http://${ip}:${port}/query/sgrendezvous/untrack`;
+      const url = `http://${ip}:${port}/sgrendezvous/untrack`;
       const { statusCode } = await httpPost(url, DEFAULT_TIMEOUT_MS);
       return statusCode === 200;
     } catch {
