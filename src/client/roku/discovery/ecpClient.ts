@@ -10,14 +10,15 @@ export interface RendezvousEvent {
 }
 
 /**
- * Parses rendezvous event items from a GET /query/sgrendezvous XML response.
+ * Parses rendezvous event items and drop count from a GET /query/sgrendezvous XML response.
  *
  * Actual device response structure:
  * <sgrendezvous><data>
+ *   <drop-count>0</drop-count>
  *   <item><id>1</id><start-tm>…</start-tm><end-tm>…</end-tm><line-number>…</line-number><file>…</file></item>
  * </data></sgrendezvous>
  */
-function parseRendezvousXml(xml: string): RendezvousEvent[] {
+function parseRendezvousXml(xml: string): { events: RendezvousEvent[]; dropCount: number } {
   const events: RendezvousEvent[] = [];
 
   const blockPattern = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
@@ -49,7 +50,10 @@ function parseRendezvousXml(xml: string): RendezvousEvent[] {
     });
   }
 
-  return events;
+  const dropCountMatch = xml.match(/<drop-count>(\d+)<\/drop-count>/);
+  const dropCount = dropCountMatch ? parseInt(dropCountMatch[1], 10) : 0;
+
+  return { events, dropCount };
 }
 
 function extractXmlTagsLocal(xml: string): Record<string, string> {
@@ -273,19 +277,20 @@ export class EcpClient {
    *
    * Sends `GET /query/sgrendezvous`. The device returns up to 1,000 events
    * since tracking was enabled or since the previous query (draining the queue).
-   * Returns an empty array on network errors or when no events are queued.
+   * Also returns `dropCount` — events lost due to buffer overflow since last query.
+   * Returns empty results on network errors or when no events are queued.
    */
   async queryRendezvousEvents(
     ip: string,
     port: number = DEFAULT_ECP_PORT,
-  ): Promise<RendezvousEvent[]> {
+  ): Promise<{ events: RendezvousEvent[]; dropCount: number }> {
     try {
       const url = `http://${ip}:${port}/query/sgrendezvous`;
       const { statusCode, body } = await httpGet(url, DEFAULT_TIMEOUT_MS);
-      if (statusCode !== 200) return [];
+      if (statusCode !== 200) return { events: [], dropCount: 0 };
       return parseRendezvousXml(body);
     } catch {
-      return [];
+      return { events: [], dropCount: 0 };
     }
   }
 

@@ -25,6 +25,7 @@ export class RendezvousManager extends EventEmitter {
   private _enabled = false;
   private _lastKnownSerial: string | undefined;
   private _groups: RendezvousGroup[] = [];
+  private _totalDropCount = 0;
   private _pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -40,6 +41,10 @@ export class RendezvousManager extends EventEmitter {
 
   get isEnabled(): boolean {
     return this._enabled;
+  }
+
+  get totalDropCount(): number {
+    return this._totalDropCount;
   }
 
   getGroups(): RendezvousGroup[] {
@@ -66,6 +71,7 @@ export class RendezvousManager extends EventEmitter {
       await this.ecp.disableRendezvousTracking(device.ip, device.port);
       this._enabled = false;
       this._groups = [];
+      this._totalDropCount = 0;
       this._persistEnabled(device.serialNumber, false);
     }
 
@@ -74,6 +80,7 @@ export class RendezvousManager extends EventEmitter {
 
   clear(): void {
     this._groups = [];
+    this._totalDropCount = 0;
     this.emit('changed');
   }
 
@@ -100,6 +107,7 @@ export class RendezvousManager extends EventEmitter {
 
     this._stopPolling();
     this._groups = [];
+    this._totalDropCount = 0;
     this._lastKnownSerial = newSerial;
 
     if (newSerial) {
@@ -146,26 +154,34 @@ export class RendezvousManager extends EventEmitter {
   }
 
   private async _pollOnce(ip: string, port: number): Promise<void> {
-    const events = await this.ecp.queryRendezvousEvents(ip, port);
-    if (events.length === 0) return;
+    const { events, dropCount } = await this.ecp.queryRendezvousEvents(ip, port);
 
-    const sourceRoot = this._resolveSourceRoot();
     let changed = false;
 
-    for (const event of events) {
-      const key = `${event.file}:${event.line}`;
-      const localPath = sourceRoot ? rokuPathToLocal(event.file, sourceRoot) : event.file;
+    if (dropCount > 0) {
+      this._totalDropCount += dropCount;
+      changed = true;
+    }
 
-      let group = this._groups.find((g) => g.key === key);
-      if (!group) {
-        group = { key, file: event.file, localPath, line: event.line, entries: [] };
-        this._groups.push(group);
+    if (events.length > 0) {
+      const sourceRoot = this._resolveSourceRoot();
+      const receivedAt = Date.now();
+
+      for (const event of events) {
+        const key = `${event.file}:${event.line}`;
+        const localPath = sourceRoot ? rokuPathToLocal(event.file, sourceRoot) : event.file;
+
+        let group = this._groups.find((g) => g.key === key);
+        if (!group) {
+          group = { key, file: event.file, localPath, line: event.line, entries: [] };
+          this._groups.push(group);
+        }
+
+        group.entries.push({
+          duration: Math.max(0, event.endTimeMs - event.startTimeMs),
+          timestamp: receivedAt,
+        });
       }
-
-      group.entries.push({
-        duration: Math.max(0, event.endTimeMs - event.startTimeMs),
-        timestamp: event.startTimeMs,
-      });
       changed = true;
     }
 

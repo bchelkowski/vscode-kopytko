@@ -43,7 +43,7 @@ function createMockEcp() {
   return {
     enableRendezvousTracking: sinon.stub().resolves(true),
     disableRendezvousTracking: sinon.stub().resolves(true),
-    queryRendezvousEvents: sinon.stub().resolves([]),
+    queryRendezvousEvents: sinon.stub().resolves({ events: [], dropCount: 0 }),
   };
 }
 
@@ -122,9 +122,10 @@ describe('RendezvousManager', () => {
   describe('setEnabled(false)', () => {
     it('calls disableRendezvousTracking, clears groups, stops polling', async () => {
       const ecp = createMockEcp();
-      ecp.queryRendezvousEvents.resolves([
-        { id: '1', startTimeMs: 100, endTimeMs: 115, line: 42, file: 'pkg:/Foo.brs' },
-      ]);
+      ecp.queryRendezvousEvents.resolves({
+        events: [{ id: '1', startTimeMs: 100, endTimeMs: 115, line: 42, file: 'pkg:/Foo.brs' }],
+        dropCount: 0,
+      });
       const dm = createMockDeviceManager(DEVICE_A);
       const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
 
@@ -167,14 +168,18 @@ describe('RendezvousManager', () => {
     it('accumulates events into groups keyed by file:line', async () => {
       const ecp = createMockEcp();
       ecp.queryRendezvousEvents
-        .onFirstCall().resolves([
-          { id: '1', startTimeMs: 100, endTimeMs: 115, line: 42, file: 'pkg:/Foo.brs' },
-        ])
-        .onSecondCall().resolves([
-          { id: '2', startTimeMs: 200, endTimeMs: 208, line: 42, file: 'pkg:/Foo.brs' },
-          { id: '3', startTimeMs: 210, endTimeMs: 215, line: 88, file: 'pkg:/Bar.brs' },
-        ])
-        .resolves([]);
+        .onFirstCall().resolves({
+          events: [{ id: '1', startTimeMs: 100, endTimeMs: 115, line: 42, file: 'pkg:/Foo.brs' }],
+          dropCount: 0,
+        })
+        .onSecondCall().resolves({
+          events: [
+            { id: '2', startTimeMs: 200, endTimeMs: 208, line: 42, file: 'pkg:/Foo.brs' },
+            { id: '3', startTimeMs: 210, endTimeMs: 215, line: 88, file: 'pkg:/Bar.brs' },
+          ],
+          dropCount: 0,
+        })
+        .resolves({ events: [], dropCount: 0 });
       const dm = createMockDeviceManager(DEVICE_A);
       const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
 
@@ -223,9 +228,10 @@ describe('RendezvousManager', () => {
   describe('device change', () => {
     it('resets enabled state and clears groups when active device changes', async () => {
       const ecp = createMockEcp();
-      ecp.queryRendezvousEvents.resolves([
-        { id: '1', startTimeMs: 0, endTimeMs: 10, line: 1, file: 'pkg:/A.brs' },
-      ]);
+      ecp.queryRendezvousEvents.resolves({
+        events: [{ id: '1', startTimeMs: 0, endTimeMs: 10, line: 1, file: 'pkg:/A.brs' }],
+        dropCount: 0,
+      });
       const dm = createMockDeviceManager(DEVICE_A);
       const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
 
@@ -281,9 +287,10 @@ describe('RendezvousManager', () => {
   describe('clear()', () => {
     it('empties groups and emits "changed"', async () => {
       const ecp = createMockEcp();
-      ecp.queryRendezvousEvents.resolves([
-        { id: '1', startTimeMs: 0, endTimeMs: 5, line: 1, file: 'pkg:/A.brs' },
-      ]);
+      ecp.queryRendezvousEvents.resolves({
+        events: [{ id: '1', startTimeMs: 0, endTimeMs: 5, line: 1, file: 'pkg:/A.brs' }],
+        dropCount: 0,
+      });
       const dm = createMockDeviceManager(DEVICE_A);
       const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
 

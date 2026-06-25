@@ -665,52 +665,74 @@ describe('EcpClient', () => {
       });
 
       try {
-        const events = await client.queryRendezvousEvents('127.0.0.1', port);
+        const result = await client.queryRendezvousEvents('127.0.0.1', port);
         expect(requestPath).to.equal('/query/sgrendezvous');
-        expect(events).to.have.length(2);
+        expect(result.events).to.have.length(2);
+        expect(result.dropCount).to.equal(0);
 
-        expect(events[0].id).to.equal('1');
-        expect(events[0].startTimeMs).to.equal(100);
-        expect(events[0].endTimeMs).to.equal(115);
-        expect(events[0].line).to.equal(42);
-        expect(events[0].file).to.equal('pkg:/components/Foo.brs');
+        expect(result.events[0].id).to.equal('1');
+        expect(result.events[0].startTimeMs).to.equal(100);
+        expect(result.events[0].endTimeMs).to.equal(115);
+        expect(result.events[0].line).to.equal(42);
+        expect(result.events[0].file).to.equal('pkg:/components/Foo.brs');
 
-        expect(events[1].id).to.equal('2');
-        expect(events[1].line).to.equal(88);
-        expect(events[1].file).to.equal('pkg:/components/Bar.brs');
+        expect(result.events[1].id).to.equal('2');
+        expect(result.events[1].line).to.equal(88);
+        expect(result.events[1].file).to.equal('pkg:/components/Bar.brs');
       } finally {
         await closeServer(server);
       }
     });
 
-    it('returns empty array on non-200 response', async () => {
+    it('parses drop-count from response', async () => {
+      const xml = [
+        '<sgrendezvous><data>',
+        '  <drop-count>42</drop-count>',
+        '</data></sgrendezvous>',
+      ].join('');
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const result = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(result.dropCount).to.equal(42);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns empty results on non-200 response', async () => {
       const { server, port } = await createTestServer((_req, res) => {
         res.writeHead(503);
         res.end('');
       });
 
       try {
-        const events = await client.queryRendezvousEvents('127.0.0.1', port);
-        expect(events).to.have.length(0);
+        const result = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(result.events).to.have.length(0);
+        expect(result.dropCount).to.equal(0);
       } finally {
         await closeServer(server);
       }
     });
 
-    it('returns empty array on connection error', async () => {
-      const events = await client.queryRendezvousEvents('127.0.0.1', 1);
-      expect(events).to.have.length(0);
+    it('returns empty results on connection error', async () => {
+      const result = await client.queryRendezvousEvents('127.0.0.1', 1);
+      expect(result.events).to.have.length(0);
+      expect(result.dropCount).to.equal(0);
     });
 
-    it('returns empty array when XML has no item blocks', async () => {
+    it('returns empty events when XML has no item blocks', async () => {
       const { server, port } = await createTestServer((_req, res) => {
         res.writeHead(200);
         res.end('<sgrendezvous><data><tracking-enabled>true</tracking-enabled><count>0</count></data></sgrendezvous>');
       });
 
       try {
-        const events = await client.queryRendezvousEvents('127.0.0.1', port);
-        expect(events).to.have.length(0);
+        const result = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(result.events).to.have.length(0);
       } finally {
         await closeServer(server);
       }
@@ -729,9 +751,9 @@ describe('EcpClient', () => {
       });
 
       try {
-        const events = await client.queryRendezvousEvents('127.0.0.1', port);
-        expect(events).to.have.length(1);
-        expect(events[0].line).to.equal(5);
+        const result = await client.queryRendezvousEvents('127.0.0.1', port);
+        expect(result.events).to.have.length(1);
+        expect(result.events[0].line).to.equal(5);
       } finally {
         await closeServer(server);
       }

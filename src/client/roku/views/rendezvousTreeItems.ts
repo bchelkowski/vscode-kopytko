@@ -2,6 +2,10 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RendezvousGroup, RendezvousEntry } from '../rendezvous/rendezvousManager';
 
+function formatDuration(ms: number): string {
+  return ms === 0 ? '<1ms' : `${ms}ms`;
+}
+
 /** Top-level checkbox item for toggling rendezvous logging on/off. */
 export class RendezvousToggleItem extends vscode.TreeItem {
   constructor(enabled: boolean) {
@@ -17,13 +21,35 @@ export class RendezvousToggleItem extends vscode.TreeItem {
   }
 }
 
+/** Warning shown when events were dropped due to the device buffer (1000 events) overflowing. */
+export class RendezvousDropWarningItem extends vscode.TreeItem {
+  constructor(dropCount: number) {
+    super(`${dropCount} event${dropCount === 1 ? '' : 's'} dropped`, vscode.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode.ThemeIcon('warning');
+    this.contextValue = 'rendezvousDropWarning';
+    this.tooltip = `${dropCount} rendezvous event${dropCount === 1 ? ' was' : 's were'} lost because the device buffer (1000 events) overflowed. Poll more frequently or reduce rendezvous activity.`;
+  }
+}
+
 /** Collapsible group item representing all rendezvous events at a single file:line. */
 export class RendezvousGroupItem extends vscode.TreeItem {
   constructor(public readonly group: RendezvousGroup) {
     const filename = path.basename(group.localPath || group.file);
     super(`${filename}:${group.line}`, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = `(${group.entries.length})`;
-    this.tooltip = `${group.file}:${group.line}`;
+
+    const count = group.entries.length;
+    const total = group.entries.reduce((sum, e) => sum + e.duration, 0);
+    const max = Math.max(...group.entries.map((e) => e.duration));
+    const avg = Math.round(total / count);
+
+    this.description = `${count}×  ${formatDuration(total)} total`;
+
+    this.tooltip = new vscode.MarkdownString(
+      `**${group.file}:${group.line}**\n\n` +
+      `Occurrences: ${count}\n\n` +
+      `Total: ${formatDuration(total)}  ·  Avg: ${formatDuration(avg)}  ·  Max: ${formatDuration(max)}`,
+    );
+
     this.iconPath = new vscode.ThemeIcon('location');
     this.contextValue = 'rendezvousGroup';
     this.command = {
@@ -34,14 +60,14 @@ export class RendezvousGroupItem extends vscode.TreeItem {
   }
 }
 
-/** Leaf item showing the duration and timestamp of a single rendezvous event. */
+/** Leaf item showing the duration and wall-clock time of a single rendezvous event. */
 export class RendezvousEntryItem extends vscode.TreeItem {
   constructor(
     entry: RendezvousEntry,
     localPath: string,
     line: number,
   ) {
-    super(`${entry.duration}ms`, vscode.TreeItemCollapsibleState.None);
+    super(formatDuration(entry.duration), vscode.TreeItemCollapsibleState.None);
     this.description = new Date(entry.timestamp).toLocaleTimeString();
     this.iconPath = new vscode.ThemeIcon('watch');
     this.contextValue = 'rendezvousEntry';
