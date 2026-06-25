@@ -1,0 +1,193 @@
+---
+import Layout from '../components/Layout.astro';
+import CodePanel from '../components/CodePanel.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const tools = [
+  {
+    href: `${base}/extension`,
+    icon: '🧩',
+    name: 'VS Code Extension',
+    badge: 'Free',
+    description: 'Full BrightScript language server with IntelliSense, go-to-definition, diagnostics, rename, formatting, and an integrated Roku debugger.',
+    highlights: ['31 diagnostic rules', 'Live debugging', 'Device discovery', 'Call hierarchy'],
+    color: 'violet',
+  },
+  {
+    href: `${base}/parser`,
+    icon: '🔬',
+    name: 'brightscript-parser',
+    badge: 'npm',
+    description: 'Lossless hand-written BrightScript lexer and recursive-descent parser. Produces a lossless CST, typed AST, and scope analysis.',
+    highlights: ['Lossless CST', 'Typed AST', 'Scope analysis', '60+ built-in components'],
+    color: 'indigo',
+  },
+  {
+    href: `${base}/linter`,
+    icon: '🔍',
+    name: 'kopytko-linter',
+    badge: 'npm',
+    description: 'Static analysis tool with 25+ rules covering imports, undefined identifiers, type annotations, syntax errors, and callback wiring.',
+    highlights: ['25+ rules', 'SARIF output', 'Auto-fix', 'Inline suppression'],
+    color: 'cyan',
+  },
+  {
+    href: `${base}/formatter`,
+    icon: '✨',
+    name: 'kopytko-formatter',
+    badge: 'npm',
+    description: 'Hybrid 27-pass BrightScript formatter with 39+ configuration options for indentation, spacing, casing, imports, and more.',
+    highlights: ['39+ options', '10 casing dimensions', 'CI-ready', 'VSCode integration'],
+    color: 'emerald',
+  },
+];
+
+const stats = [
+  { value: '25+', label: 'Lint rules' },
+  { value: '39+', label: 'Formatter options' },
+  { value: '60+', label: 'Built-in components' },
+  { value: '10', label: 'Casing dimensions' },
+  { value: '27', label: 'CST passes' },
+  { value: '1100+', label: 'Tests' },
+];
+
+const installExample = `# Install the formatter and linter
+npm install --save-dev kopytko-formatter kopytko-linter
+
+# Add to package.json scripts (targets .brs files in the src/ directory):
+#   "format": "kopytko-format --write \\"src/**/*.brs\\"",
+#   "format:check": "kopytko-format --check \\"src/**/*.brs\\"",
+#   "lint": "kopytko-lint --source-dir src"
+
+# Run checks
+npm run format:check
+npm run lint`;
+---
+<Layout title="Home">
+  <!-- Hero -->
+  <section class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(124,58,237,0.15),transparent)]"></div>
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-10 text-center">
+      <div class="relative mx-auto mb-5 w-fit">
+        <div class="absolute inset-0 -m-6 rounded-full bg-violet-600/20 blur-2xl"></div>
+        <img src={`${base}/kopytko-logo.svg`} alt="Kopytko" class="relative w-28 h-28 drop-shadow-[0_0_28px_rgba(168,85,247,0.45)]" />
+      </div>
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-3 pb-2 bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-300">
+        Professional BrightScript<br class="hidden sm:block" /> tooling for Roku
+      </h1>
+      <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-6 leading-relaxed">
+        A complete ecosystem of open-source developer tools for BrightScript and the Kopytko Framework —
+        from a full-featured VS Code extension to standalone npm packages for CI pipelines.
+      </p>
+      <div class="flex flex-wrap justify-center gap-3 mb-8">
+        <a href={`${base}/extension`} class="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-lg transition-colors text-sm">
+          Get the Extension
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko" target="_blank" class="inline-flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-medium rounded-lg transition-colors text-sm">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+
+      <!-- Stats -->
+      <div class="flex flex-wrap justify-center gap-6 sm:gap-10">
+        {stats.map(s => (
+          <div class="text-center">
+            <div class="text-2xl font-bold text-white">{s.value}</div>
+            <div class="text-xs text-slate-500 mt-0.5">{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Tool cards -->
+  <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {tools.map(tool => (
+        <a href={tool.href} class="group block bg-[#0f1923] border border-[#1e2d4a] hover:border-violet-500/50 rounded-xl p-6 transition-all hover:shadow-lg hover:shadow-violet-900/10">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">{tool.icon}</span>
+              <div>
+                <h2 class="font-semibold text-white group-hover:text-violet-300 transition-colors">{tool.name}</h2>
+                <span class="text-xs text-slate-500">{tool.badge}</span>
+              </div>
+            </div>
+            <svg class="w-4 h-4 text-slate-600 group-hover:text-violet-400 transition-colors mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed mb-4">{tool.description}</p>
+          <div class="flex flex-wrap gap-2">
+            {tool.highlights.map(h => (
+              <span class="text-xs bg-slate-800/60 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700/50">{h}</span>
+            ))}
+          </div>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <!-- Quick start -->
+  <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+      <div>
+        <h2 class="text-2xl font-bold text-white mb-3">Get started in 60 seconds</h2>
+        <p class="text-slate-400 leading-relaxed mb-6">
+          Install the formatter and linter from npm, add two scripts to your <code class="text-violet-300 text-sm">package.json</code>, and you're ready for CI-enforced BrightScript quality.
+        </p>
+        <div class="space-y-3">
+          <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-violet-600/20 border border-violet-700/50 rounded-full flex items-center justify-center text-xs font-bold text-violet-400">1</span>
+            <div>
+              <p class="text-sm font-medium text-white">Install packages</p>
+              <p class="text-xs text-slate-500 mt-0.5"><code>npm install --save-dev kopytko-formatter kopytko-linter</code></p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-violet-600/20 border border-violet-700/50 rounded-full flex items-center justify-center text-xs font-bold text-violet-400">2</span>
+            <div>
+              <p class="text-sm font-medium text-white">Add npm scripts</p>
+              <p class="text-xs text-slate-500 mt-0.5">Wire <code>kopytko-format</code> and <code>kopytko-lint</code> in <code>package.json</code></p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-violet-600/20 border border-violet-700/50 rounded-full flex items-center justify-center text-xs font-bold text-violet-400">3</span>
+            <div>
+              <p class="text-sm font-medium text-white">Install the VS Code extension</p>
+              <p class="text-xs text-slate-500 mt-0.5">IntelliSense, diagnostics, and the Roku debugger — free from the Marketplace</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <CodePanel code={installExample} lang="bash" filename="terminal" />
+    </div>
+  </section>
+
+  <!-- Feature highlights -->
+  <section class="border-t border-[#1e2d4a] py-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-2xl font-bold text-white text-center mb-10">Built for professional Roku development</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[
+          { icon: '⚡', title: 'Lossless parser', body: 'Round-trip fidelity — every byte of the original source is preserved in the CST including whitespace and comments.' },
+          { icon: '🎯', title: 'Scope-aware analysis', body: 'Correct variable and function resolution across @import chains, XML siblings, and nested function scopes.' },
+          { icon: '🔌', title: 'Roku debugger', body: 'Native socket debug protocol 3.3.0 — breakpoints, variable inspection, multi-thread stepping, and REPL.' },
+          { icon: '🖥️', title: 'Device discovery', body: 'SSDP-based automatic Roku discovery with device health checks, persisted favorites, and secure credential storage.' },
+          { icon: '🔄', title: 'Rendezvous logging', body: 'Real-time monitoring of SceneGraph rendezvous events grouped by file and line for performance profiling.' },
+          { icon: '📦', title: 'Kopytko-aware', body: '@import resolution across packages, module catalog, test framework completions, and .kopytkorc validation.' },
+        ].map(f => (
+          <div class="flex gap-4 p-5 bg-[#0f1923] rounded-xl border border-[#1e2d4a]">
+            <span class="text-2xl shrink-0">{f.icon}</span>
+            <div>
+              <h3 class="font-semibold text-white text-sm mb-1">{f.title}</h3>
+              <p class="text-xs text-slate-400 leading-relaxed">{f.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+</Layout>

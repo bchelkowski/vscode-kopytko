@@ -163,6 +163,15 @@ jobs:
       - name: Publish to npm
         run: npm publish --access public --provenance
 
+  deploy-pages:
+    name: Deploy GitHub Pages
+    needs: release
+    uses: ./.github/workflows/gh-pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
       - name: Update root kopytko-formatter dependency
         working-directory: ${{ github.workspace }}
         run: |

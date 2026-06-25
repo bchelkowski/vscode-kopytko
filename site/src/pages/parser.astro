@@ -1,0 +1,368 @@
+---
+import Layout from '../components/Layout.astro';
+import CodePanel from '../components/CodePanel.astro';
+import TokenVisualizer from '../components/TokenVisualizer';
+import parserPkg from '../../../packages/brightscript-parser/package.json';
+
+const installExample = `npm install kopytko-brightscript-parser`;
+
+const basicUsage = `import { tokenize, parse, buildScopes } from 'kopytko-brightscript-parser';
+
+const source = \`
+function add(a as Integer, b as Integer) as Integer
+  return a + b
+end function
+\`;
+
+// 1. Tokenize — get the raw token stream
+const tokens = tokenize(source);
+console.log(tokens.length);          // 20 tokens
+console.log(tokens[0].kind);         // 'Function'
+console.log(tokens[0].text);         // 'function'
+
+// 2. Parse — get the full CST + diagnostics
+const { root, diagnostics } = parse(source);
+console.log(diagnostics.length);     // 0 (no errors)
+
+// 3. Scope analysis
+const scope = buildScopes(root);
+const addDecl = scope.declarations.get('add');
+console.log(addDecl?.kind);          // 'function'`;
+
+const scopeExample = `import { parse, buildScopes, resolve, findScopeAtLine } from 'kopytko-brightscript-parser';
+
+const source = \`
+function outer() as Void
+  x = 10
+  inner = function(y as Integer) as Integer
+    return x + y
+  end function
+end function
+\`;
+
+const { root } = parse(source);
+const fileScope = buildScopes(root);
+
+// outer() scope
+const outerScope = fileScope.children[0];
+console.log(outerScope.ownerName);   // 'outer'
+console.log([...outerScope.declarations.keys()]);
+// ['x', 'inner']
+
+// Resolve a name from the inner scope
+const innerScope = outerScope.children[0];
+const xDecl = resolve('x', innerScope);
+console.log(xDecl?.kind);            // 'variable' (found in parent scope)
+
+// Find innermost scope at a given line (0-based)
+const scope = findScopeAtLine(fileScope, 4);
+console.log(scope.ownerName);        // '<anonymous>'`;
+
+const astExample = `import { parse, wrapNode, SourceFile, FunctionDeclaration, walk } from 'kopytko-brightscript-parser';
+
+const { root } = parse(\`
+function greet(name as String) as String
+  return "Hello, " + name
+end function
+\`);
+
+const file = wrapNode(root) as SourceFile;
+
+// Walk the AST with a visitor
+walk(file, {
+  visitFunctionDeclaration(node: FunctionDeclaration) {
+    console.log('Function:', node.name?.text);
+    console.log('Params:', node.parameterList?.parameters.map(p => p.name?.text));
+    console.log('ReturnType:', node.returnTypeClause?.typeName?.text);
+  }
+});
+// Function: greet
+// Params: ['name']
+// ReturnType: String`;
+
+const tokenKindTable = {
+  Literals: ['IntegerLiteral', 'LongIntegerLiteral', 'FloatLiteral', 'DoubleLiteral', 'StringLiteral'],
+  Identifiers: ['Identifier'],
+  'Type names': ['TypeName — parser-produced; any token after as'],
+  Keywords: [
+    'And', 'As', 'Box', 'Catch', 'Continue', 'CreateObject', 'Dim', 'Each',
+    'Else', 'ElseIf', 'End', 'EndFor', 'EndFunction', 'EndIf', 'EndSub',
+    'EndTry', 'EndWhile', 'Eval', 'Exit', 'ExitWhile', 'False', 'For',
+    'Function', 'GetGlobalAA', 'GetLastRunCompileError', 'GetLastRunRunTimeError',
+    'Goto', 'If', 'In', 'Invalid', 'Let', 'LineNum', 'Mod', 'Next', 'Not',
+    'ObjFun', 'Or', 'Pos', 'Print', 'Return', 'Run', 'Step', 'Stop', 'Sub',
+    'Tab', 'Then', 'Throw', 'To', 'True', 'Try', 'Type', 'While',
+  ],
+  Operators: [
+    'Plus', 'Minus', 'Star', 'Slash', 'Backslash', 'Caret',
+    'Equal', 'LessGreater', 'Less', 'Greater', 'LessEqual', 'GreaterEqual',
+    'LeftShift', 'RightShift',
+    'PlusEqual', 'MinusEqual', 'StarEqual', 'SlashEqual', 'BackslashEqual',
+    'LeftShiftEqual', 'RightShiftEqual',
+    'PlusPlus', 'MinusMinus',
+    'QuestionDot', 'QuestionBracket', 'QuestionParen', 'QuestionAt',
+  ],
+  Punctuation: ['LeftParen', 'RightParen', 'LeftBracket', 'RightBracket', 'LeftBrace', 'RightBrace', 'Dot', 'Comma', 'Colon', 'At'],
+  Preprocessor: ['HashIf', 'HashElseIf', 'HashElse', 'HashEndIf', 'HashConst', 'HashError'],
+};
+
+const tokenColors: Record<string, string> = {
+  Literals: '#f78c6c',
+  Identifiers: '#82aaff',
+  'Type names': '#4ec9b0',
+  Keywords: '#c792ea',
+  Operators: '#89ddff',
+  Punctuation: '#7e8da0',
+  Preprocessor: '#ffcb6b',
+};
+---
+<Layout title="Parser" activePage="parser">
+  <!-- Page header -->
+  <div class="bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(99,102,241,0.12),transparent)] border-b border-[#1e2d4a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+      <div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+        <span>npm</span>
+        <span>/</span>
+        <code class="text-slate-300">kopytko-brightscript-parser</code>
+        <span class="bg-slate-700/60 text-slate-400 text-xs px-2 py-0.5 rounded-full ml-1">v{parserPkg.version}</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">BrightScript Parser</h1>
+      <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
+        A lossless, hand-written BrightScript lexer and recursive-descent parser. Produces a Concrete Syntax Tree that preserves every byte of the original source — whitespace, comments, and all.
+      </p>
+      <div class="flex flex-wrap gap-3 mt-6">
+        <a href="https://www.npmjs.com/package/kopytko-brightscript-parser" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.331h-2.669v0zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10h1.336v2.667h-1.336V10z"/></svg>
+          npm
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko/tree/main/packages/brightscript-parser" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Source
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16">
+
+    <!-- Pipeline diagram -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-6">Processing pipeline</h2>
+      <div class="flex flex-col sm:flex-row items-center gap-2 p-6 bg-[#0f1923] border border-[#1e2d4a] rounded-xl overflow-x-auto">
+        {[
+          { name: 'Source text', desc: 'Raw .brs string', color: 'slate' },
+          { name: 'Lexer', desc: 'tokenize()', color: 'indigo' },
+          { name: 'Token[]', desc: 'with trivia', color: 'slate' },
+          { name: 'Parser', desc: 'parse()', color: 'violet' },
+          { name: 'SyntaxNode (CST)', desc: 'lossless tree', color: 'slate' },
+          { name: 'wrapNode()', desc: 'typed AST', color: 'fuchsia' },
+          { name: 'Scope analysis', desc: 'buildScopes()', color: 'pink' },
+        ].map((step, i, arr) => (
+          <div class="flex items-center gap-2 shrink-0">
+            <div class:list={[
+              'px-3 py-2 rounded-lg text-center min-w-28',
+              step.color === 'slate' ? 'bg-slate-800/60 border border-slate-700/50' :
+              step.color === 'indigo' ? 'bg-indigo-900/40 border border-indigo-700/50' :
+              step.color === 'violet' ? 'bg-violet-900/40 border border-violet-700/50' :
+              step.color === 'fuchsia' ? 'bg-fuchsia-900/40 border border-fuchsia-700/50' :
+              'bg-pink-900/40 border border-pink-700/50'
+            ]}>
+              <div class="text-xs font-semibold text-white">{step.name}</div>
+              <div class="text-xs text-slate-400 mt-0.5">{step.desc}</div>
+            </div>
+            {i < arr.length - 1 && (
+              <span class="text-slate-600">→</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">Installation</h2>
+      <CodePanel code={installExample} lang="bash" />
+    </section>
+
+    <!-- Basic usage -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Basic usage</h2>
+      <p class="text-slate-400 text-sm mb-4">The three main entry points: <code class="text-violet-300">tokenize</code>, <code class="text-violet-300">parse</code>, and <code class="text-violet-300">buildScopes</code>.</p>
+      <CodePanel code={basicUsage} lang="typescript" />
+    </section>
+
+    <!-- Live token visualizer -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Live token visualizer</h2>
+      <p class="text-slate-400 text-sm mb-6">
+        Edit the BrightScript source below to see how the lexer splits it into tokens in real time. Each token kind is color-coded by category.
+      </p>
+      <TokenVisualizer client:load />
+    </section>
+
+    <!-- Token kind reference -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-6">Token kind reference</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Object.entries(tokenKindTable).map(([category, kinds]) => (
+          <div class="bg-[#0f1923] border border-[#1e2d4a] rounded-xl p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="w-2.5 h-2.5 rounded-full" style={`background-color: ${tokenColors[category]}`}></span>
+              <h3 class="text-sm font-semibold" style={`color: ${tokenColors[category]}`}>{category}</h3>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              {kinds.map(k => (
+                <code class="text-xs text-slate-300 bg-slate-800/60 px-1.5 py-0.5 rounded">{k}</code>
+              ))}
+            </div>
+            {category === 'Type names' && (
+              <p class="text-xs text-slate-500 mt-3 leading-relaxed">
+                The only parser-produced token kind. The lexer emits type names
+                as <code class="text-slate-400">Identifier</code> tokens;
+                the parser re-classifies whichever token follows <code class="text-slate-400">as</code> to
+                <code class="text-[#4ec9b0]">TypeName</code> in the CST.
+                Use <code class="text-slate-400">isTypeKeyword(kind)</code> to detect them.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- AST usage -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Typed AST & visitor</h2>
+      <p class="text-slate-400 text-sm mb-4">
+        <code class="text-violet-300">wrapNode()</code> converts a raw CST node into a typed wrapper.
+        <code class="text-violet-300">walk()</code> traverses the tree calling your visitor methods.
+      </p>
+      <CodePanel code={astExample} lang="typescript" />
+    </section>
+
+    <!-- Scope analysis -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Scope analysis</h2>
+      <p class="text-slate-400 text-sm mb-4">
+        <code class="text-violet-300">buildScopes(root)</code> walks the AST and builds a hierarchical scope tree.
+        <code class="text-violet-300">resolve(name, scope)</code> does case-insensitive lookup up the scope chain.
+      </p>
+      <CodePanel code={scopeExample} lang="typescript" />
+    </section>
+
+    <!-- Catalogs -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">Built-in catalogs</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { name: 'BRIGHTSCRIPT_BUILTINS', count: '58 functions', desc: 'Complete BrightScript standard library with signatures, return types, and descriptions.', color: 'text-violet-300' },
+          { name: 'BRIGHTSCRIPT_COMPONENTS', count: '60+ components', desc: 'All ro* component interfaces with method signatures, firmware since, and deprecation flags.', color: 'text-indigo-300' },
+          { name: 'SG_NODES', count: '86 nodes', desc: 'Full SceneGraph node catalog including interfaces, fields, and parent hierarchy.', color: 'text-cyan-300' },
+        ].map(c => (
+          <div class="bg-[#0f1923] border border-[#1e2d4a] rounded-xl p-5">
+            <code class:list={['text-sm font-mono font-semibold block mb-1', c.color]}>{c.name}</code>
+            <div class="text-xs text-slate-500 mb-2">{c.count}</div>
+            <p class="text-xs text-slate-400 leading-relaxed">{c.desc}</p>
+          </div>
+        ))}
+      </div>
+      <div class="mt-6 space-y-4">
+        {[
+          {
+            title: 'Catalog lookups',
+            color: 'violet',
+            items: [
+              { fn: 'findBuiltin(name)', ret: 'BuiltinFunction | undefined', desc: 'Look up a BrightScript built-in function by name (case-insensitive). Returns signature, return type, and documentation.' },
+              { fn: 'findComponent(name)', ret: 'Component | undefined', desc: 'Look up a ro* component (roArray, roSGNode, roUrlTransfer, …) by name.' },
+              { fn: 'getComponentMethods(name)', ret: 'Method[]', desc: 'Get all interface methods of a ro* component, including firmware version and deprecation flags.' },
+              { fn: 'findMethodInterface(component, method)', ret: 'MethodInterface | undefined', desc: 'Find a specific method\'s full interface definition including parameter types and return type.' },
+            ],
+          },
+          {
+            title: 'Identifier casing',
+            color: 'indigo',
+            items: [
+              { fn: 'applyCasing(text, option)', ret: 'string', desc: "Apply a casing option (lower-case, pascal-case, camel-case, …) to an identifier string." },
+              { fn: 'applyCasingWithOverrides(text, config, kind)', ret: 'string', desc: 'Apply casing according to a CasingConfig, checking per-identifier exact overrides first.' },
+              { fn: 'resolveKeywordCasing(text, config)', ret: 'string', desc: 'Resolve the correct casing for a keyword (if, function, …) from a CasingConfig.' },
+              { fn: 'CasingConfig', ret: 'interface', desc: 'Configuration interface for all identifier casing dimensions (keyword, builtin, type, literal, logicOperator, …).' },
+            ],
+          },
+          {
+            title: 'Type inference & analysis',
+            color: 'cyan',
+            items: [
+              { fn: 'inferTypesFromAst(root)', ret: 'TypeMap', desc: 'Walk the AST and build a variable→type map. Used by the extension for member completion after CreateObject().' },
+              { fn: 'buildCallGraph(root)', ret: 'CallGraph', desc: 'Build a function call graph from the AST: who calls whom, with argument counts.' },
+              { fn: 'getSymbolInfo(name, root)', ret: 'SymbolInfo | undefined', desc: 'Get rich hover/definition data for a symbol — works for both built-ins and user functions.' },
+              { fn: 'inferNumericLiteralType(text)', ret: "'Integer' | 'LongInteger' | 'Float' | 'Double'", desc: 'Infer the precise BrightScript numeric type from a literal\'s text (e.g. "42" → Integer, "3.14" → Float, "1%" → Integer).' },
+              { fn: 'isNumericLiteral(kind)', ret: 'boolean', desc: 'Returns true if the TokenKind is any numeric literal variant (Integer, LongInteger, Float, Double).' },
+            ],
+          },
+          {
+            title: 'Position & cursor',
+            color: 'green',
+            items: [
+              { fn: 'findNodeAtPosition(root, line, col)', ret: 'SyntaxNode | undefined', desc: 'Find the deepest CST node that contains the given 0-based line and column. Used by hover, completion, and go-to-definition providers.' },
+              { fn: 'findTokenAtPosition(root, line, col)', ret: 'Token | undefined', desc: 'Find the token at the given 0-based line and column, including tokens with trivia.' },
+            ],
+          },
+          {
+            title: 'Glob & XML utilities',
+            color: 'amber',
+            items: [
+              { fn: 'matchesGlob(str, pattern)', ret: 'boolean', desc: 'Test a path string against a glob pattern (supports ** wildcards).' },
+              { fn: 'findMatchingGlob(globs, str)', ret: 'string | undefined', desc: 'Return the first glob pattern from an array that matches the given string.' },
+              { fn: 'parseXmlScriptUris(xml)', ret: 'string[]', desc: 'Extract all <script uri="…"> URIs from a SceneGraph component XML string.' },
+              { fn: 'parseXmlInterface(xml)', ret: '{ fields, functions }', desc: 'Parse the <interface> block from component XML, returning field and function definitions.' },
+              { fn: 'parseXmlExtends(xml)', ret: 'string | undefined', desc: 'Get the extends attribute value from a <component> XML string.' },
+            ],
+          },
+          {
+            title: 'Keyword & type utilities',
+            color: 'rose',
+            items: [
+              { fn: 'KEYWORD_MAP', ret: 'Map<string, TokenKind>', desc: 'Map from lowercase keyword text to TokenKind (e.g. "if" → TokenKind.If, "endwhile" → TokenKind.EndWhile).' },
+              { fn: 'isKeyword(kind)', ret: 'boolean', desc: 'Returns true if the TokenKind is a reserved BrightScript keyword (produced by the lexer).' },
+              { fn: 'isTypeKeyword(kind)', ret: 'boolean', desc: 'Returns true if the TokenKind is TypeName — the parser-produced kind for any token that follows an as keyword in a type annotation position.' },
+            ],
+          },
+        ].map(group => (
+          <div class="bg-[#0f1923] border border-[#1e2d4a] rounded-xl overflow-hidden">
+            <div class:list={[
+              'px-4 py-2.5 border-b border-[#1e2d4a] flex items-center gap-2',
+              group.color === 'violet' ? 'bg-violet-900/20' :
+              group.color === 'indigo' ? 'bg-indigo-900/20' :
+              group.color === 'cyan' ? 'bg-cyan-900/20' :
+              group.color === 'green' ? 'bg-green-900/20' :
+              group.color === 'amber' ? 'bg-amber-900/20' :
+              'bg-rose-900/20'
+            ]}>
+              <span class:list={[
+                'w-1.5 h-1.5 rounded-full',
+                group.color === 'violet' ? 'bg-violet-400' :
+                group.color === 'indigo' ? 'bg-indigo-400' :
+                group.color === 'cyan' ? 'bg-cyan-400' :
+                group.color === 'green' ? 'bg-green-400' :
+                group.color === 'amber' ? 'bg-amber-400' :
+                'bg-rose-400'
+              ]}></span>
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">{group.title}</span>
+            </div>
+            <div class="divide-y divide-[#1e2d4a]">
+              {group.items.map(item => (
+                <div class="px-4 py-3 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                  <div class="flex items-start gap-3 sm:flex-col sm:min-w-56">
+                    <code class="text-xs font-mono text-violet-300 font-semibold">{item.fn}</code>
+                    <span class="text-xs text-slate-500 font-mono">→ {item.ret}</span>
+                  </div>
+                  <p class="text-xs text-slate-400 leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+  </div>
+</Layout>

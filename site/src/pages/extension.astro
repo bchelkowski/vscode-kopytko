@@ -1,0 +1,482 @@
+---
+import Layout from '../components/Layout.astro';
+import Screenshot from '../components/Screenshot.astro';
+import CodePanel from '../components/CodePanel.astro';
+import extensionPkg from '../../../package.json';
+
+const base = import.meta.env.BASE_URL;
+
+const allSettings = [
+  // Language Server
+  { key: 'kopytko.languageServer.enabled', type: 'boolean', default: 'true', desc: 'Enable the BrightScript language server.' },
+  { key: 'kopytko.languageServer.trace', type: 'enum', default: 'off', desc: 'LSP trace level (off / messages / verbose).' },
+  // Imports
+  { key: 'kopytko.imports.resolveModules', type: 'boolean', default: 'true', desc: 'Resolve @import paths from installed Kopytko npm packages.' },
+  { key: 'kopytko.imports.sourceDir', type: 'string', default: '"app"', desc: 'Root directory where .brs source files live.' },
+  { key: 'kopytko.imports.generatedPaths', type: 'array', default: '[]', desc: 'Glob patterns for build-generated import paths (suppresses unresolved diagnostics).' },
+  { key: 'kopytko.imports.siblingPatterns', type: 'array', default: '[]', desc: 'File patterns that share import scope with the active file.' },
+  // Casing
+  { key: 'kopytko.casing.builtin', type: 'enum', default: 'preserve', desc: 'Casing applied to built-in function names in completions and formatting.' },
+  { key: 'kopytko.casing.keyword', type: 'enum', default: 'preserve', desc: 'Casing for keywords — fallback for type/literal/logicOperator/mathOperator.' },
+  { key: 'kopytko.casing.type', type: 'enum', default: '(keyword)', desc: 'Casing for type names (Integer, String, Object…).' },
+  { key: 'kopytko.casing.literal', type: 'enum', default: '(keyword)', desc: 'Casing for true, false, invalid.' },
+  { key: 'kopytko.casing.logicOperator', type: 'enum', default: '(keyword)', desc: 'Casing for and, or, not.' },
+  { key: 'kopytko.casing.mathOperator', type: 'enum', default: '(keyword)', desc: 'Casing for mod.' },
+  { key: 'kopytko.casing.userFunction', type: 'enum', default: 'preserve', desc: 'Casing for user-defined function names.' },
+  { key: 'kopytko.casing.userMethod', type: 'enum', default: 'preserve', desc: 'Casing for user-defined AA method names.' },
+  { key: 'kopytko.casing.exact', type: 'object', default: '{}', desc: 'Per-identifier casing overrides: { "myFn": "camel-case" }.' },
+  // Device Discovery
+  { key: 'kopytko.deviceDiscovery.enabled', type: 'boolean', default: 'true', desc: 'Enable SSDP-based automatic Roku device discovery.' },
+  { key: 'kopytko.deviceDiscovery.scanTimeout', type: 'number', default: '5000', desc: 'SSDP scan timeout in milliseconds.' },
+  { key: 'kopytko.deviceDiscovery.showNotifications', type: 'boolean', default: 'true', desc: 'Show notification when a device goes online or offline.' },
+  // Lint rule overrides
+  { key: 'kopytko.lint.rules.type/missing-return-type', type: 'enum', default: 'warning', desc: 'Severity for missing return-type annotations.' },
+  { key: 'kopytko.lint.rules.type/missing-param-type', type: 'enum', default: 'warning', desc: 'Severity for missing parameter-type annotations.' },
+  // Formatting passthrough
+  { key: 'kopytko.format.indentSize', type: 'number', default: '4', desc: 'Formatter: spaces per indent level.' },
+  { key: 'kopytko.format.*', type: '...', default: '...', desc: 'All kopytko-formatter options available — see the Formatter page.' },
+];
+
+const importExample = `' @import /components/VideoPlayer.brs
+' @import /utils/analytics.brs
+' @mock  /components/VideoPlayer.brs  ' test mode only
+
+sub init()
+  ' completions, hover, go-to-definition all work
+  m.player = createVideoPlayer()
+  m.player.observeFieldScoped("state", "onStateChanged")
+end sub`;
+
+const snippetsExample = `' Type "it" + Tab for a test case snippet:
+it("should initialize correctly", sub()
+  m.player = VideoPlayer()
+  expect(m.player.isReady).toBe(true)
+end sub)
+
+' Type "expect" for matcher completions:
+expect(result).toBe(42)
+expect(result).toEqual({ id: 1 })
+expect(m.mock).toHaveBeenCalled()`;
+
+const debugLaunchConfig = `// .vscode/launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "brightscript",
+      "request": "launch",
+      "name": "Debug on Roku",
+
+      // host and password are OPTIONAL.
+      // When omitted they are taken from the active device in the sidebar.
+      // "host": "192.168.1.100",
+      // "password": "rokudev",
+
+      "rootDir": "\${workspaceFolder}",
+
+      // env selects a .kopytkorc environment key ("dev", "staging", ...).
+      // Optional — taken from the active device's environment selection if omitted.
+      // "env": "dev",
+
+      "stopOnEntry": false
+    }
+  ]
+}`;
+
+const kopytkoRcExample = `// .kopytkorc
+{
+  "baseManifest": "app/manifest",
+  "sourceDir": "app",
+  "archivePath": "/dist/my_app_\${args.env}.zip",
+
+  "environments": {
+    "dev": {
+      "manifest": "app/manifests/dev.manifest",
+      "plugins": ["dev-tools-plugin"]
+    },
+    "staging": {
+      "manifest": "app/manifests/staging.manifest"
+    },
+    "production": {
+      "manifest": "app/manifests/prod.manifest",
+      "plugins": ["minify-plugin"]
+    }
+  }
+}`;
+---
+<Layout title="Extension" activePage="extension">
+  <!-- Page header -->
+  <div class="bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(124,58,237,0.12),transparent)] border-b border-[#1e2d4a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+      <div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+        <span>VS Code Marketplace</span>
+        <span>/</span>
+        <code class="text-slate-300">bchelkowski.kopytko</code>
+        <span class="bg-slate-700/60 text-slate-400 text-xs px-2 py-0.5 rounded-full ml-1">v{extensionPkg.version}</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">Kopytko VS Code Extension</h1>
+      <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
+        A full-featured BrightScript language server extension for VS Code. IntelliSense, diagnostics, go-to-definition, call hierarchy, formatting, debugging, and Roku device management — all in one.
+      </p>
+      <div class="flex flex-wrap gap-3 mt-6">
+        <a href="https://marketplace.visualstudio.com/items?itemName=bchelkowski.kopytko" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#0078d4] hover:bg-[#006bbf] text-white text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/></svg>
+          Marketplace
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Source
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-20">
+
+    <!-- IntelliSense -->
+    <section>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+        <div>
+          <h2 class="text-2xl font-bold text-white mb-3">IntelliSense</h2>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Context-aware completions covering every BrightScript built-in, user-defined functions, local variables, type annotations, ro* component constructors, and Kopytko module exports.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Built-in functions and keywords from the BrightScript stdlib',
+              'User functions from current file, @imports, XML siblings, and /source/',
+              'Local variables, parameters, and for-loop variables',
+              'CreateObject("...") — SceneGraph component name completions',
+              'Type inference: member completions after CreateObject() or typed params',
+              'm.top field completions from XML interface and parent SG components',
+              '@import / @mock path auto-complete with package-resolution',
+              'Kopytko module exports — auto-inserts @import on selection',
+              'Test framework completions: expect(), mockFunction(), test globals',
+            ].map(item => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div class="space-y-4">
+          <Screenshot
+            alt="IntelliSense completion popup"
+            placeholder="Completion popup showing BrightScript built-ins, user functions, and type-inferred members"
+          />
+          <Screenshot
+            alt="Hover documentation"
+            placeholder="Hover card on a built-in function showing its signature, description, and return type"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Navigation</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Navigate your codebase with precision — from go-to-definition on @import paths to workspace-wide call hierarchy. All navigation respects the @import graph and XML sibling relationships.
+          </p>
+          <div class="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Go-to-Definition', desc: '@import paths, user functions, /source/ functions' },
+              { label: 'Find All References', desc: 'Workspace-wide with Shift+F12' },
+              { label: 'Call Hierarchy', desc: 'Incoming and outgoing calls (Shift+Alt+H)' },
+              { label: 'Outline / Symbols', desc: 'Functions, subs, and AA methods with params' },
+              { label: 'Workspace Symbols', desc: 'Fuzzy search across all .brs files (Ctrl+T)' },
+              { label: 'Document Links', desc: 'Clickable @import paths' },
+              { label: 'Folding Ranges', desc: 'CST-driven folds for functions and @import groups' },
+              { label: 'Selection Range', desc: 'Smart expand/shrink (Shift+Alt+→)' },
+            ].map(n => (
+              <div class="bg-[#0f1923] border border-[#1e2d4a] rounded-lg p-3">
+                <div class="text-sm font-medium text-white mb-0.5">{n.label}</div>
+                <div class="text-xs text-slate-500">{n.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div class="space-y-4">
+          <Screenshot
+            alt="Go-to-definition on import"
+            placeholder="Definition peek popup on an @import path, jumping to the imported .brs file"
+          />
+          <Screenshot
+            alt="Call hierarchy panel"
+            placeholder="Incoming calls panel showing which functions call the selected function"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Diagnostics -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Diagnostics & Quick Fixes</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div class="space-y-4">
+          <Screenshot
+            alt="BrightScript diagnostics"
+            placeholder="BrightScript file with multiple diagnostic squiggles: undefined function, missing type annotation, unused import"
+          />
+          <Screenshot
+            alt="Quick fix menu"
+            placeholder="Light-bulb quick-fix menu with options: Add missing import, Remove unused parameter, Add type annotation"
+          />
+        </div>
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Real-time diagnostics powered by the <a href={`${base}/linter`} class="prose-link">kopytko-linter</a> engine. 25+ rules reported as you type, with code actions for auto-fixable issues.
+          </p>
+          <div class="space-y-2 text-sm">
+            {[
+              { rule: 'identifier/undefined-function', kind: 'error', desc: 'Highlights calls to undeclared functions' },
+              { rule: 'identifier/undefined-variable', kind: 'error', desc: 'Variable used before assignment' },
+              { rule: 'import/unresolved', kind: 'error', desc: '@import path cannot be found on disk' },
+              { rule: 'import/unused', kind: 'warning', desc: 'Imported file never referenced' },
+              { rule: 'type/missing-return-type', kind: 'warning', desc: 'Missing as Type on function declaration' },
+              { rule: 'callback/undefined-observer-callback', kind: 'error', desc: 'observeFieldScoped() callback not found' },
+            ].map(d => (
+              <div class="flex items-start gap-3">
+                <span class:list={['text-xs px-1.5 py-0.5 rounded font-medium shrink-0', d.kind === 'error' ? 'badge-error' : 'badge-warning']}>{d.kind}</span>
+                <div>
+                  <code class="text-xs text-slate-300">{d.rule}</code>
+                  <p class="text-xs text-slate-500 mt-0.5">{d.desc}</p>
+                </div>
+              </div>
+            ))}
+            <p class="text-xs text-slate-500 pt-2">… and 19 more rules. <a href={`${base}/linter`} class="prose-link">Full rule list →</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Kopytko imports & test support -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Kopytko imports & test framework</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            First-class support for the @import / @mock annotation system used by the Kopytko Framework. Import chains are resolved transitively across packages with full IntelliSense at each step.
+          </p>
+          <CodePanel code={importExample} />
+        </div>
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Test files (<code class="text-violet-300">*/_tests/**/*.test.brs</code>) get enriched completions for the Kopytko Unit Testing Framework: <code class="text-violet-300">expect()</code> matchers, <code class="text-violet-300">mockFunction()</code>, and test globals with documentation.
+          </p>
+          <CodePanel code={snippetsExample} />
+        </div>
+      </div>
+    </section>
+
+    <!-- Formatting -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Formatting</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            The extension embeds the <a href={`${base}/formatter`} class="prose-link">kopytko-formatter</a> engine. Format a file with <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">Shift+Alt+F</kbd>, or enable format-on-save. All 39+ formatting options and casing settings are configurable from <code class="text-violet-300">.vscode/settings.json</code>.
+          </p>
+          <div class="space-y-2 text-sm text-slate-300">
+            <p>✓ 39+ formatting rules</p>
+            <p>✓ 10 independent casing dimensions</p>
+            <p>✓ Preserves @import order or sorts alphabetically</p>
+            <p>✓ Format-on-save support</p>
+            <p>✓ Respects readOnlyPaths — skips generated files</p>
+          </div>
+        </div>
+        <Screenshot
+          alt="Format-on-save"
+          placeholder="GIF showing a BrightScript file being formatted on save — inconsistent whitespace and casing normalized automatically"
+        />
+      </div>
+    </section>
+
+    <!-- Rename -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Rename symbol</h2>
+      <p class="text-slate-400 text-sm leading-relaxed max-w-xl">
+        Press <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">F2</kbd> on any function name or local variable to rename it across all usages. Function renames propagate workspace-wide through the @import graph. Local variable renames are confined to the declaring scope.
+      </p>
+    </section>
+
+    <!-- Device discovery -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Roku device discovery</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Automatic SSDP-based discovery keeps your sidebar populated with every Roku device on the network. Device health is verified via ECP on each scan, and the list updates on network change or sleep/wake.
+          </p>
+          <div class="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Auto-discovery', desc: 'SSDP M-SEARCH + passive NOTIFY listener' },
+              { label: 'Favorites', desc: 'Persist important devices across restarts' },
+              { label: 'Manual entry', desc: 'Add devices by IP when SSDP is unavailable' },
+              { label: 'Secure passwords', desc: 'Stored in OS keychain via VS Code SecretStorage' },
+              { label: 'Registry viewer', desc: 'Read device registry sections via ECP' },
+              { label: '.kopytkorc env', desc: 'Per-device environment selection' },
+            ].map(f => (
+              <div class="bg-[#0f1923] border border-[#1e2d4a] rounded-lg p-3">
+                <div class="text-sm font-medium text-white mb-0.5">{f.label}</div>
+                <div class="text-xs text-slate-500">{f.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <Screenshot
+          alt="Device sidebar"
+          placeholder="Roku Devices sidebar tree showing two discovered devices: one online (green indicator) with model/firmware info, one offline (gray)"
+        />
+      </div>
+    </section>
+
+    <!-- Debugger -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Integrated debugger</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div class="space-y-4">
+          <Screenshot
+            alt="Debugger breakpoint hit"
+            placeholder="VS Code debugger paused at a breakpoint in a .brs file. Variables panel shows typed locals. Call stack shows SceneGraph threads."
+          />
+          <Screenshot
+            alt="Debug variables panel"
+            placeholder="Variables panel with expandable roAssociativeArray container, showing fields including nested objects with virtual $children and $count"
+          />
+        </div>
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Implements the Roku Socket Debug Protocol 3.3.0 over TCP port 8081. Deploy your channel with <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">Ctrl+Shift+F5</kbd>, then debug with <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">F5</kbd>.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Static, conditional, and hit-count breakpoints',
+              'Exception breakpoints (caught and uncaught)',
+              'Multi-thread inspection: main, render, and task threads',
+              'Step over / into / out, and pause',
+              'Typed variable inspection with expandable containers',
+              'Virtual variables: $children, $parent, $count on roSGNodes',
+              'Hover-to-evaluate expressions',
+              'Debug console REPL with EXECUTE command',
+              'Compile errors surfaced as VS Code diagnostics',
+              'Program output via IO channel',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+          <div class="mt-4">
+            <CodePanel code={debugLaunchConfig} lang="jsonc" filename=".vscode/launch.json" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Rendezvous -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Rendezvous panel</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-3">
+            Real-time monitoring of SceneGraph <a href="https://developer.roku.com/dev/docs/threads#thread-rendezvous" target="_blank" class="prose-link">rendezvous events</a> — the synchronization points between the render thread and task threads that cause UI jank when they stack up.
+          </p>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Events are grouped by file and line number with click-to-navigate. State is persisted per device session. Toggle monitoring with the checkbox in the panel header.
+          </p>
+        </div>
+        <Screenshot
+          alt="Rendezvous panel"
+          placeholder="Rendezvous panel tree showing events grouped by file:line, each showing count and timing info, with navigation arrows"
+        />
+      </div>
+    </section>
+
+    <!-- .kopytkorc -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">.kopytkorc configuration</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            The extension reads <code class="text-violet-300">.kopytkorc</code> for per-project environment definitions. The JSON schema is validated inline — hover over keys to see descriptions, and you'll get diagnostics for unknown or mistyped fields.
+          </p>
+          <p class="text-slate-400 text-sm">
+            Each environment key maps to a manifest path and optional plugin list. The active environment is selected per device from the sidebar context menu, or set via the <code class="text-violet-300">env</code> field in <code class="text-violet-300">launch.json</code>.
+          </p>
+        </div>
+        <CodePanel code={kopytkoRcExample} lang="jsonc" filename=".kopytkorc" />
+      </div>
+    </section>
+
+    <!-- Commands -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-4">Commands</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left border border-[#1e2d4a] rounded-xl overflow-hidden">
+          <thead class="bg-[#0f1923]">
+            <tr>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Command</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Keybinding</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#1e2d4a]">
+            {[
+              ['Upload to device', 'Ctrl+Shift+F5', 'Build and upload the channel package to the active Roku'],
+              ['Debug device', 'F5', 'Deploy with remotedebug=1 and start the debug session'],
+              ['Refresh devices', '', 'Trigger a new SSDP scan'],
+              ['Select device', '', 'Set the active Roku from the discovered list'],
+              ['Add device', '', 'Add a device manually by IP address'],
+              ['Set password', '', 'Store device password in the OS keychain'],
+              ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
+              ['Read registry', '', 'View device registry sections in a virtual document'],
+              ['Add / Remove favorite', '', 'Persist a device across restarts'],
+              ['Clear rendezvous log', '', 'Clear all events from the rendezvous panel'],
+            ].map(([cmd, kb, desc]) => (
+              <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">
+                <td class="px-4 py-2.5 text-white text-xs font-medium">{cmd}</td>
+                <td class="px-4 py-2.5">
+                  {kb ? <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">{kb}</kbd> : <span class="text-slate-600 text-xs">—</span>}
+                </td>
+                <td class="px-4 py-2.5 text-slate-400 text-xs">{desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Settings reference -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-4">Settings reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left border border-[#1e2d4a] rounded-xl overflow-hidden">
+          <thead class="bg-[#0f1923]">
+            <tr>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Setting</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Type</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Default</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#1e2d4a]">
+            {allSettings.map(s => (
+              <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">
+                <td class="px-4 py-2.5"><code class="text-cyan-300 text-xs">{s.key}</code></td>
+                <td class="px-4 py-2.5 text-slate-500 text-xs font-mono">{s.type}</td>
+                <td class="px-4 py-2.5 text-slate-500 text-xs font-mono">{s.default}</td>
+                <td class="px-4 py-2.5 text-slate-300 text-xs">{s.desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</Layout>

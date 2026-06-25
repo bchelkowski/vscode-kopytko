@@ -1,0 +1,623 @@
+---
+import Layout from '../components/Layout.astro';
+import CodePanel from '../components/CodePanel.astro';
+import RuleCard from '../components/RuleCard.astro';
+import LinterPlayground from '../components/LinterPlayground';
+import linterPkg from '../../../packages/linter/package.json';
+
+type Severity = 'error' | 'warning' | 'info' | 'hint' | 'off';
+interface Rule {
+  id: string;
+  severity: Severity;
+  description: string;
+  bad?: string;
+  good?: string;
+  note?: string;
+}
+
+const importRules: Rule[] = [
+  {
+    id: 'import/duplicate',
+    severity: 'error',
+    description: 'The same import path appears more than once in the file.',
+    bad: `' @import /utils/helper.brs
+' @import /utils/helper.brs  ' duplicate — error`,
+    good: `' @import /utils/helper.brs  ' only once`,
+  },
+  {
+    id: 'import/unresolved',
+    severity: 'error',
+    description: 'The @import or @mock path cannot be resolved to a file on disk.',
+    bad: `' @import /components/NonExistent.brs  ' file does not exist`,
+    good: `' @import /components/Existing.brs   ' file exists`,
+  },
+  {
+    id: 'import/unused',
+    severity: 'warning',
+    description: 'An imported file\'s exported functions are never referenced in this file.',
+    bad: `' @import /utils/math.brs  ' imported but never used
+
+function main()
+  print "hello"  ' math functions never called
+end function`,
+    good: `' @import /utils/math.brs
+
+function main()
+  result = add(1, 2)  ' references imported function
+end function`,
+  },
+  {
+    id: 'import/missing-path',
+    severity: 'error',
+    description: '@import or @mock annotation has an empty path.',
+    bad: `' @import   ' empty path`,
+    good: `' @import /components/Widget.brs`,
+  },
+  {
+    id: 'import/path-not-absolute',
+    severity: 'warning',
+    description: 'Import path does not begin with / (relative paths may behave unexpectedly).',
+    bad: `' @import utils/helper.brs   ' relative path`,
+    good: `' @import /utils/helper.brs  ' absolute path`,
+  },
+  {
+    id: 'import/build-generated',
+    severity: 'info',
+    description: 'Import path matches a configured generatedPaths glob and cannot be resolved — treated as generated-at-build-time.',
+    note: 'Configure generatedPaths in kopytko-linter.json to suppress this for known build outputs.',
+  },
+  {
+    id: 'import/wrong-comment-style',
+    severity: 'error',
+    description: "@import or @mock annotation uses the rem comment style. Tick (') is the only supported comment style for import annotations.",
+    bad: `rem @import /components/Widget.brs  ' rem style — not allowed`,
+    good: `' @import /components/Widget.brs   ' tick style — correct`,
+  },
+  {
+    id: 'import/missing-promise-deps',
+    severity: 'warning',
+    description: 'Test file uses .resolvedValue() or .rejectedValue() without importing the required PromiseResolve.brs or PromiseReject.brs from @dazn/kopytko-utils.',
+  },
+];
+
+const identifierRules: Rule[] = [
+  {
+    id: 'identifier/undefined-function',
+    severity: 'error',
+    description: 'A function call references a name that is not declared in any reachable scope or import.',
+    bad: `function main()
+  result = unknownHelper()  ' no such function
+end function`,
+    good: `' @import /utils/helper.brs  ' declares helper()
+
+function main()
+  result = helper()
+end function`,
+  },
+  {
+    id: 'identifier/undefined-variable',
+    severity: 'error',
+    description: 'A variable is read before it is assigned in the enclosing function scope.',
+    bad: `function main()
+  print value  ' value never assigned
+end function`,
+    good: `function main()
+  value = "hello"
+  print value
+end function`,
+  },
+  {
+    id: 'identifier/wrong-arg-count',
+    severity: 'error',
+    description: 'A call to a built-in function passes the wrong number of arguments.',
+    bad: `function main()
+  s = Left("hello")   ' Left() requires 2 args
+end function`,
+    good: `function main()
+  s = Left("hello", 3)  ' correct
+end function`,
+  },
+  {
+    id: 'identifier/shadows-builtin',
+    severity: 'error',
+    description: 'A local variable or parameter name shadows a BrightScript built-in function.',
+    bad: `function test()
+  str = "hello"  ' shadows built-in Str() function
+end function`,
+    good: `function test()
+  text = "hello"    ' safe — no built-in named Text
+  uniqueKey = "id"  ' also safe
+end function`,
+  },
+  {
+    id: 'identifier/shadows-function',
+    severity: 'error',
+    description: 'A local variable or parameter shadows a user-defined function from the same scope or an import.',
+    bad: `' @import /utils/helper.brs  ' exports helper()
+
+function main()
+  helper = "oops"  ' shadows imported function
+end function`,
+    good: `' @import /utils/helper.brs
+
+function main()
+  helperResult = helper()  ' calls the function
+end function`,
+  },
+  {
+    id: 'identifier/unused-parameter',
+    severity: 'warning',
+    description: 'A function parameter is never read in the function body. Prefix the name with _ to suppress.',
+    bad: `function process(data as Object, context as Object) as Void
+  ' context parameter is never used
+  print data.name
+end function`,
+    good: `function process(data as Object, _context as Object) as Void
+  ' _context suppresses the warning
+  print data.name
+end function`,
+  },
+  {
+    id: 'identifier/unused-variable',
+    severity: 'warning',
+    description: 'A local variable is assigned but never read. Prefix the name with _ to suppress.',
+    bad: `function main()
+  temp = fetchData()  ' assigned, never read
+  print "done"
+end function`,
+    good: `function main()
+  _temp = fetchData()  ' _ prefix suppresses warning
+  print "done"
+end function`,
+  },
+  {
+    id: 'identifier/unused-function',
+    severity: 'hint',
+    description: 'A function is declared but never called anywhere in the project.',
+    note: 'Off by default. Enable with "identifier/unused-function": "hint" in your config.',
+  },
+  {
+    id: 'identifier/loop-variable-leak',
+    severity: 'warning',
+    description: 'A for-loop variable is first assigned inside the loop but is read after the loop ends. In BrightScript all variables are function-scoped, so the loop variable leaks into the enclosing function scope.',
+    bad: `function test()
+  for i = 1 to 5   ' i first assigned inside loop
+    print i
+  end for
+  print i           ' reads leaked loop variable (= 6 after loop)
+end function`,
+    good: `function test()
+  for idx = 1 to 5
+    print idx
+  end for
+  ' don't read idx after the loop if it wasn't defined before it
+end function`,
+  },
+  {
+    id: 'identifier/duplicate-function',
+    severity: 'error',
+    description: 'Two functions with the same name are declared in the same file.',
+    bad: `function greet() as String
+  return "hello"
+end function
+
+function greet() as String  ' duplicate!
+  return "hi"
+end function`,
+    good: `function greetFormal() as String
+  return "hello"
+end function
+
+function greetCasual() as String
+  return "hi"
+end function`,
+  },
+];
+
+const syntaxRules: Rule[] = [
+  {
+    id: 'syntax/trailing-comma',
+    severity: 'error',
+    description: 'A trailing comma after a return value is a BrightScript syntax error.',
+    bad: `function main()
+  return value,  ' trailing comma — syntax error
+end function`,
+    good: `function main()
+  return value
+end function`,
+  },
+  {
+    id: 'syntax/flow-outside-loop',
+    severity: 'error',
+    description: 'exit for, continue for, exit while, or continue while used outside the matching loop construct.',
+    bad: `function main()
+  exit for  ' not inside a for loop
+end function`,
+    good: `function main()
+  for i = 1 to 10
+    if i = 5 then exit for  ' inside loop — OK
+  end for
+end function`,
+  },
+  {
+    id: 'syntax/unreachable-code',
+    severity: 'warning',
+    description: 'Statements that appear after an unconditional return, throw, or stop are unreachable.',
+    bad: `function test() as Integer
+  return 42
+  print "unreachable"  ' never executes
+end function`,
+    good: `function test() as Integer
+  return 42
+end function`,
+  },
+  {
+    id: 'throw/invalid-value',
+    severity: 'warning',
+    description: 'throw with a numeric literal, array, or invalid — only strings and associative arrays are valid throw values in BrightScript.',
+    bad: `throw 42          ' number — invalid
+throw [1, 2]      ' array — invalid
+throw invalid     ' invalid keyword — invalid`,
+    good: `throw "error message"
+throw { message: "something went wrong", code: -1 }`,
+  },
+  {
+    id: 'throw/missing-message',
+    severity: 'warning',
+    description: 'A thrown associative array does not have a message field, making error handling harder.',
+    bad: `throw { code: 404 }  ' no message field`,
+    good: `throw { message: "Not found", code: 404 }`,
+  },
+  {
+    id: 'createobject/unknown-component',
+    severity: 'warning',
+    description: 'CreateObject() is called with a string that doesn\'t match any known BrightScript component name.',
+    bad: `obj = CreateObject("roMyMadeUpType")  ' unknown component`,
+    good: `obj = CreateObject("roUrlTransfer")   ' known component`,
+  },
+];
+
+const typeRules: Rule[] = [
+  {
+    id: 'type/missing-return-type',
+    severity: 'warning',
+    description: 'A function declaration is missing the "as Type" return type annotation.',
+    bad: `function add(a as Integer, b as Integer)  ' no return type
+  return a + b
+end function`,
+    good: `function add(a as Integer, b as Integer) as Integer
+  return a + b
+end function`,
+  },
+  {
+    id: 'type/missing-param-type',
+    severity: 'warning',
+    description: 'One or more function parameters are missing "as Type" annotations.',
+    bad: `function greet(name)  ' no type annotation
+  return "Hello, " + name
+end function`,
+    good: `function greet(name as String) as String
+  return "Hello, " + name
+end function`,
+  },
+];
+
+const callbackRules: Rule[] = [
+  {
+    id: 'callback/undefined-observer-callback',
+    severity: 'error',
+    description: 'observeFieldScoped() or observeField() references a callback function name that is not declared in any reachable scope.',
+    bad: `sub init()
+  m.top.observeFieldScoped("input", "onInputChanged")
+  ' but onInputChanged() function doesn't exist
+end sub`,
+    good: `sub init()
+  m.top.observeFieldScoped("input", "onInputChanged")
+end sub
+
+sub onInputChanged(event as Object)
+  print event.getData()
+end sub`,
+  },
+  {
+    id: 'callback/undefined-event-callback',
+    severity: 'error',
+    description: 'An event callback function referenced in the component XML or code does not exist.',
+  },
+];
+
+const testRules: Rule[] = [
+  {
+    id: 'test/missing-mock-annotation',
+    severity: 'warning',
+    description: 'mockFunction("X") targets a function not found in any @mock-annotated file in the test.',
+    bad: `' @import /components/Widget.brs
+' (no @mock annotations)
+
+function TestSuite__Widget()
+  ts = {}
+  ts.test_init = sub()
+    mockFunction("helper")  ' helper not in any @mock file
+  end sub
+  return ts
+end function`,
+  },
+  {
+    id: 'test/missing-return-ts',
+    severity: 'warning',
+    description: 'A TestSuite__* function is missing the required "return ts" statement at the end.',
+    bad: `function TestSuite__MyComponent()
+  ts = {}
+  ts.test_init = sub()
+    ' ...
+  end sub
+  ' missing: return ts
+end function`,
+    good: `function TestSuite__MyComponent()
+  ts = {}
+  ts.test_init = sub()
+    ' ...
+  end sub
+  return ts
+end function`,
+  },
+];
+
+const mtopRules: Rule[] = [
+  {
+    id: 'mtop/undefined-field',
+    severity: 'warning',
+    description: "m.top.fieldName accesses a field that is not defined in the component's XML interface (either directly or via ancestor extends).",
+    note: 'Only active in extension mode where the XML interface is accessible. Fields defined in ancestor components (via extends) are also considered valid.',
+    bad: `sub init()
+  m.top.unknownField = "Hello"   ' not in own or ancestor interface
+end sub`,
+    good: `' Component XML: <field id="title" type="string" />
+' OR an ancestor component defines "title" in its <interface>
+
+sub init()
+  m.top.title = "Hello"   ' found in own or inherited interface
+end sub`,
+  },
+];
+
+const suppressionExample = `' Suppress a specific rule on the next line
+' kopytko-disable-next-line identifier/undefined-function
+result = dynamicallyRegisteredFunction()
+
+' Suppress multiple rules at once
+' kopytko-disable-next-line import/unresolved, identifier/undefined-function
+' @import /generated/build-output.brs
+
+' Suppress inline (on same line as the code)
+x = getVal()  ' kopytko-disable-line identifier/undefined-function
+
+' Glob patterns work too
+' kopytko-disable-next-line import/*
+' @import /generated/anything.brs`;
+
+const configExample = `{
+  "sourceDir": "src",
+  "resolveModules": true,
+  "generatedPaths": ["/source/generated/**"],
+  "readOnlyPaths": ["**/node_modules/**"],
+  "rules": {
+    "import/unused": "off",
+    "identifier/shadows-builtin": "warning",
+    "type/missing-return-type": "error",
+    "type/missing-param-type": "error",
+    "identifier/unused-function": "hint"
+  }
+}`;
+
+const ciExample = `# .github/workflows/lint.yml
+name: Lint BrightScript
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run lint
+
+# For GitHub Code Scanning (SARIF):
+      - run: npx kopytko-lint --format sarif > results.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: results.sarif }`;
+
+const scriptExample = `{
+  "scripts": {
+    "lint": "kopytko-lint",
+    "lint:ci": "kopytko-lint --check",
+    "lint:fix": "kopytko-lint --fix",
+    "lint:sarif": "kopytko-lint --format sarif > results.sarif"
+  }
+}`;
+---
+<Layout title="Linter" activePage="linter">
+  <!-- Page header -->
+  <div class="bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(6,182,212,0.08),transparent)] border-b border-[#1e2d4a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+      <div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+        <span>npm</span><span>/</span>
+        <code class="text-slate-300">kopytko-linter</code>
+        <span class="bg-slate-700/60 text-slate-400 text-xs px-2 py-0.5 rounded-full ml-1">v{linterPkg.version}</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">BrightScript Linter</h1>
+      <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
+        Static analysis for BrightScript with 25+ rules covering imports, undefined identifiers, type annotations, syntax errors, and callback wiring. Outputs text, JSON, or SARIF for GitHub Code Scanning.
+      </p>
+      <div class="flex flex-wrap gap-3 mt-6">
+        <a href="https://www.npmjs.com/package/kopytko-linter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.331h-2.669v0zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10h1.336v2.667h-1.336V10z"/></svg>
+          npm
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko/tree/main/packages/linter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Source
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16">
+
+    <!-- Install & setup -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div>
+        <h2 class="text-xl font-bold text-white mb-4">Install & setup</h2>
+        <CodePanel code={`npm install --save-dev kopytko-linter`} lang="bash" />
+        <p class="text-sm text-slate-400 mt-4 mb-3">Add scripts to <code class="text-violet-300">package.json</code>:</p>
+        <CodePanel code={scriptExample} lang="json" />
+      </div>
+      <div>
+        <h2 class="text-xl font-bold text-white mb-4">Configuration — kopytko-linter.json</h2>
+        <CodePanel code={configExample} lang="json" filename="kopytko-linter.json" />
+        <p class="text-xs text-slate-500 mt-3">Config resolution order: <code>--config flag</code> → <code>kopytko-linter.json</code> → <code>.vscode/settings.json</code> → defaults</p>
+      </div>
+    </section>
+
+    <!-- Interactive playground -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Live playground</h2>
+      <p class="text-slate-400 text-sm mb-6">
+        Edit the code and toggle rules to see diagnostics update instantly.
+        Try adding <code class="text-violet-300">as String</code> to a parameter, renaming <code class="text-violet-300">str</code> to <code class="text-violet-300">text</code>, or prefixing an unused variable with <code class="text-violet-300">_</code>.
+      </p>
+      <LinterPlayground client:load />
+    </section>
+
+    <!-- CI -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">CI integration</h2>
+      <CodePanel code={ciExample} lang="yaml" />
+    </section>
+
+    <!-- Inline suppression -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Inline suppression</h2>
+      <p class="text-slate-400 text-sm mb-4">Use comment directives to suppress specific rules. Glob patterns are supported.</p>
+      <CodePanel code={suppressionExample} />
+    </section>
+
+    <!-- Rules -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-2">Rules</h2>
+      <p class="text-slate-400 text-sm mb-8">25 rules across 7 categories. Severity levels: <span class="badge-error text-xs px-1.5 py-0.5 rounded">error</span> <span class="badge-warning text-xs px-1.5 py-0.5 rounded">warning</span> <span class="badge-info text-xs px-1.5 py-0.5 rounded">info</span> <span class="badge-hint text-xs px-1.5 py-0.5 rounded">hint</span> <span class="badge-off text-xs px-1.5 py-0.5 rounded">off by default</span></p>
+
+      <!-- Quick nav -->
+      <div class="flex flex-wrap gap-2 mb-10 p-4 bg-[#0f1923] border border-[#1e2d4a] rounded-xl">
+        {[
+          { label: 'Import (8)', href: '#import-duplicate' },
+          { label: 'Identifier (10)', href: '#identifier-undefined-function' },
+          { label: 'Syntax (6)', href: '#syntax-trailing-comma' },
+          { label: 'Type (2)', href: '#type-missing-return-type' },
+          { label: 'Callback (2)', href: '#callback-undefined-observer-callback' },
+          { label: 'Test (2)', href: '#test-missing-mock-annotation' },
+          { label: 'm.top (1)', href: '#mtop-undefined-field' },
+        ].map(nav => (
+          <a href={nav.href} class="text-xs text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 px-2.5 py-1 rounded-full transition-colors">
+            {nav.label}
+          </a>
+        ))}
+      </div>
+
+      <!-- Import rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-violet-500 rounded-full"></span>
+          Import rules
+        </h3>
+        <div class="space-y-3">
+          {importRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- Identifier rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+          Identifier rules
+        </h3>
+        <div class="space-y-3">
+          {identifierRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- Syntax rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-orange-500 rounded-full"></span>
+          Syntax rules
+        </h3>
+        <div class="space-y-3">
+          {syntaxRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- Type rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-cyan-500 rounded-full"></span>
+          Type annotation rules
+        </h3>
+        <div class="space-y-3">
+          {typeRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- Callback rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-pink-500 rounded-full"></span>
+          Callback rules
+        </h3>
+        <div class="space-y-3">
+          {callbackRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- Test rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-green-500 rounded-full"></span>
+          Test framework rules
+        </h3>
+        <div class="space-y-3">
+          {testRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- m.top rules -->
+      <div>
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-amber-500 rounded-full"></span>
+          m.top rules
+        </h3>
+        <div class="space-y-3">
+          {mtopRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+    </section>
+
+    <!-- Library API -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">Library API</h2>
+      <CodePanel code={`import { lintProject } from 'kopytko-linter';
+
+const result = lintProject('/path/to/project');
+
+console.log(\`\${result.errorCount} errors, \${result.warningCount} warnings\`);
+
+for (const fileDiagnostics of result.files) {
+  for (const diag of fileDiagnostics.diagnostics) {
+    console.log(\`\${diag.file}:\${diag.line + 1}: [\${diag.rule}] \${diag.message}\`);
+  }
+}`} lang="typescript" />
+    </section>
+
+  </div>
+</Layout>

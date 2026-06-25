@@ -190,8 +190,100 @@ A change is complete when:
 | [docs/roku-debug.md](docs/roku-debug.md) | Device discovery, debugger, launch config |
 | [packages/formatter/README.md](packages/formatter/README.md) | Standalone formatter: CLI usage, library API, CI integration |
 | [docs/publishing.md](docs/publishing.md) | Step-by-step npm and VS Code Marketplace publishing guide |
+| [site/src/pages/](site/src/pages/) | **GitHub Pages** — public-facing feature docs and API reference for the extension and all packages |
 
-**Every change that adds, modifies, or removes a feature must update `docs/features.md` and the relevant topic doc.**
+**Every change that adds, modifies, or removes a feature must update `docs/features.md`, the relevant topic doc, and the corresponding site page.**
+
+---
+
+## GitHub Pages site
+
+The public documentation site lives in `site/` and deploys to `https://bchelkowski.github.io/vscode-kopytko/`. It must always reflect the true state of the extension and all packages. Treat `site/src/pages/` with the same discipline as `docs/*.md`.
+
+### Stack
+
+- **Astro 5** — static site generation
+- **Tailwind CSS v4** via `@tailwindcss/vite` (CSS-first config, no `tailwind.config.mjs` needed)
+- **React islands** — `client:load` components for the three interactive playgrounds
+- **Shiki** — syntax highlighting for BrightScript code blocks (registered from `syntaxes/brightscript.tmLanguage.json` via the `@brs-grammar` Vite alias; language name is `'BrightScript'` with capital letters)
+- **`kopytko-brightscript-parser`**, **`kopytko-formatter`**, **`kopytko-linter`** — all resolved from local TypeScript source via Vite aliases so the site is always in sync with the current codebase without waiting for an npm publish
+
+### Vite aliases (in `site/astro.config.mjs`)
+
+| Alias | Resolves to |
+|---|---|
+| `@brs-grammar` | `syntaxes/brightscript.tmLanguage.json` |
+| `kopytko-brightscript-parser` | `packages/brightscript-parser/src/index.ts` |
+| `kopytko-formatter` | `packages/formatter/src/index.ts` |
+| `kopytko-linter` | `site/src/stubs/linter-browser.ts` (re-exports `lintFile`, `DEFAULT_RULE_CONFIG`) |
+| `fs` / `node:fs` | `site/src/stubs/fs.ts` (empty stubs — linter only uses fs for CLI file scanning) |
+| `path` / `node:path` | `site/src/stubs/path.ts` (browser-compatible path utilities) |
+
+### Site structure
+
+```
+site/
+├── src/
+│   ├── pages/
+│   │   ├── index.astro          Home — hero, ecosystem cards, stats
+│   │   ├── extension.astro      VS Code extension features, commands, settings
+│   │   ├── parser.astro         Parser API, live token visualizer
+│   │   ├── linter.astro         All rules with code examples, live linter playground
+│   │   └── formatter.astro      All options with before/after, live formatter playground
+│   ├── components/
+│   │   ├── Layout.astro         Nav + footer
+│   │   ├── CodePanel.astro      Shiki-highlighted static code block
+│   │   ├── BeforeAfter.astro    Side-by-side before/after diff
+│   │   ├── RuleCard.astro       Linter rule with severity badge + examples
+│   │   ├── OptionCard.astro     Formatter option with before/after
+│   │   ├── Screenshot.astro     Screenshot with placeholder when file absent
+│   │   ├── SyntaxInput.tsx      Editable textarea with live BrightScript syntax highlighting (overlay technique)
+│   │   ├── TokenVisualizer.tsx  React island — live tokenizer (source view + token list)
+│   │   ├── LinterPlayground.tsx React island — live linter using real lintFile()
+│   │   └── FormatterPlayground.tsx  React island — live formatter with JSONC config editor
+│   ├── utils/
+│   │   ├── highlight.ts         Shiki highlighter singleton (used by static code blocks)
+│   │   └── brightscript-colors.tsx  Shared token coloring for React islands
+│   └── stubs/
+│       ├── fs.ts                Empty browser fs stub
+│       ├── path.ts              Browser-compatible path implementation
+│       └── linter-browser.ts   Re-exports lintFile + DEFAULT_RULE_CONFIG for browser use
+└── public/
+    ├── kopytko-logo.svg         Logo (copied from images/)
+    └── screenshots/             Add .png screenshots here; Screenshot.astro shows placeholders when absent
+```
+
+### Development
+
+```bash
+# From the site/ directory (run via WSL on Windows):
+npm install   # first time only
+npm run dev   # dev server at http://localhost:4321/vscode-kopytko/
+npm run build # production build to site/dist/
+npm run preview
+```
+
+### When to update the site
+
+| Change | Update |
+|---|---|
+| New or changed linter rule | `site/src/pages/linter.astro` — add/update the `RuleCard` entry in the rules data array |
+| New or changed formatter option | `site/src/pages/formatter.astro` — add/update the `OptionCard` entry; if the option has enum values, also update the JSONC comment annotation in `FormatterPlayground.tsx` |
+| New parser export or capability | `site/src/pages/parser.astro` — add to the API reference groups |
+| New extension feature, command, or setting | `site/src/pages/extension.astro` — update the relevant section and settings table |
+| New `TokenKind` or `SyntaxKind` | Update `tokenKindTable` in `parser.astro` and the coloring maps in `brightscript-colors.tsx` and `TokenVisualizer.tsx` |
+| Version bump | No site edit needed — versions are read dynamically from each `package.json` at build time |
+| New screenshot available | Drop the `.png` into `site/public/screenshots/` matching the `src` prop on the `Screenshot` component |
+
+### Interactive playground rules
+
+The three React playgrounds (`TokenVisualizer`, `FormatterPlayground`, `LinterPlayground`) run the actual package code in the browser:
+
+- **Token visualizer** — calls `tokenize()` + `parse()` (from the parser) on every keystroke. Uses parsed CST to colour `TypeName` tokens accurately without context-tracking heuristics.
+- **Formatter playground** — calls `formatText()` with the config parsed from the JSONC editor. Config is JSONC (comments allowed); `stripJsonComments()` strips them before `JSON.parse()`.
+- **Linter playground** — calls `lintFile()` with a browser stub `LintContext` (all filesystem callbacks return empty/null). Rules that need cross-file data (import resolution, XML, callbacks) silently produce no diagnostics, which is correct for a single-file playground. The rule toggle buttons control per-rule severity in the `LinterConfig.rules` map passed to `lintFile()`.
+
+**Deployment:** The site rebuilds automatically on push to `main` when files under `site/**` or `syntaxes/**` change. Each release workflow (`release-*.yml`) also triggers a site redeploy as its final step, so the live site always reflects the just-published version. Never manually deploy the site mid-release; it happens automatically at the end.
 
 ---
 

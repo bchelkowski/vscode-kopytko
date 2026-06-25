@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-base: #070b14;
+  --color-bg-card: #0f1923;
+  --color-bg-elevated: #172133;
+  --color-border-subtle: #1e2d4a;
+  --color-border: #2d4060;
+
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+}
+
+/* ── Token visualizer colors ── */
+.tk-keyword      { color: #c792ea; font-weight: 600; }
+.tk-str-literal  { color: #c3e88d; }
+.tk-num-literal  { color: #f78c6c; }
+.tk-bool-literal { color: #c792ea; font-weight: 600; }
+.tk-identifier   { color: #82aaff; }
+.tk-operator     { color: #89ddff; }
+.tk-punctuation  { color: #7e8da0; }
+.tk-comment      { color: #546e7a; font-style: italic; }
+.tk-preprocessor { color: #ffcb6b; }
+.tk-special      { color: #ff5370; }
+
+/* ── Shiki overrides ── */
+.shiki {
+  @apply rounded-lg overflow-auto text-sm leading-relaxed p-4 m-0;
+  background: #0d1117 !important;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.shiki code {
+  @apply font-mono;
+}
+
+/* ── Prose link style ── */
+.prose-link {
+  @apply text-violet-400 hover:text-violet-300 underline decoration-violet-400/30 hover:decoration-violet-300 transition-colors;
+}
+
+/* ── Severity badge colors ── */
+.badge-error   { @apply bg-red-900/50 text-red-300 border border-red-700/50; }
+.badge-warning { @apply bg-amber-900/50 text-amber-300 border border-amber-700/50; }
+.badge-info    { @apply bg-blue-900/50 text-blue-300 border border-blue-700/50; }
+.badge-hint    { @apply bg-slate-700/50 text-slate-300 border border-slate-600/50; }
+.badge-off     { @apply bg-slate-800/50 text-slate-400 border border-slate-700/50; }
+
+/* ── Smooth scroll ── */
+html { scroll-behavior: smooth; }
+
+/* ── Nav active state ── */
+.nav-link {
+  @apply px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors;
+}
+.nav-link.active {
+  @apply text-white bg-violet-600/20 hover:bg-violet-600/30;
+}

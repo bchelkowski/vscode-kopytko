@@ -1,0 +1,62 @@
+---
+import { highlight } from '../utils/highlight';
+
+type Severity = 'error' | 'warning' | 'info' | 'hint' | 'off';
+
+interface Props {
+  id: string;
+  severity: Severity;
+  description: string;
+  bad?: string;
+  good?: string;
+  note?: string;
+}
+
+const { id, severity, description, bad, good, note } = Astro.props;
+
+const [badHtml, goodHtml] = await Promise.all([
+  bad ? highlight(bad) : Promise.resolve(''),
+  good ? highlight(good) : Promise.resolve(''),
+]);
+
+const severityLabel: Record<Severity, string> = {
+  error: 'error',
+  warning: 'warning',
+  info: 'info',
+  hint: 'hint',
+  off: 'off by default',
+};
+---
+<div id={id.replace('/', '-')} class="group bg-[#0f1923] border border-[#1e2d4a] rounded-xl p-5 hover:border-[#2d4060] transition-colors scroll-mt-20">
+  <div class="flex flex-wrap items-start gap-3 mb-3">
+    <code class="text-sm font-mono text-violet-300 bg-violet-900/20 px-2 py-0.5 rounded border border-violet-700/30">
+      {id}
+    </code>
+    <span class:list={['text-xs font-medium px-2 py-0.5 rounded', `badge-${severity}`]}>
+      {severityLabel[severity]}
+    </span>
+  </div>
+  <p class="text-sm text-slate-300 mb-4 leading-relaxed">{description}</p>
+  {note && <p class="text-xs text-slate-500 italic mb-4">{note}</p>}
+
+  {(bad || good) && (
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {bad && (
+        <div>
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="text-xs text-red-400 font-medium">❌ Triggers rule</span>
+          </div>
+          <div set:html={badHtml} />
+        </div>
+      )}
+      {good && (
+        <div>
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="text-xs text-green-400 font-medium">✓ OK</span>
+          </div>
+          <div set:html={goodHtml} />
+        </div>
+      )}
+    </div>
+  )}
+</div>

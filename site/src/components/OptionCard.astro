@@ -1,0 +1,32 @@
+---
+import BeforeAfter from './BeforeAfter.astro';
+
+interface Props {
+  name: string;
+  type: string;
+  defaultValue: string;
+  description: string;
+  before?: string;
+  after?: string;
+  beforeLabel?: string;
+  afterLabel?: string;
+}
+
+const { name, type, defaultValue, description, before, after, beforeLabel, afterLabel } = Astro.props;
+---
+<div id={name} class="bg-[#0f1923] border border-[#1e2d4a] rounded-xl p-5 hover:border-[#2d4060] transition-colors scroll-mt-20">
+  <div class="flex flex-wrap items-center gap-3 mb-2">
+    <code class="text-sm font-mono text-cyan-300">{name}</code>
+    <span class="text-xs text-slate-500 font-mono bg-slate-800/50 px-2 py-0.5 rounded">{type}</span>
+    <span class="text-xs text-slate-500">default: <code class="text-slate-300">{defaultValue}</code></span>
+  </div>
+  <p class="text-sm text-slate-300 mb-4 leading-relaxed">{description}</p>
+  {before && after && (
+    <BeforeAfter
+      before={before}
+      after={after}
+      beforeLabel={beforeLabel}
+      afterLabel={afterLabel}
+    />
+  )}
+</div>

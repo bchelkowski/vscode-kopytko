@@ -183,3 +183,12 @@ jobs:
             git commit -m "chore: bump kopytko-brightscript-parser to v${VERSION}"
             git push origin HEAD
           }
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    needs: release
+    uses: ./.github/workflows/gh-pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

@@ -1,0 +1,123 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+  activePage?: string;
+}
+
+const { title, description = 'Professional BrightScript tooling for Roku developers', activePage } = Astro.props;
+const base = import.meta.env.BASE_URL;
+
+const navLinks = [
+  { href: `${base}/extension`, label: 'Extension', key: 'extension' },
+  { href: `${base}/parser`, label: 'Parser', key: 'parser' },
+  { href: `${base}/linter`, label: 'Linter', key: 'linter' },
+  { href: `${base}/formatter`, label: 'Formatter', key: 'formatter' },
+];
+---
+<!doctype html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title} — Kopytko</title>
+  <meta name="description" content={description} />
+  <meta name="og:title" content={`${title} — Kopytko`} />
+  <meta name="og:description" content={description} />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="icon" href={`${base}/kopytko-logo.svg`} type="image/svg+xml" />
+</head>
+<body class="bg-[#070b14] text-slate-100 font-[Inter,system-ui,sans-serif] min-h-screen flex flex-col">
+  <!-- Navigation -->
+  <header class="sticky top-0 z-50 border-b border-[#1e2d4a] bg-[#070b14]/90 backdrop-blur-sm">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-6">
+      <a href={base || '/'} class="flex items-center gap-2.5 shrink-0 group">
+        <img src={`${base}/kopytko-logo.svg`} alt="Kopytko" class="w-7 h-7 group-hover:opacity-80 transition-opacity" />
+        <span class="font-semibold text-white tracking-tight">Kopytko</span>
+      </a>
+
+      <div class="flex items-center gap-1 ml-4">
+        {navLinks.map(link => (
+          <a
+            href={link.href}
+            class:list={['nav-link', { active: activePage === link.key }]}
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+
+      <div class="ml-auto">
+        <a
+          href="https://github.com/bchelkowski/vscode-kopytko"
+          target="_blank"
+          rel="noopener"
+          class="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+          aria-label="GitHub"
+        >
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          GitHub
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Page content -->
+  <main class="flex-1">
+    <slot />
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-[#1e2d4a] mt-20 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+        <div>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Extension</h3>
+          <ul class="space-y-2 text-sm">
+            <li><a href="https://marketplace.visualstudio.com/items?itemName=bchelkowski.kopytko" target="_blank" class="prose-link">VS Code Marketplace</a></li>
+            <li><a href={`${base}/extension`} class="prose-link">Features</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Packages</h3>
+          <ul class="space-y-2 text-sm">
+            <li><a href="https://www.npmjs.com/package/kopytko-brightscript-parser" target="_blank" class="prose-link">brightscript-parser</a></li>
+            <li><a href="https://www.npmjs.com/package/kopytko-formatter" target="_blank" class="prose-link">kopytko-formatter</a></li>
+            <li><a href="https://www.npmjs.com/package/kopytko-linter" target="_blank" class="prose-link">kopytko-linter</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Docs</h3>
+          <ul class="space-y-2 text-sm">
+            <li><a href={`${base}/parser`} class="prose-link">Parser API</a></li>
+            <li><a href={`${base}/linter`} class="prose-link">Linter Rules</a></li>
+            <li><a href={`${base}/formatter`} class="prose-link">Formatter Options</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Kopytko</h3>
+          <ul class="space-y-2 text-sm">
+            <li><a href="https://github.com/getndazn/kopytko-framework" target="_blank" class="prose-link">Framework</a></li>
+            <li><a href="https://developer.roku.com/docs/references/brightscript" target="_blank" class="prose-link">BrightScript Docs</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-[#1e2d4a] pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <img src={`${base}/kopytko-logo.svg`} alt="Kopytko" class="w-5 h-5 opacity-60" />
+          <span class="text-sm text-slate-500">Kopytko — Professional BrightScript tooling</span>
+        </div>
+        <p class="text-sm text-slate-600">MIT License</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+</style>

@@ -163,3 +163,12 @@ jobs:
         run: npx vsce publish --no-git-tag-version
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    needs: release
+    uses: ./.github/workflows/gh-pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

@@ -1,0 +1,906 @@
+---
+import Layout from '../components/Layout.astro';
+import CodePanel from '../components/CodePanel.astro';
+import OptionCard from '../components/OptionCard.astro';
+import BeforeAfter from '../components/BeforeAfter.astro';
+import FormatterPlayground from '../components/FormatterPlayground';
+import formatterPkg from '../../../packages/formatter/package.json';
+
+interface Option {
+  name: string;
+  type: string;
+  defaultValue: string;
+  description: string;
+  before?: string;
+  after?: string;
+  beforeLabel?: string;
+  afterLabel?: string;
+}
+
+const indentOptions: Option[] = [
+  {
+    name: 'indentSize',
+    type: 'number',
+    defaultValue: '4',
+    description: 'Number of spaces per indent level when useTabs is false.',
+    before: `function main()
+  if true then
+    print "nested"
+  end if
+end function`,
+    after: `function main()
+    if true then
+        print "nested"
+    end if
+end function`,
+    beforeLabel: 'indentSize: 2',
+    afterLabel: 'indentSize: 4',
+  },
+  {
+    name: 'useTabs',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: 'Use tab characters instead of spaces for indentation.',
+    before: `function main()
+  print "spaces"
+end function`,
+    after: `function main()
+\tprint "tabs"
+end function`,
+    beforeLabel: 'useTabs: false',
+    afterLabel: 'useTabs: true',
+  },
+  {
+    name: 'maxEmptyLines',
+    type: 'number',
+    defaultValue: '2',
+    description: 'Maximum number of consecutive blank lines allowed. 0 = no limit.',
+    before: `function a()
+end function
+
+
+
+function b()
+end function`,
+    after: `function a()
+end function
+
+function b()
+end function`,
+    beforeLabel: 'maxEmptyLines: 2 (input)',
+    afterLabel: 'maxEmptyLines: 1 (output)',
+  },
+  {
+    name: 'emptyLinesBetweenFunctions',
+    type: 'number',
+    defaultValue: '1',
+    description: 'Exact number of blank lines between top-level function/sub declarations.',
+    before: `function a()
+end function
+function b()
+end function`,
+    after: `function a()
+end function
+
+function b()
+end function`,
+    beforeLabel: '0 blank lines (input)',
+    afterLabel: '1 blank line (output)',
+  },
+  {
+    name: 'emptyLinesBetweenMethods',
+    type: 'number',
+    defaultValue: '1',
+    description: 'Exact number of blank lines between AA method definitions inside a builder function.',
+  },
+  {
+    name: 'trimTrailingWhitespace',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: 'Remove all trailing whitespace from the end of each line.',
+  },
+  {
+    name: 'insertFinalNewline',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: 'Ensure the file ends with exactly one newline character.',
+  },
+  {
+    name: 'lineEnding',
+    type: "'lf' | 'crlf' | 'auto'",
+    defaultValue: "'auto'",
+    description: "Line ending style. 'auto' preserves the file's existing line endings.",
+  },
+];
+
+const keywordOptions: Option[] = [
+  {
+    name: 'endKeywordStyle',
+    type: "'spaced' | 'compact' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Controls whether compound end keywords use a space ('end if') or are compact ('endif').",
+    before: `if x = 1 then
+  print "one"
+endif
+
+while x > 0
+  x--
+endwhile`,
+    after: `if x = 1 then
+  print "one"
+end if
+
+while x > 0
+  x--
+end while`,
+    beforeLabel: "compact",
+    afterLabel: "spaced",
+  },
+  {
+    name: 'thenStyle',
+    type: "'always' | 'never' | 'multiline-only' | 'singleline-only' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Controls whether 'then' appears on if conditions.",
+    before: `if x = 1
+  print "one"
+end if
+
+if y > 0 then print "pos"`,
+    after: `if x = 1 then
+  print "one"
+end if
+
+if y > 0 then print "pos"`,
+    beforeLabel: 'thenStyle: preserve (input)',
+    afterLabel: "thenStyle: 'always'",
+  },
+];
+
+const functionOptions: Option[] = [
+  {
+    name: 'functionVsSubForVoid',
+    type: "'function' | 'sub' | 'allow-void' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Enforce consistent use of function vs sub for procedures that return nothing.",
+    before: `function doWork() as Void
+  print "work"
+end function`,
+    after: `sub doWork()
+  print "work"
+end sub`,
+    beforeLabel: 'preserve',
+    afterLabel: "sub",
+  },
+  {
+    name: 'spaceBeforeNamedFunctionParens',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: "Insert a space between the function name and its opening parenthesis in definitions.",
+    before: `function add(a, b)
+  return a + b
+end function`,
+    after: `function add (a, b)
+  return a + b
+end function`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'spaceBeforeCallParens',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: "Insert a space between function name and '(' in call expressions.",
+    before: `result = add(1, 2)
+print result`,
+    after: `result = add (1, 2)
+print result`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'spaceInsideParens',
+    type: "'never' | 'always'",
+    defaultValue: "'never'",
+    description: "Enforce spaces inside parentheses in calls and definitions.",
+    before: `result = add(1, 2)`,
+    after: `result = add( 1, 2 )`,
+    beforeLabel: "'never'",
+    afterLabel: "'always'",
+  },
+  {
+    name: 'paramAlignmentStyle',
+    type: "'indent' | 'align-to-paren' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "How to align parameters when a function signature spans multiple lines. Note: in BrightScript, multi-line parameter lists require _ line-continuation characters. This pass is not yet implemented — the option is accepted but has no effect on formatting output.",
+  },
+];
+
+const operatorOptions: Option[] = [
+  {
+    name: 'spaceAroundOperators',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: 'Enforce spaces around binary operators: +, -, *, /, \\, ^, <, >, <=, >=, <>, and, or, mod.',
+    before: `x=a+b*c
+valid=x>0 and x<100`,
+    after: `x = a + b * c
+valid = x > 0 and x < 100`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'spaceAroundAssignment',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: "Enforce spaces around = in standalone assignment statements.",
+    before: `x=1
+name="hello"`,
+    after: `x = 1
+name = "hello"`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'unarySpacing',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: "Enforce a space after the unary 'not' operator.",
+    before: `result = not valid`,
+    after: `result = not valid`,
+    beforeLabel: 'false (no space)',
+    afterLabel: 'true (space enforced)',
+  },
+];
+
+const commentOptions: Option[] = [
+  {
+    name: 'commentStyle',
+    type: "\"'\" | 'rem' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Normalize all comment markers to tick (') or rem.",
+    before: `rem initialize the screen
+x = 1
+' set the value
+y = 2`,
+    after: `' initialize the screen
+x = 1
+' set the value
+y = 2`,
+    beforeLabel: 'preserve (mixed input)',
+    afterLabel: "commentStyle: \"'\"",
+  },
+  {
+    name: 'spaceAfterCommentMarker',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: "Enforce a single space between the comment marker (') and the comment text.",
+    before: `'No space after tick
+x = 1  'Also no space`,
+    after: `' Space after tick
+x = 1  ' Also space`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'commentWidth',
+    type: 'number',
+    defaultValue: '0',
+    description: 'Maximum line length for comment lines. 0 = no limit.',
+  },
+];
+
+const importOptions: Option[] = [
+  {
+    name: 'sortImports',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: 'Sort @import statements alphabetically (module-relative imports first, then absolute paths).',
+    before: `' @import /utils/z-helper.brs
+' @import /utils/a-helper.brs
+' @import /components/Widget.brs`,
+    after: `' @import /components/Widget.brs
+' @import /utils/a-helper.brs
+' @import /utils/z-helper.brs`,
+    beforeLabel: 'unsorted',
+    afterLabel: 'sortImports: true',
+  },
+  {
+    name: 'emptyLineAfterImports',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: 'Insert a blank line after the last @import line and before the first line of code.',
+    before: `' @import /utils/helper.brs
+function main()
+  print "hello"
+end function`,
+    after: `' @import /utils/helper.brs
+
+function main()
+  print "hello"
+end function`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+];
+
+const blankLineOptions: Option[] = [
+  {
+    name: 'emptyLineAfterFunctionOpen',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: 'Insert a blank line after the function/sub declaration line.',
+    before: `function main()
+  x = 1
+end function`,
+    after: `function main()
+
+  x = 1
+end function`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'emptyLineBeforeFunctionClose',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: 'Insert a blank line before end function/sub.',
+    before: `function main()
+  print "done"
+end function`,
+    after: `function main()
+  print "done"
+
+end function`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'emptyLineBeforeReturn',
+    type: "'always' | 'not-alone' | false",
+    defaultValue: 'false',
+    description: "Insert a blank line before return statements. 'not-alone' skips when return is the only statement.",
+    before: `function getValue()
+  x = compute()
+  return x
+end function`,
+    after: `function getValue()
+  x = compute()
+
+  return x
+end function`,
+    beforeLabel: 'false',
+    afterLabel: "'always'",
+  },
+  {
+    name: 'emptyLineBeforeComment',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: 'Enforce a blank line before a stand-alone comment line.',
+    before: `x = 1
+' compute result
+y = x + 1`,
+    after: `x = 1
+
+' compute result
+y = x + 1`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+];
+
+const controlFlowOptions: Option[] = [
+  {
+    name: 'parenthesisIfCase',
+    type: "'always' | 'never' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Control whether if conditions are wrapped in parentheses. Works on any condition expression including method calls and comparisons (e.g. 'if a.someMethod() > 0' → 'if (a.someMethod() > 0)').",
+    before: `if x = 1 then
+  print "one"
+end if
+
+if result > threshold then
+  print "ok"
+end if`,
+    after: `if (x = 1) then
+  print "one"
+end if
+
+if (result > threshold) then
+  print "ok"
+end if`,
+    beforeLabel: 'preserve / never',
+    afterLabel: "'always'",
+  },
+  {
+    name: 'elseOnNewLine',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: "Intended to control else placement. This pass is not yet implemented — the option is accepted but has no effect on formatting output.",
+  },
+  {
+    name: 'forLoopSpacing',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: "Enforce spaces around 'to' and 'step' keywords in for-loop headers.",
+    before: `for i=1 to 10 step 2
+  print i
+end for`,
+    after: `for i = 1 to 10 step 2
+  print i
+end for`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+];
+
+const aaOptions: Option[] = [
+  {
+    name: 'associativeArrayBracketSpacing',
+    type: 'boolean',
+    defaultValue: 'true',
+    description: "Spaces inside {} braces for inline associative arrays: { key: value } vs {key: value}.",
+    before: `data = {name: "Alice", age: 30}`,
+    after: `data = { name: "Alice", age: 30 }`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'trailingComma',
+    type: "'never' | 'always' | 'multiline'",
+    defaultValue: "'never'",
+    description: "Trailing comma after the last element in arrays/AA literals.",
+    before: `items = [
+  "apple",
+  "banana",
+  "cherry"
+]`,
+    after: `items = [
+  "apple",
+  "banana",
+  "cherry",
+]`,
+    beforeLabel: "'never'",
+    afterLabel: "'multiline'",
+  },
+  {
+    name: 'associativeArraySingleLineThreshold',
+    type: 'number',
+    defaultValue: '0',
+    description: 'Force multi-line layout when an AA has more than this many keys. 0 = no threshold.',
+    before: `data = { a: 1, b: 2, c: 3, d: 4 }`,
+    after: `data = {
+  a: 1,
+  b: 2,
+  c: 3,
+  d: 4,
+}`,
+    beforeLabel: 'threshold: 0 (preserve)',
+    afterLabel: 'threshold: 3 (4 keys → multiline)',
+  },
+  {
+    name: 'arraySplitOpenBracket',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: "Split [{ onto separate lines for multi-item array-of-objects.",
+    before: `items = [{ id: 1, name: "a" }, { id: 2, name: "b" }]`,
+    after: `items = [
+  { id: 1, name: "a" },
+  { id: 2, name: "b" },
+]`,
+    beforeLabel: 'false (preserve)',
+    afterLabel: 'true',
+  },
+];
+
+const brsPatternOptions: Option[] = [
+  {
+    name: 'mPrefixStyle',
+    type: "'dot' | 'bracket' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Normalize m-scope field access to dot notation or bracket notation.",
+    before: `m["count"] = m["count"] + 1
+m["name"] = "test"`,
+    after: `m.count = m.count + 1
+m.name = "test"`,
+    beforeLabel: 'bracket (input)',
+    afterLabel: "mPrefixStyle: 'dot'",
+  },
+  {
+    name: 'alignAssignments',
+    type: 'boolean',
+    defaultValue: 'false',
+    description: "Align = signs in consecutive assignment statements.",
+    before: `firstName = "John"
+lastName = "Doe"
+age = 30
+isActive = true`,
+    after: `firstName = "John"
+lastName  = "Doe"
+age       = 30
+isActive  = true`,
+    beforeLabel: 'false',
+    afterLabel: 'true',
+  },
+  {
+    name: 'observeFieldStyle',
+    type: "'always-scoped' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Enforce observeFieldScoped() over observeField() for task/render-safe observation. Using non-scoped observeField() can cause memory leaks in long-lived Task nodes.",
+    before: `m.top.observeField("myField", "onChanged")`,
+    after: `m.top.observeFieldScoped("myField", "onChanged")`,
+    beforeLabel: 'preserve (input)',
+    afterLabel: "'always-scoped'",
+  },
+  {
+    name: 'fieldAccessConsistency',
+    type: "'dot' | 'method' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Normalize SceneGraph node field access between dot notation and getField()/setField() methods.",
+    before: `value = m.top.getField("myField")
+m.top.setField("result", 42)`,
+    after: `value = m.top.myField
+m.top.result = 42`,
+    beforeLabel: "method (input)",
+    afterLabel: "dot",
+  },
+];
+
+const miscOptions: Option[] = [
+  {
+    name: 'printStatement',
+    type: "'warn' | 'remove' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Flag or remove 'print' debug statements.",
+    before: `function main()
+  print "debug: x = " + x.toStr()
+  result = compute()
+  print "done"
+  return result
+end function`,
+    after: `function main()
+  result = compute()
+  return result
+end function`,
+    beforeLabel: 'preserve (input)',
+    afterLabel: "'remove'",
+  },
+  {
+    name: 'maxLineLength',
+    type: 'number',
+    defaultValue: '120',
+    description: "Maximum line length. Lines exceeding this are flagged (works with wrapLongStrings). 0 = no limit.",
+  },
+  {
+    name: 'wrapLongStrings',
+    type: "'plus' | 'array-join' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "How to wrap string literals that exceed maxLineLength.",
+    before: `message = "This is a very long string that will definitely exceed the maximum configured line length limit"`,
+    after: `message = "This is a very long string that will definitely " + _
+        "exceed the maximum configured line length limit"`,
+    beforeLabel: 'preserve',
+    afterLabel: "'plus'",
+  },
+  {
+    name: 'emptyLinesAtBlockBoundaries',
+    type: "'strip' | 'enforce' | 'preserve'",
+    defaultValue: "'preserve'",
+    description: "Control blank lines at the start and end of blocks (if, for, while bodies).",
+  },
+];
+
+const configExample = `{
+  "indentSize": 4,
+  "endKeywordStyle": "spaced",
+  "thenStyle": "always",
+  "spaceAroundOperators": true,
+  "spaceAroundAssignment": true,
+  "commentStyle": "'",
+  "spaceAfterCommentMarker": true,
+  "sortImports": true,
+  "emptyLineAfterImports": true,
+  "emptyLinesBetweenFunctions": 1,
+  "maxEmptyLines": 2,
+  "trailingComma": "multiline",
+  "associativeArrayBracketSpacing": true,
+  "trimTrailingWhitespace": true,
+  "insertFinalNewline": true
+}`;
+
+const casingConfigExample = `// .vscode/settings.json
+{
+  "kopytko.casing.keyword": "lower-case",
+  "kopytko.casing.builtin": "pascal-case",
+  "kopytko.casing.type": "pascal-case",
+  "kopytko.casing.literal": "lower-case",
+  "kopytko.casing.logicOperator": "lower-case",
+  "kopytko.casing.userFunction": "camel-case",
+  "kopytko.casing.exact": {
+    "createObject": "pascal-case"
+  }
+}`;
+
+const scriptExample = `{
+  "scripts": {
+    "format": "kopytko-format --write \\"src/**/*.brs\\"",
+    "format:check": "kopytko-format --check \\"src/**/*.brs\\""
+  }
+}`;
+
+const ciBefore = `' Unformatted input
+function  add(a ,b)
+x=a+b
+return x
+end function`;
+
+const ciAfter = `function add(a, b)
+    x = a + b
+    return x
+end function`;
+
+const casingBefore = `FUNCTION add(A AS INTEGER, B AS INTEGER) AS INTEGER
+  RETURN A + B
+END FUNCTION`;
+const casingAfter = `function add(a as Integer, b as Integer) as Integer
+  return a + b
+end function`;
+---
+<Layout title="Formatter" activePage="formatter">
+  <!-- Page header -->
+  <div class="bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(16,185,129,0.08),transparent)] border-b border-[#1e2d4a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+      <div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+        <span>npm</span><span>/</span>
+        <code class="text-slate-300">kopytko-formatter</code>
+        <span class="bg-slate-700/60 text-slate-400 text-xs px-2 py-0.5 rounded-full ml-1">v{formatterPkg.version}</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">BrightScript Formatter</h1>
+      <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
+        A hybrid 27-pass formatter for BrightScript with 39+ configuration options. All options default to preserve so you can adopt it incrementally without changing existing style.
+      </p>
+      <div class="flex flex-wrap gap-3 mt-6">
+        <a href="https://www.npmjs.com/package/kopytko-formatter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.331h-2.669v0zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10h1.336v2.667h-1.336V10z"/></svg>
+          npm
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko/tree/main/packages/formatter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Source
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16">
+
+    <!-- Install & setup -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div>
+        <h2 class="text-xl font-bold text-white mb-4">Install & setup</h2>
+        <CodePanel code={`npm install --save-dev kopytko-formatter`} lang="bash" />
+        <p class="text-sm text-slate-400 mt-4 mb-3">Add scripts to <code class="text-violet-300">package.json</code>:</p>
+        <CodePanel code={scriptExample} lang="json" />
+        <p class="text-sm text-slate-400 mt-4 mb-3">For VS Code format-on-save:</p>
+        <CodePanel code={`// .vscode/settings.json
+{
+  "editor.formatOnSave": true,
+  "[brightscript]": {
+    "editor.defaultFormatter": "bchelkowski.kopytko"
+  }
+}`} lang="json" />
+      </div>
+      <div>
+        <h2 class="text-xl font-bold text-white mb-4">Example config</h2>
+        <CodePanel code={configExample} lang="json" filename="kopytko-formatter.json" />
+        <p class="text-xs text-slate-500 mt-3">Config resolution: <code>--config flag</code> → <code>kopytko-formatter.json</code> → <code>.vscode/settings.json</code> (<code>kopytko.format.*</code>)</p>
+      </div>
+    </section>
+
+    <!-- Interactive playground -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Live playground</h2>
+      <p class="text-slate-400 text-sm mb-6">
+        Paste any BrightScript code and experiment with the options below — the output updates instantly.
+        Try toggling <em>End keywords</em>, <em>"then"</em>, and <em>m. style</em> to see the difference.
+      </p>
+      <FormatterPlayground client:load />
+    </section>
+
+    <!-- Quick before/after -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Before / after example</h2>
+      <p class="text-slate-400 text-sm mb-6">Unformatted BrightScript → formatted with the recommended config above.</p>
+      <BeforeAfter before={ciBefore} after={ciAfter} beforeLabel="Input" afterLabel="Formatted" />
+    </section>
+
+    <!-- Casing -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Casing</h2>
+      <p class="text-slate-400 text-sm mb-4">
+        10 independent casing dimensions with per-identifier overrides. Values: <code class="text-slate-300">preserve</code>, <code class="text-slate-300">upper-case</code>, <code class="text-slate-300">lower-case</code>, <code class="text-slate-300">capitalize</code>, <code class="text-slate-300">pascal-case</code>, <code class="text-slate-300">camel-case</code>.
+      </p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <CodePanel code={casingConfigExample} lang="jsonc" filename=".vscode/settings.json" />
+        <BeforeAfter before={casingBefore} after={casingAfter} beforeLabel="Input (mixed case)" afterLabel="With casing config" />
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left border border-[#1e2d4a] rounded-xl overflow-hidden">
+          <thead class="bg-[#0f1923]">
+            <tr>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Setting</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Controls</th>
+              <th class="px-4 py-2.5 text-slate-400 font-medium">Default</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#1e2d4a]">
+            {[
+              ['kopytko.casing.builtin', 'Built-in functions (StrToI, Left, Right…)', 'preserve'],
+              ['kopytko.casing.keyword', 'Keywords (if, for, function…) — fallback for sub-categories', 'preserve'],
+              ['kopytko.casing.type', 'Type names (Integer, String, Object…)', 'falls back to keyword'],
+              ['kopytko.casing.literal', 'true, false, invalid', 'falls back to keyword'],
+              ['kopytko.casing.logicOperator', 'and, or, not', 'falls back to keyword'],
+              ['kopytko.casing.mathOperator', 'mod', 'falls back to keyword'],
+              ['kopytko.casing.method', 'ro* component methods', 'preserve'],
+              ['kopytko.casing.userFunction', 'User-defined functions', 'preserve'],
+              ['kopytko.casing.userMethod', 'User-defined AA methods', 'preserve'],
+              ['kopytko.casing.exact', 'Per-identifier map of overrides', '{}'],
+            ].map(([setting, controls, def]) => (
+              <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">
+                <td class="px-4 py-2.5"><code class="text-cyan-300 text-xs">{setting}</code></td>
+                <td class="px-4 py-2.5 text-slate-300 text-xs">{controls}</td>
+                <td class="px-4 py-2.5 text-slate-500 text-xs font-mono">{def}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- All options -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-2">All options</h2>
+      <p class="text-slate-400 text-sm mb-8">39+ formatting options, all defaulting to <code class="text-slate-300">'preserve'</code>. Click any option's anchor to link directly.</p>
+
+      <!-- Indentation -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-violet-500 rounded-full"></span>
+          Indentation & whitespace
+        </h3>
+        <div class="space-y-3">
+          {indentOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Keywords -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-purple-500 rounded-full"></span>
+          Compound keywords
+        </h3>
+        <div class="space-y-3">
+          {keywordOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Functions -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-indigo-500 rounded-full"></span>
+          Functions & subs
+        </h3>
+        <div class="space-y-3">
+          {functionOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Operators -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-cyan-500 rounded-full"></span>
+          Operators & expressions
+        </h3>
+        <div class="space-y-3">
+          {operatorOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-green-500 rounded-full"></span>
+          Comments
+        </h3>
+        <div class="space-y-3">
+          {commentOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Imports -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-yellow-500 rounded-full"></span>
+          Imports
+        </h3>
+        <div class="space-y-3">
+          {importOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Blank lines -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-orange-500 rounded-full"></span>
+          Blank lines
+        </h3>
+        <div class="space-y-3">
+          {blankLineOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Control flow -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-rose-500 rounded-full"></span>
+          Control flow
+        </h3>
+        <div class="space-y-3">
+          {controlFlowOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Arrays & AAs -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-teal-500 rounded-full"></span>
+          Arrays & associative arrays
+        </h3>
+        <div class="space-y-3">
+          {aaOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- BrightScript patterns -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-sky-500 rounded-full"></span>
+          BrightScript patterns
+        </h3>
+        <div class="space-y-3">
+          {brsPatternOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- Misc -->
+      <div>
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-slate-500 rounded-full"></span>
+          Miscellaneous
+        </h3>
+        <div class="space-y-3">
+          {miscOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+    </section>
+
+    <!-- Library API -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">Library API</h2>
+      <CodePanel code={`import { formatText, checkFormatting } from 'kopytko-formatter';
+
+// Format a BrightScript source string
+const formatted = formatText(source, {
+  indentSize: 4,
+  endKeywordStyle: 'spaced',
+  spaceAroundOperators: true,
+});
+
+// Check if source is already formatted (returns boolean, no mutation)
+const isClean = checkFormatting(source, config);
+if (!isClean) {
+  console.log('File needs formatting');
+}`} lang="typescript" />
+    </section>
+
+  </div>
+</Layout>
