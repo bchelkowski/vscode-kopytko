@@ -308,6 +308,67 @@ describe('RendezvousManager', () => {
     });
   });
 
+  // ── sorting ───────────────────────────────────────────────────────────────────
+
+  describe('sorting', () => {
+    async function buildManagerWithGroups() {
+      const ecp = createMockEcp();
+      ecp.queryRendezvousEvents
+        .onFirstCall().resolves({
+          events: [
+            // Foo.brs:1 — 1 occurrence, 5ms total
+            { id: '1', startTimeMs: 0, endTimeMs: 5, line: 1, file: 'pkg:/Foo.brs' },
+          ],
+          dropCount: 0,
+        })
+        .onSecondCall().resolves({
+          events: [
+            // Bar.brs:2 — 3 occurrences, 3ms total
+            { id: '2', startTimeMs: 0, endTimeMs: 1, line: 2, file: 'pkg:/Bar.brs' },
+            { id: '3', startTimeMs: 0, endTimeMs: 1, line: 2, file: 'pkg:/Bar.brs' },
+            { id: '4', startTimeMs: 0, endTimeMs: 1, line: 2, file: 'pkg:/Bar.brs' },
+          ],
+          dropCount: 0,
+        })
+        .resolves({ events: [], dropCount: 0 });
+
+      const dm = createMockDeviceManager(DEVICE_A);
+      const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
+      await mgr.setEnabled(true);
+      await clock.tickAsync(1100); // first poll: Foo.brs 1×, 5ms
+      await clock.tickAsync(1000); // second poll: Bar.brs 3×, 3ms total
+      return { mgr };
+    }
+
+    it('defaults to sort by count descending', async () => {
+      const { mgr } = await buildManagerWithGroups();
+      const groups = mgr.getGroups();
+      expect(groups[0].line).to.equal(2); // Bar.brs 3 occurrences
+      expect(groups[1].line).to.equal(1); // Foo.brs 1 occurrence
+      mgr.dispose();
+    });
+
+    it('sorts by total time descending when mode is "time"', async () => {
+      const { mgr } = await buildManagerWithGroups();
+      mgr.setSortMode('time');
+      const groups = mgr.getGroups();
+      expect(groups[0].line).to.equal(1); // Foo.brs 5ms total
+      expect(groups[1].line).to.equal(2); // Bar.brs 3ms total
+      mgr.dispose();
+    });
+
+    it('emits "changed" when sort mode is set', async () => {
+      const ecp = createMockEcp();
+      const dm = createMockDeviceManager(DEVICE_A);
+      const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
+      let changed = false;
+      mgr.on('changed', () => { changed = true; });
+      mgr.setSortMode('time');
+      expect(changed).to.be.true;
+      mgr.dispose();
+    });
+  });
+
   // ── dispose ───────────────────────────────────────────────────────────────────
 
   describe('dispose()', () => {

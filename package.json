@@ -1026,6 +1026,18 @@
         "command": "kopytko.navigateToRendezvous",
         "title": "Go to Rendezvous Location",
         "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.sortRendezvousByCount",
+        "title": "Sort by Occurrences",
+        "icon": "$(list-ordered)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.sortRendezvousByTime",
+        "title": "Sort by Total Time",
+        "icon": "$(watch)",
+        "category": "Kopytko"
       }
     ],
     "menus": {
@@ -1044,11 +1056,29 @@
           "command": "kopytko.clearRendezvousLog",
           "when": "view == kopytko.rendezvous",
           "group": "navigation@1"
+        },
+        {
+          "command": "kopytko.sortRendezvousByTime",
+          "when": "view == kopytko.rendezvous && kopytko.rendezvousSortMode == 'count'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kopytko.sortRendezvousByCount",
+          "when": "view == kopytko.rendezvous && kopytko.rendezvousSortMode == 'time'",
+          "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
           "command": "kopytko.navigateToRendezvous",
+          "when": "false"
+        },
+        {
+          "command": "kopytko.sortRendezvousByCount",
+          "when": "false"
+        },
+        {
+          "command": "kopytko.sortRendezvousByTime",
           "when": "false"
         }
       ],

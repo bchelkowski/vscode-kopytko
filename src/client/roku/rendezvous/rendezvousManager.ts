@@ -8,6 +8,8 @@ import { rokuPathToLocal } from '../../debug/services/pathMapping';
 const POLL_INTERVAL_MS = 1000;
 const PERSISTENCE_KEY = 'kopytko.rendezvousEnabled';
 
+export type RendezvousSortMode = 'count' | 'time';
+
 export interface RendezvousEntry {
   duration: number;
   timestamp: number;
@@ -26,6 +28,7 @@ export class RendezvousManager extends EventEmitter {
   private _lastKnownSerial: string | undefined;
   private _groups: RendezvousGroup[] = [];
   private _totalDropCount = 0;
+  private _sortMode: RendezvousSortMode = 'count';
   private _pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -47,8 +50,27 @@ export class RendezvousManager extends EventEmitter {
     return this._totalDropCount;
   }
 
+  get sortMode(): RendezvousSortMode {
+    return this._sortMode;
+  }
+
+  setSortMode(mode: RendezvousSortMode): void {
+    this._sortMode = mode;
+    this.emit('changed');
+  }
+
   getGroups(): RendezvousGroup[] {
-    return this._groups;
+    const groups = [...this._groups];
+    if (this._sortMode === 'count') {
+      groups.sort((a, b) => b.entries.length - a.entries.length);
+    } else {
+      groups.sort((a, b) => {
+        const totalA = a.entries.reduce((sum, e) => sum + e.duration, 0);
+        const totalB = b.entries.reduce((sum, e) => sum + e.duration, 0);
+        return totalB - totalA;
+      });
+    }
+    return groups;
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
