@@ -141,6 +141,12 @@ class Parser {
     return tok;
   }
 
+  /** Advance and re-classify the consumed token as TypeName, preserving all other fields. */
+  private advanceAsTypeName(): Token {
+    const tok = this.advance();
+    return { ...tok, kind: TokenKind.TypeName };
+  }
+
   private check(kind: TokenKind): boolean {
     return this.peekKind() === kind;
   }
@@ -473,8 +479,9 @@ class Parser {
     // optional type annotation: as Type
     if (this.check(TokenKind.As)) {
       children.push(this.advance()); // as
-      // type name (identifier or keyword like Integer, String, Object, etc.)
-      children.push(this.advance());
+      // Re-classify whatever follows as a TypeName token so formatters and
+      // linters can identify type-annotation positions by token kind alone.
+      children.push(this.advanceAsTypeName());
     }
 
     return new SyntaxNode(SyntaxKind.Parameter, children);
@@ -483,7 +490,7 @@ class Parser {
   private parseReturnTypeClause(): SyntaxNode {
     const children: SyntaxChild[] = [];
     children.push(this.advance()); // as
-    children.push(this.advance()); // type name
+    children.push(this.advanceAsTypeName()); // type name → re-classified as TypeName
     return new SyntaxNode(SyntaxKind.ReturnTypeClause, children);
   }
 

@@ -135,6 +135,13 @@ export enum TokenKind {
   HashConst = 'HashConst',           // #const
   HashError = 'HashError',           // #error
 
+  // ── Type keywords ───────────────────────────────────────────────────────
+  // Primitive BrightScript type names that appear after 'as' in annotations.
+  // The lexer does NOT produce these — the parser re-classifies the token
+  // after 'as' to TypeName regardless of its original kind, so that
+  // formatters and linters can target type positions precisely.
+  TypeName = 'TypeName',
+
   // ── Special ─────────────────────────────────────────────────────────────
   Eof = 'Eof',                       // end of input
 
@@ -206,4 +213,9 @@ const KEYWORD_KINDS = new Set<TokenKind>(KEYWORD_MAP.values());
 /** Returns true if the token kind is a keyword (not an identifier or literal). */
 export function isKeyword(kind: TokenKind): boolean {
   return KEYWORD_KINDS.has(kind);
+}
+
+/** Returns true if the token kind is a type annotation produced by the parser (after 'as'). */
+export function isTypeKeyword(kind: TokenKind): boolean {
+  return kind === TokenKind.TypeName;
 }

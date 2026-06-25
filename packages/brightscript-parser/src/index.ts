@@ -3,7 +3,7 @@
  */
 
 // Token types
-export { TokenKind, KEYWORD_MAP, isKeyword } from './tokenKind.js';
+export { TokenKind, KEYWORD_MAP, isKeyword, isTypeKeyword } from './tokenKind.js';
 export type { Token } from './token.js';
 export { tokenFullText, tokensToText } from './token.js';
 export { TriviaKind } from './trivia.js';
