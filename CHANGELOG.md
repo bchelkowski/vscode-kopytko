@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [1.4.0] - 2026-06-25
+
+### Added
+- Add sort toggle to rendezvous panel
+- Add group time summary and drop count warning to rendezvous panel
+- Add rendezvous debugging panel
+
+### Fixed
+- Navigate to rendezvous files inside node_modules
+- Replace context-key sort buttons with always-visible toggle
+- Correct sgrendezvous ECP endpoints and XML parser
+
 ## [1.3.1] - 2026-06-24
 
 ### Added
