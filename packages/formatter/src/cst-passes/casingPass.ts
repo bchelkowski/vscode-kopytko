@@ -6,7 +6,7 @@
  * type annotation keywords, and AA keys.
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isKeyword, isToken, isNode } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, TokenKind, isKeyword, isTypeKeyword, isToken, isNode } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
 import { TextEdit } from './infrastructure';
 import {
@@ -118,11 +118,26 @@ function processToken(
   }
 
   // Identifiers
+  // TypeName tokens — produced by the parser for every token after 'as'.
+  // Always apply type casing regardless of surrounding context.
+  if (isTypeKeyword(token.kind)) {
+    const typeOption = resolveKeywordCasing('type', config);
+    if (typeOption && typeOption !== 'preserve') {
+      const newText = applyCasing(token.text, typeOption);
+      if (newText !== token.text) {
+        edits.push({ pos: token.pos, end: token.end, newText });
+      }
+    }
+    return;
+  }
+
   if (token.kind === TokenKind.Identifier) {
     // After dot — don't apply user function casing (it's a property access)
     if (afterDot) return;
 
-    // After 'as' — this is a type name, apply type casing
+    // The afterAs path is now unreachable for normal type names (the parser
+    // produces TypeName tokens there), but is kept as a safety net for any
+    // edge case where the parser could not re-classify (e.g. EOF after 'as').
     if (afterAs) {
       const typeOption = resolveKeywordCasing('type', config);
       if (typeOption && typeOption !== 'preserve') {

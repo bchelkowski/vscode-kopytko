@@ -770,11 +770,10 @@
           "type": "string",
           "enum": [
             "always-scoped",
-            "warn",
             "preserve"
           ],
           "default": "preserve",
-          "markdownDescription": "Enforce `observeFieldScoped` over `observeField`. Using non-scoped `observeField` can cause memory leaks.\n\n```brightscript\n' \"always-scoped\": converts\nobserveField → observeFieldScoped\n\n' \"warn\": leaves as-is (diagnostic warns)\n```"
+          "markdownDescription": "Enforce `observeFieldScoped` over `observeField`. Using non-scoped `observeField` can cause memory leaks.\n\n```brightscript\n' \"always-scoped\": converts\nobserveField → observeFieldScoped\n```"
         },
         "kopytko.format.mPrefixStyle": {
           "type": "string",
