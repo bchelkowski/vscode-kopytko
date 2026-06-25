@@ -55,7 +55,10 @@ export class RendezvousGroupItem extends vscode.TreeItem {
     this.command = {
       title: 'Go to Location',
       command: 'kopytko.navigateToRendezvous',
-      arguments: [group.localPath || group.file, group.line],
+      // Pass both resolved local path AND original pkg:/ path so the handler
+      // can fall back to a workspace search when the local path is missing
+      // (e.g. the file lives inside an npm package under node_modules).
+      arguments: [group.localPath, group.file, group.line],
     };
   }
 }
@@ -65,6 +68,7 @@ export class RendezvousEntryItem extends vscode.TreeItem {
   constructor(
     entry: RendezvousEntry,
     localPath: string,
+    pkgPath: string,
     line: number,
   ) {
     super(formatDuration(entry.duration), vscode.TreeItemCollapsibleState.None);
@@ -74,7 +78,7 @@ export class RendezvousEntryItem extends vscode.TreeItem {
     this.command = {
       title: 'Go to Location',
       command: 'kopytko.navigateToRendezvous',
-      arguments: [localPath, line],
+      arguments: [localPath, pkgPath, line],
     };
   }
 }

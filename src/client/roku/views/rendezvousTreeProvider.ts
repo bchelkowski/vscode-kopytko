@@ -30,7 +30,12 @@ export class RendezvousTreeProvider implements vscode.TreeDataProvider<vscode.Tr
     }
     if (element instanceof RendezvousGroupItem) {
       return element.group.entries.map(
-        (entry) => new RendezvousEntryItem(entry, element.group.localPath || element.group.file, element.group.line),
+        (entry) => new RendezvousEntryItem(
+          entry,
+          element.group.localPath,
+          element.group.file,
+          element.group.line,
+        ),
       );
     }
     return [];
