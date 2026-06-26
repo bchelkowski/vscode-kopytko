@@ -8,10 +8,8 @@ rendezvous stalls.
 Everything here is built **only on data that Roku devices actually expose**, all
 verified against real hardware. Nothing is synthesized.
 
-> **Status:** Phases 1–3 are implemented — collection, storage, replay,
-> Start/Stop commands, live uPlot charts, and in-panel lists with
-> click-to-open-file navigation. Past-session replay UI lands in Phase 4. See
-> the status table in [features.md](./features.md).
+> **Status:** All four phases are implemented. See the status table in
+> [features.md](./features.md).
 
 ---
 
@@ -154,6 +152,39 @@ All under `kopytko.diagnostics.*`:
 | `collectors.textures.enabled` / `.intervalMs` | `false` / `5000` | GPU texture memory |
 
 ---
+
+## Session replay (Phase 4)
+
+A `<select>` dropdown in the toolbar lists every recorded session (newest first),
+alongside a **● Live** option for the live view.
+
+### Session selector
+
+Each option is labelled `<appTitle>  <date>  (<duration>)`, e.g.
+`DAZN  2026-06-26 10:37  (5m 12s)`. The extension reads all `session.json`
+manifests under the output directory and sends them to the webview each time the
+panel opens or a session stops.
+
+### Entering replay mode
+
+Selecting a past session sends `load-session { dir }` to the extension host, which:
+1. Uses `SessionReader` to read `mem-cpu.ndjson`, `node-counts.ndjson`, and
+   `rendezvous.ndjson` from the session directory.
+2. Caps at `kopytko.diagnostics.maxLivePoints` (default 3600) points per stream.
+3. Includes node-type breakdown only for the first and last node-counts snapshots
+   to keep the message small for long sessions.
+4. Sends a `replay` message back with the loaded data.
+
+The webview then:
+- Clears the live data, ingests the historical data, and redraws all charts and lists.
+- Updates the toolbar: the status dot turns blue, the Start/Stop button is disabled,
+  and the device label shows the session summary (app, date, duration).
+
+### Returning to live view
+
+Selecting **● Live** from the dropdown sends `load-live`; the extension responds with
+a fresh `init` message containing the live ring-buffer data (if a session is running)
+or an empty state. The toolbar and button are restored.
 
 ## Lists & navigation (Phase 3)
 

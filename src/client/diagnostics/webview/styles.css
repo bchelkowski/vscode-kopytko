@@ -44,6 +44,9 @@ body {
   box-shadow: 0 0 4px rgba(224,82,82,0.6);
   animation: pulse 1.4s ease-in-out infinite;
 }
+.status-dot.replay {
+  background: var(--vscode-charts-blue, #4FC3F7);
+}
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
@@ -83,6 +86,25 @@ button:hover {
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ── session selector ─────────────────────────────────────────────────────────── */
+
+#session-select {
+  background: var(--vscode-dropdown-background, #3c3c3c);
+  color: var(--vscode-dropdown-foreground, #cccccc);
+  border: 1px solid var(--vscode-dropdown-border, rgba(128,128,128,0.4));
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#session-select:focus {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
 }
 button.stop {
   background: var(--vscode-statusBarItem-errorBackground, #c72e2e);

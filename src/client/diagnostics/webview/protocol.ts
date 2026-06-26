@@ -56,6 +56,19 @@ export interface HistoryPayload {
   rendezvous: SerializedRendezvousPoint[];
 }
 
+/** Metadata about a recorded session, sent as part of the session list. */
+export interface SerializedSessionInfo {
+  /** Absolute path to the session folder on disk. Used as the selector value. */
+  dir: string;
+  id: string;
+  startedWall: number;
+  endedWall: number | null;
+  appTitle?: string;
+  deviceIp?: string;
+  /** Per-stream sample counts from the manifest (for display). */
+  sampleCounts: Partial<Record<string, number>>;
+}
+
 // ── Extension → Webview ───────────────────────────────────────────────────────
 
 export type ExtMsg =
@@ -64,7 +77,11 @@ export type ExtMsg =
   /** Periodic live data batch while recording. */
   | { kind: 'batch'; memCpu: SerializedMemCpuPoint[]; nodes: SerializedNodePoint[]; rendezvous: SerializedRendezvousPoint[] }
   /** Recording state or device changed. */
-  | { kind: 'state'; state: WebviewState };
+  | { kind: 'state'; state: WebviewState }
+  /** Full list of recorded sessions available for replay (newest first). */
+  | { kind: 'sessions'; sessions: SerializedSessionInfo[] }
+  /** Full data for a past session loaded from disk (read-only replay). */
+  | { kind: 'replay'; session: SerializedSessionInfo; history: HistoryPayload };
 
 // ── Webview → Extension ───────────────────────────────────────────────────────
 
@@ -74,4 +91,8 @@ export type WebMsg =
   /** Open the .xml definition file for a SceneGraph component type. */
   | { kind: 'open-node'; nodeType: string }
   /** Open a source file at the rendezvous location. */
-  | { kind: 'open-rendezvous'; file: string; line: number };
+  | { kind: 'open-rendezvous'; file: string; line: number }
+  /** Load a past session for replay (read-only). */
+  | { kind: 'load-session'; dir: string }
+  /** Return to the live view (discard any loaded replay). */
+  | { kind: 'load-live' };

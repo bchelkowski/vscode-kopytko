@@ -15,6 +15,7 @@ import type {
   SerializedNodePoint,
   SerializedRendezvousPoint,
   SerializedNodeTypeEntry,
+  SerializedSessionInfo,
 } from './protocol';
 
 // ── VS Code webview API ───────────────────────────────────────────────────────
@@ -23,7 +24,12 @@ interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── Panel mode ────────────────────────────────────────────────────────────────
+
+type PanelMode = 'live' | 'replay';
+let panelMode: PanelMode = 'live';
+
+// ── Live recording state ──────────────────────────────────────────────────────
 
 let recording = false;
 let sessionStartWall = 0;
@@ -41,9 +47,7 @@ const mcSys: number[] = [];
 
 const nodeTimes: number[] = [];
 const nodeTotal: number[] = [];
-
-// Rendezvous timeline markers (ms timestamps for node chart vertical lines)
-const renTimes: number[] = [];
+const renTimes: number[] = [];   // ms wall timestamps for node-chart markers
 
 // ── List data ─────────────────────────────────────────────────────────────────
 
@@ -92,9 +96,9 @@ function makeAxis(label: string, side: number, c: ReturnType<typeof chartColors>
   };
 }
 
-function makeMemChart(el: HTMLElement): uPlot {
+function makeMemChart(host: HTMLElement): uPlot {
   const c = chartColors();
-  const { width, height } = el.getBoundingClientRect();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
     width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
     axes: [
@@ -109,12 +113,12 @@ function makeMemChart(el: HTMLElement): uPlot {
       { label: 'File',  stroke: c.yellow, width: 1.5 },
     ],
     cursor: { show: false }, legend: { show: false },
-  }, [mcTimes, mcMem, mcAnon, mcFile], el);
+  }, [mcTimes, mcMem, mcAnon, mcFile], host);
 }
 
-function makeCpuChart(el: HTMLElement): uPlot {
+function makeCpuChart(host: HTMLElement): uPlot {
   const c = chartColors();
-  const { width, height } = el.getBoundingClientRect();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
     width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
     axes: [
@@ -129,12 +133,12 @@ function makeCpuChart(el: HTMLElement): uPlot {
       { label: 'Sys',   stroke: c.purple, width: 1.5 },
     ],
     cursor: { show: false }, legend: { show: false },
-  }, [mcTimes, mcCpu, mcUser, mcSys], el);
+  }, [mcTimes, mcCpu, mcUser, mcSys], host);
 }
 
-function makeNodeChart(el: HTMLElement): uPlot {
+function makeNodeChart(host: HTMLElement): uPlot {
   const c = chartColors();
-  const { width, height } = el.getBoundingClientRect();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
     width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
     axes: [
@@ -167,13 +171,17 @@ function makeNodeChart(el: HTMLElement): uPlot {
       ],
     },
     cursor: { show: false }, legend: { show: false },
-  }, [nodeTimes, nodeTotal], el);
+  }, [nodeTimes, nodeTotal], host);
 }
 
-// ── DOM builders ──────────────────────────────────────────────────────────────
+// ── DOM helpers ───────────────────────────────────────────────────────────────
 
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function el<T extends HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
 }
 
 function buildDom(): void {
@@ -181,6 +189,9 @@ function buildDom(): void {
 <div id="toolbar">
   <div class="status-dot" id="status-dot"></div>
   <span id="device-label">No device</span>
+  <select id="session-select" title="Switch between live view and recorded sessions">
+    <option value="live">● Live</option>
+  </select>
   <button id="btn-toggle">Start</button>
   <span id="elapsed"></span>
 </div>
@@ -250,12 +261,18 @@ function buildDom(): void {
 </div>`;
 
   el('btn-toggle').addEventListener('click', () => {
+    if (panelMode === 'replay') return;
     vscode.postMessage(recording ? { kind: 'stop' } : { kind: 'start' });
   });
-}
 
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
+  el('session-select').addEventListener('change', () => {
+    const val = el<HTMLSelectElement>('session-select').value;
+    if (val === 'live') {
+      vscode.postMessage({ kind: 'load-live' });
+    } else {
+      vscode.postMessage({ kind: 'load-session', dir: val });
+    }
+  });
 }
 
 // ── Chart init & resize ───────────────────────────────────────────────────────
@@ -298,6 +315,13 @@ function makeLegend(hostId: string, items: { label: string; color: string }[]): 
 }
 
 // ── Data ingestion ────────────────────────────────────────────────────────────
+
+function clearData(): void {
+  mcTimes.length = 0; mcMem.length = 0; mcAnon.length = 0;
+  mcFile.length = 0; mcCpu.length = 0; mcUser.length = 0; mcSys.length = 0;
+  nodeTimes.length = 0; nodeTotal.length = 0; renTimes.length = 0;
+  latestNodeTypes = []; initialNodeCounts = undefined; renGroups.clear();
+}
 
 function ingestMemCpu(points: SerializedMemCpuPoint[]): void {
   for (const p of points) {
@@ -360,7 +384,6 @@ function hideHint(id: string): void {
 function renderNodeTable(): void {
   const tbody = el<HTMLTableSectionElement>('tbody-nodes');
   const sorted = [...latestNodeTypes].sort((a, b) => b.count - a.count);
-
   if (sorted.length === 0) return;
   hideHint('hint-list-nodes');
 
@@ -391,7 +414,6 @@ function renderNodeTable(): void {
 function renderRendezvousTable(): void {
   const tbody = el<HTMLTableSectionElement>('tbody-rendezvous');
   const sorted = [...renGroups.values()].sort((a, b) => b.count - a.count);
-
   if (sorted.length === 0) return;
   hideHint('hint-list-rdv');
 
@@ -415,12 +437,47 @@ function renderRendezvousTable(): void {
   el('rdv-badge').textContent = `${renTimes.length} events · ${sorted.length} locations`;
 }
 
+// ── Session selector ──────────────────────────────────────────────────────────
+
+function padN(n: number): string { return n.toString().padStart(2, '0'); }
+
+function formatDate(wall: number): string {
+  const d = new Date(wall);
+  return `${d.getFullYear()}-${padN(d.getMonth() + 1)}-${padN(d.getDate())} ${padN(d.getHours())}:${padN(d.getMinutes())}`;
+}
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function populateSessionSelector(sessions: SerializedSessionInfo[]): void {
+  const sel = el<HTMLSelectElement>('session-select');
+  // Preserve the "Live" option; rebuild the rest.
+  while (sel.options.length > 1) sel.remove(1);
+
+  for (const s of sessions) {
+    const dateStr = formatDate(s.startedWall);
+    const durationStr = s.endedWall ? formatDuration(s.endedWall - s.startedWall) : '…';
+    const appLabel = s.appTitle ?? 'session';
+    const opt = document.createElement('option');
+    opt.value = s.dir;
+    opt.textContent = `${appLabel}  ${dateStr}  (${durationStr})`;
+    sel.appendChild(opt);
+  }
+}
+
 // ── Toolbar helpers ───────────────────────────────────────────────────────────
 
 function updateToolbar(): void {
-  el('btn-toggle').textContent = recording ? 'Stop' : 'Start';
-  el('btn-toggle').classList.toggle('stop', recording);
-  el('status-dot').classList.toggle('recording', recording);
+  const btn = el<HTMLButtonElement>('btn-toggle');
+  btn.textContent = recording ? 'Stop' : 'Start';
+  btn.classList.toggle('stop', recording);
+  btn.disabled = panelMode === 'replay';
+  el('status-dot').classList.toggle('recording', recording && panelMode === 'live');
+  el('status-dot').classList.toggle('replay', panelMode === 'replay');
 }
 
 function updateDeviceLabel(state: WebviewState): void {
@@ -445,12 +502,28 @@ function stopElapsed(): void {
 }
 
 function applyState(state: WebviewState): void {
+  panelMode = 'live';
   recording = state.recording;
   sessionStartWall = state.sessionStartWall ?? 0;
+  // Reset session selector to live
+  const sel = el<HTMLSelectElement>('session-select');
+  if (sel.value !== 'live') sel.value = 'live';
   updateToolbar();
   updateDeviceLabel(state);
   if (recording && sessionStartWall) startElapsed();
   else stopElapsed();
+}
+
+function applyReplayState(session: SerializedSessionInfo): void {
+  panelMode = 'replay';
+  recording = false;
+  stopElapsed();
+  updateToolbar();
+  const durationStr = session.endedWall
+    ? formatDuration(session.endedWall - session.startedWall)
+    : '?';
+  el('device-label').textContent =
+    `${session.appTitle ?? 'session'}  ·  ${formatDate(session.startedWall)}  ·  ${durationStr}`;
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -459,10 +532,7 @@ window.addEventListener('message', (ev) => {
   const msg = ev.data as ExtMsg;
   switch (msg.kind) {
     case 'init':
-      mcTimes.length = 0; mcMem.length = 0; mcAnon.length = 0;
-      mcFile.length = 0; mcCpu.length = 0; mcUser.length = 0; mcSys.length = 0;
-      nodeTimes.length = 0; nodeTotal.length = 0; renTimes.length = 0;
-      latestNodeTypes = []; initialNodeCounts = undefined; renGroups.clear();
+      clearData();
       ingestMemCpu(msg.history.memCpu);
       ingestNodes(msg.history.nodes);
       ingestRendezvous(msg.history.rendezvous);
@@ -483,6 +553,23 @@ window.addEventListener('message', (ev) => {
 
     case 'state':
       applyState(msg.state);
+      break;
+
+    case 'sessions':
+      populateSessionSelector(msg.sessions);
+      break;
+
+    case 'replay':
+      clearData();
+      ingestMemCpu(msg.history.memCpu);
+      ingestNodes(msg.history.nodes);
+      ingestRendezvous(msg.history.rendezvous);
+      applyReplayState(msg.session);
+      redrawCharts();
+      renderNodeTable();
+      renderRendezvousTable();
+      // Sync the selector to the loaded session
+      el<HTMLSelectElement>('session-select').value = msg.session.dir;
       break;
   }
 });

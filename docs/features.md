@@ -186,7 +186,7 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Start/Stop session commands | ✅ | [diagnostics.md](./diagnostics.md) |
 | Bottom-panel webview with live charts (uPlot) — mem/cpu/nodes + rendezvous markers | ✅ | [diagnostics.md](./diagnostics.md) |
 | In-panel node / rendezvous lists with click-to-open-file | ✅ | [diagnostics.md](./diagnostics.md) |
-| Past-session replay/preview (read-only) | ⬜ | [diagnostics.md](./diagnostics.md) |
+| Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 
 ## Performance & Caching
 

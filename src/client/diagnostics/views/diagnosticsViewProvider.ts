@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import type { DiagnosticsController } from '../diagnosticsController';
 import type { DiagnosticsSession } from '../session/diagnosticsSession';
@@ -14,23 +15,44 @@ import type {
   SerializedMemCpuPoint,
   SerializedNodePoint,
   SerializedRendezvousPoint,
+  SerializedSessionInfo,
 } from '../webview/protocol';
+import { SessionReader } from '../storage/sessionReader';
+import { readManifest } from '../storage/sessionStore';
+import { nodeSink } from '../storage/sink';
 import {
   resolveRendezvousFile,
   resolveNodeComponentFile,
 } from '../../roku/util/resolveSourceFile';
+
 const VIEW_ID = 'kopytko.diagnostics';
 const BATCH_INTERVAL_MS = 250;
+
+/** Converts the manifest `streams` map to a plain `{ type -> count }` record. */
+function streamCounts(
+  streams: Partial<Record<string, { file: string; count: number }>> | undefined,
+): Partial<Record<string, number>> {
+  if (!streams) return {};
+  return Object.fromEntries(
+    Object.entries(streams)
+      .filter((entry): entry is [string, { file: string; count: number }] => entry[1] != null)
+      .map(([k, v]) => [k, v.count]),
+  );
+}
 
 /**
  * VS Code WebviewViewProvider for the Kopytko Diagnostics bottom panel.
  *
- * Bridges between {@link DiagnosticsController} and the webview bundle:
- * - Sends an `init` message (current state + ring-buffer history) when the
- *   panel opens or becomes visible again.
- * - Throttles incoming session events into 250ms `batch` messages so the
- *   webview canvas isn't redrawn more than ~4× per second.
- * - Handles `start`/`stop` webview messages by delegating to the controller.
+ * Responsibilities:
+ * - Sends an `init` message (current state + ring-buffer history) when the panel opens.
+ * - Throttles live session events into 250 ms `batch` messages.
+ * - Sends a `sessions` message (list of recorded sessions) so the webview can
+ *   populate its session selector.
+ * - Handles `load-session` by reading the NDJSON files from disk via SessionReader
+ *   and sending a `replay` message (read-only, no new data written).
+ * - Handles `load-live` by re-sending `init` to restore the live view.
+ * - Handles `open-node` / `open-rendezvous` by navigating the editor to the source file.
+ * - Handles `start` / `stop` by delegating to the controller.
  */
 export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = VIEW_ID;
@@ -73,14 +95,24 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
         case 'open-rendezvous':
           void this.openRendezvousFile(msg.file, msg.line);
           break;
+        case 'load-session':
+          void this.loadSessionReplay(msg.dir);
+          break;
+        case 'load-live':
+          this.sendInit();
+          break;
       }
     });
 
     webviewView.onDidChangeVisibility(() => {
-      if (webviewView.visible) this.sendInit();
+      if (webviewView.visible) {
+        this.sendInit();
+        void this.sendSessions();
+      }
     });
 
     this.sendInit();
+    void this.sendSessions();
     this.syncSession();
   }
 
@@ -88,6 +120,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   notifyStateChange(): void {
     this.syncSession();
     this.sendState();
+    void this.sendSessions();
   }
 
   dispose(): void {
@@ -99,11 +132,10 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
 
   private sendInit(): void {
     const session = this.controller.activeSession;
-    const history = this.buildHistory(session);
     const msg: ExtMsg = {
       kind: 'init',
       state: this.buildState(),
-      history,
+      history: this.buildHistory(session),
     };
     this.post(msg);
   }
@@ -116,6 +148,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     this.stopBatchTimer();
     this.detachSession();
     this.sendState();
+    void this.sendSessions();
   }
 
   private syncSession(): void {
@@ -176,13 +209,12 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     ) {
       return;
     }
-    const msg: ExtMsg = {
+    this.post({
       kind: 'batch',
       memCpu: this.pendingMemCpu.splice(0),
       nodes: this.pendingNodes.splice(0),
       rendezvous: this.pendingRendezvous.splice(0),
-    };
-    this.post(msg);
+    } satisfies ExtMsg);
   }
 
   private startBatchTimer(): void {
@@ -208,6 +240,103 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     this.trackedSession = undefined;
     this.sessionListener = undefined;
   }
+
+  // ── Session replay ────────────────────────────────────────────────────────────
+
+  private async sendSessions(): Promise<void> {
+    const root = this.resolveOutputRoot();
+    if (!root) return;
+
+    const reader = new SessionReader(nodeSink);
+    let discovered;
+    try {
+      discovered = await reader.listSessions(root);
+    } catch {
+      return; // root may not exist yet (no sessions recorded)
+    }
+
+    const sessions: SerializedSessionInfo[] = discovered.map(({ dir, manifest }) => ({
+      dir,
+      id: manifest.id,
+      startedWall: manifest.startedWall,
+      endedWall: manifest.endedWall,
+      appTitle: manifest.app.title,
+      deviceIp: manifest.device.ip,
+      sampleCounts: streamCounts(manifest.streams),
+    }));
+
+    this.post({ kind: 'sessions', sessions } satisfies ExtMsg);
+  }
+
+  private async loadSessionReplay(dir: string): Promise<void> {
+    const reader = new SessionReader(nodeSink);
+    const cfg = vscode.workspace.getConfiguration('kopytko');
+    const maxPoints = cfg.get<number>('diagnostics.maxLivePoints', 3600);
+
+    // Read mem-cpu stream
+    const mcRaw = await reader.readStream<MemCpuEvent>(dir, 'mem-cpu');
+    const mcCapped = mcRaw.slice(-maxPoints);
+    const memCpu: SerializedMemCpuPoint[] = mcCapped.map((e) => ({
+      wall: e.wall,
+      memKiB: e.memKiB,
+      anonKiB: e.anonKiB,
+      fileKiB: e.fileKiB,
+      cpuPct: e.cpuPct,
+      cpuUser: e.cpuUser,
+      cpuSys: e.cpuSys,
+    }));
+
+    // Read node-counts stream — types only for first+last to keep message small
+    const ncRaw = await reader.readStream<NodeCountsEvent>(dir, 'node-counts');
+    const ncCapped = ncRaw.slice(-maxPoints);
+    const nodes: SerializedNodePoint[] = ncCapped.map((e, i) => ({
+      wall: e.wall,
+      totalCount: e.totalCount,
+      // Include full type breakdown only at the endpoints so the list view works
+      // without inflating every intermediate sample.
+      types: (i === 0 || i === ncCapped.length - 1) ? e.types : [],
+    }));
+
+    // Read rendezvous stream
+    const renRaw = await reader.readStream<RendezvousEvent>(dir, 'rendezvous');
+    const renCapped = renRaw.slice(-maxPoints);
+    const rendezvous: SerializedRendezvousPoint[] = renCapped.map((e) => ({
+      wall: e.wall,
+      durationMs: e.durationMs,
+      file: e.file,
+      line: e.line,
+    }));
+
+    // Build session info from the manifest
+    const manifest = await readManifest(nodeSink, dir);
+    if (!manifest) {
+      void vscode.window.showWarningMessage(`Cannot read session manifest: ${dir}`);
+      return;
+    }
+
+    const session: SerializedSessionInfo = {
+      dir,
+      id: manifest.id,
+      startedWall: manifest.startedWall,
+      endedWall: manifest.endedWall,
+      appTitle: manifest.app.title,
+      deviceIp: manifest.device.ip,
+      sampleCounts: streamCounts(manifest.streams),
+    };
+
+    this.post({ kind: 'replay', session, history: { memCpu, nodes, rendezvous } } satisfies ExtMsg);
+  }
+
+  private resolveOutputRoot(): string | undefined {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) return undefined;
+    const outputDir = vscode.workspace
+      .getConfiguration('kopytko')
+      .get<string>('diagnostics.outputDir', 'debug');
+    return path.isAbsolute(outputDir) ? outputDir : path.join(workspaceRoot, outputDir);
+  }
+
+  // ── File navigation ───────────────────────────────────────────────────────────
 
   private async openNodeFile(nodeType: string): Promise<void> {
     const uri = await resolveNodeComponentFile(nodeType);
@@ -235,6 +364,8 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  // ── State helpers ─────────────────────────────────────────────────────────────
+
   private buildState(): WebviewState {
     const session = this.controller.activeSession;
     const device = this.controller.getActiveDevice();
@@ -253,9 +384,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private buildHistory(session: DiagnosticsSession | undefined) {
-    if (!session) {
-      return { memCpu: [], nodes: [], rendezvous: [] };
-    }
+    if (!session) return { memCpu: [], nodes: [], rendezvous: [] };
     const memCpu: SerializedMemCpuPoint[] = (session.getRing('mem-cpu') as MemCpuEvent[]).map(
       (e) => ({
         wall: e.wall,
@@ -287,9 +416,8 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   private buildHtml(webview: vscode.Webview): string {
     const outDir = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'diagnostics-webview');
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
+    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
     const csp = webview.cspSource;
-
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
