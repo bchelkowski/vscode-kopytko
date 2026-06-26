@@ -101,6 +101,16 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
         case 'load-live':
           this.sendInit();
           break;
+        case 'new-session':
+          void this.handleNewSession();
+          break;
+        case 'clear-view':
+          this.post({
+            kind: 'init',
+            state: this.buildState(),
+            history: { memCpu: [], nodes: [], rendezvous: [] },
+          } satisfies ExtMsg);
+          break;
       }
     });
 
@@ -334,6 +344,21 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       .getConfiguration('kopytko')
       .get<string>('diagnostics.outputDir', 'debug');
     return path.isAbsolute(outputDir) ? outputDir : path.join(workspaceRoot, outputDir);
+  }
+
+  // ── New session ───────────────────────────────────────────────────────────────
+
+  private async handleNewSession(): Promise<void> {
+    if (!this.controller.isRecording) return;
+    await this.controller.stopSession();
+    // onSessionStopped() fires via the 'stopped' event during stopSession(),
+    // which detaches the old session, calls sendState(), and calls sendSessions().
+    const session = await this.controller.startSession();
+    if (session) {
+      this.syncSession();
+      // Send init with empty history — the new session has no data yet.
+      this.sendInit();
+    }
   }
 
   // ── File navigation ───────────────────────────────────────────────────────────

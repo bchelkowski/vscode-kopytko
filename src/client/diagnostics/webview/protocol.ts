@@ -95,4 +95,8 @@ export type WebMsg =
   /** Load a past session for replay (read-only). */
   | { kind: 'load-session'; dir: string }
   /** Return to the live view (discard any loaded replay). */
-  | { kind: 'load-live' };
+  | { kind: 'load-live' }
+  /** Stop current session, save it, and immediately start a fresh one. */
+  | { kind: 'new-session' }
+  /** Clear in-memory chart data without touching any session files. */
+  | { kind: 'clear-view' };
