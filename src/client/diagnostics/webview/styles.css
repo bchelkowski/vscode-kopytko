@@ -1,0 +1,211 @@
+/* Kopytko Diagnostics Panel styles
+   Uses VS Code CSS variables for automatic light/dark theme adaptation. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--vscode-panel-background, transparent);
+  color: var(--vscode-editor-foreground, #cccccc);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 12px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── toolbar ─────────────────────────────────────────────────────────────────── */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 34px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vscode-editorHint-foreground, #aaaaaa);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.recording {
+  background: #e05252;
+  box-shadow: 0 0 4px rgba(224,82,82,0.6);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+#device-label {
+  color: var(--vscode-editor-foreground, #cccccc);
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  font-size: 11px;
+}
+
+#elapsed {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--vscode-editorHint-foreground, #aaaaaa);
+  min-width: 52px;
+}
+
+button {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border: none;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+button:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.stop {
+  background: var(--vscode-statusBarItem-errorBackground, #c72e2e);
+}
+button.stop:hover {
+  background: #e03535;
+}
+
+/* ── charts grid ─────────────────────────────────────────────────────────────── */
+
+#charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr;
+  gap: 1px;
+  flex: 1 1 0;
+  min-height: 0;
+  background: var(--vscode-panel-border, rgba(128,128,128,0.2));
+  overflow: hidden;
+}
+
+.chart-pane {
+  background: var(--vscode-panel-background, #1e1e1e);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px 6px 2px;
+}
+
+.chart-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.65;
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+.chart-host {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+}
+
+.chart-host .u-wrap {
+  position: absolute !important;
+  inset: 0;
+}
+
+/* ── uPlot overrides ─────────────────────────────────────────────────────────── */
+
+/* uPlot doesn't ship CSS in this context — define the minimum needed. */
+.u-wrap {
+  position: relative;
+  user-select: none;
+}
+.u-over, .u-under {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.u-over {
+  overflow: hidden;
+}
+.u-cursor-x,
+.u-cursor-y {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+.u-hz .u-cursor-x {
+  height: 100%;
+  border-right: 1px dashed rgba(255,255,255,0.25);
+}
+.u-hz .u-cursor-y {
+  width: 100%;
+  border-bottom: 1px dashed rgba(255,255,255,0.25);
+}
+.u-select {
+  background: rgba(255,255,255,0.06);
+  position: absolute;
+  pointer-events: none;
+}
+.u-hz .u-select {
+  top: 0;
+  height: 100%;
+}
+
+/* ── empty / error states ────────────────────────────────────────────────────── */
+
+.empty-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ── legend pills ────────────────────────────────────────────────────────────── */
+
+.legend-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 2px 0 0;
+  flex-shrink: 0;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+.legend-swatch {
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+}

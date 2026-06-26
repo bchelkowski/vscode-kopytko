@@ -19,9 +19,10 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
+    "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
     "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
@@ -35,6 +36,7 @@
     "kopytko-brightscript-parser": "^1.1.4",
     "kopytko-formatter": "^1.1.12",
     "kopytko-linter": "^1.6.6",
+    "uplot": "^1.6.32",
     "vscode-languageclient": "^10.0.0",
     "vscode-languageserver": "^10.0.0",
     "vscode-languageserver-textdocument": "^1.0.13",
@@ -814,6 +816,71 @@
           "type": "boolean",
           "default": true,
           "description": "Show notification messages when devices come online or go offline."
+        },
+        "kopytko.diagnostics.outputDir": {
+          "type": "string",
+          "default": "debug",
+          "description": "Folder (relative to the workspace root, or absolute) where diagnostics sessions are saved. Each session gets its own timestamped subfolder."
+        },
+        "kopytko.diagnostics.maxLivePoints": {
+          "type": "number",
+          "default": 3600,
+          "description": "Maximum number of samples kept in memory per stream for the live view. Older points are dropped from the live charts but remain on disk."
+        },
+        "kopytko.diagnostics.debugConsolePort": {
+          "type": "number",
+          "default": 8080,
+          "description": "TCP port of the Roku SceneGraph debug server used for chanperf / sgnodes / texture metrics."
+        },
+        "kopytko.diagnostics.collectors.memCpu.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collect per-channel CPU and memory usage (chanperf)."
+        },
+        "kopytko.diagnostics.collectors.memCpu.intervalMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "Polling interval in milliseconds for per-channel CPU/memory."
+        },
+        "kopytko.diagnostics.collectors.nodeCounts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collect SceneGraph node counts by type (sgnodes counts)."
+        },
+        "kopytko.diagnostics.collectors.nodeCounts.intervalMs": {
+          "type": "number",
+          "default": 2000,
+          "description": "Polling interval in milliseconds for node counts."
+        },
+        "kopytko.diagnostics.collectors.rendezvous.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collect render-thread rendezvous via ECP. While a session records rendezvous, the legacy Rendezvous Log poller is paused to avoid splitting the device's event queue."
+        },
+        "kopytko.diagnostics.collectors.rendezvous.intervalMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "Polling interval in milliseconds for rendezvous events."
+        },
+        "kopytko.diagnostics.collectors.systemMem.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Collect device-wide memory (free). Off by default; per-channel memory is usually more useful."
+        },
+        "kopytko.diagnostics.collectors.systemMem.intervalMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "Polling interval in milliseconds for device-wide memory."
+        },
+        "kopytko.diagnostics.collectors.textures.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Collect GPU texture/bitmap memory (r2d2_bitmaps). Off by default."
+        },
+        "kopytko.diagnostics.collectors.textures.intervalMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "Polling interval in milliseconds for texture memory."
         }
       }
     },
@@ -903,9 +970,23 @@
           "title": "Kopytko",
           "icon": "images/kopytko-logo.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "kopytko-diagnostics",
+          "title": "Kopytko Diagnostics",
+          "icon": "images/kopytko-logo.svg"
+        }
       ]
     },
     "views": {
+      "kopytko-diagnostics": [
+        {
+          "type": "webview",
+          "id": "kopytko.diagnostics",
+          "name": "Kopytko Diagnostics"
+        }
+      ],
       "kopytko-sidebar": [
         {
           "id": "kopytko.rokuDevices",
@@ -1030,6 +1111,18 @@
         "command": "kopytko.toggleRendezvousSort",
         "title": "Toggle Sort Order",
         "icon": "$(arrow-swap)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.diagnostics.startSession",
+        "title": "Start Diagnostics Session",
+        "icon": "$(record)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.diagnostics.stopSession",
+        "title": "Stop Diagnostics Session",
+        "icon": "$(stop-circle)",
         "category": "Kopytko"
       }
     ],
