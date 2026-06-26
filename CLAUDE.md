@@ -188,6 +188,7 @@ A change is complete when:
 | [docs/formatting.md](docs/formatting.md) | Document formatting rules, all `kopytko.format.*` settings |
 | [docs/device-discovery.md](docs/device-discovery.md) | Device discovery architecture, commands, network scoping, password management |
 | [docs/roku-debug.md](docs/roku-debug.md) | Device discovery, debugger, launch config |
+| [docs/diagnostics.md](docs/diagnostics.md) | Runtime diagnostics recorder — on-device data sources, collectors, NDJSON sessions, settings |
 | [packages/formatter/README.md](packages/formatter/README.md) | Standalone formatter: CLI usage, library API, CI integration |
 | [docs/publishing.md](docs/publishing.md) | Step-by-step npm and VS Code Marketplace publishing guide |
 | [site/src/pages/](site/src/pages/) | **GitHub Pages** — public-facing feature docs and API reference for the extension and all packages |

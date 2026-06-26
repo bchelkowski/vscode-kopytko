@@ -158,6 +158,8 @@ Roku SceneGraph apps synchronize Task threads with the render thread at **rendez
 
 The **Rendezvous Log** panel (second view in the Kopytko sidebar) lets you monitor these events live, grouped by source location.
 
+> Rendezvous are also one of the streams captured by the broader **Runtime Diagnostics** recorder (per-channel CPU/memory, node counts, textures, …) — see [diagnostics.md](./diagnostics.md). While a diagnostics session records rendezvous, this legacy Rendezvous Log poller is paused so the two don't both drain the device's shared event queue.
+
 ### Enabling rendezvous logging
 
 The panel is independent of the debug session — it works whenever the active device is reachable on the network.

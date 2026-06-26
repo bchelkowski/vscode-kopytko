@@ -369,6 +369,60 @@ describe('RendezvousManager', () => {
     });
   });
 
+  // ── suspend / resume ──────────────────────────────────────────────────────────
+
+  describe('suspend() / resume()', () => {
+    it('suspend stops polling and untracks while keeping isEnabled true', async () => {
+      const ecp = createMockEcp();
+      const dm = createMockDeviceManager(DEVICE_A);
+      const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
+
+      await mgr.setEnabled(true);
+      mgr.suspend();
+
+      expect(mgr.isEnabled).to.be.true;
+      expect(ecp.disableRendezvousTracking.calledWith(DEVICE_A.ip, DEVICE_A.port)).to.be.true;
+
+      const calls = ecp.queryRendezvousEvents.callCount;
+      await clock.tickAsync(3000);
+      expect(ecp.queryRendezvousEvents.callCount).to.equal(calls); // no polling while suspended
+      mgr.dispose();
+    });
+
+    it('resume re-tracks and restarts polling when it was enabled', async () => {
+      const ecp = createMockEcp();
+      const dm = createMockDeviceManager(DEVICE_A);
+      const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
+
+      await mgr.setEnabled(true);
+      mgr.suspend();
+      ecp.enableRendezvousTracking.resetHistory();
+      mgr.resume();
+      await Promise.resolve();
+
+      expect(ecp.enableRendezvousTracking.calledWith(DEVICE_A.ip, DEVICE_A.port)).to.be.true;
+      await clock.tickAsync(1100);
+      expect(ecp.queryRendezvousEvents.called).to.be.true; // polling resumed
+      mgr.dispose();
+    });
+
+    it('setEnabled(true) while suspended does not track but applies on resume', async () => {
+      const ecp = createMockEcp();
+      const dm = createMockDeviceManager(DEVICE_A);
+      const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', createMockMemento() as any);
+
+      mgr.suspend();
+      await mgr.setEnabled(true);
+      expect(mgr.isEnabled).to.be.true;
+      expect(ecp.enableRendezvousTracking.called).to.be.false;
+
+      mgr.resume();
+      await Promise.resolve();
+      expect(ecp.enableRendezvousTracking.calledWith(DEVICE_A.ip, DEVICE_A.port)).to.be.true;
+      mgr.dispose();
+    });
+  });
+
   // ── dispose ───────────────────────────────────────────────────────────────────
 
   describe('dispose()', () => {

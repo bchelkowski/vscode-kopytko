@@ -25,6 +25,7 @@ export interface RendezvousGroup {
 
 export class RendezvousManager extends EventEmitter {
   private _enabled = false;
+  private _suspended = false;
   private _lastKnownSerial: string | undefined;
   private _groups: RendezvousGroup[] = [];
   private _totalDropCount = 0;
@@ -78,19 +79,28 @@ export class RendezvousManager extends EventEmitter {
     if (!device) return;
 
     if (enabled) {
-      const ok = await this.ecp.enableRendezvousTracking(device.ip, device.port);
-      if (!ok) {
-        vscode.window.showWarningMessage(
-          'Could not enable rendezvous tracking — ensure the device is online and developer mode is enabled.',
-        );
-        return;
+      if (this._suspended) {
+        // A diagnostics session currently owns ECP rendezvous tracking. Record
+        // the intent and persist it; it is applied when the session resumes us.
+        this._enabled = true;
+        this._persistEnabled(device.serialNumber, true);
+      } else {
+        const ok = await this.ecp.enableRendezvousTracking(device.ip, device.port);
+        if (!ok) {
+          vscode.window.showWarningMessage(
+            'Could not enable rendezvous tracking — ensure the device is online and developer mode is enabled.',
+          );
+          return;
+        }
+        this._enabled = true;
+        this._persistEnabled(device.serialNumber, true);
+        this._startPolling(device.ip, device.port);
       }
-      this._enabled = true;
-      this._persistEnabled(device.serialNumber, true);
-      this._startPolling(device.ip, device.port);
     } else {
       this._stopPolling();
-      await this.ecp.disableRendezvousTracking(device.ip, device.port);
+      if (!this._suspended) {
+        await this.ecp.disableRendezvousTracking(device.ip, device.port);
+      }
       this._enabled = false;
       this._groups = [];
       this._totalDropCount = 0;
@@ -98,6 +108,40 @@ export class RendezvousManager extends EventEmitter {
     }
 
     this.emit('changed');
+  }
+
+  /**
+   * Temporarily pauses polling and releases ECP rendezvous tracking without
+   * changing the persisted on/off intent. Used by a diagnostics session so the
+   * legacy log and the session don't both drain the shared device event queue.
+   */
+  suspend(): void {
+    if (this._suspended) return;
+    this._suspended = true;
+    if (this._enabled) {
+      this._stopPolling();
+      const device = this.deviceManager.getActiveDevice();
+      if (device) {
+        this.ecp.disableRendezvousTracking(device.ip, device.port).catch(() => {});
+      }
+    }
+  }
+
+  /** Resumes tracking/polling if it was enabled before {@link suspend}. */
+  resume(): void {
+    if (!this._suspended) return;
+    this._suspended = false;
+    if (this._enabled) {
+      const device = this.deviceManager.getActiveDevice();
+      if (device) {
+        this.ecp
+          .enableRendezvousTracking(device.ip, device.port)
+          .then((ok) => {
+            if (ok) this._startPolling(device.ip, device.port);
+          })
+          .catch(() => {});
+      }
+    }
   }
 
   clear(): void {
@@ -162,6 +206,7 @@ export class RendezvousManager extends EventEmitter {
   }
 
   private _startPolling(ip: string, port: number): void {
+    if (this._suspended) return;
     this._stopPolling();
     this._pollTimer = setInterval(() => {
       this._pollOnce(ip, port).catch(() => {});

@@ -1,0 +1,5 @@
+X02800C5FKLV (Roku Ultra - 15.2.4.3442)
+>              total        used        free      shared  buff/cache   available
+Mem:        1504692      424676      689772       12216      390244     1031464
+Swap:        370028        7424      362604
+>

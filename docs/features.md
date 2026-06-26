@@ -170,6 +170,24 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 | Compile errors as diagnostics; program output via IO channel | ✅ | [roku-debug.md](./roku-debug.md) |
 | Rendezvous logging panel — per-device ECP toggle, live polling, events grouped by file:line with navigation | ✅ | [roku-debug.md](./roku-debug.md) |
 
+## Runtime Diagnostics & Profiling
+
+A recording tool that captures live runtime telemetry from a running channel into replayable per-session files. Built only on data verified against real devices (SceneGraph debug server on TCP 8080 + ECP rendezvous). See [diagnostics.md](./diagnostics.md).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Resilient debug-console transport (TCP 8080) — serialized commands, idle framing, auto-reconnect | ✅ | [diagnostics.md](./diagnostics.md) |
+| Per-channel CPU + memory collection (`chanperf`) | ✅ | [diagnostics.md](./diagnostics.md) |
+| SceneGraph node counts by type incl. custom components (`sgnodes counts`) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Rendezvous collection via ECP (suspends legacy log to avoid queue double-drain) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Device memory (`free`) + GPU texture memory (`r2d2_bitmaps`) — opt-in collectors | ✅ | [diagnostics.md](./diagnostics.md) |
+| Open event model + NDJSON-per-stream session storage (crash/network-safe) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Session manifest + reader (replay, torn-line tolerant) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Start/Stop session commands | ✅ | [diagnostics.md](./diagnostics.md) |
+| Bottom-panel webview with live charts (uPlot) — mem/cpu/nodes + rendezvous markers | ✅ | [diagnostics.md](./diagnostics.md) |
+| In-panel node / rendezvous lists with click-to-open-file | ⬜ | [diagnostics.md](./diagnostics.md) |
+| Past-session replay/preview (read-only) | ⬜ | [diagnostics.md](./diagnostics.md) |
+
 ## Performance & Caching
 
 | Feature | Notes |
