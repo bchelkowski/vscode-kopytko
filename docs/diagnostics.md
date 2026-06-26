@@ -8,11 +8,10 @@ rendezvous stalls.
 Everything here is built **only on data that Roku devices actually expose**, all
 verified against real hardware. Nothing is synthesized.
 
-> **Status:** Phases 1 and 2 are implemented — collection, storage, replay,
-> Start/Stop commands, and the bottom-panel webview with live uPlot charts
-> (memory, CPU, node counts, rendezvous markers). Lists with click-to-open-file
-> navigation and past-session replay UI land in phases 3 and 4. See the status
-> table in [features.md](./features.md).
+> **Status:** Phases 1–3 are implemented — collection, storage, replay,
+> Start/Stop commands, live uPlot charts, and in-panel lists with
+> click-to-open-file navigation. Past-session replay UI lands in Phase 4. See
+> the status table in [features.md](./features.md).
 
 ---
 
@@ -155,6 +154,43 @@ All under `kopytko.diagnostics.*`:
 | `collectors.textures.enabled` / `.intervalMs` | `false` / `5000` | GPU texture memory |
 
 ---
+
+## Lists & navigation (Phase 3)
+
+Below the three charts the panel shows two side-by-side data tables, each 138 px tall
+and independently scrollable.
+
+### Node types table
+
+Populated from every `sgnodes counts` snapshot. Columns:
+
+| Type | Count | Δ | kB |
+|---|---|---|---|
+| Custom component name (e.g. `EventTileModel`) | Live count | Change since session start (red = up, green = down) | Static bytes / 1024 |
+
+Sorted by count descending (top offenders first). Click any row → VS Code
+opens the matching `<Type>.xml` file using `resolveNodeComponentFile`:
+1. `workspace.findFiles('**/<Type>.xml')` — includes node_modules Kopytko packages.
+2. Multiple matches → prefer the project source tree over node_modules (custom
+   components defined in the project take priority).
+3. No match → info toast (built-in Roku types like `Label`, `Rectangle` have no
+   source file).
+
+### Rendezvous table
+
+Aggregates all `rendezvous` events for the session, grouped by `file:line`.
+Columns: **Location** (filename:line), **Count**, **Avg ms** (average stall duration).
+Sorted by count descending. Click any row → VS Code opens the source file at the
+rendezvous line using `resolveRendezvousFile`:
+1. Workspace-wide search by full relative path (null excludes → node_modules included).
+2. Multiple matches → prefer node_modules (kopytko npm packages are the typical source).
+3. Filename-only fallback.
+
+### Shared file-resolution util
+
+`src/client/roku/util/resolveSourceFile.ts` exports both `resolveRendezvousFile`
+and `resolveNodeComponentFile`. The legacy **Rendezvous Log** tree (`activation/rendezvous.ts`)
+was updated to import from this shared util rather than duplicating the logic.
 
 ## Webview panel (Phase 2)
 

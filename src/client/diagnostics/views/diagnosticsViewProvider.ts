@@ -15,6 +15,10 @@ import type {
   SerializedNodePoint,
   SerializedRendezvousPoint,
 } from '../webview/protocol';
+import {
+  resolveRendezvousFile,
+  resolveNodeComponentFile,
+} from '../../roku/util/resolveSourceFile';
 const VIEW_ID = 'kopytko.diagnostics';
 const BATCH_INTERVAL_MS = 250;
 
@@ -62,6 +66,12 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'stop':
           void this.controller.stopSession().then(() => this.onSessionStopped());
+          break;
+        case 'open-node':
+          void this.openNodeFile(msg.nodeType);
+          break;
+        case 'open-rendezvous':
+          void this.openRendezvousFile(msg.file, msg.line);
           break;
       }
     });
@@ -142,7 +152,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       }
       case 'node-counts': {
         const e = event as NodeCountsEvent;
-        this.pendingNodes.push({ wall: e.wall, totalCount: e.totalCount });
+        this.pendingNodes.push({ wall: e.wall, totalCount: e.totalCount, types: e.types });
         break;
       }
       case 'rendezvous': {
@@ -199,6 +209,32 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     this.sessionListener = undefined;
   }
 
+  private async openNodeFile(nodeType: string): Promise<void> {
+    const uri = await resolveNodeComponentFile(nodeType);
+    if (!uri) {
+      void vscode.window.showInformationMessage(`No source file found for component: ${nodeType}`);
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc, { preview: false });
+  }
+
+  private async openRendezvousFile(pkgPath: string, line: number): Promise<void> {
+    const uri = await resolveRendezvousFile('', pkgPath);
+    if (!uri) {
+      void vscode.window.showInformationMessage(`Cannot find file: ${pkgPath}`);
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc, { preview: false });
+    const position = new vscode.Position(Math.max(0, line - 1), 0);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(
+      new vscode.Range(position, position),
+      vscode.TextEditorRevealType.InCenter,
+    );
+  }
+
   private buildState(): WebviewState {
     const session = this.controller.activeSession;
     const device = this.controller.getActiveDevice();
@@ -232,7 +268,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       }),
     );
     const nodes: SerializedNodePoint[] = (session.getRing('node-counts') as NodeCountsEvent[]).map(
-      (e) => ({ wall: e.wall, totalCount: e.totalCount }),
+      (e) => ({ wall: e.wall, totalCount: e.totalCount, types: e.types }),
     );
     const rendezvous: SerializedRendezvousPoint[] = (
       session.getRing('rendezvous') as RendezvousEvent[]

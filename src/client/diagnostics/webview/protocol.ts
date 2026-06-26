@@ -30,9 +30,17 @@ export interface SerializedMemCpuPoint {
   cpuSys: number;
 }
 
+export interface SerializedNodeTypeEntry {
+  type: string;
+  count: number;
+  staticBytes: number;
+}
+
 export interface SerializedNodePoint {
   wall: number;
   totalCount: number;
+  /** Per-type breakdown for the list view. Present on every snapshot. */
+  types: SerializedNodeTypeEntry[];
 }
 
 export interface SerializedRendezvousPoint {
@@ -62,4 +70,8 @@ export type ExtMsg =
 
 export type WebMsg =
   | { kind: 'start' }
-  | { kind: 'stop' };
+  | { kind: 'stop' }
+  /** Open the .xml definition file for a SceneGraph component type. */
+  | { kind: 'open-node'; nodeType: string }
+  /** Open a source file at the rendezvous location. */
+  | { kind: 'open-rendezvous'; file: string; line: number };

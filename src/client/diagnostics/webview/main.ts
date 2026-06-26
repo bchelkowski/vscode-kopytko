@@ -2,7 +2,7 @@
  * Kopytko Diagnostics webview — main entry point.
  * Runs entirely in a browser context (VS Code WebviewView); no Node.js APIs.
  *
- * esbuild bundles this file (+ uPlot, styles) into out/diagnostics-webview/main.js.
+ * esbuild bundles this file (+ uPlot + styles) into out/diagnostics-webview/main.js.
  */
 
 import './styles.css';
@@ -14,13 +14,12 @@ import type {
   SerializedMemCpuPoint,
   SerializedNodePoint,
   SerializedRendezvousPoint,
+  SerializedNodeTypeEntry,
 } from './protocol';
 
 // ── VS Code webview API ───────────────────────────────────────────────────────
 
-interface VsCodeApi {
-  postMessage(msg: WebMsg): void;
-}
+interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
 
@@ -30,22 +29,31 @@ let recording = false;
 let sessionStartWall = 0;
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
-// In-memory chart data (grows until panel is closed or session clears)
-const mcTimes: number[] = [];  // seconds
-const mcMem: number[] = [];    // MB
+// ── Chart data ────────────────────────────────────────────────────────────────
+
+const mcTimes: number[] = [];
+const mcMem: number[] = [];
 const mcAnon: number[] = [];
 const mcFile: number[] = [];
-const mcCpu: number[] = [];    // %
+const mcCpu: number[] = [];
 const mcUser: number[] = [];
 const mcSys: number[] = [];
 
 const nodeTimes: number[] = [];
 const nodeTotal: number[] = [];
 
-// Rendezvous timestamps (seconds) — used as vertical markers on node chart
+// Rendezvous timeline markers (ms timestamps for node chart vertical lines)
 const renTimes: number[] = [];
 
-// ── uPlot chart instances ─────────────────────────────────────────────────────
+// ── List data ─────────────────────────────────────────────────────────────────
+
+let latestNodeTypes: SerializedNodeTypeEntry[] = [];
+let initialNodeCounts: Map<string, number> | undefined;
+
+interface RendezvousGroup { file: string; line: number; count: number; totalMs: number }
+const renGroups = new Map<string, RendezvousGroup>();
+
+// ── Chart instances ───────────────────────────────────────────────────────────
 
 let memChart: uPlot | undefined;
 let cpuChart: uPlot | undefined;
@@ -74,94 +82,67 @@ function chartColors() {
 // ── Chart factory ─────────────────────────────────────────────────────────────
 
 function makeAxis(label: string, side: number, c: ReturnType<typeof chartColors>): uPlot.Axis {
+  const font = '10px ' + cssVar('--vscode-font-family', 'system-ui');
   return {
-    side,
-    label,
-    labelSize: 12,
-    labelFont: '10px ' + cssVar('--vscode-font-family', 'system-ui'),
+    side, label, labelSize: 12, labelFont: font,
     stroke: c.fg,
     ticks: { stroke: c.grid, width: 1, size: 3 },
     grid:  { stroke: c.grid, width: 1 },
-    font:  '10px ' + cssVar('--vscode-font-family', 'system-ui'),
+    font,
   };
 }
 
 function makeMemChart(el: HTMLElement): uPlot {
   const c = chartColors();
   const { width, height } = el.getBoundingClientRect();
-  const opts: uPlot.Options = {
-    width: Math.max(100, width),
-    height: Math.max(60, height),
-    pxAlign: 1,
-    ms: 1,   // x axis in milliseconds (we'll pass wall ms directly)
+  return new uPlot({
+    width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
     axes: [
       { stroke: c.fg, ticks: { stroke: c.grid }, grid: { stroke: c.grid }, font: '10px ' + cssVar('--vscode-font-family', 'system-ui') },
       makeAxis('MB', 3, c),
     ],
-    scales: {
-      x: { time: true },
-      y: { range: (_u, _min, max) => [0, Math.max(max * 1.05, 1)] },
-    },
+    scales: { x: { time: true }, y: { range: (_u, _min, max) => [0, Math.max(max * 1.05, 1)] } },
     series: [
       {},
       { label: 'Total', stroke: c.blue,   width: 2 },
       { label: 'Anon',  stroke: c.green,  width: 1.5 },
       { label: 'File',  stroke: c.yellow, width: 1.5 },
     ],
-    cursor: { show: false },
-    legend: { show: false },
-  };
-  return new uPlot(opts, [mcTimes, mcMem, mcAnon, mcFile], el);
+    cursor: { show: false }, legend: { show: false },
+  }, [mcTimes, mcMem, mcAnon, mcFile], el);
 }
 
 function makeCpuChart(el: HTMLElement): uPlot {
   const c = chartColors();
   const { width, height } = el.getBoundingClientRect();
-  const opts: uPlot.Options = {
-    width: Math.max(100, width),
-    height: Math.max(60, height),
-    pxAlign: 1,
-    ms: 1,
+  return new uPlot({
+    width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
     axes: [
       { stroke: c.fg, ticks: { stroke: c.grid }, grid: { stroke: c.grid }, font: '10px ' + cssVar('--vscode-font-family', 'system-ui') },
       makeAxis('%', 3, c),
     ],
-    scales: {
-      x: { time: true },
-      y: { range: (_u, _min, max) => [0, Math.max(max * 1.05, 5)] },
-    },
+    scales: { x: { time: true }, y: { range: (_u, _min, max) => [0, Math.max(max * 1.05, 5)] } },
     series: [
       {},
       { label: 'Total', stroke: c.red,    width: 2 },
       { label: 'User',  stroke: c.orange, width: 1.5 },
       { label: 'Sys',   stroke: c.purple, width: 1.5 },
     ],
-    cursor: { show: false },
-    legend: { show: false },
-  };
-  return new uPlot(opts, [mcTimes, mcCpu, mcUser, mcSys], el);
+    cursor: { show: false }, legend: { show: false },
+  }, [mcTimes, mcCpu, mcUser, mcSys], el);
 }
 
 function makeNodeChart(el: HTMLElement): uPlot {
   const c = chartColors();
   const { width, height } = el.getBoundingClientRect();
-  const opts: uPlot.Options = {
-    width: Math.max(100, width),
-    height: Math.max(60, height),
-    pxAlign: 1,
-    ms: 1,
+  return new uPlot({
+    width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
     axes: [
       { stroke: c.fg, ticks: { stroke: c.grid }, grid: { stroke: c.grid }, font: '10px ' + cssVar('--vscode-font-family', 'system-ui') },
       makeAxis('#', 3, c),
     ],
-    scales: {
-      x: { time: true },
-      y: { range: (_u, _min, max) => [0, Math.max(max * 1.05, 10)] },
-    },
-    series: [
-      {},
-      { label: 'Nodes', stroke: c.blue, width: 2 },
-    ],
+    scales: { x: { time: true }, y: { range: (_u, _min, max) => [0, Math.max(max * 1.05, 10)] } },
+    series: [ {}, { label: 'Nodes', stroke: c.blue, width: 2 } ],
     hooks: {
       draw: [
         (u) => {
@@ -185,16 +166,14 @@ function makeNodeChart(el: HTMLElement): uPlot {
         },
       ],
     },
-    cursor: { show: false },
-    legend: { show: false },
-  };
-  return new uPlot(opts, [nodeTimes, nodeTotal], el);
+    cursor: { show: false }, legend: { show: false },
+  }, [nodeTimes, nodeTotal], el);
 }
 
-// ── DOM helpers ───────────────────────────────────────────────────────────────
+// ── DOM builders ──────────────────────────────────────────────────────────────
 
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function buildDom(): void {
@@ -205,27 +184,68 @@ function buildDom(): void {
   <button id="btn-toggle">Start</button>
   <span id="elapsed"></span>
 </div>
-<div id="charts">
-  <div class="chart-pane">
-    <div class="chart-title">Memory</div>
-    <div class="chart-host" id="host-mem">
-      <div class="empty-hint" id="hint-mem">Waiting for data…</div>
+<div id="main-area">
+  <div id="charts">
+    <div class="chart-pane">
+      <div class="chart-title">Memory</div>
+      <div class="chart-host" id="host-mem">
+        <div class="empty-hint" id="hint-mem">Waiting for data…</div>
+      </div>
+      <div class="legend-row" id="legend-mem"></div>
     </div>
-    <div class="legend-row" id="legend-mem"></div>
+    <div class="chart-pane">
+      <div class="chart-title">CPU</div>
+      <div class="chart-host" id="host-cpu">
+        <div class="empty-hint" id="hint-cpu">Waiting for data…</div>
+      </div>
+      <div class="legend-row" id="legend-cpu"></div>
+    </div>
+    <div class="chart-pane">
+      <div class="chart-title">SceneGraph Nodes</div>
+      <div class="chart-host" id="host-nodes">
+        <div class="empty-hint" id="hint-nodes">Waiting for data…</div>
+      </div>
+      <div class="legend-row" id="legend-nodes"></div>
+    </div>
   </div>
-  <div class="chart-pane">
-    <div class="chart-title">CPU</div>
-    <div class="chart-host" id="host-cpu">
-      <div class="empty-hint" id="hint-cpu">Waiting for data…</div>
+  <div id="lists">
+    <div class="list-pane">
+      <div class="list-header">
+        <span class="list-title">Nodes</span>
+        <span class="list-badge" id="node-badge"></span>
+        <span class="list-hint">click to open component</span>
+      </div>
+      <div class="list-scroll">
+        <table class="data-table" id="table-nodes">
+          <thead><tr>
+            <th class="col-type">Type</th>
+            <th class="col-num">Count</th>
+            <th class="col-num">Δ</th>
+            <th class="col-num">kB</th>
+          </tr></thead>
+          <tbody id="tbody-nodes"></tbody>
+        </table>
+        <div class="empty-hint list-empty" id="hint-list-nodes">Start a session to see node types</div>
+      </div>
     </div>
-    <div class="legend-row" id="legend-cpu"></div>
-  </div>
-  <div class="chart-pane">
-    <div class="chart-title">SceneGraph Nodes</div>
-    <div class="chart-host" id="host-nodes">
-      <div class="empty-hint" id="hint-nodes">Waiting for data…</div>
+    <div class="list-pane">
+      <div class="list-header">
+        <span class="list-title">Rendezvous</span>
+        <span class="list-badge" id="rdv-badge"></span>
+        <span class="list-hint">click to open file</span>
+      </div>
+      <div class="list-scroll">
+        <table class="data-table" id="table-rendezvous">
+          <thead><tr>
+            <th class="col-file">Location</th>
+            <th class="col-num">Count</th>
+            <th class="col-num">Avg ms</th>
+          </tr></thead>
+          <tbody id="tbody-rendezvous"></tbody>
+        </table>
+        <div class="empty-hint list-empty" id="hint-list-rdv">No rendezvous recorded yet</div>
+      </div>
     </div>
-    <div class="legend-row" id="legend-nodes"></div>
   </div>
 </div>`;
 
@@ -234,63 +254,22 @@ function buildDom(): void {
   });
 }
 
-function updateToolbar(): void {
-  el('btn-toggle').textContent = recording ? 'Stop' : 'Start';
-  el('btn-toggle').classList.toggle('stop', recording);
-  el('status-dot').classList.toggle('recording', recording);
+function el<T extends HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
 }
 
-function updateDeviceLabel(state: WebviewState): void {
-  const d = state.device;
-  const label = d
-    ? `${d.appTitle ?? '—'} @ ${d.ip}`
-    : 'No device selected';
-  el('device-label').textContent = label;
-}
-
-function makeLegend(hostId: string, items: { label: string; color: string }[]): void {
-  const legend = document.getElementById(`legend-${hostId}`);
-  if (!legend) return;
-  legend.innerHTML = items
-    .map(
-      (i) =>
-        `<span class="legend-item">
-          <span class="legend-swatch" style="background:${i.color}"></span>
-          ${i.label}
-        </span>`,
-    )
-    .join('');
-}
-
-// ── Chart initialization ──────────────────────────────────────────────────────
+// ── Chart init & resize ───────────────────────────────────────────────────────
 
 function initCharts(): void {
   const c = chartColors();
+  memChart  = makeMemChart(el('host-mem'));
+  cpuChart  = makeCpuChart(el('host-cpu'));
+  nodeChart = makeNodeChart(el('host-nodes'));
 
-  const hostMem = el('host-mem');
-  const hostCpu = el('host-cpu');
-  const hostNodes = el('host-nodes');
+  makeLegend('mem',   [{ label: 'Total', color: c.blue }, { label: 'Anon', color: c.green }, { label: 'File', color: c.yellow }]);
+  makeLegend('cpu',   [{ label: 'Total', color: c.red  }, { label: 'User', color: c.orange }, { label: 'Sys', color: c.purple }]);
+  makeLegend('nodes', [{ label: 'Total', color: c.blue }, { label: 'Rendezvous', color: c.orange }]);
 
-  memChart = makeMemChart(hostMem);
-  cpuChart = makeCpuChart(hostCpu);
-  nodeChart = makeNodeChart(hostNodes);
-
-  makeLegend('mem', [
-    { label: 'Total',  color: c.blue   },
-    { label: 'Anon',   color: c.green  },
-    { label: 'File',   color: c.yellow },
-  ]);
-  makeLegend('cpu', [
-    { label: 'Total', color: c.red    },
-    { label: 'User',  color: c.orange },
-    { label: 'Sys',   color: c.purple },
-  ]);
-  makeLegend('nodes', [
-    { label: 'Total',       color: c.blue   },
-    { label: 'Rendezvous',  color: c.orange },
-  ]);
-
-  // Resize charts whenever their container changes
   const ro = new ResizeObserver(() => resizeAll());
   ro.observe(el('charts'));
   resizeAll();
@@ -302,13 +281,20 @@ function resizeAll(): void {
     const { width, height } = host.getBoundingClientRect();
     const w = Math.max(100, Math.floor(width));
     const h = Math.max(60, Math.floor(height));
-    if (chart.width !== w || chart.height !== h) {
-      chart.setSize({ width: w, height: h });
-    }
+    if (chart.width !== w || chart.height !== h) chart.setSize({ width: w, height: h });
   };
-  resize(memChart, el('host-mem'));
-  resize(cpuChart, el('host-cpu'));
+  resize(memChart,  el('host-mem'));
+  resize(cpuChart,  el('host-cpu'));
   resize(nodeChart, el('host-nodes'));
+}
+
+function makeLegend(hostId: string, items: { label: string; color: string }[]): void {
+  const legend = document.getElementById(`legend-${hostId}`);
+  if (legend) {
+    legend.innerHTML = items.map((i) =>
+      `<span class="legend-item"><span class="legend-swatch" style="background:${i.color}"></span>${i.label}</span>`
+    ).join('');
+  }
 }
 
 // ── Data ingestion ────────────────────────────────────────────────────────────
@@ -329,42 +315,118 @@ function ingestNodes(points: SerializedNodePoint[]): void {
   for (const p of points) {
     nodeTimes.push(p.wall);
     nodeTotal.push(p.totalCount);
+    if (p.types.length > 0) {
+      if (!initialNodeCounts) {
+        initialNodeCounts = new Map(p.types.map((t) => [t.type, t.count]));
+      }
+      latestNodeTypes = p.types;
+    }
   }
 }
 
 function ingestRendezvous(points: SerializedRendezvousPoint[]): void {
   for (const p of points) {
     renTimes.push(p.wall);
+    const key = `${p.file}:${p.line}`;
+    const g = renGroups.get(key);
+    if (g) { g.count++; g.totalMs += p.durationMs; }
+    else renGroups.set(key, { file: p.file, line: p.line, count: 1, totalMs: p.durationMs });
   }
 }
 
+// ── Chart redraw ──────────────────────────────────────────────────────────────
+
 function redrawCharts(): void {
   if (!memChart || !cpuChart || !nodeChart) return;
-
-  const hasMcData = mcTimes.length > 0;
-  const hasNodeData = nodeTimes.length > 0;
-
-  if (hasMcData) {
-    hideHint('hint-mem');
-    hideHint('hint-cpu');
+  if (mcTimes.length > 0) {
+    hideHint('hint-mem'); hideHint('hint-cpu');
     memChart.setData([mcTimes, mcMem, mcAnon, mcFile], true);
     cpuChart.setData([mcTimes, mcCpu, mcUser, mcSys], true);
   }
-  if (hasNodeData) {
+  if (nodeTimes.length > 0) {
     hideHint('hint-nodes');
     nodeChart.setData([nodeTimes, nodeTotal], true);
-    if (renTimes.length > 0) {
-      nodeChart.redraw(false);
-    }
+    if (renTimes.length > 0) nodeChart.redraw(false);
   }
 }
 
 function hideHint(id: string): void {
-  const hint = document.getElementById(id);
-  if (hint) hint.style.display = 'none';
+  const h = document.getElementById(id);
+  if (h) h.style.display = 'none';
 }
 
-// ── Elapsed timer ─────────────────────────────────────────────────────────────
+// ── List rendering ────────────────────────────────────────────────────────────
+
+function renderNodeTable(): void {
+  const tbody = el<HTMLTableSectionElement>('tbody-nodes');
+  const sorted = [...latestNodeTypes].sort((a, b) => b.count - a.count);
+
+  if (sorted.length === 0) return;
+  hideHint('hint-list-nodes');
+
+  tbody.innerHTML = sorted.slice(0, 120).map((t) => {
+    const initial = initialNodeCounts?.get(t.type) ?? t.count;
+    const delta = t.count - initial;
+    const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '—';
+    const deltaClass = delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : '';
+    const kb = (t.staticBytes / 1024).toFixed(0);
+    return `<tr class="nav-row" data-type="${escHtml(t.type)}">
+      <td class="col-type" title="${escHtml(t.type)}">${escHtml(t.type)}</td>
+      <td class="col-num">${t.count}</td>
+      <td class="col-num ${deltaClass}">${deltaLabel}</td>
+      <td class="col-num">${kb}</td>
+    </tr>`;
+  }).join('');
+
+  for (const row of tbody.querySelectorAll<HTMLElement>('tr.nav-row')) {
+    row.addEventListener('click', () => {
+      vscode.postMessage({ kind: 'open-node', nodeType: row.dataset.type! });
+    });
+  }
+
+  const total = sorted.reduce((s, t) => s + t.count, 0);
+  el('node-badge').textContent = `${total} nodes · ${sorted.length} types`;
+}
+
+function renderRendezvousTable(): void {
+  const tbody = el<HTMLTableSectionElement>('tbody-rendezvous');
+  const sorted = [...renGroups.values()].sort((a, b) => b.count - a.count);
+
+  if (sorted.length === 0) return;
+  hideHint('hint-list-rdv');
+
+  tbody.innerHTML = sorted.slice(0, 120).map((g) => {
+    const avgMs = (g.totalMs / g.count).toFixed(1);
+    const parts = g.file.split('/');
+    const label = `${parts[parts.length - 1]}:${g.line}`;
+    return `<tr class="nav-row" data-file="${escHtml(g.file)}" data-line="${g.line}">
+      <td class="col-file" title="${escHtml(g.file)}:${g.line}">${escHtml(label)}</td>
+      <td class="col-num">${g.count}</td>
+      <td class="col-num">${avgMs}</td>
+    </tr>`;
+  }).join('');
+
+  for (const row of tbody.querySelectorAll<HTMLElement>('tr.nav-row')) {
+    row.addEventListener('click', () => {
+      vscode.postMessage({ kind: 'open-rendezvous', file: row.dataset.file!, line: Number(row.dataset.line) });
+    });
+  }
+
+  el('rdv-badge').textContent = `${renTimes.length} events · ${sorted.length} locations`;
+}
+
+// ── Toolbar helpers ───────────────────────────────────────────────────────────
+
+function updateToolbar(): void {
+  el('btn-toggle').textContent = recording ? 'Stop' : 'Start';
+  el('btn-toggle').classList.toggle('stop', recording);
+  el('status-dot').classList.toggle('recording', recording);
+}
+
+function updateDeviceLabel(state: WebviewState): void {
+  const d = state.device;
+  el('device-label').textContent = d ? `${d.appTitle ?? '—'} @ ${d.ip}` : 'No device selected';
+}
 
 function startElapsed(): void {
   clearInterval(elapsedTimer);
@@ -382,34 +444,32 @@ function stopElapsed(): void {
   el('elapsed').textContent = '';
 }
 
-// ── Message handler ───────────────────────────────────────────────────────────
-
 function applyState(state: WebviewState): void {
   recording = state.recording;
   sessionStartWall = state.sessionStartWall ?? 0;
   updateToolbar();
   updateDeviceLabel(state);
-  if (recording && sessionStartWall) {
-    startElapsed();
-  } else {
-    stopElapsed();
-  }
+  if (recording && sessionStartWall) startElapsed();
+  else stopElapsed();
 }
+
+// ── Message handler ───────────────────────────────────────────────────────────
 
 window.addEventListener('message', (ev) => {
   const msg = ev.data as ExtMsg;
   switch (msg.kind) {
     case 'init':
-      // Clear existing data and seed from history
       mcTimes.length = 0; mcMem.length = 0; mcAnon.length = 0;
       mcFile.length = 0; mcCpu.length = 0; mcUser.length = 0; mcSys.length = 0;
-      nodeTimes.length = 0; nodeTotal.length = 0;
-      renTimes.length = 0;
+      nodeTimes.length = 0; nodeTotal.length = 0; renTimes.length = 0;
+      latestNodeTypes = []; initialNodeCounts = undefined; renGroups.clear();
       ingestMemCpu(msg.history.memCpu);
       ingestNodes(msg.history.nodes);
       ingestRendezvous(msg.history.rendezvous);
       applyState(msg.state);
       redrawCharts();
+      renderNodeTable();
+      renderRendezvousTable();
       break;
 
     case 'batch':
@@ -417,6 +477,8 @@ window.addEventListener('message', (ev) => {
       ingestNodes(msg.nodes);
       ingestRendezvous(msg.rendezvous);
       redrawCharts();
+      renderNodeTable();
+      renderRendezvousTable();
       break;
 
     case 'state':
