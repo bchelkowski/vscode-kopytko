@@ -20,10 +20,7 @@ import type {
 import { SessionReader } from '../storage/sessionReader';
 import { readManifest } from '../storage/sessionStore';
 import { nodeSink } from '../storage/sink';
-import {
-  resolveRendezvousFile,
-  resolveNodeComponentFile,
-} from '../../roku/util/resolveSourceFile';
+import { resolveRendezvousFile } from '../../roku/util/resolveSourceFile';
 
 const VIEW_ID = 'kopytko.diagnostics';
 const BATCH_INTERVAL_MS = 250;
@@ -88,9 +85,6 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'stop':
           void this.controller.stopSession().then(() => this.onSessionStopped());
-          break;
-        case 'open-node':
-          void this.openNodeFile(msg.nodeType);
           break;
         case 'open-rendezvous':
           void this.openRendezvousFile(msg.file, msg.line);
@@ -362,16 +356,6 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   }
 
   // ── File navigation ───────────────────────────────────────────────────────────
-
-  private async openNodeFile(nodeType: string): Promise<void> {
-    const uri = await resolveNodeComponentFile(nodeType);
-    if (!uri) {
-      void vscode.window.showInformationMessage(`No source file found for component: ${nodeType}`);
-      return;
-    }
-    const doc = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(doc, { preview: false });
-  }
 
   private async openRendezvousFile(pkgPath: string, line: number): Promise<void> {
     const uri = await resolveRendezvousFile('', pkgPath);

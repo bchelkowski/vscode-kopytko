@@ -88,8 +88,6 @@ export type ExtMsg =
 export type WebMsg =
   | { kind: 'start' }
   | { kind: 'stop' }
-  /** Open the .xml definition file for a SceneGraph component type. */
-  | { kind: 'open-node'; nodeType: string }
   /** Open a source file at the rendezvous location. */
   | { kind: 'open-rendezvous'; file: string; line: number }
   /** Load a past session for replay (read-only). */

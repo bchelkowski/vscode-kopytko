@@ -77,30 +77,5 @@ describe('resolveSourceFile', () => {
     });
   });
 
-  // ── resolveNodeComponentFile ────────────────────────────────────────────────
 
-  describe('resolveNodeComponentFile', () => {
-    it('returns the single matching xml file', async () => {
-      findFiles.resolves([makeUri('/ws/app/components/EventTileModel.xml')]);
-      const { resolveNodeComponentFile } = loadModule();
-      const result = await resolveNodeComponentFile('EventTileModel');
-      expect(result?.fsPath).to.equal('/ws/app/components/EventTileModel.xml');
-      expect(findFiles.firstCall.args[0]).to.equal('**/EventTileModel.xml');
-    });
-
-    it('prefers project source over node_modules when multiple matches', async () => {
-      findFiles.resolves([
-        makeUri('/ws/node_modules/kopytko-utils/EventTileModel.xml'),
-        makeUri('/ws/app/components/EventTileModel.xml'),
-      ]);
-      const { resolveNodeComponentFile } = loadModule();
-      const result = await resolveNodeComponentFile('EventTileModel');
-      expect(result?.fsPath).to.equal('/ws/app/components/EventTileModel.xml');
-    });
-
-    it('returns undefined for built-in types not present in the workspace', async () => {
-      const { resolveNodeComponentFile } = loadModule();
-      expect(await resolveNodeComponentFile('Label')).to.equal(undefined);
-    });
-  });
 });

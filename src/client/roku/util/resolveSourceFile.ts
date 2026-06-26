@@ -41,27 +41,3 @@ export async function resolveRendezvousFile(
   return undefined;
 }
 
-/**
- * Resolves a SceneGraph component type name to its `.xml` definition file.
- *
- * Strategy:
- * 1. Find any file named `<Type>.xml` in the workspace (null excludes so
- *    node_modules Kopytko packages are included).
- * 2. If multiple matches, prefer a file in the project source tree over
- *    node_modules (inverse of rendezvous — custom components live in source).
- *
- * Returns undefined for built-in Roku types (Label, Rectangle, …) that have
- * no source file in the workspace.
- */
-export async function resolveNodeComponentFile(
-  nodeType: string,
-): Promise<vscode.Uri | undefined> {
-  const matches = await vscode.workspace.findFiles(`**/${nodeType}.xml`, null, 10);
-
-  if (matches.length === 1) return matches[0];
-  if (matches.length > 1) {
-    return matches.find((u) => !u.fsPath.includes('node_modules')) ?? matches[0];
-  }
-
-  return undefined;
-}

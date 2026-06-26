@@ -306,7 +306,7 @@ function buildDom(): void {
       <div class="list-header">
         <span class="list-title">Nodes</span>
         <span class="list-badge" id="node-badge"></span>
-        <span class="list-hint">click to open component</span>
+        <span class="list-hint"></span>
       </div>
       <div class="list-scroll">
         <table class="data-table" id="table-nodes">
@@ -495,19 +495,13 @@ function renderNodeTable(): void {
     const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '—';
     const deltaClass = delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : '';
     const kb = (t.staticBytes / 1024).toFixed(0);
-    return `<tr class="nav-row" data-type="${escHtml(t.type)}">
+    return `<tr>
       <td class="col-label" title="${escHtml(t.type)}">${escHtml(t.type)}</td>
       <td class="col-num">${t.count}</td>
       <td class="col-num ${deltaClass}">${deltaLabel}</td>
       <td class="col-num">${kb}</td>
     </tr>`;
   }).join('');
-
-  for (const row of tbody.querySelectorAll<HTMLElement>('tr.nav-row')) {
-    row.addEventListener('click', () => {
-      vscode.postMessage({ kind: 'open-node', nodeType: row.dataset.type! });
-    });
-  }
 
   const total = sorted.reduce((s, t) => s + t.count, 0);
   el('node-badge').textContent = `${total} nodes · ${sorted.length} types`;
