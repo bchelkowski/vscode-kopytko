@@ -7,11 +7,17 @@
   "license": "MIT",
   "icon": "images/kopytko-logo.png",
   "keywords": [
-    "brightscript",
-    "kopytko",
     "roku",
-    "scenograph",
-    "brs"
+    "brightscript",
+    "scenegraph",
+    "brs",
+    "kopytko",
+    "formatter",
+    "prettier",
+    "linter",
+    "lint",
+    "debugger",
+    "debug"
   ],
   "engines": {
     "vscode": "^1.120.0",
