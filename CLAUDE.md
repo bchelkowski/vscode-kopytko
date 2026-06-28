@@ -8,9 +8,10 @@ Version-controlled working notes — read before acting, write after discovering
 |---|---|
 | [findings/roku-device-api.md](findings/roku-device-api.md) | Any Roku device communication (ports, commands, response formats) |
 | [findings/diagnostics-panel-architecture.md](findings/diagnostics-panel-architecture.md) | Touching `src/client/diagnostics/` or the webview |
+| [findings/lsp-architecture.md](findings/lsp-architecture.md) | LSP server providers, formatter rules, built-in/component catalogs |
 | [findings/dev-environment.md](findings/dev-environment.md) | Build, test, compile, or F5 debug work |
 
-Write to the relevant file immediately after finding a non-obvious constraint, gotcha, or pattern worth reusing. Keep entries concrete (real examples, file paths, the *why*).
+Write to the relevant file immediately after finding a non-obvious constraint, gotcha, or pattern. Keep entries concrete — real examples, file paths, the *why*.
 
 ---
 
@@ -52,7 +53,7 @@ npm test             # Mocha + tsx, no compilation needed
 npm run lint         # ESLint
 ```
 
-`compile` outputs individual JS files for the Extension Development Host. `bundle` produces self-contained files for the published VSIX. Run `npm run compile` (or the WSL equivalent) before pressing F5 — see `findings/dev-environment.md` for the full build workflow.
+`compile` outputs individual JS files for the Extension Development Host. `bundle` produces self-contained files for the published VSIX. See `findings/dev-environment.md` for the full build workflow, WSL setup, and F5 caveats.
 
 For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && npm test`.
 
@@ -96,29 +97,18 @@ For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && np
 
 ## GitHub Pages site
 
-Lives in `site/` (Astro 5 + Tailwind v4 + React islands), deploys to `https://bchelkowski.github.io/vscode-kopytko/`. Run via WSL: `cd site && npm run dev`.
+Lives in `site/` (Astro 5 + Tailwind v4 + React islands). Run via WSL: `cd site && npm run dev`.
 
 | Change | Update |
 |---|---|
 | New/changed linter rule | `site/src/pages/linter.astro` — `RuleCard` entry |
-| New/changed formatter option | `site/src/pages/formatter.astro` — `OptionCard` entry; also `FormatterPlayground.tsx` JSONC comment if enum |
+| New/changed formatter option | `site/src/pages/formatter.astro` — `OptionCard` + `FormatterPlayground.tsx` JSONC comment if enum |
 | New parser export | `site/src/pages/parser.astro` — API reference groups |
-| New extension feature/command/setting | `site/src/pages/extension.astro` — relevant section + settings table |
+| New extension feature/command/setting | `site/src/pages/extension.astro` |
 | New `TokenKind` or `SyntaxKind` | `tokenKindTable` in `parser.astro` + `brightscript-colors.tsx` + `TokenVisualizer.tsx` |
 | New screenshot | Drop `.png` into `site/public/screenshots/` |
 
-Site redeploys automatically on push to `main` (when `site/**` or `syntaxes/**` change) and at the end of each release workflow. Never deploy manually mid-release.
-
----
-
-## Performance guidelines (LSP server)
-
-1. **Debounced diagnostics** — use `scheduleValidation()`, not `validateDocument()` (300ms debounce).
-2. **Document cache** — `getCachedLines`, `getCachedTypeMap`, `getCachedAllFunctions` from `utils/documentCache.ts`. Never call `text.split()` / `inferTypes()` / `collectAllFunctions()` directly in a provider.
-3. **Static data cached** — `getInstalledKopytkoPackages()`, `resolvePackageBaseDir()`, `KopytkoModuleCatalog` are cached; invalidate via `onDidChangeWatchedFiles`.
-4. **Workspace function index** — use `WorkspaceFunctionIndex` for Find References / Rename. Never walk the workspace with `collectBrsFiles` in a provider.
-5. **Catalog lookups** — `findComponent()`, `findBuiltin()`, `getComponentMethods()` are O(1).
-6. **Cache invalidation** — `CacheInvalidationService` handles `onDidChangeWatchedFiles`; document caches auto-invalidate on version change.
+Redeploys automatically on push to `main` (when `site/**` or `syntaxes/**` change) and at the end of each release workflow.
 
 ---
 
@@ -140,7 +130,7 @@ No `Co-authored-by:` lines. Use conventional commits.
 
 ## Package architecture
 
-Three packages have strict, non-overlapping responsibilities:
+Three packages with strict, non-overlapping responsibilities:
 
 | Question | Package |
 |---|---|
@@ -148,20 +138,6 @@ Three packages have strict, non-overlapping responsibilities:
 | "Does this transform source text to make it prettier?" | **formatter** |
 | "Does this check a rule and report a diagnostic?" | **linter** |
 
-**Key check:** before adding a helper to the formatter or linter, ask *"Would another tool ever need this?"* If yes, it belongs in the parser. The parser is the single source of truth for all per-file structural facts (scope, references, catalogs).
+**Key check:** before adding a helper to the formatter or linter, ask *"Would another tool ever need this?"* If yes, it belongs in the parser — the single source of truth for all per-file structural facts.
 
----
-
-## How-to
-
-**New LSP feature:** create `src/server/providers/<name>Provider.ts` → wire in `server.ts` + `registerHandlers.ts` → use document cache → add tests in `test/providers/` → update `docs/features.md` + `docs/language-server.md`.
-
-**New formatting option:** add field to `FormattingConfig` in `packages/formatter/src/config.ts` → wire in `formatter.ts` → add VS Code setting in root `package.json` → update `docs/formatting.md`.
-
-**New formatting rule:** edit `packages/formatter/src/formatter.ts` or add a CST pass in `packages/formatter/src/cst-passes/` and export it from `cst-passes/index.ts`.
-
-**Expand BrightScript built-ins:** edit `packages/brightscript-parser/src/catalog/builtins.ts`. Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add test assertions.
-
-**Maintain component catalog:** edit `packages/brightscript-parser/src/catalog/components.ts`. Set `since`, `deprecated`. Update `CATALOG_LAST_VERIFIED` only after verifying against live Roku docs. Update `docs/brightscript-components.md`.
-
-**Expand Kopytko module catalog:** `src/server/kopytko/moduleCatalog.ts` scans installed packages at runtime. Tests in `test/kopytko/moduleCatalog.test.ts`.
+For LSP performance rules and step-by-step how-to guides (new provider, formatter rules, built-in catalogs), see `findings/lsp-architecture.md`.
