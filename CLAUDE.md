@@ -64,8 +64,9 @@ For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && np
 ## Definition of done
 
 1. **Tests pass** — `npm test` exits 0. New behaviour has new tests. No test left broken.
-2. **Documentation updated** — `docs/features.md`, the relevant topic doc, and the site page.
-3. **Findings updated** — if anything non-obvious was discovered, the relevant `findings/` file is updated.
+2. **Docs updated** — `docs/features.md` and the relevant topic doc reflect the change.
+3. **Site updated** — the corresponding `site/src/pages/` page reflects the change.
+4. **Findings updated** — if anything non-obvious was discovered, the relevant `findings/` file is updated.
 
 ---
 
@@ -114,6 +115,8 @@ Lives in `site/` (Astro 5 + Tailwind v4 + React islands). Run via WSL: `cd site 
 | New screenshot | Drop `.png` into `site/public/screenshots/` |
 
 Redeploys automatically on push to `main` (when `site/**` or `syntaxes/**` change) and at the end of each release workflow.
+
+**The site must always reflect the true state of the extension and all packages. Treat `site/src/pages/` with the same discipline as `docs/*.md`.**
 
 ---
 
