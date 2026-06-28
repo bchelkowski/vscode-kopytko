@@ -4,6 +4,7 @@ coverage/
 node_modules/
 out/
 out-test/
+tmp/
 
 .DS_Store
 .env

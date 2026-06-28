@@ -1,5 +1,35 @@
 # vscode-kopytko — CLAUDE.md
 
+## Internal knowledge base (`tmp/`)
+
+The `tmp/` directory is **gitignored** and contains session-accumulated knowledge that would otherwise be re-discovered from scratch every time. It is **not** public documentation.
+
+### ALWAYS do both of these:
+
+1. **Read before acting** — at the start of any task that involves Roku device communication, the diagnostics panel, the webview, or the Windows+WSL dev environment, read the relevant files first:
+   - `tmp/roku-device-api.md` — every verified port/command/response format for the real device. Never probe the device for something already documented here; never invent an endpoint without checking here first.
+   - `tmp/diagnostics-panel-architecture.md` — component map, event model, storage format, uPlot patterns, testing patterns. Read before touching anything in `src/client/diagnostics/`.
+   - `tmp/dev-environment.md` — Windows+WSL constraints, build scripts, tsconfig setup, webview CSP. Read before any build/test/debug work.
+
+2. **Write after discovering** — whenever you learn something non-obvious through probing, debugging, or implementation, add it to the appropriate `tmp/` file immediately. Examples of things that belong here:
+   - A new verified device command or response format (with a real example)
+   - A tricky bug and its root cause (e.g. `__importStar` wrapper problem)
+   - A constraint or gotcha discovered during development (e.g. WSL2 can't reach the hotspot)
+   - A design decision and the reason it was made
+   - A pattern that worked well and should be reused
+
+   Keep entries concrete and specific. Vague notes are useless. Include actual response examples, file paths, and the *why* behind decisions.
+
+### Files in `tmp/`
+
+| File | Contents |
+|---|---|
+| [tmp/roku-device-api.md](tmp/roku-device-api.md) | Verified Roku device API: ports, commands, response formats, parsing notes |
+| [tmp/diagnostics-panel-architecture.md](tmp/diagnostics-panel-architecture.md) | Diagnostics panel component map, event model, storage, webview, uPlot, testing patterns |
+| [tmp/dev-environment.md](tmp/dev-environment.md) | Windows+WSL dev setup, build scripts, tsconfig, webview dev workflow |
+
+---
+
 ## Project overview
 
 A VS Code extension providing language support for **BrightScript** (Roku) and the **Kopytko Framework**. Includes an LSP server with diagnostics, completion, hover, go-to-definition, formatting, and a built-in debugger.
