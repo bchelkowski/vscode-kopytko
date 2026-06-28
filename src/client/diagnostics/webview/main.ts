@@ -24,6 +24,10 @@ interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
 
+// ── Cursor sync — all 3 main charts share this key ───────────────────────────
+
+const SYNC_KEY = 'kopytko-diag';
+
 // ── Panel mode ────────────────────────────────────────────────────────────────
 
 type PanelMode = 'live' | 'replay';
@@ -35,19 +39,24 @@ let recording = false;
 let sessionStartWall = 0;
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
-// ── Chart data (all charts share these arrays) ────────────────────────────────
+// ── Chart data ────────────────────────────────────────────────────────────────
 
-const mcTimes: number[] = [];   // wall ms timestamps (x axis for mem/cpu + nav)
-const mcMem:   number[] = [];   // MB
-const mcAnon:  number[] = [];
-const mcFile:  number[] = [];
-const mcCpu:   number[] = [];   // %
-const mcUser:  number[] = [];
-const mcSys:   number[] = [];
+const mcTimes: number[] = [];   // wall ms (from chanperf events)
+const mcMem: number[] = [];     // total channel memory, MB
+const mcAnon: number[] = [];
+const mcFile: number[] = [];
+const mcCpu: number[] = [];     // total cpu %
+const mcUser: number[] = [];
+const mcSys: number[] = [];
 
 const nodeTimes: number[] = [];
 const nodeTotal: number[] = [];
-const renTimes:  number[] = [];  // ms wall, used for vertical markers on node chart
+const renTimes: number[] = [];  // wall ms timestamps of rendezvous events
+
+// ── Zoom state (set by navigator brush) ──────────────────────────────────────
+
+let zoomMin: number | undefined;
+let zoomMax: number | undefined;
 
 // ── List data ─────────────────────────────────────────────────────────────────
 
@@ -59,14 +68,10 @@ const renGroups = new Map<string, RendezvousGroup>();
 
 // ── Chart instances ───────────────────────────────────────────────────────────
 
-let memChart:  uPlot | undefined;
-let cpuChart:  uPlot | undefined;
+let memChart: uPlot | undefined;
+let cpuChart: uPlot | undefined;
 let nodeChart: uPlot | undefined;
-let navChart:  uPlot | undefined;   // overview / range-selector chart
-
-// ── Time range state ──────────────────────────────────────────────────────────
-
-let selectedRange: [number, number] | null = null;
+let navChart: uPlot | undefined;   // navigator / range selector
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 
@@ -78,7 +83,7 @@ function cssVar(name: string, fallback: string): string {
 function chartColors() {
   return {
     fg:     cssVar('--vscode-editor-foreground', '#cccccc'),
-    grid:   cssVar('--vscode-editorWidget-border', 'rgba(128,128,128,0.25)'),
+    grid:   cssVar('--vscode-editorWidget-border', 'rgba(128,128,128,0.22)'),
     blue:   cssVar('--vscode-charts-blue',   '#4FC3F7'),
     green:  cssVar('--vscode-charts-green',  '#81C784'),
     yellow: cssVar('--vscode-charts-yellow', '#FFD54F'),
@@ -88,160 +93,171 @@ function chartColors() {
   };
 }
 
-// ── Chart factory helpers ─────────────────────────────────────────────────────
+// ── Chart factory ─────────────────────────────────────────────────────────────
 
-function makeAxis(label: string, side: number, c: ReturnType<typeof chartColors>): uPlot.Axis {
-  const font = '10px ' + cssVar('--vscode-font-family', 'system-ui');
+function chartFont(): string {
+  return '10px ' + cssVar('--vscode-font-family', 'system-ui');
+}
+
+function makeYAxis(label: string, c: ReturnType<typeof chartColors>): uPlot.Axis {
   return {
-    side, label, labelSize: 12, labelFont: font,
+    side: 3,
+    label,
+    labelSize: 14,
+    labelFont: chartFont(),
     stroke: c.fg,
-    ticks: { stroke: c.grid, width: 1, size: 3 },
+    size: 52,                 // fixed px width so labels never clip
+    ticks: { stroke: c.grid, width: 1, size: 4 },
     grid:  { stroke: c.grid, width: 1 },
-    font,
+    font: chartFont(),
   };
 }
 
-function dims(host: HTMLElement): { width: number; height: number } {
-  const r = host.getBoundingClientRect();
-  return { width: Math.max(100, Math.floor(r.width)), height: Math.max(40, Math.floor(r.height)) };
+function makeXAxis(c: ReturnType<typeof chartColors>): uPlot.Axis {
+  return {
+    stroke: c.fg,
+    ticks: { stroke: c.grid, width: 1, size: 4 },
+    grid:  { stroke: c.grid, width: 1 },
+    font: chartFont(),
+  };
 }
 
-// ── Main chart factories ──────────────────────────────────────────────────────
-
 function makeMemChart(host: HTMLElement): uPlot {
-  const c = chartColors(); const { width, height } = dims(host);
+  const c = chartColors();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
-    width, height, pxAlign: 1, ms: 1,
-    axes: [
-      { stroke: c.fg, ticks: { stroke: c.grid }, grid: { stroke: c.grid }, font: '10px ' + cssVar('--vscode-font-family', 'system-ui') },
-      makeAxis('MB', 3, c),
-    ],
-    scales: { x: { time: true }, y: { range: (_u, _mn, mx) => [0, Math.max(mx * 1.05, 1)] } },
+    width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
+    axes: [makeXAxis(c), makeYAxis('MB', c)],
+    scales: {
+      x: { time: true },
+      y: { range: (_u, min, max) => [Math.max(0, min - 1), max + 1] },
+    },
     series: [
       {},
       { label: 'Total', stroke: c.blue,   width: 2 },
       { label: 'Anon',  stroke: c.green,  width: 1.5 },
       { label: 'File',  stroke: c.yellow, width: 1.5 },
     ],
-    cursor: { show: false }, legend: { show: false },
+    cursor: { show: true, sync: { key: SYNC_KEY } },
+    legend: { show: false },
   }, [mcTimes, mcMem, mcAnon, mcFile], host);
 }
 
 function makeCpuChart(host: HTMLElement): uPlot {
-  const c = chartColors(); const { width, height } = dims(host);
+  const c = chartColors();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
-    width, height, pxAlign: 1, ms: 1,
-    axes: [
-      { stroke: c.fg, ticks: { stroke: c.grid }, grid: { stroke: c.grid }, font: '10px ' + cssVar('--vscode-font-family', 'system-ui') },
-      makeAxis('%', 3, c),
-    ],
-    scales: { x: { time: true }, y: { range: (_u, _mn, mx) => [0, Math.max(mx * 1.05, 5)] } },
+    width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
+    axes: [makeXAxis(c), makeYAxis('%', c)],
+    scales: {
+      x: { time: true },
+      y: { range: (_u, min, max) => [Math.max(0, min - 1), Math.max(max + 1, 5)] },
+    },
     series: [
       {},
       { label: 'Total', stroke: c.red,    width: 2 },
       { label: 'User',  stroke: c.orange, width: 1.5 },
       { label: 'Sys',   stroke: c.purple, width: 1.5 },
     ],
-    cursor: { show: false }, legend: { show: false },
+    cursor: { show: true, sync: { key: SYNC_KEY } },
+    legend: { show: false },
   }, [mcTimes, mcCpu, mcUser, mcSys], host);
 }
 
 function makeNodeChart(host: HTMLElement): uPlot {
-  const c = chartColors(); const { width, height } = dims(host);
+  const c = chartColors();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
-    width, height, pxAlign: 1, ms: 1,
-    axes: [
-      { stroke: c.fg, ticks: { stroke: c.grid }, grid: { stroke: c.grid }, font: '10px ' + cssVar('--vscode-font-family', 'system-ui') },
-      makeAxis('#', 3, c),
-    ],
-    scales: { x: { time: true }, y: { range: (_u, _mn, mx) => [0, Math.max(mx * 1.05, 10)] } },
+    width: Math.max(100, width), height: Math.max(60, height), pxAlign: 1, ms: 1,
+    axes: [makeXAxis(c), makeYAxis('#', c)],
+    scales: {
+      x: { time: true },
+      y: { range: (_u, min, max) => [Math.max(0, min - 1), max + 1] },
+    },
     series: [ {}, { label: 'Nodes', stroke: c.blue, width: 2 } ],
     hooks: {
-      draw: [(u) => {
-        if (renTimes.length === 0) return;
-        const ctx = u.ctx;
-        const xMin = u.scales.x.min ?? 0;
-        const xMax = u.scales.x.max ?? 0;
-        ctx.save();
-        ctx.strokeStyle = c.orange;
-        ctx.globalAlpha = 0.5;
-        ctx.lineWidth = 1;
-        for (const t of renTimes) {
-          if (t < xMin || t > xMax) continue;
-          const x = Math.round(u.valToPos(t, 'x', true));
-          ctx.beginPath();
-          ctx.moveTo(x, u.bbox.top);
-          ctx.lineTo(x, u.bbox.top + u.bbox.height);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }],
+      draw: [
+        (u) => {
+          if (renTimes.length === 0) return;
+          const ctx = u.ctx;
+          const xMin = u.scales.x.min ?? 0;
+          const xMax = u.scales.x.max ?? 0;
+          ctx.save();
+          ctx.strokeStyle = c.orange;
+          ctx.globalAlpha = 0.45;
+          ctx.lineWidth = 1;
+          for (const t of renTimes) {
+            if (t < xMin || t > xMax) continue;
+            const xPos = Math.round(u.valToPos(t, 'x', true));
+            ctx.beginPath();
+            ctx.moveTo(xPos, u.bbox.top);
+            ctx.lineTo(xPos, u.bbox.top + u.bbox.height);
+            ctx.stroke();
+          }
+          ctx.restore();
+        },
+      ],
     },
-    cursor: { show: false }, legend: { show: false },
+    cursor: { show: true, sync: { key: SYNC_KEY } },
+    legend: { show: false },
   }, [nodeTimes, nodeTotal], host);
 }
 
-// ── Navigator (range-selector) chart ─────────────────────────────────────────
-
+/**
+ * Navigator chart — thin overview spanning the full time range.
+ * Shows CPU % so the user can identify activity. The brush selection on this
+ * chart zooms all 3 main charts to the selected window.
+ */
 function makeNavChart(host: HTMLElement): uPlot {
-  const c = chartColors(); const { width, height } = dims(host);
+  const c = chartColors();
+  const { width, height } = host.getBoundingClientRect();
   return new uPlot({
-    width, height, pxAlign: 1, ms: 1,
-    select: { show: true, left: 0, width: 0, top: 0, height },
+    width: Math.max(100, width), height: Math.max(36, height), pxAlign: 1, ms: 1,
     axes: [
       {
-        stroke: c.fg, size: 22,
-        ticks: { stroke: c.grid, width: 1, size: 3 },
-        grid: { stroke: c.grid, width: 1 },
-        font: '9px ' + cssVar('--vscode-font-family', 'system-ui'),
+        ...makeXAxis(c),
+        space: 60,          // fewer x-axis ticks on the small navigator
+        ticks: { ...makeXAxis(c).ticks, size: 2 },
+        grid:  { show: false },
       },
-      { show: false },
+      { show: false },      // hide y-axis completely
     ],
-    scales: { x: { time: true }, y: { range: (_u, _mn, mx) => [0, Math.max(mx * 1.1, 1)] } },
-    series: [
-      {},
-      {
-        stroke: c.blue,
-        fill: `${c.blue}22`,
-        width: 1,
-      },
-    ],
+    padding: [0, 0, 0, 0],
+    scales: { x: { time: true } },
+    series: [ {}, { label: 'CPU', stroke: c.red, width: 1 } ],
+    select: { show: true, over: true },
     hooks: {
       setSelect: [(u) => {
         if (u.select.width > 0) {
-          const tMin = u.posToVal(u.select.left, 'x');
-          const tMax = u.posToVal(u.select.left + u.select.width, 'x');
-          applyTimeRange(tMin, tMax);
+          const min = u.posToVal(u.select.left, 'x');
+          const max = u.posToVal(u.select.left + u.select.width, 'x');
+          applyZoom(min, max);
         }
       }],
     },
-    cursor: { show: false }, legend: { show: false },
-  }, [mcTimes, mcMem], host);
+    cursor: { show: false },
+    legend: { show: false },
+  }, [mcTimes, mcCpu], host);
 }
 
-// ── Time range ────────────────────────────────────────────────────────────────
+// ── Zoom ──────────────────────────────────────────────────────────────────────
 
-function applyTimeRange(min: number, max: number): void {
-  selectedRange = [min, max];
-  memChart?.setScale('x',  { min, max });
-  cpuChart?.setScale('x',  { min, max });
+function applyZoom(min: number, max: number): void {
+  zoomMin = min;
+  zoomMax = max;
+  memChart?.setScale('x', { min, max });
+  cpuChart?.setScale('x', { min, max });
   nodeChart?.setScale('x', { min, max });
-  el('btn-clear-range').style.display = '';
+  el('btn-reset-zoom').style.display = '';
 }
 
-function clearTimeRange(): void {
-  selectedRange = null;
-  el('btn-clear-range').style.display = 'none';
-  // Reset main charts to full range
-  if (mcTimes.length > 0) {
-    memChart?.setData([mcTimes, mcMem, mcAnon, mcFile], true);
-    cpuChart?.setData([mcTimes, mcCpu, mcUser, mcSys], true);
-  }
-  if (nodeTimes.length > 0) {
-    nodeChart?.setData([nodeTimes, nodeTotal], true);
-  }
-  // Clear the navigator selection box
-  navChart?.setSelect({ left: 0, width: 0, top: 0, height: navChart.height }, false);
+function resetZoom(): void {
+  zoomMin = undefined;
+  zoomMax = undefined;
+  navChart?.setSelect({ left: 0, width: 0, top: 0, height: 0 }, false);
+  el('btn-reset-zoom').style.display = 'none';
+  // Redraw with resetScales=true to restore auto-range
+  redrawAll();
 }
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
@@ -254,7 +270,7 @@ function el<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
 }
 
-// ── DOM build ─────────────────────────────────────────────────────────────────
+// ── Build DOM ─────────────────────────────────────────────────────────────────
 
 function buildDom(): void {
   document.body.innerHTML = `
@@ -265,7 +281,8 @@ function buildDom(): void {
     <option value="live">● Live</option>
   </select>
   <button id="btn-toggle">Start</button>
-  <button id="btn-clear">Clear</button>
+  <button id="btn-new-session" title="Save current session and start fresh">New Session</button>
+  <button id="btn-reset-zoom" class="secondary" title="Clear range selection and show all data" style="display:none">Clear Range</button>
   <span id="elapsed"></span>
 </div>
 <div id="main-area">
@@ -291,14 +308,10 @@ function buildDom(): void {
       </div>
       <div class="legend-row" id="legend-nodes"></div>
     </div>
-  </div>
-  <div id="navigator-area">
-    <div id="nav-toolbar">
-      <span class="nav-label">Drag to select time range — zooms all charts</span>
-      <button id="btn-clear-range" style="display:none">✕ Clear range</button>
-    </div>
-    <div class="chart-host" id="host-nav">
-      <div class="empty-hint" id="hint-nav">No data yet</div>
+    <div class="nav-pane">
+      <div class="nav-chart-host" id="host-nav">
+        <div class="empty-hint nav-empty-hint" id="hint-nav">Brush to select a time range</div>
+      </div>
     </div>
   </div>
   <div id="lists">
@@ -306,12 +319,11 @@ function buildDom(): void {
       <div class="list-header">
         <span class="list-title">Nodes</span>
         <span class="list-badge" id="node-badge"></span>
-        <span class="list-hint"></span>
       </div>
       <div class="list-scroll">
         <table class="data-table" id="table-nodes">
           <thead><tr>
-            <th class="col-label">Type</th>
+            <th class="col-type">Type</th>
             <th class="col-num">Count</th>
             <th class="col-num">Δ</th>
             <th class="col-num">kB</th>
@@ -330,10 +342,10 @@ function buildDom(): void {
       <div class="list-scroll">
         <table class="data-table" id="table-rendezvous">
           <thead><tr>
-            <th class="col-label">Location</th>
+            <th class="col-file">Location</th>
             <th class="col-num">Count</th>
-            <th class="col-num">Avg ms</th>
             <th class="col-num">Total ms</th>
+            <th class="col-num">Avg ms</th>
           </tr></thead>
           <tbody id="tbody-rendezvous"></tbody>
         </table>
@@ -348,48 +360,52 @@ function buildDom(): void {
     vscode.postMessage(recording ? { kind: 'stop' } : { kind: 'start' });
   });
 
-  el('btn-clear').addEventListener('click', () => {
+  el('btn-new-session').addEventListener('click', () => {
     if (panelMode === 'replay') {
+      // In replay mode, "New Session" just clears the view and returns to live
       vscode.postMessage({ kind: 'load-live' });
-    } else if (recording) {
-      vscode.postMessage({ kind: 'new-session' });
-    } else {
-      vscode.postMessage({ kind: 'clear-view' });
+      return;
     }
+    vscode.postMessage({ kind: 'new-session' });
   });
 
-  el('btn-clear-range').addEventListener('click', clearTimeRange);
+  el('btn-reset-zoom').addEventListener('click', () => resetZoom());
 
   el('session-select').addEventListener('change', () => {
     const val = el<HTMLSelectElement>('session-select').value;
-    vscode.postMessage(val === 'live' ? { kind: 'load-live' } : { kind: 'load-session', dir: val });
+    if (val === 'live') vscode.postMessage({ kind: 'load-live' });
+    else vscode.postMessage({ kind: 'load-session', dir: val });
   });
 }
 
 // ── Chart init & resize ───────────────────────────────────────────────────────
 
 function initCharts(): void {
-  const c = chartColors();
-  memChart  = makeMemChart(el('host-mem'));
-  cpuChart  = makeCpuChart(el('host-cpu'));
-  nodeChart = makeNodeChart(el('host-nodes'));
-  navChart  = makeNavChart(el('host-nav'));
+  // Defer until after first layout pass so getBoundingClientRect() returns real sizes.
+  requestAnimationFrame(() => {
+    const c = chartColors();
+    memChart  = makeMemChart(el('host-mem'));
+    cpuChart  = makeCpuChart(el('host-cpu'));
+    nodeChart = makeNodeChart(el('host-nodes'));
+    navChart  = makeNavChart(el('host-nav'));
 
-  makeLegend('mem',   [{ label: 'Total', color: c.blue }, { label: 'Anon', color: c.green }, { label: 'File', color: c.yellow }]);
-  makeLegend('cpu',   [{ label: 'Total', color: c.red  }, { label: 'User', color: c.orange }, { label: 'Sys', color: c.purple }]);
-  makeLegend('nodes', [{ label: 'Total', color: c.blue }, { label: 'Rendezvous', color: c.orange }]);
+    makeLegend('mem',   [{ label: 'Total', color: c.blue }, { label: 'Anon', color: c.green }, { label: 'File', color: c.yellow }]);
+    makeLegend('cpu',   [{ label: 'Total', color: c.red  }, { label: 'User', color: c.orange }, { label: 'Sys', color: c.purple }]);
+    makeLegend('nodes', [{ label: 'Total', color: c.blue }, { label: 'Rendezvous', color: c.orange }]);
 
-  const ro = new ResizeObserver(() => resizeAll());
-  ro.observe(el('charts'));
-  ro.observe(el('navigator-area'));
-  resizeAll();
+    const ro = new ResizeObserver(() => resizeAll());
+    ro.observe(el('charts'));
+    resizeAll();
+  });
 }
 
 function resizeAll(): void {
-  const resize = (chart: uPlot | undefined, host: HTMLElement) => {
-    if (!chart) return;
-    const { width, height } = dims(host);
-    if (chart.width !== width || chart.height !== height) chart.setSize({ width, height });
+  const resize = (chart: uPlot | undefined, host: HTMLElement | null) => {
+    if (!chart || !host) return;
+    const { width, height } = host.getBoundingClientRect();
+    const w = Math.max(100, Math.floor(width));
+    const h = Math.max(36, Math.floor(height));
+    if (chart.width !== w || chart.height !== h) chart.setSize({ width: w, height: h });
   };
   resize(memChart,  el('host-mem'));
   resize(cpuChart,  el('host-cpu'));
@@ -413,8 +429,7 @@ function clearData(): void {
   mcFile.length = 0; mcCpu.length = 0; mcUser.length = 0; mcSys.length = 0;
   nodeTimes.length = 0; nodeTotal.length = 0; renTimes.length = 0;
   latestNodeTypes = []; initialNodeCounts = undefined; renGroups.clear();
-  selectedRange = null;
-  el('btn-clear-range').style.display = 'none';
+  zoomMin = undefined; zoomMax = undefined;
 }
 
 function ingestMemCpu(points: SerializedMemCpuPoint[]): void {
@@ -454,25 +469,36 @@ function ingestRendezvous(points: SerializedRendezvousPoint[]): void {
 
 // ── Chart redraw ──────────────────────────────────────────────────────────────
 
-function redrawCharts(): void {
-  // Always reset scales to full range, then re-apply any selection.
+/** Redraw all charts. When zoomed, preserves the zoom range on main charts. */
+function redrawAll(): void {
+  if (!memChart || !cpuChart || !nodeChart) return;
+  const zoomed = zoomMin != null;
+
   if (mcTimes.length > 0) {
-    hideHint('hint-mem'); hideHint('hint-cpu'); hideHint('hint-nav');
-    memChart?.setData([mcTimes, mcMem, mcAnon, mcFile], true);
-    cpuChart?.setData([mcTimes, mcCpu, mcUser, mcSys], true);
-    navChart?.setData([mcTimes, mcMem], true);
+    hideHint('hint-mem'); hideHint('hint-cpu');
+    memChart.setData([mcTimes, mcMem, mcAnon, mcFile], !zoomed);
+    cpuChart.setData([mcTimes, mcCpu, mcUser, mcSys], !zoomed);
+    if (zoomed) {
+      memChart.setScale('x', { min: zoomMin, max: zoomMax });
+      cpuChart.setScale('x', { min: zoomMin, max: zoomMax });
+    }
+    // Navigator always shows full range
+    if (navChart) {
+      navChart.setData([mcTimes, mcCpu], true);
+      hideHint('hint-nav');
+      // Restore selection rectangle if zoomed
+      if (zoomed) {
+        const left  = navChart.valToPos(zoomMin!, 'x');
+        const right = navChart.valToPos(zoomMax!, 'x');
+        navChart.setSelect({ left, width: Math.max(0, right - left), top: 0, height: navChart.bbox.height / devicePixelRatio }, false);
+      }
+    }
   }
   if (nodeTimes.length > 0) {
     hideHint('hint-nodes');
-    nodeChart?.setData([nodeTimes, nodeTotal], true);
-    if (renTimes.length > 0) nodeChart?.redraw(false);
-  }
-  // Restore zoom if a range was selected before this data update.
-  if (selectedRange) {
-    memChart?.setScale('x',  { min: selectedRange[0], max: selectedRange[1] });
-    cpuChart?.setScale('x',  { min: selectedRange[0], max: selectedRange[1] });
-    nodeChart?.setScale('x', { min: selectedRange[0], max: selectedRange[1] });
-    // Navigator always shows full range — do not apply range to it.
+    nodeChart.setData([nodeTimes, nodeTotal], !zoomed);
+    if (zoomed) nodeChart.setScale('x', { min: zoomMin, max: zoomMax });
+    if (renTimes.length > 0) nodeChart.redraw(false);
   }
 }
 
@@ -496,7 +522,7 @@ function renderNodeTable(): void {
     const deltaClass = delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : '';
     const kb = (t.staticBytes / 1024).toFixed(0);
     return `<tr>
-      <td class="col-label" title="${escHtml(t.type)}">${escHtml(t.type)}</td>
+      <td class="col-type" title="${escHtml(t.type)}">${escHtml(t.type)}</td>
       <td class="col-num">${t.count}</td>
       <td class="col-num ${deltaClass}">${deltaLabel}</td>
       <td class="col-num">${kb}</td>
@@ -515,14 +541,14 @@ function renderRendezvousTable(): void {
 
   tbody.innerHTML = sorted.slice(0, 120).map((g) => {
     const avgMs  = (g.totalMs / g.count).toFixed(1);
-    const totalMs = g.totalMs.toFixed(0);
-    const parts = g.file.split('/');
-    const label = `${parts[parts.length - 1]}:${g.line}`;
+    const totMs  = g.totalMs.toFixed(0);
+    const parts  = g.file.split('/');
+    const label  = `${parts[parts.length - 1]}:${g.line}`;
     return `<tr class="nav-row" data-file="${escHtml(g.file)}" data-line="${g.line}">
-      <td class="col-label" title="${escHtml(g.file)}:${g.line}">${escHtml(label)}</td>
+      <td class="col-file" title="${escHtml(g.file)}:${g.line}">${escHtml(label)}</td>
       <td class="col-num">${g.count}</td>
+      <td class="col-num">${totMs}</td>
       <td class="col-num">${avgMs}</td>
-      <td class="col-num">${totalMs}</td>
     </tr>`;
   }).join('');
 
@@ -545,18 +571,21 @@ function formatDate(wall: number): string {
 }
 
 function formatDuration(ms: number): string {
-  const s = Math.round(ms / 1000);
-  const m = Math.floor(s / 60);
-  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 function populateSessionSelector(sessions: SerializedSessionInfo[]): void {
   const sel = el<HTMLSelectElement>('session-select');
   while (sel.options.length > 1) sel.remove(1);
   for (const s of sessions) {
+    const dateStr = formatDate(s.startedWall);
+    const durStr  = s.endedWall ? formatDuration(s.endedWall - s.startedWall) : '…';
     const opt = document.createElement('option');
     opt.value = s.dir;
-    opt.textContent = `${s.appTitle ?? 'session'}  ${formatDate(s.startedWall)}  (${s.endedWall ? formatDuration(s.endedWall - s.startedWall) : '…'})`;
+    opt.textContent = `${s.appTitle ?? 'session'}  ${dateStr}  (${durStr})`;
     sel.appendChild(opt);
   }
 }
@@ -565,22 +594,11 @@ function populateSessionSelector(sessions: SerializedSessionInfo[]): void {
 
 function updateToolbar(): void {
   const btn = el<HTMLButtonElement>('btn-toggle');
+  const btnNew = el<HTMLButtonElement>('btn-new-session');
   btn.textContent = recording ? 'Stop' : 'Start';
   btn.classList.toggle('stop', recording);
   btn.disabled = panelMode === 'replay';
-
-  const btnClear = el<HTMLButtonElement>('btn-clear');
-  if (panelMode === 'replay') {
-    btnClear.textContent = 'Exit Replay';
-    btnClear.classList.remove('stop');
-  } else if (recording) {
-    btnClear.textContent = 'New Session';
-    btnClear.classList.remove('stop');
-  } else {
-    btnClear.textContent = 'Clear';
-    btnClear.classList.remove('stop');
-  }
-
+  btnNew.textContent = panelMode === 'replay' ? 'Back to Live' : 'New Session';
   el('status-dot').classList.toggle('recording', recording && panelMode === 'live');
   el('status-dot').classList.toggle('replay', panelMode === 'replay');
 }
@@ -623,8 +641,9 @@ function applyReplayState(session: SerializedSessionInfo): void {
   recording = false;
   stopElapsed();
   updateToolbar();
-  const dur = session.endedWall ? formatDuration(session.endedWall - session.startedWall) : '?';
-  el('device-label').textContent = `${session.appTitle ?? 'session'}  ·  ${formatDate(session.startedWall)}  ·  ${dur}`;
+  const durStr = session.endedWall ? formatDuration(session.endedWall - session.startedWall) : '?';
+  el('device-label').textContent =
+    `${session.appTitle ?? 'session'}  ·  ${formatDate(session.startedWall)}  ·  ${durStr}`;
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
@@ -638,16 +657,17 @@ window.addEventListener('message', (ev) => {
       ingestNodes(msg.history.nodes);
       ingestRendezvous(msg.history.rendezvous);
       applyState(msg.state);
-      redrawCharts();
+      redrawAll();
       renderNodeTable();
       renderRendezvousTable();
+      el('btn-reset-zoom').style.display = 'none';
       break;
 
     case 'batch':
       ingestMemCpu(msg.memCpu);
       ingestNodes(msg.nodes);
       ingestRendezvous(msg.rendezvous);
-      redrawCharts();
+      redrawAll();
       renderNodeTable();
       renderRendezvousTable();
       break;
@@ -666,10 +686,11 @@ window.addEventListener('message', (ev) => {
       ingestNodes(msg.history.nodes);
       ingestRendezvous(msg.history.rendezvous);
       applyReplayState(msg.session);
-      redrawCharts();
+      redrawAll();
       renderNodeTable();
       renderRendezvousTable();
       el<HTMLSelectElement>('session-select').value = msg.session.dir;
+      el('btn-reset-zoom').style.display = 'none';
       break;
   }
 });

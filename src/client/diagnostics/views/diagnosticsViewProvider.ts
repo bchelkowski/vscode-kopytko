@@ -343,15 +343,22 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   // ── New session ───────────────────────────────────────────────────────────────
 
   private async handleNewSession(): Promise<void> {
-    if (!this.controller.isRecording) return;
-    await this.controller.stopSession();
-    // onSessionStopped() fires via the 'stopped' event during stopSession(),
-    // which detaches the old session, calls sendState(), and calls sendSessions().
-    const session = await this.controller.startSession();
-    if (session) {
-      this.syncSession();
-      // Send init with empty history — the new session has no data yet.
-      this.sendInit();
+    if (this.controller.isRecording) {
+      await this.controller.stopSession();
+      // onSessionStopped() fires via the 'stopped' event during stopSession(),
+      // which detaches the old session, calls sendState(), and calls sendSessions().
+      const session = await this.controller.startSession();
+      if (session) {
+        this.syncSession();
+        this.sendInit();
+      }
+    } else {
+      // Not recording — just clear the displayed data.
+      this.post({
+        kind: 'init',
+        state: this.buildState(),
+        history: { memCpu: [], nodes: [], rendezvous: [] },
+      } satisfies ExtMsg);
     }
   }
 
