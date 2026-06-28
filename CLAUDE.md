@@ -2,16 +2,18 @@
 
 ## Internal knowledge base (`findings/`)
 
-Version-controlled working notes — read before acting, write after discovering.
+**Reading and writing `findings/` is a required step, not optional — treat it the same as updating `docs/`.**
 
-| File | Read when |
+**BEFORE starting any relevant task — read the applicable file(s) first:**
+
+| File | Required reading when |
 |---|---|
 | [findings/roku-device-api.md](findings/roku-device-api.md) | Any Roku device communication (ports, commands, response formats) |
 | [findings/diagnostics-panel-architecture.md](findings/diagnostics-panel-architecture.md) | Touching `src/client/diagnostics/` or the webview |
 | [findings/lsp-architecture.md](findings/lsp-architecture.md) | LSP server providers, formatter rules, built-in/component catalogs |
 | [findings/dev-environment.md](findings/dev-environment.md) | Build, test, compile, or F5 debug work |
 
-Write to the relevant file immediately after finding a non-obvious constraint, gotcha, or pattern. Keep entries concrete — real examples, file paths, the *why*.
+**AFTER completing any task — update the relevant file if you discovered anything non-obvious:** a constraint, a gotcha, a design decision, a pattern that worked. Keep entries concrete — real examples, file paths, the *why*. Vague notes have no value.
 
 ---
 
@@ -63,6 +65,7 @@ For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && np
 
 1. **Tests pass** — `npm test` exits 0. New behaviour has new tests. No test left broken.
 2. **Documentation updated** — `docs/features.md`, the relevant topic doc, and the site page.
+3. **Findings updated** — if anything non-obvious was discovered, the relevant `findings/` file is updated.
 
 ---
 
@@ -92,6 +95,8 @@ For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && np
 | [docs/publishing.md](docs/publishing.md) | npm and VS Code Marketplace publishing |
 
 **Every change that adds, modifies, or removes a feature must update `docs/features.md`, the relevant topic doc, and the corresponding site page.**
+
+**Every task that uncovers non-obvious knowledge must update the relevant `findings/` file.**
 
 ---
 
