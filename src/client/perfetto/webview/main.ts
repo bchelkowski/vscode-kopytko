@@ -50,8 +50,11 @@ const PING_INTERVAL_MS = 250;
 function resizeFrame(): void {
   const topH = topBar.getBoundingClientRect().height;
   const h = Math.max(0, window.innerHeight - topH);
+  const w = window.innerWidth;
   perfettoFrame.style.height = h + 'px';
+  perfettoFrame.style.width  = w + 'px';
   placeholder.style.height   = h + 'px';
+  placeholder.style.width    = w + 'px';
 }
 
 // Resize whenever the top bar changes (banners appear/disappear) or window resizes.
