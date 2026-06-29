@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import { PerfettoController } from '../perfetto/perfettoController';
-import { PerfettoViewProvider } from '../perfetto/views/perfettoViewProvider';
+import { PerfettoEditorPanel } from '../perfetto/views/perfettoEditorPanel';
 import type { DiscoveryServices } from './discovery';
 
 /**
- * Registers the Kopytko Perfetto panel (WebviewViewProvider), controller, and
- * the Start/Stop/Heap commands that can also be invoked from the Command Palette.
+ * Registers the Kopytko Perfetto editor-tab panel, controller, and commands.
  */
 export function registerPerfetto(
   context: vscode.ExtensionContext,
@@ -18,17 +17,16 @@ export function registerPerfetto(
     workspaceRoot: services.workspaceRoot,
   });
 
-  const provider = new PerfettoViewProvider(context, controller);
-
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      PerfettoViewProvider.viewId,
-      provider,
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-    { dispose: () => { controller.dispose(); provider.dispose(); } },
+    { dispose: () => { controller.dispose(); PerfettoEditorPanel.instance?.dispose(); } },
+
+    // Opens (or focuses) the Perfetto editor tab.
+    vscode.commands.registerCommand('kopytko.perfetto.open', () => {
+      PerfettoEditorPanel.createOrReveal(context, controller);
+    }),
 
     vscode.commands.registerCommand('kopytko.perfetto.startSession', async () => {
+      const panel = PerfettoEditorPanel.createOrReveal(context, controller);
       if (controller.isRecording) {
         vscode.window.showInformationMessage('Kopytko Perfetto: a session is already running.');
         return;
@@ -36,10 +34,8 @@ export function registerPerfetto(
       try {
         const session = await controller.startSession();
         if (session) {
-          provider.notifyStateChange();
-          vscode.window.showInformationMessage(
-            `Kopytko Perfetto: recording to ${session.dir}`,
-          );
+          panel.notifyStateChange();
+          vscode.window.showInformationMessage(`Kopytko Perfetto: recording to ${session.dir}`);
         }
       } catch (err) {
         vscode.window.showErrorMessage(
@@ -55,11 +51,9 @@ export function registerPerfetto(
       }
       const dir = controller.activeSession?.dir;
       await controller.stopSession();
-      provider.notifyStateChange();
+      PerfettoEditorPanel.instance?.notifyStateChange();
       vscode.window.showInformationMessage(
-        dir
-          ? `Kopytko Perfetto: session saved to ${dir}`
-          : 'Kopytko Perfetto: session stopped.',
+        dir ? `Kopytko Perfetto: session saved to ${dir}` : 'Kopytko Perfetto: session stopped.',
       );
     }),
 

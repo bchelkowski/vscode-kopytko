@@ -1002,11 +1002,6 @@
           "id": "kopytko-diagnostics",
           "title": "Kopytko Diagnostics",
           "icon": "images/kopytko-logo.svg"
-        },
-        {
-          "id": "kopytko-perfetto",
-          "title": "Kopytko Perfetto",
-          "icon": "images/kopytko-logo.svg"
         }
       ]
     },
@@ -1016,13 +1011,6 @@
           "type": "webview",
           "id": "kopytko.diagnostics",
           "name": "Kopytko Diagnostics"
-        }
-      ],
-      "kopytko-perfetto": [
-        {
-          "type": "webview",
-          "id": "kopytko.perfetto",
-          "name": "Kopytko Perfetto"
         }
       ],
       "kopytko-sidebar": [
@@ -1161,6 +1149,12 @@
         "command": "kopytko.diagnostics.stopSession",
         "title": "Stop Diagnostics Session",
         "icon": "$(stop-circle)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.perfetto.open",
+        "title": "Open Kopytko Perfetto",
+        "icon": "$(pulse)",
         "category": "Kopytko"
       },
       {
