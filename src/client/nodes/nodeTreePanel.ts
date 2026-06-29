@@ -116,7 +116,7 @@ export class NodeTreePanel {
   <div id="toolbar">
     <button id="btn-refresh" title="Fetch latest node tree from device">Refresh</button>
     <span class="mode-group">
-      <button id="btn-treemap">Treemap</button>
+      <button id="btn-treemap">Icicle</button>
       <button id="btn-tree">Tree</button>
     </span>
     <span id="channel-label"></span>

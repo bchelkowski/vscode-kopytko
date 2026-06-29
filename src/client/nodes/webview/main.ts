@@ -1,20 +1,15 @@
 /**
- * SG Node Tree Explorer — Canvas treemap + SVG collapsible tree.
+ * SG Node Tree Explorer — Icicle (partition flame chart) + collapsible tree.
  *
- * Treemap uses Canvas 2D so it can handle hundreds of nodes without lag:
- * zero SVG DOM elements, rectangles drawn directly, hit-tested on click/hover.
+ * Icicle chart: Canvas 2D, D3 partition layout.  Each row = one depth level,
+ * cell width ∝ subtree size.  Click to focus a subtree, scroll/drag to pan+zoom.
+ * This replaces the treemap — icicle is the right model for tree-shaped data.
  *
- * Tree uses SVG (D3 tree layout) with aggressive default-collapse so the
- * initial render is always readable regardless of tree size.
+ * Tree: SVG, D3 tree layout, collapse/expand per node.
  */
 
-import {
-  hierarchy,
-  treemap as d3treemap,
-  treemapSquarify,
-  tree as d3tree,
-  type HierarchyNode,
-} from 'd3-hierarchy';
+import { hierarchy, partition as d3partition } from 'd3-hierarchy';
+import { tree as d3tree, type HierarchyNode } from 'd3-hierarchy';
 import { select, type Selection } from 'd3-selection';
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom';
 import type { ExtMsg, WebMsg } from './protocol';
@@ -27,22 +22,20 @@ const vscode = acquireVsCodeApi();
 interface SgNode {
   type:      string;
   name?:     string;
-  extends?:  string;
   sn:        string;
   attrs:     Record<string, string>;
   children:  SgNode[];
-  size:      number;
+  size:      number;           // 1 + all descendants
   _collapsed?: boolean;
 }
 
-// Precomputed layout rect (used for canvas hit-testing)
-interface TmRect {
+interface IcRect {
   x0: number; y0: number; x1: number; y1: number;
   data: SgNode;
   depth: number;
 }
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
+// ── DOM ───────────────────────────────────────────────────────────────────────
 
 const mainEl       = document.getElementById('main')!;
 const breadcrumb   = document.getElementById('breadcrumb')!;
@@ -51,52 +44,57 @@ const tooltipEl    = document.getElementById('tooltip')!;
 const nodeCountEl  = document.getElementById('node-count')!;
 const channelLabel = document.getElementById('channel-label')!;
 const searchInput  = document.getElementById('search') as HTMLInputElement;
-const btnTreemap   = document.getElementById('btn-treemap') as HTMLButtonElement;
+const btnIcicle    = document.getElementById('btn-treemap') as HTMLButtonElement; // reused id
 const btnTree      = document.getElementById('btn-tree') as HTMLButtonElement;
 const btnRefresh   = document.getElementById('btn-refresh') as HTMLButtonElement;
 
-// ── Canvas (treemap) + SVG (tree) —  toggled by mode ─────────────────────────
+// ── Canvas (icicle) + SVG (tree) ──────────────────────────────────────────────
 
-const tmCanvas = document.createElement('canvas');
-tmCanvas.style.cssText = 'position:absolute;inset:0;display:block;cursor:default';
-mainEl.appendChild(tmCanvas);
-const ctx = tmCanvas.getContext('2d')!;
+const icCanvas = document.createElement('canvas');
+icCanvas.style.cssText = 'position:absolute;top:0;left:0;display:block';
+mainEl.appendChild(icCanvas);
+const ctx = icCanvas.getContext('2d')!;
 
 const treeSvgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
-treeSvgEl.style.cssText = 'position:absolute;inset:0;display:none;overflow:visible';
+treeSvgEl.style.cssText = 'position:absolute;top:0;left:0;display:none;overflow:visible';
 mainEl.appendChild(treeSvgEl);
 
-// ── Sizing ────────────────────────────────────────────────────────────────────
+// ── Sizing — explicit JS (reliable in VS Code webviews) ───────────────────────
+
+function canvasW(): number { return mainEl.clientWidth  || 800; }
+function canvasH(): number { return mainEl.clientHeight || 600; }
 
 function applySize(): void {
-  const W = mainEl.clientWidth  || 800;
-  const H = mainEl.clientHeight || 600;
-  tmCanvas.width  = W; tmCanvas.height = H;
+  const W = canvasW(), H = canvasH();
+  icCanvas.width  = W; icCanvas.height = H;
+  icCanvas.style.width  = W + 'px';
+  icCanvas.style.height = H + 'px';
   treeSvgEl.setAttribute('width',   W + 'px');
   treeSvgEl.setAttribute('height',  H + 'px');
   treeSvgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
 }
 
 new ResizeObserver(() => { applySize(); if (rootNode) render(); }).observe(mainEl);
-window.addEventListener('resize',  () => { applySize(); if (rootNode) render(); });
+window.addEventListener('resize', () => { applySize(); if (rootNode) render(); });
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-type Mode = 'treemap' | 'tree';
-let mode: Mode     = 'treemap';
+type Mode = 'icicle' | 'tree';
+let mode: Mode  = 'icicle';
 let rootNode: SgNode | null = null;
-let filterText     = '';
-let tmStack: SgNode[] = [];
-let tmRects: TmRect[] = [];       // current layout for hit-testing
+let filterText  = '';
+let focusNode: SgNode | null = null;   // icicle focused subtree
+let icRects: IcRect[] = [];
 
-// Canvas zoom/pan state
-let tmOffX = 0, tmOffY = 0, tmScale = 1;
-let tmDrag: { sx: number; sy: number; ox: number; oy: number } | null = null;
+// Icicle pan/zoom
+let icOffX = 0, icOffY = 0, icScaleX = 1, icScaleY = 1;
+let icDragStart: { ex: number; ey: number; ox: number; oy: number } | null = null;
+let icDragMoved = false;
 
-// SVG tree zoom behaviour
+// SVG tree
 let svgZoom: ZoomBehavior<SVGSVGElement, unknown> | null = null;
 
-// ── Colour palette — bright, dark-background optimised ────────────────────────
+// ── Colours ───────────────────────────────────────────────────────────────────
 
 const PALETTE = [
   '#4fc1ff','#4ec9b0','#dcdcaa','#ce9178',
@@ -109,26 +107,25 @@ function colorFor(type: string): string {
   return typeColorMap.get(type)!;
 }
 
-/** Parse '#rrggbb' → 'rgba(r,g,b,a)' */
-function hexRgba(hex: string, alpha: number): string {
+function hexRgba(hex: string, a: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 // ── XML parser ────────────────────────────────────────────────────────────────
 
 function parseTree(xml: string): SgNode | null {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  if (doc.querySelector('parsererror')) return null;
-  const allNodes = doc.querySelector('All_Nodes');
-  if (!allNodes) return null;
-  const topChildren = Array.from(allNodes.children).map(parseEl);
-  if (!topChildren.length) return null;
-  if (topChildren.length === 1) return topChildren[0];
-  const root: SgNode = { type: 'SceneGraph', sn: 'root', attrs: {}, children: topChildren, size: 0 };
-  computeSize(root);
+  if (doc.querySelector('parseerror,parsererror')) return null;
+  const all = doc.querySelector('All_Nodes');
+  if (!all) return null;
+  const tops = Array.from(all.children).map(parseEl);
+  if (!tops.length) return null;
+  if (tops.length === 1) return tops[0];
+  const root: SgNode = { type: 'SceneGraph', sn: 'root', attrs: {}, children: tops, size: 0 };
+  calcSize(root);
   return root;
 }
 
@@ -136,24 +133,20 @@ function parseEl(el: Element): SgNode {
   const attrs: Record<string, string> = {};
   for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
   const children = Array.from(el.children).map(parseEl);
-  const node: SgNode = {
-    type: el.tagName, name: attrs['name'], extends: attrs['extends'],
-    sn: attrs['_sn'] ?? el.tagName + Math.random(),
-    attrs, children, size: 0,
-  };
-  computeSize(node);
-  return node;
+  const n: SgNode = { type: el.tagName, name: attrs['name'], sn: attrs['_sn'] ?? el.tagName, attrs, children, size: 0 };
+  calcSize(n);
+  return n;
 }
 
-function computeSize(n: SgNode): void {
+function calcSize(n: SgNode): void {
   n.size = 1 + n.children.reduce((s, c) => s + c.size, 0);
 }
 
 function nodeLabel(n: SgNode): string {
-  return n.name ? `${n.type} "${n.name}"` : n.type;
+  return n.name ? `${n.type}  "${n.name}"` : n.type;
 }
 
-/** Collapse starting from depth 3. Depth 0/1/2 always visible on first render. */
+// Collapse tree starting at depth 3 (depths 0/1/2 always open)
 function defaultCollapse(n: SgNode, depth: number): void {
   if (depth >= 3) { n._collapsed = true; return; }
   n.children.forEach(c => defaultCollapse(c, depth + 1));
@@ -169,229 +162,235 @@ function showOverlay(text: string, spinner = false): void {
 }
 function hideOverlay(): void { overlayEl.classList.remove('visible'); }
 
-function showTooltip(n: SgNode, mx: number, my: number): void {
-  const shown = Object.entries(n.attrs)
-    .filter(([k]) => !['_sn','osref','bscref','_psn'].includes(k))
-    .slice(0, 10)
-    .map(([k, v]) => `<span class="tt-attr">${k}:</span> ${v}`)
-    .join('<br>');
-  tooltipEl.innerHTML = `<div class="tt-type">${nodeLabel(n)}</div>${shown ? `<br>${shown}` : ''}`
-    + `<br><span class="tt-attr">descendants:</span> ${n.size - 1}`;
-  tooltipEl.style.display = 'block';
-  const tw = tooltipEl.offsetWidth, th = tooltipEl.offsetHeight;
-  tooltipEl.style.left = `${Math.min(mx + 14, window.innerWidth  - tw - 8)}px`;
-  tooltipEl.style.top  = `${Math.min(my + 14, window.innerHeight - th - 8)}px`;
+let ttTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleTooltip(n: SgNode, mx: number, my: number): void {
+  if (ttTimer) clearTimeout(ttTimer);
+  ttTimer = setTimeout(() => {
+    const shown = Object.entries(n.attrs)
+      .filter(([k]) => !['_sn','osref','bscref','_psn'].includes(k))
+      .slice(0, 10).map(([k, v]) => `<span class="tt-attr">${k}:</span> ${v}`).join('<br>');
+    tooltipEl.innerHTML = `<div class="tt-type">${nodeLabel(n)}</div>${shown ? `<br>${shown}` : ''}`
+      + `<br><span class="tt-attr">descendants:</span> ${n.size - 1}`;
+    tooltipEl.style.display = 'block';
+    const tw = tooltipEl.offsetWidth, th = tooltipEl.offsetHeight;
+    tooltipEl.style.left = `${Math.min(mx + 14, window.innerWidth  - tw - 8)}px`;
+    tooltipEl.style.top  = `${Math.min(my + 14, window.innerHeight - th - 8)}px`;
+  }, 80);
 }
-function hideTooltip(): void { tooltipEl.style.display = 'none'; }
+function hideTooltip(): void {
+  if (ttTimer) clearTimeout(ttTimer);
+  tooltipEl.style.display = 'none';
+}
 
-// ── TREEMAP (Canvas 2D) ───────────────────────────────────────────────────────
+// ── ICICLE CHART (Canvas 2D, D3 partition) ────────────────────────────────────
 
-function computeTreemapLayout(current: SgNode): TmRect[] {
-  const W = tmCanvas.width, H = tmCanvas.height;
-  const layout = d3treemap<SgNode>()
-    .tile(treemapSquarify)
-    .size([W, H])
-    .paddingTop(22).paddingInner(2).paddingOuter(3)
+const ROW_H = 22;   // pixels per depth level
+
+function computeIcicle(focus: SgNode): IcRect[] {
+  const W = canvasW();
+  const maxDepth = 60;  // generous ceiling
+
+  const layout = d3partition<SgNode>()
+    .size([W, (maxDepth + 1) * ROW_H])
+    .padding(1)
     .round(true);
 
-  const hier = hierarchy(current, d => d.children.length ? d.children : null)
+  const hier = hierarchy(focus, d => d.children.length ? d.children : null)
     .sum(d => d.children.length === 0 ? 1 : 0)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
   layout(hier);
 
-  const rects: TmRect[] = [];
+  const rects: IcRect[] = [];
   for (const d of hier.descendants()) {
-    if (d.depth === 0) continue;
-    const w = d.x1 - d.x0, h = d.y1 - d.y0;
-    if (w < 1 || h < 1) continue;   // skip sub-pixel cells entirely
+    const w = d.x1 - d.x0;
+    if (w < 0.5) continue;   // skip sub-pixel cells
     rects.push({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, data: d.data, depth: d.depth });
   }
   return rects;
 }
 
-function drawCanvas(): void {
-  const W = tmCanvas.width, H = tmCanvas.height;
+function drawIcicle(): void {
+  const W = canvasW(), H = canvasH();
   ctx.clearRect(0, 0, W, H);
   ctx.save();
-  ctx.translate(tmOffX, tmOffY);
-  ctx.scale(tmScale, tmScale);
+  ctx.translate(icOffX, icOffY);
+  ctx.scale(icScaleX, icScaleY);
 
-  for (const r of tmRects) {
-    const w = r.x1 - r.x0, h = r.y1 - r.y0;
-    // Skip cells that are invisible at current zoom
-    if (w * tmScale < 0.5 || h * tmScale < 0.5) continue;
+  for (const r of icRects) {
+    const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
+    if (cw * icScaleX < 0.3) continue;
 
     const color = colorFor(r.data.type);
-    const alpha = r.depth === 1 ? 0.85 : 0.6;
+    const alpha  = r.depth === 0 ? 0.4 : 0.75 - r.depth * 0.02;
+    ctx.fillStyle = hexRgba(color, Math.max(0.3, alpha));
+    ctx.fillRect(r.x0, r.y0, cw, ch);
 
-    ctx.fillStyle = hexRgba(color, alpha);
-    ctx.fillRect(r.x0, r.y0, w, h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth   = 1 / icScaleX;
+    ctx.strokeRect(r.x0, r.y0, cw, ch);
 
-    // Border
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth   = 1 / tmScale;
-    ctx.strokeRect(r.x0, r.y0, w, h);
+    // Labels only when cell is wide enough on screen
+    const screenW = cw * icScaleX;
+    if (screenW < 28) continue;
 
-    // Labels — only when the cell is large enough in screen pixels
-    const screenW = w * tmScale, screenH = h * tmScale;
-    if (screenW < 40 || screenH < 14) continue;
-
-    const fontSize = Math.min(13, Math.max(9, Math.floor(screenH / 4))) / tmScale;
+    const fontSize = Math.min(12, ROW_H * 0.58) / icScaleY;
     ctx.font      = `${fontSize}px system-ui, sans-serif`;
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor   = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur    = 3 / tmScale;
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor   = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur    = 2 / icScaleX;
     ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
 
-    const maxChars = Math.floor((w - 8) / (fontSize * 0.6));
-    const typeStr  = r.data.type.length > maxChars
-      ? r.data.type.slice(0, maxChars - 1) + '…'
-      : r.data.type;
-    ctx.fillText(typeStr, r.x0 + 4, r.y0 + fontSize + 3);
+    const maxChars = Math.floor((cw - 6) / (fontSize * 0.58));
+    let text = r.data.type;
+    if (r.data.name && maxChars > 8) text += `  "${r.data.name}"`;
+    if (text.length > maxChars) text = text.slice(0, maxChars - 1) + '…';
 
-    if (r.data.name && screenH > 28) {
-      ctx.font      = `${Math.max(8, fontSize * 0.85)}px system-ui, sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      const name = `"${r.data.name}"`;
-      const maxN  = Math.floor((w - 8) / (fontSize * 0.55));
-      ctx.fillText(name.length > maxN ? name.slice(0, maxN - 1) + '…"' : name, r.x0 + 4, r.y0 + fontSize * 2 + 5);
-    }
-
-    // Children count badge
-    if (r.data.children.length > 0 && screenW > 40 && screenH > 22) {
-      ctx.font      = `${Math.max(7, fontSize * 0.75)}px system-ui, sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.textAlign = 'right';
-      ctx.fillText(`+${r.data.children.length}`, r.x1 - 4, r.y1 - 4);
-      ctx.textAlign = 'left';
-    }
-
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur  = 0;
+    ctx.fillText(text, r.x0 + 4, r.y0 + fontSize + (ch - fontSize) / 2);
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
   }
 
   ctx.restore();
 }
 
-function renderTreemap(root: SgNode): void {
-  if (tmStack.length === 0) tmStack = [root];
-  const current = tmStack[tmStack.length - 1];
-
-  // Reset pan/zoom when drilling down
-  tmOffX = 0; tmOffY = 0; tmScale = 1;
-
-  tmRects = computeTreemapLayout(current);
-  drawCanvas();
-  buildBreadcrumb(root);
+function renderIcicle(): void {
+  const focus = focusNode ?? rootNode!;
+  icRects = computeIcicle(focus);
+  icOffX = 0; icOffY = 0; icScaleX = 1; icScaleY = 1;
+  drawIcicle();
+  buildBreadcrumb();
 }
 
-function buildBreadcrumb(root: SgNode): void {
+function buildBreadcrumb(): void {
   breadcrumb.innerHTML = '';
-  tmStack.forEach((n, i) => {
+  if (!rootNode) return;
+
+  // Build path from root to focusNode
+  const path: SgNode[] = [];
+  function findPath(n: SgNode, target: SgNode | null): boolean {
+    path.push(n);
+    if (n === target || target === null) return true;
+    for (const c of n.children) { if (findPath(c, target)) return true; }
+    path.pop();
+    return false;
+  }
+  findPath(rootNode, focusNode);
+
+  path.forEach((n, i) => {
     if (i > 0) {
       const sep = document.createElement('span');
       sep.className = 'crumb-sep'; sep.textContent = '›';
       breadcrumb.appendChild(sep);
     }
     const crumb = document.createElement('span');
-    crumb.className = `crumb${i === tmStack.length - 1 ? ' current' : ''}`;
+    crumb.className = `crumb${i === path.length - 1 ? ' current' : ''}`;
     crumb.textContent = nodeLabel(n);
-    if (i < tmStack.length - 1) {
-      crumb.addEventListener('click', () => { tmStack = tmStack.slice(0, i + 1); renderTreemap(root); });
+    if (i < path.length - 1) {
+      const captured = n;
+      crumb.addEventListener('click', () => { focusNode = captured; renderIcicle(); });
     }
     breadcrumb.appendChild(crumb);
   });
 }
 
-// Canvas interaction ── pan (drag) + zoom (wheel)
+// ── Icicle interaction (drag + scroll to pan/zoom, click to focus) ─────────────
 
-tmCanvas.addEventListener('wheel', e => {
+icCanvas.addEventListener('wheel', e => {
   e.preventDefault();
-  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-  const mx = e.offsetX, my = e.offsetY;
-  tmOffX = mx - (mx - tmOffX) * factor;
-  tmOffY = my - (my - tmOffY) * factor;
-  tmScale *= factor;
-  tmScale  = Math.max(0.2, Math.min(20, tmScale));
-  drawCanvas();
+  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  // Zoom horizontally only (vertical row heights stay fixed)
+  const mx = e.offsetX;
+  icOffX = mx - (mx - icOffX) * factor;
+  icScaleX = Math.max(0.1, Math.min(50, icScaleX * factor));
+  drawIcicle();
 }, { passive: false });
 
-tmCanvas.addEventListener('mousedown', e => {
-  tmDrag = { sx: e.offsetX, sy: e.offsetY, ox: tmOffX, oy: tmOffY };
-  tmCanvas.style.cursor = 'grabbing';
-});
-window.addEventListener('mousemove', e => {
-  if (!tmDrag) return;
-  tmOffX = tmDrag.ox + (e.offsetX - tmDrag.sx);
-  tmOffY = tmDrag.oy + (e.offsetY - tmDrag.sy);
-  drawCanvas();
-});
-window.addEventListener('mouseup', () => {
-  tmDrag = null;
-  tmCanvas.style.cursor = 'default';
+icCanvas.addEventListener('mousedown', e => {
+  // Only start drag on left button
+  if (e.button !== 0) return;
+  icDragStart = { ex: e.clientX, ey: e.clientY, ox: icOffX, oy: icOffY };
+  icDragMoved = false;
+  icCanvas.style.cursor = 'grabbing';
+  // Prevent text selection while dragging
+  e.preventDefault();
 });
 
-// Click: hit-test, drill into node
-tmCanvas.addEventListener('click', e => {
-  if (!rootNode) return;
-  const lx = (e.offsetX - tmOffX) / tmScale;
-  const ly = (e.offsetY - tmOffY) / tmScale;
-  // Iterate in reverse so topmost (visually) cell wins
-  for (let i = tmRects.length - 1; i >= 0; i--) {
-    const r = tmRects[i];
-    if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) {
-      if (r.data.children.length > 0) {
-        tmStack.push(r.data);
-        renderTreemap(rootNode);
+// Use the canvas element for move/up to avoid interfering with toolbar clicks
+icCanvas.addEventListener('mousemove', e => {
+  if (!icDragStart) {
+    // Hover tooltip
+    const lx = (e.offsetX - icOffX) / icScaleX;
+    const ly = (e.offsetY - icOffY) / icScaleY;
+    let found: SgNode | null = null;
+    for (let i = icRects.length - 1; i >= 0; i--) {
+      const r = icRects[i];
+      if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) { found = r.data; break; }
+    }
+    if (found) scheduleTooltip(found, e.clientX, e.clientY);
+    else hideTooltip();
+    return;
+  }
+  const dx = e.clientX - icDragStart.ex;
+  const dy = e.clientY - icDragStart.ey;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) icDragMoved = true;
+  icOffX = icDragStart.ox + dx;
+  icOffY = icDragStart.oy + dy;
+  drawIcicle();
+});
+
+icCanvas.addEventListener('mouseup', e => {
+  const wasDrag = icDragMoved;
+  icDragStart = null; icDragMoved = false;
+  icCanvas.style.cursor = 'default';
+  if (!wasDrag && e.button === 0 && rootNode) {
+    // Click: focus the clicked node
+    const lx = (e.offsetX - icOffX) / icScaleX;
+    const ly = (e.offsetY - icOffY) / icScaleY;
+    for (let i = icRects.length - 1; i >= 0; i--) {
+      const r = icRects[i];
+      if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) {
+        if (r.data.children.length > 0) {
+          focusNode = r.data;
+          renderIcicle();
+        }
+        break;
       }
-      break;
     }
   }
 });
 
-// Double-click: go back one level
-tmCanvas.addEventListener('dblclick', () => {
-  if (!rootNode || tmStack.length <= 1) return;
-  tmStack.pop();
-  renderTreemap(rootNode);
-});
-
-// Hover tooltip
-let hoverTimer: ReturnType<typeof setTimeout> | null = null;
-tmCanvas.addEventListener('mousemove', e => {
-  if (tmDrag) return;
-  const lx = (e.offsetX - tmOffX) / tmScale;
-  const ly = (e.offsetY - tmOffY) / tmScale;
-  if (hoverTimer) clearTimeout(hoverTimer);
-  hoverTimer = setTimeout(() => {
-    for (let i = tmRects.length - 1; i >= 0; i--) {
-      const r = tmRects[i];
-      if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) {
-        showTooltip(r.data, e.clientX, e.clientY);
-        return;
-      }
-    }
-    hideTooltip();
-  }, 80);
-});
-tmCanvas.addEventListener('mouseleave', () => {
-  if (hoverTimer) clearTimeout(hoverTimer);
+icCanvas.addEventListener('mouseleave', () => {
   hideTooltip();
+  // Don't reset drag — user might re-enter
 });
 
-// ── TREE / DENDROGRAM (SVG) ───────────────────────────────────────────────────
+// Double-click: go up one level
+icCanvas.addEventListener('dblclick', () => {
+  if (!rootNode) return;
+  if (!focusNode || focusNode === rootNode) return;
+  // Find parent of focusNode
+  function findParent(n: SgNode, target: SgNode): SgNode | null {
+    for (const c of n.children) {
+      if (c === target) return n;
+      const r = findParent(c, target);
+      if (r) return r;
+    }
+    return null;
+  }
+  focusNode = findParent(rootNode, focusNode) ?? null;
+  renderIcicle();
+});
+
+// ── TREE (SVG) ────────────────────────────────────────────────────────────────
 
 function renderTree(root: SgNode): void {
   const svg = select(treeSvgEl as Element);
   svg.selectAll('*').remove();
   breadcrumb.innerHTML = '';
 
-  const W = mainEl.clientWidth  || 800;
-  const H = mainEl.clientHeight || 600;
+  const W = canvasW(), H = canvasH();
 
-  const zoomG = svg.append('g').attr('class', 'zoom-root');
-
+  const zoomG = svg.append('g');
   if (svgZoom) svg.on('.zoom', null);
   svgZoom = d3zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.04, 4])
@@ -399,28 +398,23 @@ function renderTree(root: SgNode): void {
   (svg as unknown as Selection<SVGSVGElement, unknown, null, undefined>).call(svgZoom as never);
 
   const q = filterText.toLowerCase();
-
   function visChildren(n: SgNode): SgNode[] | undefined {
     return n._collapsed || !n.children.length ? undefined : n.children;
   }
 
   function update(): void {
     zoomG.selectAll('*').remove();
-
     const layout = d3tree<SgNode>().nodeSize([26, 240]);
     const hier   = hierarchy<SgNode>(root, visChildren);
     layout(hier);
 
     let minX = Infinity, maxX = -Infinity;
     hier.each(d => { minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x); });
-    const oy = H / 2 - (minX + maxX) / 2;
-    const ox = 50;
+    const oy = H / 2 - (minX + maxX) / 2, ox = 50;
 
-    // Links
     zoomG.selectAll('path.link')
       .data(hier.links())
-      .join('path')
-      .attr('class', 'link')
+      .join('path').attr('class', 'link')
       .attr('d', d => {
         const sx = d.source.y + ox, sy = d.source.x + oy;
         const tx = d.target.y + ox, ty = d.target.x + oy;
@@ -428,39 +422,33 @@ function renderTree(root: SgNode): void {
         return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
       });
 
-    // Nodes
     const nodeG = zoomG.selectAll<SVGGElement, HierarchyNode<SgNode>>('g.node')
       .data(hier.descendants())
-      .join('g')
-      .attr('class', 'node')
+      .join('g').attr('class', 'node')
       .attr('transform', d => `translate(${d.y + ox},${d.x + oy})`);
 
     const R = 6;
-    const matches = (n: SgNode) =>
-      !q || n.type.toLowerCase().includes(q) || (n.name ?? '').toLowerCase().includes(q);
+    const matches = (n: SgNode) => !q || n.type.toLowerCase().includes(q) || (n.name ?? '').toLowerCase().includes(q);
 
     nodeG.append('circle')
       .attr('r', R)
       .attr('fill', d => {
         const n = d.data;
         if (!matches(n)) return 'transparent';
-        if (n._collapsed && n.children.length > 0) return colorFor(n.type);
-        return n.children.length === 0
-          ? hexRgba(colorFor(n.type), 0.25)
-          : hexRgba(colorFor(n.type), 0.2);
+        if (n._collapsed && n.children.length) return colorFor(n.type);
+        return hexRgba(colorFor(n.type), n.children.length ? 0.2 : 0.25);
       })
       .attr('stroke', d => colorFor(d.data.type))
-      .attr('stroke-width', d => d.data.children.length > 0 ? 1.5 : 1)
+      .attr('stroke-width', d => d.data.children.length ? 1.5 : 1)
       .style('cursor', d => d.data.children.length ? 'pointer' : 'default')
       .on('click', (_e, d) => {
         if (!d.data.children.length) return;
         d.data._collapsed = !d.data._collapsed;
         update();
       })
-      .on('mousemove', (e, d) => showTooltip(d.data, e.clientX, e.clientY))
+      .on('mousemove', (e, d) => scheduleTooltip(d.data, e.clientX, e.clientY))
       .on('mouseleave', hideTooltip);
 
-    // Expand indicator
     nodeG.filter(d => d.data.children.length > 0)
       .append('text')
       .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
@@ -468,26 +456,20 @@ function renderTree(root: SgNode): void {
       .style('pointer-events', 'none')
       .text(d => d.data._collapsed ? '▶' : '▾');
 
-    // Label
     nodeG.append('text')
-      .attr('x', d => d.data.children.length ? R + 11 : R + 7)
-      .attr('dominant-baseline', 'central')
-      .attr('font-size', 12)
-      .attr('fill', d => matches(d.data) ? 'var(--vscode-editor-foreground, #cccccc)' : 'rgba(200,200,200,0.25)')
+      .attr('x', d => R + (d.data.children.length ? 11 : 7))
+      .attr('dominant-baseline', 'central').attr('font-size', 12)
+      .attr('fill', d => matches(d.data) ? 'var(--vscode-editor-foreground,#ccc)' : 'rgba(200,200,200,0.25)')
       .style('pointer-events', 'none')
       .text(d => {
         const n = d.data;
-        const base = nodeLabel(n);
-        return n._collapsed && n.children.length ? `${base}  [${n.size - 1}]` : base;
+        return n._collapsed && n.children.length ? `${nodeLabel(n)}  [${n.size - 1}]` : nodeLabel(n);
       });
   }
 
   update();
-
-  // Initial pan: show the root near the left edge, vertically centred
-  const initT = zoomIdentity.translate(60, H / 2);
   (svg as unknown as Selection<SVGSVGElement, unknown, null, undefined>)
-    .call((svgZoom as never), initT);
+    .call((svgZoom as never), zoomIdentity.translate(60, H / 2));
 }
 
 // ── Render dispatcher ─────────────────────────────────────────────────────────
@@ -496,18 +478,16 @@ function render(): void {
   if (!rootNode) return;
   hideOverlay();
   applySize();
-
-  if (mode === 'treemap') {
-    tmCanvas.style.display    = 'block';
-    treeSvgEl.style.display   = 'none';
-    tmStack = [];
-    renderTreemap(rootNode);
+  if (mode === 'icicle') {
+    icCanvas.style.display  = 'block';
+    treeSvgEl.style.display = 'none';
+    focusNode = null;
+    renderIcicle();
   } else {
-    tmCanvas.style.display    = 'none';
-    treeSvgEl.style.display   = 'block';
+    icCanvas.style.display  = 'none';
+    treeSvgEl.style.display = 'block';
     renderTree(rootNode);
   }
-
   nodeCountEl.textContent = `${rootNode.size - 1} nodes`;
 }
 
@@ -519,19 +499,17 @@ window.addEventListener('message', e => {
     case 'loading':
       showOverlay('Fetching node tree…', true);
       break;
-
     case 'tree': {
-      channelLabel.textContent = msg.channelTitle
-        ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
+      channelLabel.textContent = msg.channelTitle ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
       const parsed = parseTree(msg.xml);
       if (!parsed) { showOverlay('Could not parse node tree.'); return; }
       defaultCollapse(parsed, 0);
       rootNode = parsed;
       typeColorMap.clear();
+      focusNode = null;
       render();
       break;
     }
-
     case 'error':
       showOverlay(`Error: ${msg.message}`);
       break;
@@ -540,9 +518,9 @@ window.addEventListener('message', e => {
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
-btnTreemap.addEventListener('click', () => {
-  mode = 'treemap';
-  btnTreemap.classList.add('active');
+btnIcicle.addEventListener('click', () => {
+  mode = 'icicle';
+  btnIcicle.classList.add('active');
   btnTree.classList.remove('active');
   render();
 });
@@ -550,7 +528,7 @@ btnTreemap.addEventListener('click', () => {
 btnTree.addEventListener('click', () => {
   mode = 'tree';
   btnTree.classList.add('active');
-  btnTreemap.classList.remove('active');
+  btnIcicle.classList.remove('active');
   render();
 });
 
@@ -566,6 +544,6 @@ searchInput.addEventListener('input', () => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-btnTreemap.classList.add('active');
+btnIcicle.classList.add('active');
 applySize();
-showOverlay('Run  Kopytko: Open Node Tree Explorer  to load the SG tree from the active device.');
+showOverlay('Run  Kopytko: Open Node Tree Explorer  to load from the active device.');
