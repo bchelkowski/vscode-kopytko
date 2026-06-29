@@ -171,6 +171,8 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
 /* ── overlay ─────────────────────────────────────────────────────────────── */
 
 #overlay {
+  /* Positioned over the canvas via CSS Grid stack.
+     pointer-events:none always — clicks must reach the canvas underneath. */
   display: none;
   align-items: center;
   justify-content: center;
@@ -179,10 +181,9 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
   background: var(--vscode-editor-background, #1e1e1e);
   font-size: 13px;
   color: var(--vscode-descriptionForeground, #9d9d9d);
-  z-index: 10;
+  z-index: 2;
   pointer-events: none;
 }
-#overlay.visible { display: flex; }
 #overlay .spin {
   width: 20px; height: 20px;
   border: 2px solid var(--vscode-panel-border, rgba(128,128,128,0.4));

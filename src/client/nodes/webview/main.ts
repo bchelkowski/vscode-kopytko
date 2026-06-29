@@ -1,11 +1,8 @@
 /**
- * SG Node Tree Explorer — Icicle (flame chart) visualisation.
+ * SG Node Tree Explorer — Icicle (flame chart).
  *
- * Canvas 2D, D3 partition layout.
- * - Each row = one depth level, always exactly ROW_H px tall.
- * - Click a cell → focus that subtree (refill full width).
- * - Double-click → go up one level.
- * - Breadcrumb bar shows current path; legend bar shows type colours.
+ * Canvas 2D + D3 partition. Fixed ROW_H per depth level.
+ * Click → focus subtree.  Double-click → go up.
  */
 
 import { hierarchy, partition as d3partition } from 'd3-hierarchy';
@@ -17,21 +14,21 @@ const vscode = acquireVsCodeApi();
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SgNode {
-  type:      string;
-  name?:     string;
-  sn:        string;
-  attrs:     Record<string, string>;
-  children:  SgNode[];
-  size:      number;
+  type:     string;
+  name?:    string;
+  sn:       string;
+  attrs:    Record<string, string>;
+  children: SgNode[];
+  size:     number;
 }
 
-interface IcRect {
+interface Rect {
   x0: number; y0: number; x1: number; y1: number;
-  data: SgNode;
+  node: SgNode;
   depth: number;
 }
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
+// ── DOM ───────────────────────────────────────────────────────────────────────
 
 const mainEl        = document.getElementById('main')!;
 const breadcrumbBar = document.getElementById('breadcrumb-bar')!;
@@ -41,39 +38,20 @@ const tooltipEl     = document.getElementById('tooltip')!;
 const nodeCountEl   = document.getElementById('node-count')!;
 const channelLabel  = document.getElementById('channel-label')!;
 const btnRefresh    = document.getElementById('btn-refresh') as HTMLButtonElement;
-const icCanvas      = document.getElementById('ic-canvas') as HTMLCanvasElement;
-const ctx           = icCanvas.getContext('2d')!;
+const ic            = document.getElementById('ic-canvas') as HTMLCanvasElement;
+const ctx           = ic.getContext('2d')!;
 
-// ── Sizing ────────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-function applySize(): void {
-  const W = mainEl.clientWidth  || 800;
-  const H = mainEl.clientHeight || 600;
-  icCanvas.width  = W;
-  icCanvas.height = H;
-}
-
-new ResizeObserver(() => { applySize(); onResize(); }).observe(mainEl);
-window.addEventListener('resize', () => { applySize(); onResize(); });
-
-function onResize(): void {
-  if (!rootNode) return;
-  icRects = computeIcicle(focusNode ?? rootNode);
-  scheduleRedraw();
-}
+const MAX_ROWS = 6;
+const ROW_H    = 26;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let rootNode:  SgNode | null = null;
-let focusNode: SgNode | null = null;
-let icRects:   IcRect[]      = [];
-
-let rafPending = false;
-function scheduleRedraw(): void {
-  if (rafPending) return;
-  rafPending = true;
-  requestAnimationFrame(() => { rafPending = false; drawIcicle(); });
-}
+let root:      SgNode | null = null;
+let focus:     SgNode | null = null;
+let rects:     Rect[]        = [];
+let rafId:     number | null = null;
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 
@@ -82,261 +60,306 @@ const PALETTE = [
   '#c586c0','#6a9955','#f44747','#9cdcfe',
   '#d7ba7d','#b5cea8','#e8a97e','#7fb3d3',
 ];
-const typeColorMap = new Map<string, string>();
-function colorFor(type: string): string {
-  if (!typeColorMap.has(type)) typeColorMap.set(type, PALETTE[typeColorMap.size % PALETTE.length]);
-  return typeColorMap.get(type)!;
+const colorMap = new Map<string, string>();
+function colorFor(t: string): string {
+  if (!colorMap.has(t)) colorMap.set(t, PALETTE[colorMap.size % PALETTE.length]);
+  return colorMap.get(t)!;
 }
-function hexRgba(hex: string, a: number): string {
-  return `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${a})`;
-}
-
-// ── XML parser ────────────────────────────────────────────────────────────────
-
-function parseTree(xml: string): SgNode | null {
-  const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  if (doc.querySelector('parseerror,parsererror')) return null;
-  const all = doc.querySelector('All_Nodes');
-  if (!all) return null;
-  const tops = Array.from(all.children).map(parseEl);
-  if (!tops.length) return null;
-  if (tops.length === 1) return tops[0];
-  const root: SgNode = { type: 'SceneGraph', sn: 'root', attrs: {}, children: tops, size: 0 };
-  calcSize(root);
-  return root;
+function rgba(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
 }
 
-function parseEl(el: Element): SgNode {
-  const attrs: Record<string, string> = {};
-  for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
-  const children = Array.from(el.children).map(parseEl);
-  const n: SgNode = {
-    type: el.tagName, name: attrs['name'],
-    sn: attrs['_sn'] ?? el.tagName + Math.random(),
-    attrs, children, size: 0,
-  };
-  calcSize(n);
-  return n;
+// ── Canvas sizing ─────────────────────────────────────────────────────────────
+
+function resize(): void {
+  // Use the canvas's own clientWidth/Height — most accurate after CSS layout.
+  const W = ic.clientWidth  || mainEl.clientWidth  || 800;
+  const H = ic.clientHeight || mainEl.clientHeight || 400;
+  if (ic.width !== W || ic.height !== H) {
+    ic.width  = W;
+    ic.height = H;
+  }
 }
 
-function calcSize(n: SgNode): void {
-  n.size = 1 + n.children.reduce((s, c) => s + c.size, 0);
+// ── Overlay ───────────────────────────────────────────────────────────────────
+
+function showOverlay(msg: string, spin = false): void {
+  overlayEl.innerHTML = spin
+    ? `<div class="spin"></div><span>${msg}</span>`
+    : `<span>${msg}</span>`;
+  overlayEl.style.display = 'flex';
+}
+function hideOverlay(): void {
+  overlayEl.style.display = 'none';
 }
 
-function nodeLabel(n: SgNode): string {
-  return n.name ? `${n.type}  "${n.name}"` : n.type;
-}
+// ── Tooltip ───────────────────────────────────────────────────────────────────
 
-// ── Overlay / tooltip ─────────────────────────────────────────────────────────
+let ttId: ReturnType<typeof setTimeout> | null = null;
+let lastHover: SgNode | null = null;
 
-function showOverlay(text: string, spinner = false): void {
-  overlayEl.innerHTML = spinner
-    ? `<div class="spin"></div><span>${text}</span>`
-    : `<span>${text}</span>`;
-  overlayEl.classList.add('visible');
-}
-function hideOverlay(): void { overlayEl.classList.remove('visible'); }
-
-let ttTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleTooltip(n: SgNode, mx: number, my: number): void {
-  if (ttTimer) clearTimeout(ttTimer);
-  ttTimer = setTimeout(() => {
+function showTip(n: SgNode, mx: number, my: number): void {
+  if (ttId) clearTimeout(ttId);
+  ttId = setTimeout(() => {
     const attrs = Object.entries(n.attrs)
       .filter(([k]) => !['_sn','osref','bscref','_psn'].includes(k))
       .slice(0, 10)
       .map(([k, v]) => `<span class="tt-attr">${k}:</span> ${v}`)
       .join('<br>');
-    tooltipEl.innerHTML = `<div class="tt-type">${nodeLabel(n)}</div>`
-      + (attrs ? `<br>${attrs}` : '')
-      + `<br><span class="tt-attr">descendants:</span> ${n.size - 1}`;
+    tooltipEl.innerHTML =
+      `<div class="tt-type">${nodeLabel(n)}</div>` +
+      (attrs ? `<br>${attrs}` : '') +
+      `<br><span class="tt-attr">descendants:</span> ${n.size - 1}`;
     tooltipEl.style.display = 'block';
     const tw = tooltipEl.offsetWidth, th = tooltipEl.offsetHeight;
     tooltipEl.style.left = `${Math.min(mx + 14, window.innerWidth  - tw - 8)}px`;
     tooltipEl.style.top  = `${Math.min(my + 14, window.innerHeight - th - 8)}px`;
   }, 80);
 }
-function hideTooltip(): void {
-  if (ttTimer) clearTimeout(ttTimer);
+function hideTip(): void {
+  if (ttId) clearTimeout(ttId);
   tooltipEl.style.display = 'none';
 }
 
-// ── Breadcrumb ────────────────────────────────────────────────────────────────
+// ── XML → SgNode ──────────────────────────────────────────────────────────────
+
+function nodeLabel(n: SgNode): string {
+  return n.name ? `${n.type}  "${n.name}"` : n.type;
+}
+
+function parseXml(xml: string): SgNode | null {
+  try {
+    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+    if (doc.querySelector('parseerror,parsererror')) return null;
+    const all = doc.querySelector('All_Nodes');
+    if (!all) return null;
+    const tops = Array.from(all.children).map(buildNode);
+    if (!tops.length) return null;
+    if (tops.length === 1) return tops[0];
+    const r: SgNode = { type: 'SceneGraph', sn: 'root', attrs: {}, children: tops, size: 0 };
+    r.size = 1 + tops.reduce((s, c) => s + c.size, 0);
+    return r;
+  } catch (e) {
+    console.error('[NodeTree] parseXml error', e);
+    return null;
+  }
+}
+
+function buildNode(el: Element): SgNode {
+  const attrs: Record<string, string> = {};
+  for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
+  const children = Array.from(el.children).map(buildNode);
+  const n: SgNode = {
+    type: el.tagName,
+    name: attrs['name'],
+    sn:   attrs['_sn'] ?? (el.tagName + Math.random()),
+    attrs, children,
+    size: 1 + children.reduce((s, c) => s + c.size, 0),
+  };
+  return n;
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+
+function computeRects(node: SgNode): Rect[] {
+  const W = ic.width;
+  if (!W || W < 2) return [];
+
+  try {
+    const layout = d3partition<SgNode>()
+      .size([W, MAX_ROWS * ROW_H])
+      .padding(1)
+      .round(true);
+
+    const hier = hierarchy(node, d => d.children.length ? d.children : null)
+      .sum(d => d.children.length === 0 ? 1 : 0)
+      .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+
+    layout(hier);
+
+    // Override y: every depth always exactly ROW_H px regardless of tree depth.
+    hier.each(d => { d.y0 = d.depth * ROW_H; d.y1 = d.y0 + ROW_H; });
+
+    return hier.descendants()
+      .filter(d => d.depth < MAX_ROWS && (d.x1 - d.x0) >= 1)
+      .map(d => ({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, node: d.data, depth: d.depth }));
+  } catch (e) {
+    console.error('[NodeTree] layout error', e);
+    return [];
+  }
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+
+function draw(): void {
+  rafId = null;
+  const W = ic.width, H = ic.height;
+  if (!W || !H || !ctx) return;
+
+  try {
+    ctx.clearRect(0, 0, W, H);
+
+    for (const r of rects) {
+      const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
+      const alpha = Math.max(0.35, 0.82 - r.depth * 0.05);
+      ctx.fillStyle = rgba(colorFor(r.node.type), alpha);
+      ctx.fillRect(r.x0, r.y0, cw, ch);
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth   = 0.5;
+      ctx.strokeRect(r.x0, r.y0, cw, ch);
+
+      if (cw < 24) continue;
+
+      const fs = Math.min(12, ROW_H * 0.58);
+      ctx.font      = `${fs}px system-ui,sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor   = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur    = 2;
+      const maxCh = Math.floor((cw - 6) / (fs * 0.58));
+      let txt = r.node.type;
+      if (r.node.name && maxCh > 8) txt += `  "${r.node.name}"`;
+      if (txt.length > maxCh) txt = txt.slice(0, Math.max(1, maxCh - 1)) + '…';
+      ctx.fillText(txt, r.x0 + 4, r.y0 + (ch + fs) / 2 - 1);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+    }
+  } catch (e) {
+    console.error('[NodeTree] draw error', e);
+  }
+}
+
+function scheduleDraw(): void {
+  if (rafId !== null) return;
+  rafId = requestAnimationFrame(draw);
+}
+
+// ── Breadcrumb + Legend ───────────────────────────────────────────────────────
 
 function updateBreadcrumb(): void {
   breadcrumbBar.innerHTML = '';
-  if (!rootNode) return;
+  if (!root) return;
 
   const path: SgNode[] = [];
-  (function find(n: SgNode, target: SgNode | null): boolean {
+  (function walk(n: SgNode, target: SgNode | null): boolean {
     path.push(n);
     if (n === target || target === null) return true;
-    for (const c of n.children) if (find(c, target)) return true;
+    for (const c of n.children) if (walk(c, target)) return true;
     path.pop();
     return false;
-  })(rootNode, focusNode);
+  })(root, focus);
 
   path.forEach((n, i) => {
     if (i > 0) {
-      const sep = document.createElement('span');
-      sep.className = 'crumb-sep'; sep.textContent = '›';
-      breadcrumbBar.appendChild(sep);
+      const s = document.createElement('span');
+      s.className = 'crumb-sep'; s.textContent = '›';
+      breadcrumbBar.appendChild(s);
     }
-    const crumb = document.createElement('span');
-    crumb.className = `crumb${i === path.length - 1 ? ' current' : ''}`;
-    crumb.textContent = nodeLabel(n);
+    const c = document.createElement('span');
+    c.className = `crumb${i === path.length - 1 ? ' current' : ''}`;
+    c.textContent = nodeLabel(n);
     if (i < path.length - 1) {
       const captured = n;
-      crumb.addEventListener('click', () => {
-        focusNode = (captured === rootNode) ? null : captured;
-        renderIcicle();
+      c.addEventListener('click', () => {
+        focus = (captured === root) ? null : captured;
+        render();
       });
     }
-    breadcrumbBar.appendChild(crumb);
+    breadcrumbBar.appendChild(c);
   });
 }
-
-// ── Legend ────────────────────────────────────────────────────────────────────
 
 function updateLegend(): void {
   legendBar.innerHTML = '';
   const counts = new Map<string, number>();
-  for (const r of icRects) counts.set(r.data.type, (counts.get(r.data.type) ?? 0) + 1);
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
-  for (const [type] of sorted) {
-    const entry = document.createElement('div');
-    entry.className = 'legend-entry';
-    const swatch = document.createElement('div');
-    swatch.className = 'legend-swatch';
-    swatch.style.background = colorFor(type);
-    const label = document.createElement('span');
-    label.textContent = type;
-    entry.appendChild(swatch); entry.appendChild(label);
-    legendBar.appendChild(entry);
-  }
+  for (const r of rects) counts.set(r.node.type, (counts.get(r.node.type) ?? 0) + 1);
+  [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .forEach(([type]) => {
+      const e = document.createElement('div');
+      e.className = 'legend-entry';
+      const sw = document.createElement('div');
+      sw.className = 'legend-swatch';
+      sw.style.background = colorFor(type);
+      const lb = document.createElement('span');
+      lb.textContent = type;
+      e.appendChild(sw); e.appendChild(lb);
+      legendBar.appendChild(e);
+    });
 }
 
-// ── ICICLE CHART (Canvas 2D) ──────────────────────────────────────────────────
+// ── Main render ───────────────────────────────────────────────────────────────
 
-const MAX_ROWS = 6;
-const ROW_H    = 26;
-
-function computeIcicle(focus: SgNode): IcRect[] {
-  const W = icCanvas.width || 800;
-  if (!W) return [];
-
-  const layout = d3partition<SgNode>()
-    .size([W, MAX_ROWS * ROW_H])
-    .padding(1)
-    .round(true);
-
-  const hier = hierarchy(focus, d => d.children.length ? d.children : null)
-    .sum(d => d.children.length === 0 ? 1 : 0)
-    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-
-  layout(hier);
-
-  // Override D3's y values so every depth level is always exactly ROW_H tall.
-  hier.each(d => { d.y0 = d.depth * ROW_H; d.y1 = d.y0 + ROW_H; });
-
-  return hier.descendants()
-    .filter(d => d.depth < MAX_ROWS && (d.x1 - d.x0) >= 0.5)
-    .map(d => ({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, data: d.data, depth: d.depth }));
-}
-
-function drawIcicle(): void {
-  const W = icCanvas.width, H = icCanvas.height;
-  if (!W || !H) return;
-
-  try { ctx.clearRect(0, 0, W, H); } catch { return; }
-
-  for (const r of icRects) {
-    const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
-
-    const color = colorFor(r.data.type);
-    const alpha  = Math.max(0.35, 0.82 - r.depth * 0.05);
-    ctx.fillStyle = hexRgba(color, alpha);
-    ctx.fillRect(r.x0, r.y0, cw, ch);
-
-    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-    ctx.lineWidth   = 0.5;
-    ctx.strokeRect(r.x0, r.y0, cw, ch);
-
-    if (cw < 24) continue;
-
-    const fontSize = Math.min(12, ROW_H * 0.6);
-    ctx.font      = `${fontSize}px system-ui, sans-serif`;
-    ctx.fillStyle = '#fff';
-    ctx.shadowColor   = 'rgba(0,0,0,0.85)';
-    ctx.shadowBlur    = 2;
-
-    const maxChars = Math.floor((cw - 6) / (fontSize * 0.58));
-    let text = r.data.type;
-    if (r.data.name && maxChars > 8) text += `  "${r.data.name}"`;
-    if (text.length > maxChars) text = text.slice(0, Math.max(1, maxChars - 1)) + '…';
-    ctx.fillText(text, r.x0 + 4, r.y0 + (ch + fontSize) / 2 - 1);
-
-    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-  }
-}
-
-function renderIcicle(): void {
-  if (!rootNode) return;
-  icRects = computeIcicle(focusNode ?? rootNode);
-  drawIcicle();
+function render(): void {
+  if (!root) return;
+  resize();
+  rects = computeRects(focus ?? root);
+  scheduleDraw();
   updateBreadcrumb();
   updateLegend();
 }
 
-// ── Interaction ───────────────────────────────────────────────────────────────
+// ── Resize observer ───────────────────────────────────────────────────────────
 
-function hitTest(offsetX: number, offsetY: number): SgNode | null {
-  for (let i = icRects.length - 1; i >= 0; i--) {
-    const r = icRects[i];
-    if (offsetX >= r.x0 && offsetX <= r.x1 && offsetY >= r.y0 && offsetY <= r.y1) return r.data;
+new ResizeObserver(() => {
+  if (!root) return;
+  resize();
+  rects = computeRects(focus ?? root);
+  scheduleDraw();
+}).observe(mainEl);
+
+// ── Hit test ──────────────────────────────────────────────────────────────────
+
+function hitTest(x: number, y: number): SgNode | null {
+  for (let i = rects.length - 1; i >= 0; i--) {
+    const r = rects[i];
+    if (x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1) return r.node;
   }
   return null;
 }
 
-function findParent(root: SgNode, target: SgNode): SgNode | null {
-  for (const c of root.children) {
-    if (c === target) return root;
-    const r = findParent(c, target);
-    if (r) return r;
+function findParent(from: SgNode, target: SgNode): SgNode | null {
+  for (const c of from.children) {
+    if (c === target) return from;
+    const p = findParent(c, target);
+    if (p) return p;
   }
   return null;
 }
 
-let lastHovered: SgNode | null = null;
+// ── Canvas events ─────────────────────────────────────────────────────────────
 
-icCanvas.addEventListener('click', e => {
-  if (!rootNode) return;
-  const found = hitTest(e.offsetX, e.offsetY);
-  if (!found || !found.children.length || found === (focusNode ?? rootNode)) return;
-  focusNode = found;
-  lastHovered = null;
-  renderIcicle();
+ic.addEventListener('click', e => {
+  if (!root) return;
+  const n = hitTest(e.offsetX, e.offsetY);
+  if (!n || !n.children.length || n === (focus ?? root)) return;
+  focus = n;
+  lastHover = null;
+  render();
 });
 
-icCanvas.addEventListener('dblclick', () => {
-  if (!rootNode || !focusNode || focusNode === rootNode) return;
-  const parent = findParent(rootNode, focusNode);
-  focusNode = (parent === rootNode) ? null : parent;
-  lastHovered = null;
-  renderIcicle();
+ic.addEventListener('dblclick', () => {
+  if (!root || !focus || focus === root) return;
+  const p = findParent(root, focus);
+  focus = (p === root) ? null : p;
+  lastHover = null;
+  render();
 });
 
-icCanvas.addEventListener('mousemove', e => {
-  const found = hitTest(e.offsetX, e.offsetY);
-  icCanvas.style.cursor = (found && found.children.length > 0) ? 'pointer' : 'default';
-  if (found !== lastHovered) {
-    lastHovered = found;
-    if (found) scheduleTooltip(found, e.clientX, e.clientY);
-    else hideTooltip();
+ic.addEventListener('mousemove', e => {
+  const n = hitTest(e.offsetX, e.offsetY);
+  ic.style.cursor = (n && n.children.length > 0) ? 'pointer' : 'default';
+  if (n !== lastHover) {
+    lastHover = n;
+    if (n) showTip(n, e.clientX, e.clientY);
+    else hideTip();
   }
 });
 
-icCanvas.addEventListener('mouseleave', () => {
-  hideTooltip(); lastHovered = null; icCanvas.style.cursor = 'default';
+ic.addEventListener('mouseleave', () => {
+  hideTip(); lastHover = null; ic.style.cursor = 'default';
 });
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -344,26 +367,40 @@ icCanvas.addEventListener('mouseleave', () => {
 window.addEventListener('message', e => {
   const msg = e.data as ExtMsg;
   switch (msg.kind) {
-    case 'loading': showOverlay('Fetching node tree…', true); break;
+    case 'loading':
+      showOverlay('Fetching node tree…', true);
+      break;
+
     case 'tree': {
-      channelLabel.textContent = msg.channelTitle
-        ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
-      const parsed = parseTree(msg.xml);
-      if (!parsed) { showOverlay('Could not parse node tree.'); return; }
-      rootNode = parsed;
-      focusNode = null;
-      typeColorMap.clear();
-      applySize();
-      hideOverlay();
-      renderIcicle();
-      nodeCountEl.textContent = `${rootNode.size - 1} nodes`;
+      showOverlay('Parsing…');
+      // Defer heavy work to next tick so overlay renders first.
+      setTimeout(() => {
+        const parsed = parseXml(msg.xml);
+        if (!parsed) { showOverlay('Could not parse node tree — check the Output channel.'); return; }
+        root = parsed;
+        focus = null;
+        colorMap.clear();
+        lastHover = null;
+        channelLabel.textContent = msg.channelTitle
+          ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
+        nodeCountEl.textContent = `${root.size - 1} nodes`;
+        resize();
+        rects = computeRects(root);
+        hideOverlay();
+        scheduleDraw();
+        updateBreadcrumb();
+        updateLegend();
+      }, 0);
       break;
     }
-    case 'error': showOverlay(`Error: ${msg.message}`); break;
+
+    case 'error':
+      showOverlay(`⚠ ${msg.message}`);
+      break;
   }
 });
 
-// ── Controls ──────────────────────────────────────────────────────────────────
+// ── Refresh button ────────────────────────────────────────────────────────────
 
 btnRefresh.addEventListener('click', () => {
   showOverlay('Fetching…', true);
@@ -372,5 +409,5 @@ btnRefresh.addEventListener('click', () => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-applySize();
-showOverlay('Run  Kopytko: Open Node Tree Explorer  to load from the active device.');
+resize();
+showOverlay('Open via Command Palette:  Kopytko: Open Node Tree Explorer');
