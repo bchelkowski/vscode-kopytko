@@ -48,16 +48,14 @@ const btnIcicle    = document.getElementById('btn-treemap') as HTMLButtonElement
 const btnTree      = document.getElementById('btn-tree') as HTMLButtonElement;
 const btnRefresh   = document.getElementById('btn-refresh') as HTMLButtonElement;
 
-// ── Canvas (icicle) + SVG (tree) ──────────────────────────────────────────────
+// ── Canvas + SVG — referenced from HTML template (not created dynamically) ────
+// Dynamic position:absolute children can bleed past overflow:hidden in some
+// VS Code webview builds. The elements live in the HTML and are laid out by
+// CSS Grid, which is always contained.
 
-const icCanvas = document.createElement('canvas');
-icCanvas.style.cssText = 'position:absolute;top:0;left:0;display:block';
-mainEl.appendChild(icCanvas);
-const ctx = icCanvas.getContext('2d')!;
-
-const treeSvgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
-treeSvgEl.style.cssText = 'position:absolute;top:0;left:0;display:none;overflow:visible';
-mainEl.appendChild(treeSvgEl);
+const icCanvas  = document.getElementById('ic-canvas') as HTMLCanvasElement;
+const ctx       = icCanvas.getContext('2d')!;
+const treeSvgEl = document.getElementById('tree-svg') as unknown as SVGSVGElement;
 
 // ── Sizing — explicit JS (reliable in VS Code webviews) ───────────────────────
 
@@ -74,8 +72,22 @@ function applySize(): void {
   treeSvgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
 }
 
-new ResizeObserver(() => { applySize(); if (rootNode) render(); }).observe(mainEl);
-window.addEventListener('resize', () => { applySize(); if (rootNode) render(); });
+new ResizeObserver(() => { applySize(); onResize(); }).observe(mainEl);
+window.addEventListener('resize', () => { applySize(); onResize(); });
+
+/** On resize: recompute layout (width changed) but KEEP pan/zoom state. */
+function onResize(): void {
+  if (!rootNode) return;
+  if (mode === 'icicle') {
+    // Recompute layout with new canvas width, but don't reset icOffX/Y/Scale.
+    const focus = focusNode ?? rootNode;
+    icRects = computeIcicle(focus);
+    drawIcicle();
+  } else {
+    // Tree: SVG fills via CSS; just redraw without resetting the stored zoom.
+    renderTree(rootNode);
+  }
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -253,10 +265,10 @@ function drawIcicle(): void {
   ctx.restore();
 }
 
-function renderIcicle(): void {
+function renderIcicle(resetView = true): void {
   const focus = focusNode ?? rootNode!;
   icRects = computeIcicle(focus);
-  icOffX = 0; icOffY = 0; icScaleX = 1; icScaleY = 1;
+  if (resetView) { icOffX = 0; icOffY = 0; icScaleX = 1; icScaleY = 1; }
   drawIcicle();
   buildBreadcrumb();
 }
