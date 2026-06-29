@@ -13,34 +13,42 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+
+function el<T extends HTMLElement = HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
-const btnStart       = document.getElementById('btn-start') as HTMLButtonElement;
-const btnStop        = document.getElementById('btn-stop') as HTMLButtonElement;
-const btnNewSession  = document.getElementById('btn-new-session') as HTMLButtonElement;
-const btnHeapSnapshot= document.getElementById('btn-heap') as HTMLButtonElement;
-const btnSync        = document.getElementById('btn-sync') as HTMLButtonElement;
-const liveBadge      = document.getElementById('live-badge')!;
-const syncBadge      = document.getElementById('sync-badge')!;
-const bufferSize     = document.getElementById('buffer-size')!;
-const deviceInfo     = document.getElementById('device-info')!;
-const sessionSelect  = document.getElementById('session-select') as HTMLSelectElement;
-const lockBanner     = document.getElementById('lock-banner')!;
-const statusBar      = document.getElementById('status-bar')!;
-const perfettoFrame  = document.getElementById('perfetto-frame') as HTMLIFrameElement;
-const placeholder    = document.getElementById('placeholder')!;
-const topBar         = document.getElementById('top-bar')!;  // wraps toolbar + banners
+const topBar       = el('top-bar');
+const statusDot    = el('status-dot');
+const deviceLabel  = el('device-label');
+const sessionSelect= el<HTMLSelectElement>('session-select');
+const btnToggle    = el<HTMLButtonElement>('btn-toggle');
+const btnNewSession= el<HTMLButtonElement>('btn-new-session');
+const btnSync      = el<HTMLButtonElement>('btn-sync');
+const btnHeap      = el<HTMLButtonElement>('btn-heap');
+const syncBadge    = el('sync-badge');
+const bufferSize   = el('buffer-size');
+const elapsedEl    = el('elapsed');
+const lockBanner   = el('lock-banner');
+const statusBar    = el('status-bar');
+const perfettoFrame= el<HTMLIFrameElement>('perfetto-frame');
+const placeholder  = el('placeholder');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let state: WebviewState = 'idle';
+let state: WebviewState     = 'idle';
 let lockOwner: 'diagnostics' | 'perfetto' | null = null;
-let liveBuffer: Uint8Array = new Uint8Array(0);
-/** Byte length of liveBuffer at the time of the last sync to the iframe. */
-let lastSyncedBytes = 0;
-let iframeReady = false;
+let panelMode: 'live' | 'replay' = 'live';
+let liveBuffer: Uint8Array  = new Uint8Array(0);
+let lastSyncedBytes         = 0;
+let lastSyncTs              = 0;
+let sessionStartWall        = 0;
+let iframeReady             = false;
 let pingInterval: ReturnType<typeof setInterval> | null = null;
-let isLiveMode = true;
+let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
 const PERFETTO_ORIGIN  = 'https://ui.perfetto.dev';
 const PING_INTERVAL_MS = 250;
@@ -49,15 +57,14 @@ const PING_INTERVAL_MS = 250;
 
 function resizeFrame(): void {
   const topH = topBar.getBoundingClientRect().height;
-  const h = Math.max(0, window.innerHeight - topH);
-  const w = window.innerWidth;
+  const h    = Math.max(0, window.innerHeight - topH);
+  const w    = window.innerWidth;
   perfettoFrame.style.height = h + 'px';
   perfettoFrame.style.width  = w + 'px';
   placeholder.style.height   = h + 'px';
   placeholder.style.width    = w + 'px';
 }
 
-// Resize whenever the top bar changes (banners appear/disappear) or window resizes.
 new ResizeObserver(resizeFrame).observe(topBar);
 window.addEventListener('resize', resizeFrame);
 
@@ -65,13 +72,13 @@ window.addEventListener('resize', resizeFrame);
 
 function showIframe(): void {
   perfettoFrame.style.display = 'block';
-  placeholder.style.display = 'none';
+  placeholder.style.display   = 'none';
   resizeFrame();
 }
 
 function showPlaceholder(): void {
   perfettoFrame.style.display = 'none';
-  placeholder.style.display = 'flex';
+  placeholder.style.display   = 'flex';
   resizeFrame();
 }
 
@@ -101,21 +108,18 @@ function sendToPerfetto(buffer: ArrayBuffer, title: string): void {
 }
 
 function scrollToLiveEdge(): void {
-  if (!iframeReady || liveBuffer.byteLength === 0) return;
-  const estimatedDurationS = (Date.now() - (lastSyncTs || Date.now())) / 1000;
+  if (!iframeReady || !lastSyncTs) return;
+  const estimatedDurationS = (Date.now() - lastSyncTs) / 1000 + (lastSyncedBytes / 50000);
   if (estimatedDurationS <= 0) return;
   const viewportS = 5;
-  const timeEnd   = estimatedDurationS + 0.5;
-  const timeStart = Math.max(0, timeEnd - viewportS);
+  const timeEnd   = Math.max(viewportS, estimatedDurationS + 0.5);
+  const timeStart = timeEnd - viewportS;
   perfettoFrame.contentWindow?.postMessage(
     { perfetto: { timeStart, timeEnd, viewPercentage: 0.9 } },
     PERFETTO_ORIGIN,
   );
 }
 
-let lastSyncTs = 0;
-
-/** Push the current buffer to Perfetto and remember how much was synced. */
 function syncNow(title: string): void {
   if (!iframeReady || liveBuffer.byteLength === 0) return;
   const snapshot = liveBuffer.buffer.slice(
@@ -124,12 +128,12 @@ function syncNow(title: string): void {
   );
   sendToPerfetto(snapshot, title);
   lastSyncedBytes = liveBuffer.byteLength;
-  lastSyncTs = Date.now();
+  lastSyncTs      = Date.now();
   updateSyncBadge();
   setTimeout(() => scrollToLiveEdge(), 800);
 }
 
-// ── Buffer management ─────────────────────────────────────────────────────────
+// ── Buffer ────────────────────────────────────────────────────────────────────
 
 function appendChunk(data: ArrayBuffer): void {
   const incoming = new Uint8Array(data);
@@ -141,25 +145,43 @@ function appendChunk(data: ArrayBuffer): void {
   updateSyncBadge();
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+function formatBytes(b: number): string {
+  if (b < 1024)           return `${b} B`;
+  if (b < 1024 * 1024)    return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function updateBufferInfo(): void {
-  bufferSize.textContent = formatBytes(liveBuffer.byteLength);
+  bufferSize.textContent = liveBuffer.byteLength > 0 ? formatBytes(liveBuffer.byteLength) : '';
 }
 
 function updateSyncBadge(): void {
   const unseen = liveBuffer.byteLength - lastSyncedBytes;
-  if (unseen > 0 && isLiveMode && state === 'recording') {
-    syncBadge.textContent = `+${formatBytes(unseen)} new`;
+  if (unseen > 0 && panelMode === 'live' && state === 'recording') {
+    syncBadge.textContent = `+${formatBytes(unseen)}`;
     syncBadge.style.display = 'inline';
   } else {
     syncBadge.style.display = 'none';
   }
   btnSync.disabled = !iframeReady || liveBuffer.byteLength === 0;
+}
+
+// ── Elapsed timer ─────────────────────────────────────────────────────────────
+
+function startElapsed(): void {
+  clearInterval(elapsedTimer);
+  elapsedTimer = setInterval(() => {
+    if (state !== 'recording' || !sessionStartWall) return;
+    const secs = Math.floor((Date.now() - sessionStartWall) / 1000);
+    const m = Math.floor(secs / 60);
+    const s = String(secs % 60).padStart(2, '0');
+    elapsedEl.textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+function stopElapsed(): void {
+  clearInterval(elapsedTimer);
+  elapsedEl.textContent = '';
 }
 
 // ── UI state ──────────────────────────────────────────────────────────────────
@@ -168,19 +190,51 @@ function applyState(): void {
   const locked      = lockOwner === 'diagnostics';
   const isRecording = state === 'recording';
   const isDeploying = state === 'deploying';
+  const isReplay    = panelMode === 'replay';
 
   lockBanner.classList.toggle('visible', locked);
 
-  btnStart.disabled       = locked || isRecording || isDeploying;
-  btnStop.disabled        = !isRecording;
-  btnNewSession.disabled  = locked || isDeploying;
-  btnHeapSnapshot.disabled= !isRecording;
+  statusDot.classList.toggle('recording', isRecording && !isReplay);
+  statusDot.classList.toggle('replay',    isReplay);
 
-  liveBadge.classList.toggle('visible', isRecording && isLiveMode);
+  // Toggle button: "Start" → "Stop" when recording
+  btnToggle.textContent = isRecording ? 'Stop' : 'Start';
+  btnToggle.classList.toggle('stop', isRecording);
+  btnToggle.disabled = locked || isDeploying || isReplay;
+
+  btnNewSession.textContent = isReplay ? 'Back to Live' : 'New Session';
+  btnNewSession.disabled    = locked || isDeploying;
+
+  btnHeap.disabled = !isRecording;
+
   statusBar.classList.toggle('visible', isDeploying);
   if (isDeploying) statusBar.textContent = 'Deploying app to device…';
 
+  // Update the live option label in the selector
+  const liveOpt = sessionSelect.options[0];
+  if (liveOpt) {
+    if (isRecording) {
+      liveOpt.textContent = '● Live session';
+    } else if (isDeploying) {
+      liveOpt.textContent = '◌ Deploying…';
+    } else {
+      liveOpt.textContent = 'Kopytko Perfetto';
+    }
+  }
+
   resizeFrame();
+}
+
+function updateDeviceLabel(
+  device?: { name: string; ip: string; appTitle?: string },
+  app?: string,
+): void {
+  if (device) {
+    const label = app ?? device.appTitle ?? device.name;
+    deviceLabel.textContent = `${label} @ ${device.ip}`;
+  } else {
+    deviceLabel.textContent = 'No device selected';
+  }
 }
 
 function formatDate(wall: number): string {
@@ -188,12 +242,15 @@ function formatDate(wall: number): string {
 }
 
 function populateSessions(sessions: SerializedPerfettoSession[]): void {
+  // Keep only the live option (index 0).
   while (sessionSelect.options.length > 1) sessionSelect.remove(1);
   for (const s of sessions) {
     const opt = document.createElement('option');
     opt.value = s.dir;
-    const label = s.appTitle ?? s.deviceIp;
-    opt.textContent = `${label} – ${formatDate(s.startedWall)} (${formatBytes(s.traceBytes)})`;
+    const dur = s.endedWall
+      ? ` ${Math.round((s.endedWall - s.startedWall) / 1000)}s`
+      : '';
+    opt.textContent = `${s.appTitle ?? s.deviceIp}  ${formatDate(s.startedWall)}${dur}  (${formatBytes(s.traceBytes)})`;
     sessionSelect.appendChild(opt);
   }
 }
@@ -206,15 +263,13 @@ window.addEventListener('message', (event) => {
     if (event.data === 'PONG') {
       stopPinging();
       iframeReady = true;
-      // Push whatever we have as soon as the iframe is ready.
       if (liveBuffer.byteLength > 0) {
-        syncNow('Kopytko Perfetto — Live');
+        syncNow(panelMode === 'replay' ? 'Kopytko Perfetto — Replay' : 'Kopytko Perfetto — Live');
       }
     }
     return;
   }
 
-  // Extension → webview
   const msg = event.data as ExtMsg;
 
   switch (msg.kind) {
@@ -226,25 +281,26 @@ window.addEventListener('message', (event) => {
 
     case 'state': {
       state = msg.state;
-      if (msg.device) {
-        deviceInfo.textContent =
-          `${msg.device.name} (${msg.device.ip})` +
-          (msg.device.appTitle ? ` · ${msg.device.appTitle}` : '');
-      }
-      isLiveMode = true;
+      if (msg.sessionStartWall) sessionStartWall = msg.sessionStartWall;
+      updateDeviceLabel(msg.device, msg.device?.appTitle);
+      panelMode = 'live';
 
       if (state === 'recording') {
         startPinging();
+        startElapsed();
       } else {
+        stopElapsed();
         if (state === 'idle') {
           showPlaceholder();
-          liveBuffer        = new Uint8Array(0);
-          lastSyncedBytes   = 0;
-          lastSyncTs        = 0;
+          liveBuffer      = new Uint8Array(0);
+          lastSyncedBytes = 0;
+          lastSyncTs      = 0;
+          sessionStartWall= 0;
           updateBufferInfo();
           updateSyncBadge();
         }
       }
+      sessionSelect.value = '';
       applyState();
       break;
     }
@@ -260,12 +316,16 @@ window.addEventListener('message', (event) => {
     }
 
     case 'replay': {
-      isLiveMode = false;
-      liveBadge.classList.remove('visible');
+      panelMode    = 'replay';
+      stopElapsed();
       syncBadge.style.display = 'none';
       startPinging();
       const replayData  = msg.data;
-      const replayTitle = `${msg.session.appTitle ?? msg.session.deviceIp} – ${formatDate(msg.session.startedWall)}`;
+      const s           = msg.session;
+      const replayTitle = `${s.appTitle ?? s.deviceIp}  ${formatDate(s.startedWall)}`;
+      updateDeviceLabel({ name: s.deviceIp, ip: s.deviceIp, appTitle: s.appTitle }, s.appTitle);
+      sessionSelect.value = s.dir;
+      applyState();
       const onPong = (e: MessageEvent) => {
         if (e.source !== perfettoFrame.contentWindow || e.data !== 'PONG') return;
         window.removeEventListener('message', onPong);
@@ -288,50 +348,50 @@ window.addEventListener('message', (event) => {
 
 // ── Button handlers ───────────────────────────────────────────────────────────
 
-function resetBufferForNewSession(): void {
-  liveBuffer       = new Uint8Array(0);
-  lastSyncedBytes  = 0;
-  lastSyncTs       = 0;
-  iframeReady      = false;
+function resetLiveBuffer(): void {
+  liveBuffer      = new Uint8Array(0);
+  lastSyncedBytes = 0;
+  lastSyncTs      = 0;
+  iframeReady     = false;
+  stopPinging();
   updateBufferInfo();
   updateSyncBadge();
-  stopPinging();
 }
 
-btnStart.addEventListener('click', () => {
-  resetBufferForNewSession();
-  state = 'deploying';
-  applyState();
-  vscode.postMessage({ kind: 'start' });
-});
-
-btnStop.addEventListener('click', () => {
-  vscode.postMessage({ kind: 'stop' });
-  // Push final buffer to iframe so Perfetto shows the complete session.
-  if (liveBuffer.byteLength > 0 && iframeReady) {
-    syncNow('Kopytko Perfetto — Final');
+btnToggle.addEventListener('click', () => {
+  if (state === 'recording') {
+    vscode.postMessage({ kind: 'stop' });
+    if (liveBuffer.byteLength > 0 && iframeReady) {
+      syncNow('Kopytko Perfetto — Final');
+    }
+  } else {
+    resetLiveBuffer();
+    state = 'deploying';
+    applyState();
+    vscode.postMessage({ kind: 'start' });
   }
 });
 
 btnNewSession.addEventListener('click', () => {
-  resetBufferForNewSession();
+  if (panelMode === 'replay') {
+    vscode.postMessage({ kind: 'load-live' });
+    return;
+  }
+  resetLiveBuffer();
   state = 'deploying';
   applyState();
   vscode.postMessage({ kind: 'new-session' });
 });
 
-btnHeapSnapshot.addEventListener('click', () => {
-  vscode.postMessage({ kind: 'heap-snapshot' });
-});
+btnSync.addEventListener('click', () => syncNow('Kopytko Perfetto — Live'));
 
-// Sync: manually push the current buffer to the Perfetto iframe on demand.
-btnSync.addEventListener('click', () => {
-  syncNow('Kopytko Perfetto — Live');
-});
+btnHeap.addEventListener('click', () => vscode.postMessage({ kind: 'heap-snapshot' }));
 
 sessionSelect.addEventListener('change', () => {
   const dir = sessionSelect.value;
   if (!dir) {
+    panelMode = 'live';
+    applyState();
     vscode.postMessage({ kind: 'load-live' });
   } else {
     vscode.postMessage({ kind: 'load-session', dir });

@@ -287,22 +287,21 @@ export class PerfettoEditorPanel {
 <body>
   <div id="top-bar">
     <div id="toolbar">
-      <button id="btn-start" class="btn btn-primary">$(debug-start) Start</button>
-      <button id="btn-stop" class="btn btn-secondary" disabled>$(debug-stop) Stop</button>
-      <button id="btn-new-session" class="btn btn-secondary" disabled>$(refresh) New Session</button>
-      <button id="btn-heap" class="btn btn-secondary" disabled title="Capture heap snapshot">$(database) Heap</button>
-      <button id="btn-sync" class="btn btn-secondary" disabled title="Push latest data to Perfetto viewer">$(sync) Sync</button>
-      <span id="live-badge">● LIVE</span>
+      <div class="status-dot" id="status-dot"></div>
+      <span id="device-label">No device</span>
+      <select id="session-select" title="Switch between live view and recorded sessions">
+        <option value="">Kopytko Perfetto</option>
+      </select>
+      <button id="btn-toggle">Start</button>
+      <button id="btn-new-session" class="secondary" title="Stop current session and start a fresh one">New Session</button>
+      <button id="btn-sync" class="secondary" disabled title="Push latest trace data to the Perfetto viewer">Sync</button>
+      <button id="btn-heap" class="secondary" disabled title="Capture heap snapshot">Heap</button>
       <span id="sync-badge" style="display:none"></span>
       <span id="buffer-size"></span>
-      <span id="device-info"></span>
-      <span class="sep"></span>
-      <select id="session-select">
-        <option value="">— past sessions —</option>
-      </select>
+      <span id="elapsed"></span>
     </div>
     <div id="lock-banner">
-      Diagnostics panel is currently recording. Stop it to use Kopytko Perfetto.
+      Diagnostics panel is currently recording — stop it to use Kopytko Perfetto.
     </div>
     <div id="status-bar"></div>
   </div>
