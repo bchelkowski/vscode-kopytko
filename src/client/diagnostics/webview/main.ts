@@ -692,6 +692,18 @@ window.addEventListener('message', (ev) => {
       el<HTMLSelectElement>('session-select').value = msg.session.dir;
       el('btn-reset-zoom').style.display = 'none';
       break;
+
+    case 'status': {
+      const banner = el('status-banner');
+      if (msg.message) {
+        banner.textContent = msg.message;
+        banner.style.display = 'block';
+      } else {
+        banner.style.display = 'none';
+        banner.textContent = '';
+      }
+      break;
+    }
   }
 });
 

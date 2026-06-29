@@ -4,6 +4,7 @@ import type { DeviceManager } from '../roku/discovery/deviceManager';
 import type { EcpClient } from '../roku/discovery/ecpClient';
 import type { RendezvousManager } from '../roku/rendezvous/rendezvousManager';
 import { DebugConsoleClient, type ConsoleSocketFactory } from './transport/debugConsoleClient';
+import { diagnosticsLock } from './diagnosticsLock';
 import {
   type Collector,
   ChanperfCollector,
@@ -70,6 +71,13 @@ export class DiagnosticsController {
     }
     if (!this.deps.workspaceRoot) {
       vscode.window.showWarningMessage('Kopytko Diagnostics: open a workspace folder first.');
+      return undefined;
+    }
+
+    if (!diagnosticsLock.acquire('diagnostics')) {
+      vscode.window.showWarningMessage(
+        'Kopytko Diagnostics: Kopytko Perfetto is currently recording. Stop it first.',
+      );
       return undefined;
     }
 
@@ -166,6 +174,7 @@ export class DiagnosticsController {
         this.rendezvousSuspended = false;
       }
       consoleClient.close();
+      diagnosticsLock.release('diagnostics');
       throw err;
     }
 
@@ -176,6 +185,10 @@ export class DiagnosticsController {
     const session = this.session;
     if (!session) return;
     this.session = undefined;
+
+    // Release the lock immediately so the Perfetto panel becomes available
+    // as soon as the user clicks Stop, without waiting for the async cleanup.
+    diagnosticsLock.release('diagnostics');
 
     await session.stop();
 

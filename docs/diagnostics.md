@@ -268,3 +268,87 @@ Webview → extension:
   reconnect) under fake timers.
 - **Collectors, session, storage, and controller** use stubbed transports/ECP and
   an in-memory sink, so tests never touch real disk or the network.
+
+---
+
+# Kopytko Perfetto (App Tracing)
+
+A separate bottom panel that provides a **live** Roku app tracing experience by
+embedding the official Perfetto UI (`ui.perfetto.dev`) directly in VS Code and
+continuously feeding it the device's binary trace stream.
+
+> **Requires Roku firmware 15.2 or later.**  
+> On first use Perfetto will show a "Trust this origin?" dialog — click **Always trust**.
+
+## How it works
+
+1. **Deploy** — clicking Start injects `run_as_process=1` into the local manifest
+   override (same pattern as the debug session: inject → build → restore), then
+   builds and deploys the app via `npx kopytko start`.
+2. **Enable tracing** — `POST http://device:8060/perfetto/enable/dev`.
+3. **Stream** — opens `ws://device:8060/perfetto-session`.  The device streams raw
+   binary Perfetto protobuf packets (`TracePacket` messages).  Each chunk is:
+   - written to `debug/<session>__perfetto/trace.perfetto-trace` (append-write)
+   - forwarded to the webview as a transferable `ArrayBuffer`
+4. **Live view** — the webview accumulates chunks into a growing buffer and posts
+   it to the embedded `ui.perfetto.dev` iframe every 3 seconds (configurable).
+   The iframe re-renders the full trace each cycle.  After each push the viewport
+   scrolls to the live edge so the user sees the most recent second of trace.
+5. **Stop** — sends the WebSocket close frame, waits for a 500 ms quiet window,
+   flushes the trace file, writes `session.json`, and releases the device lock.
+
+## Mutual exclusion
+
+`DiagnosticsLock` (`src/client/diagnostics/diagnosticsLock.ts`) ensures only one
+panel holds the device at a time.  Starting either panel while the other is active
+shows a warning and prevents the start.  Both webviews show a banner immediately
+when the lock changes.
+
+## Session storage
+
+```
+debug/
+└── 2026-06-28_14-22-01__MyApp__perfetto/
+    ├── session.json           startedWall, endedWall, device, app
+    └── trace.perfetto-trace   raw Perfetto binary (append-written as chunks arrive)
+```
+
+The `__perfetto` suffix distinguishes Perfetto sessions from Diagnostics sessions
+in the shared `debug/` directory (controlled by `kopytko.diagnostics.outputDir`).
+
+## Replay
+
+Selecting a past session from the dropdown reads `trace.perfetto-trace` from disk
+and sends the full buffer to the Perfetto iframe.  The iframe renders the complete
+saved trace in read-only mode.
+
+## Configuration
+
+| Setting | Default | Effect |
+|---|---|---|
+| `kopytko.perfetto.ecpPort` | `8060` | ECP port for HTTP control + WebSocket |
+| `kopytko.perfetto.refreshIntervalMs` | `3000` | How often the buffer is sent to the Perfetto iframe |
+| `kopytko.perfetto.startCommand` | `""` | Build command; falls back to `npx kopytko start` |
+| `kopytko.diagnostics.outputDir` | `"debug"` | Shared output dir; Perfetto sessions use `<dir>/*__perfetto/` |
+
+## Heap snapshots
+
+Clicking **Heap** triggers `POST /perfetto/heapgraph/trigger/dev`.  The snapshot
+appears as a heap-graph track in the Perfetto timeline automatically.
+
+## Source files
+
+```
+src/client/perfetto/
+├── transport/perfettoWebSocketClient.ts   WS client (quiet-window stop, buffer accumulation)
+├── ecpTracing.ts                          HTTP enable + heapgraph trigger
+├── perfettoController.ts                  Deploy → enable → stream lifecycle, lock
+├── session/perfettoSessionStore.ts        Manifest + folder listing
+├── views/perfettoViewProvider.ts          WebviewViewProvider (kopytko.perfetto)
+└── webview/
+    ├── protocol.ts                        Message types (no imports — browser bundle)
+    ├── main.ts                            iframe host, PING/PONG, rolling buffer
+    └── styles.css
+```
+
+Tests: `test/perfetto/`

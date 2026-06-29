@@ -67,6 +67,10 @@ Response when no events:
 
 **Text-based request/response console.** Send `command\r\n`, read until the device stops sending (idle for ~250ms) — the response ends with a `>` prompt but since `>` appears inside XML responses it cannot be used as a terminator. Use idle-time detection instead.
 
+**⚠ Requires `remotedebug=1` in the channel manifest.** Port 8080 is only active when the channel was deployed with `remotedebug=1`. Without it, the channel runs normally but port 8080 stays closed — TCP connections are refused immediately. Verified live on Roku Ultra 4850X firmware 15.2.4: ECP `/query/active-app` showed the dev channel running, but `Test-NetConnection` to port 8080 returned false.
+
+The VS Code debug session (F5) automatically injects `remotedebug=1` via `rokuDeployer`. For the Diagnostics panel, the user must press F5 first (or manually add `remotedebug=1` to their manifest) before starting a diagnostics session. The Perfetto panel is unaffected — it deploys its own build with `run_as_process=1`.
+
 The very first response after connecting includes a device banner:
 ```
 X02800C5FKLV (Roku Ultra - 15.2.4.3442)
@@ -230,3 +234,66 @@ All 8080 responses start with the device banner (first connection only), then `>
 XML responses use `>` characters inside tags — never use `>` as a response terminator. Use idle-time detection (250ms default) instead.
 
 Some commands return `Usage: ...` hints if the subcommand is missing or wrong. Check for this before trying to parse the response.
+
+---
+
+## Port 8060 — Perfetto App Tracing (firmware 15.2+)
+
+Roku's ECP port also exposes a native Perfetto tracing interface. The device outputs **standard binary Perfetto protobuf** — no custom format, no conversion needed.
+
+### Control endpoints (HTTP)
+
+| Method | Path | Effect |
+|---|---|---|
+| `POST` | `/perfetto/enable/{channelId}` | Enable tracing for `channelId` (use `dev` for sideloaded channel). Returns XML. Works even when no channel is running. |
+| `POST` | `/perfetto/heapgraph/trigger/{channelId}` | Capture a heap snapshot. Also returns 200 OK even without a running channel. |
+
+**Real device response — `POST /perfetto/enable/dev` (firmware 15.2.4, Roku Ultra 4850X):**
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<perfetto-enable>
+  <enabled-channels><channel>dev</channel></enabled-channels>
+  <application-already-started>false</application-already-started>
+  <timestamp>1782714472826</timestamp>
+  <timestamp-end>1782714472827</timestamp-end>
+  <status>OK</status>
+</perfetto-enable>
+```
+`application-already-started` = `true` if the channel was already running when you enabled tracing.
+
+**Real device response — `POST /perfetto/heapgraph/trigger/dev`:**
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<perfetto-heapgraph-trigger>
+  <timestamp>1782714578745</timestamp>
+  <timestamp-end>1782714579359</timestamp-end>
+  <status>OK</status>
+</perfetto-heapgraph-trigger>
+```
+
+### Data stream (WebSocket)
+
+`ws://device:8060/perfetto-session`
+
+- Streams raw binary `TracePacket` proto messages continuously from the moment the connection opens.
+- Unmasked binary frames from the server. Standard WebSocket (e.g. the `ws` npm package).
+- The device streams until the WS connection is closed. After sending a close frame, allow a 500 ms quiet window before hard-terminating (the device may flush final packets).
+- Hard timeout: 3 s max wait before `socket.terminate()`.
+- **WS stays open with no data when no channel is running.** The connection does not drop — it just waits. Data starts flowing when a channel with `run_as_process=1` starts.
+- **Correct start order:** enable Perfetto → open WS → deploy channel. Opening the WS before deploy ensures trace packets from channel boot are captured.
+
+### Manifest requirement
+
+The channel must be sideloaded with `run_as_process=1` in the local manifest override. This is the same pattern as `remotedebug=1` for debug sessions — inject before deploy, restore after. See `src/client/roku/rokuDeployer.ts` (`deployForPerfetto`).
+
+### Origin trust
+
+The WebSocket streams Perfetto protobuf to a VS Code webview. When posting the buffer to the `ui.perfetto.dev` iframe via `postMessage`, Perfetto shows a "Trust this origin?" dialog on first use because VS Code webviews have a `vscode-webview://` origin (not in Perfetto's trusted list). Click **Always trust** — the trust is stored in the `ui.perfetto.dev` domain's localStorage and persists across sessions.
+
+### Perfetto embedding API highlights
+
+- `iframe.contentWindow.postMessage('PING', 'https://ui.perfetto.dev')` → iframe replies `'PONG'` once ready. Must complete before sending trace data.
+- `{ perfetto: { buffer: ArrayBuffer, title: string, keepApiOpen: true, localOnly: true } }` — loads a trace. `keepApiOpen: true` keeps the listener alive for repeated loads (live refresh). `localOnly: true` disables share/download UI.
+- `{ perfetto: { timeStart: number, timeEnd: number } }` — scrolls to a time range in seconds (not nanoseconds — URL params use nanoseconds, postMessage uses seconds).
+- URL params: `?mode=embedded&hideSidebar=true` — hides sidebar and file-drop zone for a cleaner panel embed.
+- No callbacks: the iframe fires no "loaded" or "ready" events back. The time-range scroll command retries internally (~20×/200 ms) until the trace is ready.

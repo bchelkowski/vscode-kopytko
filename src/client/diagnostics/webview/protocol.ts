@@ -81,7 +81,9 @@ export type ExtMsg =
   /** Full list of recorded sessions available for replay (newest first). */
   | { kind: 'sessions'; sessions: SerializedSessionInfo[] }
   /** Full data for a past session loaded from disk (read-only replay). */
-  | { kind: 'replay'; session: SerializedSessionInfo; history: HistoryPayload };
+  | { kind: 'replay'; session: SerializedSessionInfo; history: HistoryPayload }
+  /** Advisory status message shown below the toolbar (e.g. debug console not ready). */
+  | { kind: 'status'; message: string | null };
 
 // ── Webview → Extension ───────────────────────────────────────────────────────
 

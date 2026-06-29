@@ -397,6 +397,38 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Kopytko Perfetto -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Perfetto (App Tracing)</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Live Roku app tracing — right inside VS Code. Click <strong class="text-white">Start</strong> and the extension deploys your channel with <code class="text-violet-300">run_as_process=1</code>, connects to the device's Perfetto WebSocket stream, and feeds the native binary trace into an embedded <a href="https://ui.perfetto.dev" class="prose-link" target="_blank" rel="noopener">ui.perfetto.dev</a> viewer. The trace refreshes live every few seconds.
+          </p>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            No more record → export → import → guess. See flame charts, counter tracks, heap graphs, and rendezvous spans updating as you navigate your app. Sessions are saved as <code class="text-violet-300">.perfetto-trace</code> files and can be replayed later.
+          </p>
+          <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+            <li>Requires Roku firmware 15.2+</li>
+            <li>Mutual exclusion with the Diagnostics panel — only one panel holds the device at a time</li>
+            <li>Heap snapshot capture with one click</li>
+            <li>Past-session replay from the dropdown</li>
+          </ul>
+        </div>
+        <div class="bg-slate-800 rounded-lg p-4 flex flex-col gap-2 text-sm text-slate-300">
+          <p class="text-slate-400 font-semibold mb-1">How it works</p>
+          <ol class="list-decimal list-inside space-y-1 text-slate-400">
+            <li>Injects <code class="text-violet-300">run_as_process=1</code> into manifest, deploys, restores</li>
+            <li><code class="text-violet-300">POST /perfetto/enable/dev</code> → enable tracing</li>
+            <li><code class="text-violet-300">ws://device:8060/perfetto-session</code> → stream binary Perfetto proto</li>
+            <li>Buffer grows; iframe receives the full buffer every 3 s</li>
+            <li>Viewport scrolls to the live edge automatically</li>
+            <li>On stop: final buffer saved to <code class="text-violet-300">trace.perfetto-trace</code></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
     <!-- .kopytkorc -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">.kopytkorc configuration</h2>

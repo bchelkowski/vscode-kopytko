@@ -187,6 +187,22 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Bottom-panel webview with live charts (uPlot) — mem/cpu/nodes + rendezvous markers | ✅ | [diagnostics.md](./diagnostics.md) |
 | In-panel node / rendezvous lists with click-to-open-file | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
+
+## Kopytko Perfetto (App Tracing)
+
+Live Roku app tracing panel that embeds the official `ui.perfetto.dev` viewer directly in VS Code. Requires Roku firmware 15.2+. Deploy, stream, view, and save — without leaving the editor. See [diagnostics.md](./diagnostics.md).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Deploy app with `run_as_process=1` manifest injection + restore | ✅ | [diagnostics.md](./diagnostics.md) |
+| ECP Perfetto enable (`POST /perfetto/enable/dev`) | ✅ | [diagnostics.md](./diagnostics.md) |
+| WebSocket trace stream (`ws://device:8060/perfetto-session`) — native Perfetto binary format | ✅ | [diagnostics.md](./diagnostics.md) |
+| Live `ui.perfetto.dev` iframe with rolling buffer refresh (3 s default) + scroll to live edge | ✅ | [diagnostics.md](./diagnostics.md) |
+| Heap snapshot trigger (`POST /perfetto/heapgraph/trigger/dev`) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Per-session binary `.perfetto-trace` storage (append-write, crash-safe) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Past-session replay (load `.perfetto-trace` → send to Perfetto iframe) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Start / Stop / Restart / New-session session controls | ✅ | [diagnostics.md](./diagnostics.md) |
 
 ## Performance & Caching
 

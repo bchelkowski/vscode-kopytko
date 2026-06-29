@@ -25,14 +25,16 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview",
+    "bundle:perfetto-webview": "esbuild src/client/perfetto/webview/main.ts --bundle --outfile=out/perfetto-webview/main.js --platform=browser --format=iife --sourcemap",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
     "watch:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap --watch",
+    "watch:perfetto-webview": "esbuild src/client/perfetto/webview/main.ts --bundle --outfile=out/perfetto-webview/main.js --platform=browser --format=iife --sourcemap --watch",
     "lint": "eslint \"./src/**/*.ts\" \"./test/**/*.ts\"",
     "test": "mocha",
     "test:coverage": "nyc mocha",
@@ -47,13 +49,15 @@
     "vscode-languageclient": "^10.0.0",
     "vscode-languageserver": "^10.0.0",
     "vscode-languageserver-textdocument": "^1.0.13",
-    "vscode-uri": "^3.1.0"
+    "vscode-uri": "^3.1.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.9.2",
     "@types/sinon": "^21.0.1",
     "@types/vscode": "^1.120.0",
+    "@types/ws": "^8.18.1",
     "@vscode/vsce": "^3.9.2",
     "chai": "^6.2.2",
     "esbuild": "^0.28.0",
@@ -888,6 +892,21 @@
           "type": "number",
           "default": 5000,
           "description": "Polling interval in milliseconds for texture memory."
+        },
+        "kopytko.perfetto.ecpPort": {
+          "type": "number",
+          "default": 8060,
+          "description": "ECP port used for Perfetto tracing control and the WebSocket connection."
+        },
+        "kopytko.perfetto.refreshIntervalMs": {
+          "type": "number",
+          "default": 3000,
+          "description": "How often (in milliseconds) the live buffer is pushed to the Perfetto UI iframe."
+        },
+        "kopytko.perfetto.startCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Build and deploy command for Perfetto sessions. Defaults to `npx kopytko start` when empty."
         }
       }
     },
@@ -983,6 +1002,11 @@
           "id": "kopytko-diagnostics",
           "title": "Kopytko Diagnostics",
           "icon": "images/kopytko-logo.svg"
+        },
+        {
+          "id": "kopytko-perfetto",
+          "title": "Kopytko Perfetto",
+          "icon": "images/kopytko-logo.svg"
         }
       ]
     },
@@ -992,6 +1016,13 @@
           "type": "webview",
           "id": "kopytko.diagnostics",
           "name": "Kopytko Diagnostics"
+        }
+      ],
+      "kopytko-perfetto": [
+        {
+          "type": "webview",
+          "id": "kopytko.perfetto",
+          "name": "Kopytko Perfetto"
         }
       ],
       "kopytko-sidebar": [
@@ -1130,6 +1161,24 @@
         "command": "kopytko.diagnostics.stopSession",
         "title": "Stop Diagnostics Session",
         "icon": "$(stop-circle)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.perfetto.startSession",
+        "title": "Start Perfetto Tracing Session",
+        "icon": "$(record)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.perfetto.stopSession",
+        "title": "Stop Perfetto Tracing Session",
+        "icon": "$(stop-circle)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.perfetto.captureHeapSnapshot",
+        "title": "Capture Heap Snapshot (Perfetto)",
+        "icon": "$(database)",
         "category": "Kopytko"
       }
     ],

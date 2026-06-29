@@ -9,6 +9,7 @@ import { registerCommands } from './client/activation/commands';
 import { registerRegistry } from './client/activation/registry';
 import { registerRendezvous } from './client/activation/rendezvous';
 import { registerDiagnostics } from './client/activation/diagnostics';
+import { registerPerfetto } from './client/activation/perfetto';
 import { registerDebug } from './client/activation/debug';
 
 let client: KopytkoLanguageClient | undefined;
@@ -27,6 +28,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerRegistry(context, discovery);
   registerRendezvous(context, discovery);
   registerDiagnostics(context, discovery);
+  registerPerfetto(context, discovery);
   debugFactory = registerDebug(context, discovery);
 }
 

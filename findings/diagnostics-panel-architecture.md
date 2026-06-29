@@ -173,3 +173,47 @@ function loadModule() {
   return require('path/to/resolveSourceFile') as typeof import('...');
 }
 ```
+
+
+---
+
+## Kopytko Perfetto panel
+
+A separate panel (`kopytko.perfetto`) that sits alongside the Diagnostics panel in the bottom area.
+
+### Mutual exclusion
+
+`src/client/diagnostics/diagnosticsLock.ts` — a singleton `EventEmitter` (`DiagnosticsLock`). Both controllers call `acquire(owner)` before starting and `release(owner)` on stop. Emits `'change'` so both `ViewProvider`s can push a `{ kind: 'lock' }` message to their webviews without polling. The webview disables the Start button and shows a banner when locked by the other panel.
+
+### Source layout
+
+```
+src/client/perfetto/
+  transport/perfettoWebSocketClient.ts   ws:// client; quiet-window stop; Buffer accumulation
+  ecpTracing.ts                          HTTP enablePerfettoTracing / triggerHeapSnapshot
+  perfettoController.ts                  Lifecycle: deploy → enable → stream → save → stop
+  session/perfettoSessionStore.ts        Session manifest, folder naming (*__perfetto)
+  views/perfettoViewProvider.ts          WebviewViewProvider; forwards chunks; lock subscription
+  webview/
+    protocol.ts                          Message types (no imports; browser bundle)
+    main.ts                              PING/PONG, iframe, rolling buffer, scroll-to-edge
+    styles.css
+```
+
+### Session storage
+
+Sessions land in `<outputDir>/<timestamp>__<app>__perfetto/` alongside Diagnostics sessions.
+- `session.json` — `PerfettoManifest` (startedWall, endedWall, device, app)
+- `trace.perfetto-trace` — raw binary Perfetto protobuf, append-written as chunks arrive
+
+### Perfetto iframe integration (PING/PONG required)
+
+Before sending any trace: poll `iframe.contentWindow.postMessage('PING', origin)` at 250ms intervals. The iframe replies `'PONG'` once its message listener is active. Distinguish iframe messages from extension messages by checking `event.source === iframe.contentWindow`.
+
+After sending a new buffer: wait ~800ms then post `{ perfetto: { timeStart, timeEnd } }` (seconds, not nanoseconds) to scroll the viewport to the live edge.
+
+`keepApiOpen: true` keeps Perfetto's message listener active across multiple `postMessage` calls (needed for live refresh). `localOnly: true` hides share/download UI.
+
+### rokuDeployer extension
+
+`deployForPerfetto()` in `src/client/roku/rokuDeployer.ts` — same inject/restore pattern as `deploy()` but uses `{ run_as_process: 1 }` instead of debug entries. Uses `PERFETTO_MANIFEST_FILENAME = 'kopytko-perfetto-local.js'` so it does not collide with an active debug session's file.

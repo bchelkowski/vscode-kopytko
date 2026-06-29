@@ -14,6 +14,10 @@ export interface DeployOptions {
   onOutput?: (message: string) => void;
 }
 
+export type PerfettoDeployOptions = Omit<DeployOptions, 'debugMode'>;
+
+type ManifestOverrides = Record<string, number | string | boolean>;
+
 interface ManifestBackup {
   /** Project root directory. */
   rootDir: string;
@@ -27,8 +31,10 @@ interface ManifestBackup {
   originalKopytkorc: string | undefined;
 }
 
-const DEBUG_MANIFEST_ENTRIES = `module.exports = { remotedebug: 1, remotedebug_connect_early: 1 };\n`;
+const DEBUG_OVERRIDES: ManifestOverrides = { remotedebug: 1, remotedebug_connect_early: 1 };
 const DEBUG_MANIFEST_FILENAME = 'kopytko-debug-local.js';
+const PERFETTO_OVERRIDES: ManifestOverrides = { run_as_process: 1 };
+const PERFETTO_MANIFEST_FILENAME = 'kopytko-perfetto-local.js';
 const DEFAULT_MANIFEST_DIR = 'manifest';
 const DEFAULT_START_COMMAND = 'npx kopytko start';
 
@@ -54,7 +60,29 @@ export async function deploy(options: DeployOptions): Promise<void> {
     return;
   }
 
-  const backup = await injectDebugManifest(rootDir, env, log);
+  const backup = await injectManifest(rootDir, env, log, DEBUG_OVERRIDES, DEBUG_MANIFEST_FILENAME);
+
+  try {
+    log(`Running: ${startCommand}`);
+    await runKopytkoStart(rootDir, startCommand, host, password, env, log);
+    log('Build and deploy successful.');
+  } finally {
+    await restoreManifest(backup, log);
+  }
+}
+
+/**
+ * Builds and deploys the project with `run_as_process=1` injected into the
+ * local manifest override — required for Roku Perfetto app tracing (firmware 15.2+).
+ *
+ * Restores the original manifest in a `finally` block, even on failure.
+ */
+export async function deployForPerfetto(options: PerfettoDeployOptions): Promise<void> {
+  const { rootDir, host, password, env = 'dev', onOutput } = options;
+  const startCommand = options.startCommand || DEFAULT_START_COMMAND;
+  const log = onOutput ?? (() => {});
+
+  const backup = await injectManifest(rootDir, env, log, PERFETTO_OVERRIDES, PERFETTO_MANIFEST_FILENAME);
 
   try {
     log(`Running: ${startCommand}`);
@@ -73,37 +101,40 @@ export async function upload(options: Omit<DeployOptions, 'debugMode'>): Promise
 }
 
 /**
- * Injects debug manifest entries (`remotedebug=1`, `remotedebug_connect_early=1`)
- * into the project's local manifest override file.
+ * Injects manifest overrides into the project's local manifest override file.
  *
  * If `.kopytkorc` has `localManifestOverride` configured, modifies that file.
  * Otherwise, creates a new manifest file and temporarily adds the
  * `localManifestOverride` entry to `.kopytkorc`.
  */
-async function injectDebugManifest(
+async function injectManifest(
   rootDir: string,
   env: string,
   log: (msg: string) => void,
+  overrides: ManifestOverrides,
+  filename: string,
 ): Promise<ManifestBackup> {
   const rcPath = path.join(rootDir, '.kopytkorc');
   const rc = readKopytkorc(rcPath);
 
   if (rc && typeof rc.localManifestOverride === 'string') {
-    return injectIntoExistingOverride(rootDir, rc.localManifestOverride, env, log);
+    return injectIntoExistingOverride(rootDir, rc.localManifestOverride, env, log, overrides, filename);
   }
 
-  return injectWithNewOverride(rootDir, rcPath, rc, log);
+  return injectWithNewOverride(rootDir, rcPath, rc, log, overrides, filename);
 }
 
 /**
  * Case A: `.kopytkorc` has `localManifestOverride` configured.
- * Back up the existing file (if any) and write debug entries merged with the original.
+ * Back up the existing file (if any) and write overrides merged with the original.
  */
 function injectIntoExistingOverride(
   rootDir: string,
   overridePath: string,
   env: string,
   log: (msg: string) => void,
+  overrides: ManifestOverrides,
+  filename: string,
 ): ManifestBackup {
   const resolvedPath = resolveManifestTemplate(overridePath, env);
   const absPath = path.join(rootDir, resolvedPath);
@@ -112,16 +143,17 @@ function injectIntoExistingOverride(
 
   if (fs.existsSync(absPath)) {
     originalContent = fs.readFileSync(absPath, 'utf-8');
-    log(`Injecting debug manifest into existing ${resolvedPath}`);
+    log(`Injecting manifest overrides into existing ${resolvedPath}`);
 
-    const debugContent = wrapExistingManifest(originalContent, absPath);
-    fs.writeFileSync(absPath, debugContent, 'utf-8');
+    const patched = wrapExistingManifest(originalContent, absPath, overrides);
+    fs.writeFileSync(absPath, patched, 'utf-8');
   } else {
-    log(`Creating debug manifest at ${resolvedPath}`);
+    log(`Creating manifest override at ${resolvedPath}`);
     ensureDirectory(path.dirname(absPath));
-    fs.writeFileSync(absPath, DEBUG_MANIFEST_ENTRIES, 'utf-8');
+    fs.writeFileSync(absPath, overridesToModule(overrides), 'utf-8');
   }
 
+  void filename; // filename only used when creating a brand-new override file
   return {
     rootDir,
     manifestPath: absPath,
@@ -133,20 +165,22 @@ function injectIntoExistingOverride(
 
 /**
  * Case B: `.kopytkorc` has no `localManifestOverride`.
- * Create a debug manifest file and temporarily add the entry to `.kopytkorc`.
+ * Create a manifest file and temporarily add the `localManifestOverride` entry to `.kopytkorc`.
  */
 function injectWithNewOverride(
   rootDir: string,
   rcPath: string,
   rc: Record<string, unknown> | null,
   log: (msg: string) => void,
+  overrides: ManifestOverrides,
+  filename: string,
 ): ManifestBackup {
-  const manifestRelPath = `/${DEFAULT_MANIFEST_DIR}/${DEBUG_MANIFEST_FILENAME}`;
+  const manifestRelPath = `/${DEFAULT_MANIFEST_DIR}/${filename}`;
   const absPath = path.join(rootDir, manifestRelPath);
 
   log(`No localManifestOverride configured — creating ${manifestRelPath}`);
   ensureDirectory(path.dirname(absPath));
-  fs.writeFileSync(absPath, DEBUG_MANIFEST_ENTRIES, 'utf-8');
+  fs.writeFileSync(absPath, overridesToModule(overrides), 'utf-8');
 
   const originalKopytkorc = fs.existsSync(rcPath)
     ? fs.readFileSync(rcPath, 'utf-8')
@@ -196,13 +230,15 @@ async function restoreManifest(backup: ManifestBackup, log: (msg: string) => voi
 }
 
 /**
- * Wraps an existing manifest override file to merge debug entries.
- * Generates a module that re-exports the original content with
- * `remotedebug` and `remotedebug_connect_early` added.
+ * Wraps an existing manifest override file to merge the given overrides.
+ * For a simple `module.exports = { ... }` pattern, injects entries inline.
+ * For complex files, creates a backup and generates a wrapper module.
  */
-function wrapExistingManifest(originalContent: string, absPath: string): string {
-  // Check if the original file uses a simple `module.exports = { ... }` pattern
-  // If so, we can inject entries directly. Otherwise, use a wrapper approach.
+function wrapExistingManifest(
+  originalContent: string,
+  absPath: string,
+  overrides: ManifestOverrides,
+): string {
   const simpleExportMatch = originalContent.match(
     /^([\s\S]*module\.exports\s*=\s*\{)([\s\S]*?)(\};?\s*)$/,
   );
@@ -211,7 +247,10 @@ function wrapExistingManifest(originalContent: string, absPath: string): string 
     const [, before, middle, after] = simpleExportMatch;
     const trimmed = middle.trimEnd();
     const needsComma = trimmed.length > 0 && !trimmed.endsWith(',');
-    return `${before}${middle}${needsComma ? ',' : ''}\n  remotedebug: 1,\n  remotedebug_connect_early: 1,\n${after}`;
+    const injected = Object.entries(overrides)
+      .map(([k, v]) => `  ${k}: ${typeof v === 'string' ? JSON.stringify(v) : String(v)},`)
+      .join('\n');
+    return `${before}${middle}${needsComma ? ',' : ''}\n${injected}\n${after}`;
   }
 
   // Complex file — create a backup and wrap it
@@ -219,12 +258,23 @@ function wrapExistingManifest(originalContent: string, absPath: string): string 
   fs.writeFileSync(backupPath, originalContent, 'utf-8');
 
   const backupRelative = './' + path.basename(backupPath);
+  const spreadEntries = Object.entries(overrides)
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? JSON.stringify(v) : String(v)}`)
+    .join(', ');
   return [
-    `// Generated by vscode-kopytko for debug session`,
+    `// Generated by vscode-kopytko`,
     `const original = require('${backupRelative}');`,
-    `module.exports = { ...original, remotedebug: 1, remotedebug_connect_early: 1 };`,
+    `module.exports = { ...original, ${spreadEntries} };`,
     '',
   ].join('\n');
+}
+
+/** Generates a standalone `module.exports = { ... }` file from an overrides map. */
+function overridesToModule(overrides: ManifestOverrides): string {
+  const entries = Object.entries(overrides)
+    .map(([k, v]) => `  ${k}: ${typeof v === 'string' ? JSON.stringify(v) : String(v)},`)
+    .join('\n');
+  return `module.exports = {\n${entries}\n};\n`;
 }
 
 /**

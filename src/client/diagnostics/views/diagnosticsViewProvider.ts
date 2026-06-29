@@ -56,6 +56,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
 
   private webviewView: vscode.WebviewView | undefined;
   private batchTimer: ReturnType<typeof setInterval> | undefined;
+  private noDataTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingMemCpu: SerializedMemCpuPoint[] = [];
   private pendingNodes: SerializedNodePoint[] = [];
   private pendingRendezvous: SerializedRendezvousPoint[] = [];
@@ -81,7 +82,12 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((msg: WebMsg) => {
       switch (msg.kind) {
         case 'start':
-          void this.controller.startSession().then(() => this.syncSession());
+          void this.controller.startSession().then((session) => {
+            this.syncSession();
+            // If startSession returned undefined (e.g. lock blocked it), still
+            // update state so the webview reflects the current recording status.
+            if (!session) this.sendState();
+          });
           break;
         case 'stop':
           void this.controller.stopSession().then(() => this.onSessionStopped());
@@ -150,6 +156,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
 
   private onSessionStopped(): void {
     this.stopBatchTimer();
+    this.clearNoDataTimer();
     this.detachSession();
     this.sendState();
     void this.sendSessions();
@@ -167,12 +174,14 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       session.on('event', this.sessionListener);
       session.once('stopped', () => this.onSessionStopped());
       this.startBatchTimer();
+      this.startNoDataTimer();
     }
 
     this.sendState();
   }
 
   private onEvent(event: DiagnosticEvent): void {
+    this.clearNoDataTimer(); // first event clears the "no data" warning
     switch (event.type) {
       case 'mem-cpu': {
         const e = event as MemCpuEvent;
@@ -235,6 +244,30 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     this.pendingMemCpu = [];
     this.pendingNodes = [];
     this.pendingRendezvous = [];
+  }
+
+  private startNoDataTimer(): void {
+    this.clearNoDataTimer();
+    this.noDataTimer = setTimeout(() => {
+      this.noDataTimer = undefined;
+      this.post({
+        kind: 'status',
+        message:
+          '⚠ No data received. The SceneGraph debug console (port 8080) is not active — ' +
+          'it requires the channel to be deployed with remotedebug=1. ' +
+          'Press F5 to start a debug session (which injects remotedebug=1 automatically), ' +
+          'then click Start here. Both can run simultaneously.',
+      } satisfies ExtMsg);
+    }, 15_000);
+  }
+
+  private clearNoDataTimer(): void {
+    if (this.noDataTimer) {
+      clearTimeout(this.noDataTimer);
+      this.noDataTimer = undefined;
+      // First data arrived — clear any previous warning.
+      this.post({ kind: 'status', message: null } satisfies ExtMsg);
+    }
   }
 
   private detachSession(): void {
@@ -445,6 +478,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   <title>Kopytko Diagnostics</title>
 </head>
 <body>
+  <div id="status-banner" style="display:none;padding:6px 10px;background:var(--vscode-inputValidation-warningBackground);border-bottom:1px solid var(--vscode-inputValidation-warningBorder);font-size:12px;line-height:1.4"></div>
   <script src="${scriptUri}"></script>
 </body>
 </html>`;
