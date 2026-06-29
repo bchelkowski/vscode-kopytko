@@ -124,16 +124,14 @@ export class NodeTreePanel {
     <span class="sep"></span>
     <input id="search" type="text" placeholder="Filter nodes…" title="Filter visible nodes by type or name (tree mode)">
   </div>
+  <div id="breadcrumb-bar"></div>
   <div id="main">
-    <!-- Canvas and SVG are declared in HTML so CSS Grid contains them properly.
-         position:absolute on dynamically-appended children leaks past overflow:hidden
-         in some VS Code webview contexts. -->
     <canvas id="ic-canvas"></canvas>
     <svg id="tree-svg" style="display:none;overflow:visible"></svg>
-    <div id="breadcrumb"></div>
     <div id="overlay" class="visible"><span>Loading…</span></div>
     <div id="tooltip"></div>
   </div>
+  <div id="legend-bar"></div>
   <script src="${scriptUri}"></script>
 </body>
 </html>`;
