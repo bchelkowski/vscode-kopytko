@@ -295,6 +295,38 @@ export class EcpClient {
   }
 
   /**
+   * Queries per-channel CPU + memory via ECP (`/query/chanperf`).
+   * Returns the raw XML body for the caller to parse.
+   */
+  async queryChanperf(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(
+      `http://${ip}:${port}/query/chanperf`,
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (statusCode !== 200) throw new Error(`chanperf: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
+   * Queries the SceneGraph node tree via ECP (`/query/sgnodes/all`).
+   * Returns the raw XML body for the caller to parse.
+   */
+  async querySgNodes(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(
+      `http://${ip}:${port}/query/sgnodes/all`,
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (statusCode !== 200) throw new Error(`sgnodes: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
    * Validates a developer password against a Roku device using HTTP Digest
    * Authentication.
    *

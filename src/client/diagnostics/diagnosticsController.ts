@@ -7,12 +7,12 @@ import { DebugConsoleClient, type ConsoleSocketFactory } from './transport/debug
 import { diagnosticsLock } from './diagnosticsLock';
 import {
   type Collector,
-  ChanperfCollector,
-  NodeCountsCollector,
   SystemMemCollector,
   TextureCollector,
   RendezvousCollector,
 } from './collectors';
+import { EcpChanperfCollector } from './collectors/ecpChanperfCollector';
+import { EcpNodeCountsCollector } from './collectors/ecpNodeCountsCollector';
 import { DiagnosticsSession } from './session/diagnosticsSession';
 import type { DiagnosticEventType } from './session/eventModel';
 import { type DiagnosticsSink, nodeSink } from './storage/sink';
@@ -87,16 +87,34 @@ export class DiagnosticsController {
     const num = (key: string, def: number) => cfg.get<number>(key, def);
     const bool = (key: string, def: boolean) => cfg.get<boolean>(key, def);
 
-    const consolePort = num('diagnostics.debugConsolePort', 8080);
-    const consoleClient = new DebugConsoleClient({
-      host: device.ip,
-      port: consolePort,
-      socketFactory: this.socketFactory,
-    });
+    // mem-cpu and node-counts are fetched via ECP (HTTP port 8060) —
+    // this is the same port as rendezvous and works without remotedebug=1.
+    // The old raw-TCP debug console on port 8080 is kept only for the opt-in
+    // systemMem and textures collectors which have no ECP equivalent yet.
+    const ecpPort = device.port; // 8060 by default
 
-    const log = (msg: string) => this.outputChannel?.appendLine(`[${new Date().toISOString()}] ${msg}`);
-    consoleClient.on('ready', () => log(`Debug console connected to ${device.ip}:${consolePort} — collecting chanperf/sgnodes`));
-    consoleClient.on('disconnected', () => log(`Debug console disconnected from ${device.ip}:${consolePort} — reconnecting...`));
+    const consolePort = num('diagnostics.debugConsolePort', 8080);
+    const needsConsole =
+      bool('diagnostics.collectors.systemMem.enabled', false) ||
+      bool('diagnostics.collectors.textures.enabled', false);
+
+    const consoleClient = needsConsole
+      ? new DebugConsoleClient({
+          host: device.ip,
+          port: consolePort,
+          socketFactory: this.socketFactory,
+        })
+      : null;
+
+    const log = (msg: string) =>
+      this.outputChannel?.appendLine(`[${new Date().toISOString()}] ${msg}`);
+
+    if (consoleClient) {
+      consoleClient.on('ready', () =>
+        log(`Debug console connected to ${device.ip}:${consolePort}`));
+      consoleClient.on('disconnected', () =>
+        log(`Debug console disconnected from ${device.ip}:${consolePort} — reconnecting...`));
+    }
 
     const collectors: Collector[] = [];
     const collectorMeta: { type: DiagnosticEventType; intervalMs: number }[] = [];
@@ -107,17 +125,17 @@ export class DiagnosticsController {
 
     if (bool('diagnostics.collectors.memCpu.enabled', true)) {
       const i = num('diagnostics.collectors.memCpu.intervalMs', 1000);
-      add(new ChanperfCollector(consoleClient, i), i);
+      add(new EcpChanperfCollector(this.deps.ecp, device.ip, ecpPort, i), i);
     }
     if (bool('diagnostics.collectors.nodeCounts.enabled', true)) {
       const i = num('diagnostics.collectors.nodeCounts.intervalMs', 2000);
-      add(new NodeCountsCollector(consoleClient, i), i);
+      add(new EcpNodeCountsCollector(this.deps.ecp, device.ip, ecpPort, i), i);
     }
-    if (bool('diagnostics.collectors.systemMem.enabled', false)) {
+    if (bool('diagnostics.collectors.systemMem.enabled', false) && consoleClient) {
       const i = num('diagnostics.collectors.systemMem.intervalMs', 5000);
       add(new SystemMemCollector(consoleClient, i), i);
     }
-    if (bool('diagnostics.collectors.textures.enabled', false)) {
+    if (bool('diagnostics.collectors.textures.enabled', false) && consoleClient) {
       const i = num('diagnostics.collectors.textures.intervalMs', 5000);
       add(new TextureCollector(consoleClient, i), i);
     }
@@ -166,7 +184,7 @@ export class DiagnosticsController {
       dir,
       manifest,
       collectors,
-      transports: [consoleClient],
+      transports: consoleClient ? [consoleClient] : [],
       ringSize: num('diagnostics.maxLivePoints', 3600),
     });
     this.session = session;
@@ -179,7 +197,7 @@ export class DiagnosticsController {
         this.deps.rendezvousManager.resume();
         this.rendezvousSuspended = false;
       }
-      consoleClient.close();
+      consoleClient?.close();
       diagnosticsLock.release('diagnostics');
       throw err;
     }
