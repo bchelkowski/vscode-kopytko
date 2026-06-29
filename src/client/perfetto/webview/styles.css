@@ -4,14 +4,15 @@
   padding: 0;
 }
 
-html {
+html, body {
   height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   display: flex;
   flex-direction: column;
-  height: 100%;
   overflow: hidden;
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
@@ -82,9 +83,23 @@ body {
 }
 #live-badge.visible { display: inline-block; }
 
+#top-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 #buffer-size {
   font-size: 10px;
   color: var(--vscode-descriptionForeground);
+}
+
+#sync-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
 }
 
 .sep { flex: 1; }
@@ -109,7 +124,6 @@ body {
   border-bottom: 1px solid var(--vscode-inputValidation-warningBorder);
   font-size: 12px;
   color: var(--vscode-foreground);
-  flex-shrink: 0;
 }
 #lock-banner.visible { display: block; }
 
@@ -122,21 +136,26 @@ body {
   border-bottom: 1px solid var(--vscode-panel-border);
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
-  flex-shrink: 0;
 }
 #status-bar.visible { display: block; }
 
 /* ── Perfetto iframe ─────────────────────────────────────────────────────── */
 
 #perfetto-frame {
-  flex: 1;
+  /* flex: 1 alone is not enough in some webview hosts — min-height:0 allows
+     the frame to shrink below its intrinsic content height. Width/height are
+     also set explicitly by the resizeFrame() JS function for reliability. */
+  flex: 1 1 0;
+  min-height: 0;
   width: 100%;
+  height: 0;           /* overridden by JS immediately */
   border: none;
   display: block;
 }
 
 #placeholder {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;

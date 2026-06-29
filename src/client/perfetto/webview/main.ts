@@ -15,47 +15,61 @@ const vscode = acquireVsCodeApi();
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
-const toolbar = document.getElementById('toolbar')!;
-const btnStart = document.getElementById('btn-start') as HTMLButtonElement;
-const btnStop = document.getElementById('btn-stop') as HTMLButtonElement;
-const btnNewSession = document.getElementById('btn-new-session') as HTMLButtonElement;
-const btnHeapSnapshot = document.getElementById('btn-heap') as HTMLButtonElement;
-const liveBadge = document.getElementById('live-badge')!;
-const bufferSize = document.getElementById('buffer-size')!;
-const deviceInfo = document.getElementById('device-info')!;
-const sessionSelect = document.getElementById('session-select') as HTMLSelectElement;
-const lockBanner = document.getElementById('lock-banner')!;
-const statusBar = document.getElementById('status-bar')!;
-const perfettoFrame = document.getElementById('perfetto-frame') as HTMLIFrameElement;
-const placeholder = document.getElementById('placeholder')!;
-
-void toolbar; // referenced via DOM — suppress unused warning
+const btnStart       = document.getElementById('btn-start') as HTMLButtonElement;
+const btnStop        = document.getElementById('btn-stop') as HTMLButtonElement;
+const btnNewSession  = document.getElementById('btn-new-session') as HTMLButtonElement;
+const btnHeapSnapshot= document.getElementById('btn-heap') as HTMLButtonElement;
+const btnSync        = document.getElementById('btn-sync') as HTMLButtonElement;
+const liveBadge      = document.getElementById('live-badge')!;
+const syncBadge      = document.getElementById('sync-badge')!;
+const bufferSize     = document.getElementById('buffer-size')!;
+const deviceInfo     = document.getElementById('device-info')!;
+const sessionSelect  = document.getElementById('session-select') as HTMLSelectElement;
+const lockBanner     = document.getElementById('lock-banner')!;
+const statusBar      = document.getElementById('status-bar')!;
+const perfettoFrame  = document.getElementById('perfetto-frame') as HTMLIFrameElement;
+const placeholder    = document.getElementById('placeholder')!;
+const topBar         = document.getElementById('top-bar')!;  // wraps toolbar + banners
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let state: WebviewState = 'idle';
 let lockOwner: 'diagnostics' | 'perfetto' | null = null;
 let liveBuffer: Uint8Array = new Uint8Array(0);
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
+/** Byte length of liveBuffer at the time of the last sync to the iframe. */
+let lastSyncedBytes = 0;
 let iframeReady = false;
 let pingInterval: ReturnType<typeof setInterval> | null = null;
-let sessionStartNs = 0; // trace-time nanoseconds, estimated from first chunk arrival
 let isLiveMode = true;
 
-const PERFETTO_ORIGIN = 'https://ui.perfetto.dev';
-const REFRESH_INTERVAL_MS = 3000;
+const PERFETTO_ORIGIN  = 'https://ui.perfetto.dev';
 const PING_INTERVAL_MS = 250;
+
+// ── Frame resizing ────────────────────────────────────────────────────────────
+
+function resizeFrame(): void {
+  const topH = topBar.getBoundingClientRect().height;
+  const h = Math.max(0, window.innerHeight - topH);
+  perfettoFrame.style.height = h + 'px';
+  placeholder.style.height   = h + 'px';
+}
+
+// Resize whenever the top bar changes (banners appear/disappear) or window resizes.
+new ResizeObserver(resizeFrame).observe(topBar);
+window.addEventListener('resize', resizeFrame);
 
 // ── Iframe lifecycle ──────────────────────────────────────────────────────────
 
 function showIframe(): void {
   perfettoFrame.style.display = 'block';
   placeholder.style.display = 'none';
+  resizeFrame();
 }
 
 function showPlaceholder(): void {
   perfettoFrame.style.display = 'none';
   placeholder.style.display = 'flex';
+  resizeFrame();
 }
 
 function startPinging(): void {
@@ -76,8 +90,6 @@ function stopPinging(): void {
 
 function sendToPerfetto(buffer: ArrayBuffer, title: string): void {
   if (!iframeReady) return;
-  // Transfer the ArrayBuffer (zero-copy) — avoids a large structured-clone
-  // which Perfetto can misread as a slow network transfer.
   perfettoFrame.contentWindow?.postMessage(
     { perfetto: { buffer, title, keepApiOpen: true, localOnly: true } },
     PERFETTO_ORIGIN,
@@ -87,18 +99,31 @@ function sendToPerfetto(buffer: ArrayBuffer, title: string): void {
 
 function scrollToLiveEdge(): void {
   if (!iframeReady || liveBuffer.byteLength === 0) return;
-  // Perfetto trace time starts at 0 in the buffer; we don't know the exact
-  // trace-clock end without parsing proto, so scroll to the estimated duration.
-  // We estimate 1 second of trace per REFRESH_INTERVAL_MS of real time.
-  const estimatedDurationS = (Date.now() - (sessionStartNs / 1e6 || Date.now())) / 1000;
+  const estimatedDurationS = (Date.now() - (lastSyncTs || Date.now())) / 1000;
   if (estimatedDurationS <= 0) return;
-  const viewportS = 5; // show last 5 seconds
-  const timeEnd = estimatedDurationS + 0.5;
+  const viewportS = 5;
+  const timeEnd   = estimatedDurationS + 0.5;
   const timeStart = Math.max(0, timeEnd - viewportS);
   perfettoFrame.contentWindow?.postMessage(
     { perfetto: { timeStart, timeEnd, viewPercentage: 0.9 } },
     PERFETTO_ORIGIN,
   );
+}
+
+let lastSyncTs = 0;
+
+/** Push the current buffer to Perfetto and remember how much was synced. */
+function syncNow(title: string): void {
+  if (!iframeReady || liveBuffer.byteLength === 0) return;
+  const snapshot = liveBuffer.buffer.slice(
+    liveBuffer.byteOffset,
+    liveBuffer.byteOffset + liveBuffer.byteLength,
+  );
+  sendToPerfetto(snapshot, title);
+  lastSyncedBytes = liveBuffer.byteLength;
+  lastSyncTs = Date.now();
+  updateSyncBadge();
+  setTimeout(() => scrollToLiveEdge(), 800);
 }
 
 // ── Buffer management ─────────────────────────────────────────────────────────
@@ -109,64 +134,8 @@ function appendChunk(data: ArrayBuffer): void {
   combined.set(liveBuffer);
   combined.set(incoming, liveBuffer.byteLength);
   liveBuffer = combined;
-
-  if (sessionStartNs === 0) sessionStartNs = Date.now() * 1e6;
-
   updateBufferInfo();
-}
-
-function updateBufferInfo(): void {
-  const kb = (liveBuffer.byteLength / 1024).toFixed(1);
-  bufferSize.textContent = `${kb} KB`;
-}
-
-function startRefreshTimer(): void {
-  if (refreshTimer) return;
-  refreshTimer = setInterval(() => {
-    if (liveBuffer.byteLength === 0) return;
-    // Slice into a fresh ArrayBuffer and transfer it to the iframe.
-    // The transfer is zero-copy from the browser's perspective, which prevents
-    // Perfetto's "network too slow" warning that occurs with structured-clone.
-    // We keep liveBuffer intact (it's a Uint8Array, not an ArrayBuffer).
-    const snapshot = liveBuffer.buffer.slice(
-      liveBuffer.byteOffset,
-      liveBuffer.byteOffset + liveBuffer.byteLength,
-    );
-    sendToPerfetto(snapshot, 'Kopytko Perfetto — Live');
-    setTimeout(() => scrollToLiveEdge(), 800);
-  }, REFRESH_INTERVAL_MS);
-}
-
-function stopRefreshTimer(): void {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-}
-
-// ── UI updates ────────────────────────────────────────────────────────────────
-
-function applyState(): void {
-  const locked = lockOwner === 'diagnostics';
-  lockBanner.classList.toggle('visible', locked);
-
-  const isRecording = state === 'recording';
-  const isDeploying = state === 'deploying';
-  const isStopped = state === 'stopped' || state === 'idle';
-
-  btnStart.disabled = locked || isRecording || isDeploying;
-  btnStop.disabled = !isRecording;
-  btnNewSession.disabled = locked || isDeploying;
-  btnHeapSnapshot.disabled = !isRecording;
-
-  liveBadge.classList.toggle('visible', isRecording && isLiveMode);
-  statusBar.classList.toggle('visible', isDeploying);
-  if (isDeploying) statusBar.textContent = 'Deploying app to device…';
-  void isStopped;
-}
-
-function formatDate(wall: number): string {
-  return new Date(wall).toLocaleString();
+  updateSyncBadge();
 }
 
 function formatBytes(bytes: number): string {
@@ -175,17 +144,53 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function populateSessions(sessions: SerializedPerfettoSession[]): void {
-  // Keep the placeholder option + rebuild the rest.
-  while (sessionSelect.options.length > 1) sessionSelect.remove(1);
+function updateBufferInfo(): void {
+  bufferSize.textContent = formatBytes(liveBuffer.byteLength);
+}
 
+function updateSyncBadge(): void {
+  const unseen = liveBuffer.byteLength - lastSyncedBytes;
+  if (unseen > 0 && isLiveMode && state === 'recording') {
+    syncBadge.textContent = `+${formatBytes(unseen)} new`;
+    syncBadge.style.display = 'inline';
+  } else {
+    syncBadge.style.display = 'none';
+  }
+  btnSync.disabled = !iframeReady || liveBuffer.byteLength === 0;
+}
+
+// ── UI state ──────────────────────────────────────────────────────────────────
+
+function applyState(): void {
+  const locked      = lockOwner === 'diagnostics';
+  const isRecording = state === 'recording';
+  const isDeploying = state === 'deploying';
+
+  lockBanner.classList.toggle('visible', locked);
+
+  btnStart.disabled       = locked || isRecording || isDeploying;
+  btnStop.disabled        = !isRecording;
+  btnNewSession.disabled  = locked || isDeploying;
+  btnHeapSnapshot.disabled= !isRecording;
+
+  liveBadge.classList.toggle('visible', isRecording && isLiveMode);
+  statusBar.classList.toggle('visible', isDeploying);
+  if (isDeploying) statusBar.textContent = 'Deploying app to device…';
+
+  resizeFrame();
+}
+
+function formatDate(wall: number): string {
+  return new Date(wall).toLocaleString();
+}
+
+function populateSessions(sessions: SerializedPerfettoSession[]): void {
+  while (sessionSelect.options.length > 1) sessionSelect.remove(1);
   for (const s of sessions) {
     const opt = document.createElement('option');
     opt.value = s.dir;
     const label = s.appTitle ?? s.deviceIp;
-    const date = formatDate(s.startedWall);
-    const size = formatBytes(s.traceBytes);
-    opt.textContent = `${label} – ${date} (${size})`;
+    opt.textContent = `${label} – ${formatDate(s.startedWall)} (${formatBytes(s.traceBytes)})`;
     sessionSelect.appendChild(opt);
   }
 }
@@ -198,10 +203,9 @@ window.addEventListener('message', (event) => {
     if (event.data === 'PONG') {
       stopPinging();
       iframeReady = true;
-      // If we already have a buffer (live session was active when panel opened), push it now.
+      // Push whatever we have as soon as the iframe is ready.
       if (liveBuffer.byteLength > 0) {
-        const snapshot = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
-        sendToPerfetto(snapshot, 'Kopytko Perfetto — Live');
+        syncNow('Kopytko Perfetto — Live');
       }
     }
     return;
@@ -220,19 +224,22 @@ window.addEventListener('message', (event) => {
     case 'state': {
       state = msg.state;
       if (msg.device) {
-        deviceInfo.textContent = `${msg.device.name} (${msg.device.ip})${msg.device.appTitle ? ' · ' + msg.device.appTitle : ''}`;
+        deviceInfo.textContent =
+          `${msg.device.name} (${msg.device.ip})` +
+          (msg.device.appTitle ? ` · ${msg.device.appTitle}` : '');
       }
       isLiveMode = true;
+
       if (state === 'recording') {
         startPinging();
-        startRefreshTimer();
       } else {
-        stopRefreshTimer();
         if (state === 'idle') {
           showPlaceholder();
-          liveBuffer = new Uint8Array(0);
-          sessionStartNs = 0;
+          liveBuffer        = new Uint8Array(0);
+          lastSyncedBytes   = 0;
+          lastSyncTs        = 0;
           updateBufferInfo();
+          updateSyncBadge();
         }
       }
       applyState();
@@ -251,11 +258,10 @@ window.addEventListener('message', (event) => {
 
     case 'replay': {
       isLiveMode = false;
-      stopRefreshTimer();
       liveBadge.classList.remove('visible');
+      syncBadge.style.display = 'none';
       startPinging();
-      // Once PONG arrives, we send the replay buffer.  Store it temporarily.
-      const replayData = msg.data;
+      const replayData  = msg.data;
       const replayTitle = `${msg.session.appTitle ?? msg.session.deviceIp} – ${formatDate(msg.session.startedWall)}`;
       const onPong = (e: MessageEvent) => {
         if (e.source !== perfettoFrame.contentWindow || e.data !== 'PONG') return;
@@ -267,13 +273,11 @@ window.addEventListener('message', (event) => {
     }
 
     case 'error': {
-      // Show the error message, then reset to idle so buttons re-enable.
-      // applyState() would hide the status bar (isDeploying=false), so we
-      // set state first, call applyState for button states, then force the bar visible.
       state = 'idle';
       applyState();
       statusBar.textContent = `⚠ ${msg.message}`;
       statusBar.classList.add('visible');
+      resizeFrame();
       break;
     }
   }
@@ -282,12 +286,13 @@ window.addEventListener('message', (event) => {
 // ── Button handlers ───────────────────────────────────────────────────────────
 
 function resetBufferForNewSession(): void {
-  liveBuffer = new Uint8Array(0);
-  sessionStartNs = 0;
+  liveBuffer       = new Uint8Array(0);
+  lastSyncedBytes  = 0;
+  lastSyncTs       = 0;
+  iframeReady      = false;
   updateBufferInfo();
-  iframeReady = false;
+  updateSyncBadge();
   stopPinging();
-  stopRefreshTimer();
 }
 
 btnStart.addEventListener('click', () => {
@@ -298,19 +303,14 @@ btnStart.addEventListener('click', () => {
 });
 
 btnStop.addEventListener('click', () => {
-  stopRefreshTimer();
   vscode.postMessage({ kind: 'stop' });
-  // Push final buffer immediately so Perfetto shows the complete trace.
+  // Push final buffer to iframe so Perfetto shows the complete session.
   if (liveBuffer.byteLength > 0 && iframeReady) {
-    const final = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
-    sendToPerfetto(final, 'Kopytko Perfetto — Final');
+    syncNow('Kopytko Perfetto — Final');
   }
 });
 
 btnNewSession.addEventListener('click', () => {
-  // Optimistically set deploying so the status bar shows immediately.
-  // The extension will also emit 'deploying' state, but this makes the UI
-  // feel instant without waiting for the round-trip.
   resetBufferForNewSession();
   state = 'deploying';
   applyState();
@@ -319,6 +319,11 @@ btnNewSession.addEventListener('click', () => {
 
 btnHeapSnapshot.addEventListener('click', () => {
   vscode.postMessage({ kind: 'heap-snapshot' });
+});
+
+// Sync: manually push the current buffer to the Perfetto iframe on demand.
+btnSync.addEventListener('click', () => {
+  syncNow('Kopytko Perfetto — Live');
 });
 
 sessionSelect.addEventListener('change', () => {
@@ -334,3 +339,4 @@ sessionSelect.addEventListener('change', () => {
 
 showPlaceholder();
 applyState();
+resizeFrame();
