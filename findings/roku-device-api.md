@@ -67,9 +67,9 @@ Response when no events:
 
 **Text-based request/response console.** Send `command\r\n`, read until the device stops sending (idle for ~250ms) — the response ends with a `>` prompt but since `>` appears inside XML responses it cannot be used as a terminator. Use idle-time detection instead.
 
-**⚠ Requires `remotedebug=1` in the channel manifest.** Port 8080 is only active when the channel was deployed with `remotedebug=1`. Without it, the channel runs normally but port 8080 stays closed — TCP connections are refused immediately. Verified live on Roku Ultra 4850X firmware 15.2.4: ECP `/query/active-app` showed the dev channel running, but `Test-NetConnection` to port 8080 returned false.
+**Availability:** port 8080 is active whenever a sideloaded developer channel is running. It does NOT require `remotedebug=1` — that flag enables the binary remote debugger on port 8081, which is a different service. Port 8080 (SceneGraph debug console) is a plain text console available to any dev channel without special manifest flags.
 
-The VS Code debug session (F5) automatically injects `remotedebug=1` via `rokuDeployer`. For the Diagnostics panel, the user must press F5 first (or manually add `remotedebug=1` to their manifest) before starting a diagnostics session. The Perfetto panel is unaffected — it deploys its own build with `run_as_process=1`.
+**Observed intermittency on Roku Ultra 4850X firmware 15.2.4:** `Test-NetConnection` showed port 8080 OPEN when the dev channel was first queried, then CLOSED minutes later while ECP still reported the same channel as active. The cause is unclear — possibly the channel exited/crashed between the two probes, or the debug console has a connection timeout. The `DebugConsoleClient` auto-reconnects with exponential backoff, so transient closure is handled, but persistent closure means no chanperf/sgnodes data.
 
 The very first response after connecting includes a device banner:
 ```

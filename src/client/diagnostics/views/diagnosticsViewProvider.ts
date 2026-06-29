@@ -253,10 +253,9 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       this.post({
         kind: 'status',
         message:
-          '⚠ No data received. The SceneGraph debug console (port 8080) is not active — ' +
-          'it requires the channel to be deployed with remotedebug=1. ' +
-          'Press F5 to start a debug session (which injects remotedebug=1 automatically), ' +
-          'then click Start here. Both can run simultaneously.',
+          '⚠ No data from port 8080 (SceneGraph debug console) after 15 s. ' +
+          'Ensure a developer (sideloaded) channel is actively running on the device. ' +
+          'Check the "Kopytko Diagnostics" output channel (View → Output) for connection details.',
       } satisfies ExtMsg);
     }, 15_000);
   }

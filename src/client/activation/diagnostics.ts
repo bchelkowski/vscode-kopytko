@@ -11,12 +11,20 @@ export function registerDiagnostics(
   context: vscode.ExtensionContext,
   services: DiscoveryServices,
 ): DiagnosticsController {
-  const controller = new DiagnosticsController({
-    deviceManager: services.deviceManager,
-    ecp: services.ecp,
-    rendezvousManager: services.rendezvousManager,
-    workspaceRoot: services.workspaceRoot,
-  });
+  const outputChannel = vscode.window.createOutputChannel('Kopytko Diagnostics');
+  context.subscriptions.push(outputChannel);
+
+  const controller = new DiagnosticsController(
+    {
+      deviceManager: services.deviceManager,
+      ecp: services.ecp,
+      rendezvousManager: services.rendezvousManager,
+      workspaceRoot: services.workspaceRoot,
+    },
+    undefined,
+    undefined,
+    outputChannel,
+  );
 
   const provider = new DiagnosticsViewProvider(context, controller);
 

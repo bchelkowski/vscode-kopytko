@@ -44,6 +44,8 @@ export class DiagnosticsController {
     private readonly sink: DiagnosticsSink = nodeSink,
     /** Injectable for tests so no real socket is opened. */
     private readonly socketFactory?: ConsoleSocketFactory,
+    /** Optional output channel for connection diagnostics. */
+    private readonly outputChannel?: vscode.OutputChannel,
   ) {}
 
   get activeSession(): DiagnosticsSession | undefined {
@@ -91,6 +93,10 @@ export class DiagnosticsController {
       port: consolePort,
       socketFactory: this.socketFactory,
     });
+
+    const log = (msg: string) => this.outputChannel?.appendLine(`[${new Date().toISOString()}] ${msg}`);
+    consoleClient.on('ready', () => log(`Debug console connected to ${device.ip}:${consolePort} — collecting chanperf/sgnodes`));
+    consoleClient.on('disconnected', () => log(`Debug console disconnected from ${device.ip}:${consolePort} — reconnecting...`));
 
     const collectors: Collector[] = [];
     const collectorMeta: { type: DiagnosticEventType; intervalMs: number }[] = [];
