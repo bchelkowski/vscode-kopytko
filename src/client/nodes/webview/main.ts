@@ -248,13 +248,18 @@ function updateLegend(): void {
 
 // ── ICICLE CHART (Canvas 2D, no zoom/pan — click to focus) ───────────────────
 
-const ROW_H = 22;
+// Maximum depth levels shown at once.  User clicks to focus a subtree for more detail.
+const MAX_ROWS = 6;
+const ROW_H    = 22;   // px per depth level — compact but readable
 
 function computeIcicle(focus: SgNode): IcRect[] {
-  const W = icCanvas.width || 800;
+  const W      = icCanvas.width  || 800;
+  const totalH = MAX_ROWS * ROW_H;    // fixed chart height regardless of tree size
+
   const layout = d3partition<SgNode>()
-    .size([W, (focus.size + 2) * ROW_H])  // height grows with tree depth
-    .padding(1).round(true);
+    .size([W, totalH])     // ← was wrong: was (size+2)*ROW_H → enormous canvas
+    .padding(1)
+    .round(true);
 
   const hier = hierarchy(focus, d => d.children.length ? d.children : null)
     .sum(d => d.children.length === 0 ? 1 : 0)
@@ -262,12 +267,9 @@ function computeIcicle(focus: SgNode): IcRect[] {
 
   layout(hier);
 
-  const rects: IcRect[] = [];
-  for (const d of hier.descendants()) {
-    if ((d.x1 - d.x0) < 0.5) continue;
-    rects.push({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, data: d.data, depth: d.depth });
-  }
-  return rects;
+  return hier.descendants()
+    .filter(d => d.depth < MAX_ROWS && (d.x1 - d.x0) >= 0.5)
+    .map(d => ({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, data: d.data, depth: d.depth }));
 }
 
 function drawIcicle(): void {
@@ -276,7 +278,6 @@ function drawIcicle(): void {
 
   for (const r of icRects) {
     const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
-    if (r.y0 > H) continue;   // below viewport — skip
 
     const color = colorFor(r.data.type);
     const alpha  = Math.max(0.35, 0.8 - r.depth * 0.04);
