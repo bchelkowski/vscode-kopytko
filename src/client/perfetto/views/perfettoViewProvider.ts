@@ -176,6 +176,12 @@ export class PerfettoViewProvider implements vscode.WebviewViewProvider {
       this.sendSessions();
     };
     this.controller.once('stop', this.stopListener);
+
+    // Forward the 'deploying' event so the webview can show the deploy status
+    // even for New Session (where the webview doesn't set the state locally).
+    this.controller.once('deploying', () => {
+      this.post({ kind: 'state', state: 'deploying' } satisfies ExtMsg);
+    });
   }
 
   private detachControllerListeners(): void {

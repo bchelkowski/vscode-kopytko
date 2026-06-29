@@ -76,9 +76,12 @@ function stopPinging(): void {
 
 function sendToPerfetto(buffer: ArrayBuffer, title: string): void {
   if (!iframeReady) return;
+  // Transfer the ArrayBuffer (zero-copy) — avoids a large structured-clone
+  // which Perfetto can misread as a slow network transfer.
   perfettoFrame.contentWindow?.postMessage(
     { perfetto: { buffer, title, keepApiOpen: true, localOnly: true } },
     PERFETTO_ORIGIN,
+    [buffer],
   );
 }
 
@@ -121,8 +124,15 @@ function startRefreshTimer(): void {
   if (refreshTimer) return;
   refreshTimer = setInterval(() => {
     if (liveBuffer.byteLength === 0) return;
-    const copy = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
-    sendToPerfetto(copy, 'Kopytko Perfetto — Live');
+    // Slice into a fresh ArrayBuffer and transfer it to the iframe.
+    // The transfer is zero-copy from the browser's perspective, which prevents
+    // Perfetto's "network too slow" warning that occurs with structured-clone.
+    // We keep liveBuffer intact (it's a Uint8Array, not an ArrayBuffer).
+    const snapshot = liveBuffer.buffer.slice(
+      liveBuffer.byteOffset,
+      liveBuffer.byteOffset + liveBuffer.byteLength,
+    );
+    sendToPerfetto(snapshot, 'Kopytko Perfetto — Live');
     setTimeout(() => scrollToLiveEdge(), 800);
   }, REFRESH_INTERVAL_MS);
 }
@@ -190,8 +200,8 @@ window.addEventListener('message', (event) => {
       iframeReady = true;
       // If we already have a buffer (live session was active when panel opened), push it now.
       if (liveBuffer.byteLength > 0) {
-        const copy = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
-        sendToPerfetto(copy, 'Kopytko Perfetto — Live');
+        const snapshot = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
+        sendToPerfetto(snapshot, 'Kopytko Perfetto — Live');
       }
     }
     return;
@@ -257,11 +267,13 @@ window.addEventListener('message', (event) => {
     }
 
     case 'error': {
-      // Show error in status bar.
-      statusBar.textContent = `Error: ${msg.message}`;
-      statusBar.classList.add('visible');
+      // Show the error message, then reset to idle so buttons re-enable.
+      // applyState() would hide the status bar (isDeploying=false), so we
+      // set state first, call applyState for button states, then force the bar visible.
       state = 'idle';
       applyState();
+      statusBar.textContent = `⚠ ${msg.message}`;
+      statusBar.classList.add('visible');
       break;
     }
   }
@@ -269,10 +281,17 @@ window.addEventListener('message', (event) => {
 
 // ── Button handlers ───────────────────────────────────────────────────────────
 
-btnStart.addEventListener('click', () => {
+function resetBufferForNewSession(): void {
   liveBuffer = new Uint8Array(0);
   sessionStartNs = 0;
   updateBufferInfo();
+  iframeReady = false;
+  stopPinging();
+  stopRefreshTimer();
+}
+
+btnStart.addEventListener('click', () => {
+  resetBufferForNewSession();
   state = 'deploying';
   applyState();
   vscode.postMessage({ kind: 'start' });
@@ -281,14 +300,20 @@ btnStart.addEventListener('click', () => {
 btnStop.addEventListener('click', () => {
   stopRefreshTimer();
   vscode.postMessage({ kind: 'stop' });
-  // Push final buffer immediately.
+  // Push final buffer immediately so Perfetto shows the complete trace.
   if (liveBuffer.byteLength > 0 && iframeReady) {
-    const copy = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
-    sendToPerfetto(copy, 'Kopytko Perfetto — Final');
+    const final = liveBuffer.buffer.slice(liveBuffer.byteOffset, liveBuffer.byteOffset + liveBuffer.byteLength);
+    sendToPerfetto(final, 'Kopytko Perfetto — Final');
   }
 });
 
 btnNewSession.addEventListener('click', () => {
+  // Optimistically set deploying so the status bar shows immediately.
+  // The extension will also emit 'deploying' state, but this makes the UI
+  // feel instant without waiting for the round-trip.
+  resetBufferForNewSession();
+  state = 'deploying';
+  applyState();
   vscode.postMessage({ kind: 'new-session' });
 });
 

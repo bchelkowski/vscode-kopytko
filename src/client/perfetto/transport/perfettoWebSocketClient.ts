@@ -107,6 +107,11 @@ export class PerfettoWebSocketClient extends EventEmitter {
     return this.totalBytes;
   }
 
+  /** True when the underlying WebSocket is open (not closed or errored). */
+  get isConnected(): boolean {
+    return this.ws !== null;
+  }
+
   dispose(): void {
     this.ws?.terminate();
     this.ws = null;

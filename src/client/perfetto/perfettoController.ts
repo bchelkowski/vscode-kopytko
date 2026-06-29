@@ -117,6 +117,7 @@ export class PerfettoController extends EventEmitter {
     earlyWs.start();
 
     // 3. Deploy with run_as_process=1 (slow — build + upload + Roku installs channel).
+    this.emit('deploying');
     try {
       await deployForPerfetto({
         rootDir: workspaceRoot,
@@ -129,6 +130,13 @@ export class PerfettoController extends EventEmitter {
     } catch (err) {
       earlyWs.dispose();
       throw err;
+    }
+
+    // 3b. The Roku closes the WebSocket session endpoint when the channel restarts.
+    //     If the early WS died during the deploy, reconnect it now so we start
+    //     receiving trace data as soon as the new channel is running.
+    if (!earlyWs.isConnected) {
+      earlyWs.start();
     }
 
     // 4. Resolve app metadata for session folder name.
