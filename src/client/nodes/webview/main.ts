@@ -1,20 +1,14 @@
 /**
- * SG Node Tree Explorer — Icicle (flame chart) + collapsible tree.
+ * SG Node Tree Explorer — Icicle (flame chart) visualisation.
  *
- * Icicle: Canvas 2D, D3 partition layout.
- *   - Click a cell → focus that subtree (refill full width, no manual zoom)
- *   - Double-click → go up one level
- *   - Hover → tooltip
- *   - Breadcrumb bar above chart shows current path
- *   - Legend bar below chart shows node type → colour
- *
- * Tree: SVG, D3 collapsible tree (horizontal).
+ * Canvas 2D, D3 partition layout.
+ * - Each row = one depth level, always exactly ROW_H px tall.
+ * - Click a cell → focus that subtree (refill full width).
+ * - Double-click → go up one level.
+ * - Breadcrumb bar shows current path; legend bar shows type colours.
  */
 
-import { hierarchy, partition as d3partition, tree as d3tree } from 'd3-hierarchy';
-import { select, type Selection } from 'd3-selection';
-import { zoom as d3zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom';
-import type { HierarchyNode } from 'd3-hierarchy';
+import { hierarchy, partition as d3partition } from 'd3-hierarchy';
 import type { ExtMsg, WebMsg } from './protocol';
 
 declare function acquireVsCodeApi(): { postMessage(msg: WebMsg): void };
@@ -29,7 +23,6 @@ interface SgNode {
   attrs:     Record<string, string>;
   children:  SgNode[];
   size:      number;
-  _collapsed?: boolean;
 }
 
 interface IcRect {
@@ -47,50 +40,34 @@ const overlayEl     = document.getElementById('overlay')!;
 const tooltipEl     = document.getElementById('tooltip')!;
 const nodeCountEl   = document.getElementById('node-count')!;
 const channelLabel  = document.getElementById('channel-label')!;
-const searchInput   = document.getElementById('search') as HTMLInputElement;
-const btnIcicle     = document.getElementById('btn-treemap') as HTMLButtonElement;
-const btnTree       = document.getElementById('btn-tree') as HTMLButtonElement;
 const btnRefresh    = document.getElementById('btn-refresh') as HTMLButtonElement;
-
-const icCanvas  = document.getElementById('ic-canvas') as HTMLCanvasElement;
-const ctx       = icCanvas.getContext('2d')!;
-const treeSvgEl = document.getElementById('tree-svg') as unknown as SVGSVGElement;
+const icCanvas      = document.getElementById('ic-canvas') as HTMLCanvasElement;
+const ctx           = icCanvas.getContext('2d')!;
 
 // ── Sizing ────────────────────────────────────────────────────────────────────
 
 function applySize(): void {
   const W = mainEl.clientWidth  || 800;
   const H = mainEl.clientHeight || 600;
-  icCanvas.width  = W; icCanvas.height = H;
-  treeSvgEl.setAttribute('width',   W + 'px');
-  treeSvgEl.setAttribute('height',  H + 'px');
-  treeSvgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  icCanvas.width  = W;
+  icCanvas.height = H;
 }
 
 new ResizeObserver(() => { applySize(); onResize(); }).observe(mainEl);
-window.addEventListener('resize',   () => { applySize(); onResize(); });
+window.addEventListener('resize', () => { applySize(); onResize(); });
 
 function onResize(): void {
   if (!rootNode) return;
-  if (mode === 'icicle') {
-    icRects = computeIcicle(focusNode ?? rootNode);
-    scheduleRedraw();   // throttled via RAF — no focus/breadcrumb reset
-  } else {
-    renderTree(rootNode);
-  }
+  icRects = computeIcicle(focusNode ?? rootNode);
+  scheduleRedraw();
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-type Mode = 'icicle' | 'tree';
-let mode: Mode   = 'icicle';
-let rootNode: SgNode | null = null;
-let filterText   = '';
+let rootNode:  SgNode | null = null;
 let focusNode: SgNode | null = null;
-let icRects: IcRect[] = [];
-let svgZoom: ZoomBehavior<SVGSVGElement, unknown> | null = null;
+let icRects:   IcRect[]      = [];
 
-// RAF handle — prevents redundant redraws when layout changes faster than 60fps
 let rafPending = false;
 function scheduleRedraw(): void {
   if (rafPending) return;
@@ -111,10 +88,7 @@ function colorFor(type: string): string {
   return typeColorMap.get(type)!;
 }
 function hexRgba(hex: string, a: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${a})`;
+  return `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${a})`;
 }
 
 // ── XML parser ────────────────────────────────────────────────────────────────
@@ -151,11 +125,6 @@ function calcSize(n: SgNode): void {
 
 function nodeLabel(n: SgNode): string {
   return n.name ? `${n.type}  "${n.name}"` : n.type;
-}
-
-function defaultCollapse(n: SgNode, depth: number): void {
-  if (depth >= 3) { n._collapsed = true; return; }
-  n.children.forEach(c => defaultCollapse(c, depth + 1));
 }
 
 // ── Overlay / tooltip ─────────────────────────────────────────────────────────
@@ -218,7 +187,7 @@ function updateBreadcrumb(): void {
     if (i < path.length - 1) {
       const captured = n;
       crumb.addEventListener('click', () => {
-        focusNode = captured === rootNode ? null : captured;
+        focusNode = (captured === rootNode) ? null : captured;
         renderIcicle();
       });
     }
@@ -230,38 +199,31 @@ function updateBreadcrumb(): void {
 
 function updateLegend(): void {
   legendBar.innerHTML = '';
-
-  // Collect types visible in current rects, sorted by frequency
   const counts = new Map<string, number>();
   for (const r of icRects) counts.set(r.data.type, (counts.get(r.data.type) ?? 0) + 1);
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
-
   for (const [type] of sorted) {
     const entry = document.createElement('div');
     entry.className = 'legend-entry';
-
     const swatch = document.createElement('div');
     swatch.className = 'legend-swatch';
     swatch.style.background = colorFor(type);
-
     const label = document.createElement('span');
     label.textContent = type;
-
-    entry.appendChild(swatch);
-    entry.appendChild(label);
+    entry.appendChild(swatch); entry.appendChild(label);
     legendBar.appendChild(entry);
   }
 }
 
-// ── ICICLE CHART (Canvas 2D, no zoom/pan — click to focus) ───────────────────
+// ── ICICLE CHART (Canvas 2D) ──────────────────────────────────────────────────
 
 const MAX_ROWS = 6;
-const ROW_H    = 26;   // px per row — always fixed, never scaled by tree depth
+const ROW_H    = 26;
 
 function computeIcicle(focus: SgNode): IcRect[] {
   const W = icCanvas.width || 800;
+  if (!W) return [];
 
-  // Give D3 any height — we override y0/y1 ourselves.
   const layout = d3partition<SgNode>()
     .size([W, MAX_ROWS * ROW_H])
     .padding(1)
@@ -273,13 +235,8 @@ function computeIcicle(focus: SgNode): IcRect[] {
 
   layout(hier);
 
-  // Override D3's y positions so every depth level is exactly ROW_H tall.
-  // D3 divides the total height by the actual max-depth, producing variable
-  // row heights when the tree is shallower than MAX_ROWS.
-  hier.each(d => {
-    d.y0 = d.depth * ROW_H;
-    d.y1 = d.y0 + ROW_H;
-  });
+  // Override D3's y values so every depth level is always exactly ROW_H tall.
+  hier.each(d => { d.y0 = d.depth * ROW_H; d.y1 = d.y0 + ROW_H; });
 
   return hier.descendants()
     .filter(d => d.depth < MAX_ROWS && (d.x1 - d.x0) >= 0.5)
@@ -288,25 +245,23 @@ function computeIcicle(focus: SgNode): IcRect[] {
 
 function drawIcicle(): void {
   const W = icCanvas.width, H = icCanvas.height;
-  if (!W || !H) return;   // guard against zero-size canvas
+  if (!W || !H) return;
 
-  try {
-    ctx.clearRect(0, 0, W, H);
-  } catch { return; }
+  try { ctx.clearRect(0, 0, W, H); } catch { return; }
 
   for (const r of icRects) {
     const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
 
     const color = colorFor(r.data.type);
-    const alpha  = Math.max(0.35, 0.8 - r.depth * 0.04);
+    const alpha  = Math.max(0.35, 0.82 - r.depth * 0.05);
     ctx.fillStyle = hexRgba(color, alpha);
     ctx.fillRect(r.x0, r.y0, cw, ch);
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
     ctx.lineWidth   = 0.5;
     ctx.strokeRect(r.x0, r.y0, cw, ch);
 
-    if (cw < 24) continue;  // too narrow for any label
+    if (cw < 24) continue;
 
     const fontSize = Math.min(12, ROW_H * 0.6);
     ctx.font      = `${fontSize}px system-ui, sans-serif`;
@@ -326,65 +281,21 @@ function drawIcicle(): void {
 
 function renderIcicle(): void {
   if (!rootNode) return;
-  const focus = focusNode ?? rootNode;
-  icRects = computeIcicle(focus);
+  icRects = computeIcicle(focusNode ?? rootNode);
   drawIcicle();
   updateBreadcrumb();
   updateLegend();
 }
 
-// Icicle interaction — click to focus subtree, double-click to go up, hover tooltip
+// ── Interaction ───────────────────────────────────────────────────────────────
 
 function hitTest(offsetX: number, offsetY: number): SgNode | null {
   for (let i = icRects.length - 1; i >= 0; i--) {
     const r = icRects[i];
-    if (offsetX >= r.x0 && offsetX <= r.x1 && offsetY >= r.y0 && offsetY <= r.y1) {
-      return r.data;
-    }
+    if (offsetX >= r.x0 && offsetX <= r.x1 && offsetY >= r.y0 && offsetY <= r.y1) return r.data;
   }
   return null;
 }
-
-let lastHovered: SgNode | null = null;
-
-icCanvas.addEventListener('click', e => {
-  if (!rootNode) return;
-  const found = hitTest(e.offsetX, e.offsetY);
-  if (!found) return;
-  if (found.children.length > 0 && found !== (focusNode ?? rootNode)) {
-    focusNode = found;
-    renderIcicle();
-  }
-});
-
-icCanvas.addEventListener('dblclick', () => {
-  if (!rootNode || !focusNode || focusNode === rootNode) return;
-  const parent = findParent(rootNode, focusNode);
-  focusNode = (parent === rootNode) ? null : parent;
-  renderIcicle();
-});
-
-icCanvas.addEventListener('mousemove', e => {
-  const found = hitTest(e.offsetX, e.offsetY);
-  icCanvas.style.cursor = (found && found.children.length > 0) ? 'pointer' : 'default';
-  if (found !== lastHovered) {
-    lastHovered = found;
-    if (found) scheduleTooltip(found, e.clientX, e.clientY);
-    else hideTooltip();
-  } else if (found) {
-    // Update tooltip position as mouse moves
-    if (ttTimer) clearTimeout(ttTimer);
-    ttTimer = setTimeout(() => {
-      if (lastHovered) scheduleTooltip(lastHovered, e.clientX, e.clientY);
-    }, 0);
-  }
-});
-
-icCanvas.addEventListener('mouseleave', () => {
-  hideTooltip();
-  lastHovered = null;
-  icCanvas.style.cursor = 'default';
-});
 
 function findParent(root: SgNode, target: SgNode): SgNode | null {
   for (const c of root.children) {
@@ -395,114 +306,38 @@ function findParent(root: SgNode, target: SgNode): SgNode | null {
   return null;
 }
 
-// ── TREE (SVG) ────────────────────────────────────────────────────────────────
+let lastHovered: SgNode | null = null;
 
-function renderTree(root: SgNode): void {
-  const svg = select(treeSvgEl as Element);
-  svg.selectAll('*').remove();
-  breadcrumbBar.innerHTML = '';
-  legendBar.innerHTML = '';
-
-  const W = mainEl.clientWidth  || 800;
-  const H = mainEl.clientHeight || 600;
-
-  const zoomG = svg.append('g');
-  if (svgZoom) svg.on('.zoom', null);
-  svgZoom = d3zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.04, 4])
-    .on('zoom', ev => zoomG.attr('transform', ev.transform));
-  (svg as unknown as Selection<SVGSVGElement, unknown, null, undefined>).call(svgZoom as never);
-
-  const q = filterText.toLowerCase();
-  function visChildren(n: SgNode): SgNode[] | undefined {
-    return n._collapsed || !n.children.length ? undefined : n.children;
-  }
-  function matches(n: SgNode): boolean {
-    return !q || n.type.toLowerCase().includes(q) || (n.name ?? '').toLowerCase().includes(q);
-  }
-
-  function update(): void {
-    zoomG.selectAll('*').remove();
-    const layout = d3tree<SgNode>().nodeSize([26, 240]);
-    const hier   = hierarchy<SgNode>(root, visChildren);
-    layout(hier);
-
-    let minX = Infinity, maxX = -Infinity;
-    hier.each(d => { minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x); });
-    const oy = H / 2 - (minX + maxX) / 2, ox = 50;
-
-    zoomG.selectAll('path.link')
-      .data(hier.links())
-      .join('path').attr('class', 'link')
-      .attr('d', d => {
-        const sx = d.source.y + ox, sy = d.source.x + oy;
-        const tx = d.target.y + ox, ty = d.target.x + oy;
-        const mx = (sx + tx) / 2;
-        return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
-      });
-
-    const nodeG = zoomG.selectAll<SVGGElement, HierarchyNode<SgNode>>('g.node')
-      .data(hier.descendants())
-      .join('g').attr('class', 'node')
-      .attr('transform', d => `translate(${d.y + ox},${d.x + oy})`);
-
-    const R = 6;
-    nodeG.append('circle')
-      .attr('r', R)
-      .attr('fill', d => {
-        if (!matches(d.data)) return 'transparent';
-        const n = d.data;
-        if (n._collapsed && n.children.length) return colorFor(n.type);
-        return hexRgba(colorFor(n.type), n.children.length ? 0.2 : 0.25);
-      })
-      .attr('stroke', d => colorFor(d.data.type))
-      .attr('stroke-width', d => d.data.children.length ? 1.5 : 1)
-      .style('cursor', d => d.data.children.length ? 'pointer' : 'default')
-      .on('click', (_e, d) => { if (!d.data.children.length) return; d.data._collapsed = !d.data._collapsed; update(); })
-      .on('mousemove', (e, d) => scheduleTooltip(d.data, e.clientX, e.clientY))
-      .on('mouseleave', hideTooltip);
-
-    nodeG.filter(d => d.data.children.length > 0)
-      .append('text')
-      .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
-      .attr('font-size', 7).attr('fill', d => colorFor(d.data.type))
-      .style('pointer-events', 'none')
-      .text(d => d.data._collapsed ? '▶' : '▾');
-
-    nodeG.append('text')
-      .attr('x', d => R + (d.data.children.length ? 11 : 7))
-      .attr('dominant-baseline', 'central').attr('font-size', 12)
-      .attr('fill', d => matches(d.data) ? 'var(--vscode-editor-foreground,#ccc)' : 'rgba(200,200,200,0.2)')
-      .style('pointer-events', 'none')
-      .text(d => {
-        const n = d.data;
-        return n._collapsed && n.children.length ? `${nodeLabel(n)}  [${n.size - 1}]` : nodeLabel(n);
-      });
-  }
-
-  update();
-  (svg as unknown as Selection<SVGSVGElement, unknown, null, undefined>)
-    .call((svgZoom as never), zoomIdentity.translate(60, H / 2));
-}
-
-// ── Render dispatcher ─────────────────────────────────────────────────────────
-
-function render(): void {
+icCanvas.addEventListener('click', e => {
   if (!rootNode) return;
-  hideOverlay();
-  applySize();
-  if (mode === 'icicle') {
-    icCanvas.style.display  = 'block';
-    treeSvgEl.style.display = 'none';
-    focusNode = null;
-    renderIcicle();
-  } else {
-    icCanvas.style.display  = 'none';
-    treeSvgEl.style.display = 'block';
-    renderTree(rootNode);
+  const found = hitTest(e.offsetX, e.offsetY);
+  if (!found || !found.children.length || found === (focusNode ?? rootNode)) return;
+  focusNode = found;
+  lastHovered = null;
+  renderIcicle();
+});
+
+icCanvas.addEventListener('dblclick', () => {
+  if (!rootNode || !focusNode || focusNode === rootNode) return;
+  const parent = findParent(rootNode, focusNode);
+  focusNode = (parent === rootNode) ? null : parent;
+  lastHovered = null;
+  renderIcicle();
+});
+
+icCanvas.addEventListener('mousemove', e => {
+  const found = hitTest(e.offsetX, e.offsetY);
+  icCanvas.style.cursor = (found && found.children.length > 0) ? 'pointer' : 'default';
+  if (found !== lastHovered) {
+    lastHovered = found;
+    if (found) scheduleTooltip(found, e.clientX, e.clientY);
+    else hideTooltip();
   }
-  nodeCountEl.textContent = `${rootNode.size - 1} nodes`;
-}
+});
+
+icCanvas.addEventListener('mouseleave', () => {
+  hideTooltip(); lastHovered = null; icCanvas.style.cursor = 'default';
+});
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
@@ -515,11 +350,13 @@ window.addEventListener('message', e => {
         ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
       const parsed = parseTree(msg.xml);
       if (!parsed) { showOverlay('Could not parse node tree.'); return; }
-      defaultCollapse(parsed, 0);
       rootNode = parsed;
-      typeColorMap.clear();
       focusNode = null;
-      render();
+      typeColorMap.clear();
+      applySize();
+      hideOverlay();
+      renderIcicle();
+      nodeCountEl.textContent = `${rootNode.size - 1} nodes`;
       break;
     }
     case 'error': showOverlay(`Error: ${msg.message}`); break;
@@ -528,30 +365,12 @@ window.addEventListener('message', e => {
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
-btnIcicle.addEventListener('click', () => {
-  mode = 'icicle';
-  btnIcicle.classList.add('active'); btnTree.classList.remove('active');
-  render();
-});
-
-btnTree.addEventListener('click', () => {
-  mode = 'tree';
-  btnTree.classList.add('active'); btnIcicle.classList.remove('active');
-  render();
-});
-
 btnRefresh.addEventListener('click', () => {
   showOverlay('Fetching…', true);
   vscode.postMessage({ kind: 'refresh' });
 });
 
-searchInput.addEventListener('input', () => {
-  filterText = searchInput.value.trim();
-  if (rootNode && mode === 'tree') renderTree(rootNode);
-});
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-btnIcicle.classList.add('active');
 applySize();
 showOverlay('Run  Kopytko: Open Node Tree Explorer  to load from the active device.');

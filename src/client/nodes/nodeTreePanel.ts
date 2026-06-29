@@ -115,19 +115,12 @@ export class NodeTreePanel {
 <body>
   <div id="toolbar">
     <button id="btn-refresh" title="Fetch latest node tree from device">Refresh</button>
-    <span class="mode-group">
-      <button id="btn-treemap">Icicle</button>
-      <button id="btn-tree">Tree</button>
-    </span>
     <span id="channel-label"></span>
     <span id="node-count"></span>
-    <span class="sep"></span>
-    <input id="search" type="text" placeholder="Filter nodes…" title="Filter visible nodes by type or name (tree mode)">
   </div>
   <div id="breadcrumb-bar"></div>
   <div id="main">
     <canvas id="ic-canvas"></canvas>
-    <svg id="tree-svg" style="display:none;overflow:visible"></svg>
     <div id="overlay" class="visible"><span>Loading…</span></div>
     <div id="tooltip"></div>
   </div>

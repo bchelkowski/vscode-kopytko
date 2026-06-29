@@ -74,17 +74,6 @@ button.active {
 }
 button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 
-.mode-group {
-  display: flex;
-  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.4));
-  border-radius: 2px;
-  overflow: hidden;
-}
-.mode-group button {
-  border-radius: 0;
-  border-right: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.4));
-}
-.mode-group button:last-child { border-right: none; }
 
 /* ── breadcrumb bar ──────────────────────────────────────────────────────── */
 
@@ -221,8 +210,3 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
 #tooltip .tt-type  { font-weight: 600; }
 #tooltip .tt-attr  { color: var(--vscode-descriptionForeground, #9d9d9d); }
 
-/* ── tree ────────────────────────────────────────────────────────────────── */
-
-.node circle { cursor: pointer; stroke-width: 1.5; }
-.node text { font-size: 12px; font-family: inherit; fill: var(--vscode-editor-foreground, #cccccc); pointer-events: none; }
-.link { fill: none; stroke: var(--vscode-panel-border, rgba(128,128,128,0.4)); stroke-width: 1; }
