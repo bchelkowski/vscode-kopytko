@@ -73,11 +73,8 @@ window.addEventListener('resize',   () => { applySize(); onResize(); });
 function onResize(): void {
   if (!rootNode) return;
   if (mode === 'icicle') {
-    // Recompute layout (canvas width changed) but keep focus and pan intact
     icRects = computeIcicle(focusNode ?? rootNode);
-    drawIcicle();
-    // Rebuild legend in case column count changed — DON'T reset breadcrumb/focus
-    updateLegend();
+    scheduleRedraw();   // throttled via RAF — no focus/breadcrumb reset
   } else {
     renderTree(rootNode);
   }
@@ -91,8 +88,15 @@ let rootNode: SgNode | null = null;
 let filterText   = '';
 let focusNode: SgNode | null = null;
 let icRects: IcRect[] = [];
-let icPanX   = 0;   // horizontal pan offset in px (drag left/right)
 let svgZoom: ZoomBehavior<SVGSVGElement, unknown> | null = null;
+
+// RAF handle — prevents redundant redraws when layout changes faster than 60fps
+let rafPending = false;
+function scheduleRedraw(): void {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => { rafPending = false; drawIcicle(); });
+}
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 
@@ -284,9 +288,11 @@ function computeIcicle(focus: SgNode): IcRect[] {
 
 function drawIcicle(): void {
   const W = icCanvas.width, H = icCanvas.height;
-  ctx.clearRect(0, 0, W, H);
-  ctx.save();
-  ctx.translate(icPanX, 0);
+  if (!W || !H) return;   // guard against zero-size canvas
+
+  try {
+    ctx.clearRect(0, 0, W, H);
+  } catch { return; }
 
   for (const r of icRects) {
     const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
@@ -316,92 +322,67 @@ function drawIcicle(): void {
 
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
   }
-
-  ctx.restore();
 }
 
-function renderIcicle(keepPan = false): void {
-  const focus = focusNode ?? rootNode!;
+function renderIcicle(): void {
+  if (!rootNode) return;
+  const focus = focusNode ?? rootNode;
   icRects = computeIcicle(focus);
-  if (!keepPan) icPanX = 0;
   drawIcicle();
   updateBreadcrumb();
-  // typeColorMap is now populated by drawIcicle → updateLegend can read colours
   updateLegend();
 }
 
-// Icicle interaction — drag to pan, click to focus, double-click to go up
-
-let icDragStart: { ex: number; panX0: number } | null = null;
-let icDragMoved = false;
+// Icicle interaction — click to focus subtree, double-click to go up, hover tooltip
 
 function hitTest(offsetX: number, offsetY: number): SgNode | null {
-  const lx = offsetX - icPanX;   // compensate for pan
-  const ly = offsetY;
   for (let i = icRects.length - 1; i >= 0; i--) {
     const r = icRects[i];
-    if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) return r.data;
+    if (offsetX >= r.x0 && offsetX <= r.x1 && offsetY >= r.y0 && offsetY <= r.y1) {
+      return r.data;
+    }
   }
   return null;
 }
 
-icCanvas.addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
-  icDragStart = { ex: e.clientX, panX0: icPanX };
-  icDragMoved = false;
-  e.preventDefault();
-});
+let lastHovered: SgNode | null = null;
 
-icCanvas.addEventListener('mousemove', e => {
-  if (icDragStart) {
-    const dx = e.clientX - icDragStart.ex;
-    if (Math.abs(dx) > 3) icDragMoved = true;
-    if (icDragMoved) {
-      icPanX = icDragStart.panX0 + dx;
-      // Clamp: don't pan past the left edge or more than W past the right
-      const W = icCanvas.width;
-      icPanX = Math.max(-W, Math.min(W, icPanX));
-      drawIcicle();
-      hideTooltip();
-      icCanvas.style.cursor = 'grabbing';
-    }
-    return;
-  }
-
+icCanvas.addEventListener('click', e => {
+  if (!rootNode) return;
   const found = hitTest(e.offsetX, e.offsetY);
-  if (found) {
-    scheduleTooltip(found, e.clientX, e.clientY);
-    icCanvas.style.cursor = found.children.length > 0 ? 'pointer' : 'default';
-  } else {
-    hideTooltip();
-    icCanvas.style.cursor = 'default';
-  }
-});
-
-icCanvas.addEventListener('mouseup', e => {
-  const wasDrag = icDragMoved;
-  icDragStart = null; icDragMoved = false;
-  icCanvas.style.cursor = 'default';
-
-  if (!wasDrag && e.button === 0 && rootNode) {
-    const found = hitTest(e.offsetX, e.offsetY);
-    if (found && found.children.length > 0 && found !== (focusNode ?? rootNode)) {
-      focusNode = found;
-      renderIcicle();   // resets pan to 0 for the new focus
-    }
+  if (!found) return;
+  if (found.children.length > 0 && found !== (focusNode ?? rootNode)) {
+    focusNode = found;
+    renderIcicle();
   }
 });
 
 icCanvas.addEventListener('dblclick', () => {
   if (!rootNode || !focusNode || focusNode === rootNode) return;
   const parent = findParent(rootNode, focusNode);
-  focusNode = parent === rootNode ? null : parent;
+  focusNode = (parent === rootNode) ? null : parent;
   renderIcicle();
+});
+
+icCanvas.addEventListener('mousemove', e => {
+  const found = hitTest(e.offsetX, e.offsetY);
+  icCanvas.style.cursor = (found && found.children.length > 0) ? 'pointer' : 'default';
+  if (found !== lastHovered) {
+    lastHovered = found;
+    if (found) scheduleTooltip(found, e.clientX, e.clientY);
+    else hideTooltip();
+  } else if (found) {
+    // Update tooltip position as mouse moves
+    if (ttTimer) clearTimeout(ttTimer);
+    ttTimer = setTimeout(() => {
+      if (lastHovered) scheduleTooltip(lastHovered, e.clientX, e.clientY);
+    }, 0);
+  }
 });
 
 icCanvas.addEventListener('mouseleave', () => {
   hideTooltip();
-  icDragStart = null; icDragMoved = false;
+  lastHovered = null;
   icCanvas.style.cursor = 'default';
 });
 

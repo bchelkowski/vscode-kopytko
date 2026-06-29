@@ -91,26 +91,46 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
 #breadcrumb-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
+  gap: 2px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));
   flex-shrink: 0;
   flex-wrap: wrap;
-  min-height: 24px;
-  font-size: 11px;
+  min-height: 32px;
+  font-size: 12px;
 }
 #breadcrumb-bar:empty { display: none; }
 
 .crumb {
   cursor: pointer;
-  padding: 1px 7px;
-  border-radius: 10px;
-  background: var(--vscode-badge-background, rgba(128,128,128,0.2));
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.18));
   color: var(--vscode-foreground, #ccc);
+  font-size: 12px;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+  user-select: none;
 }
-.crumb:hover { background: rgba(255,255,255,0.15); color: #fff; }
-.crumb.current { background: var(--vscode-button-background, #0e639c); color: #fff; cursor: default; }
-.crumb-sep { color: rgba(200,200,200,0.35); }
+.crumb:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.1));
+  border-color: var(--vscode-focusBorder, rgba(0,127,212,0.6));
+  color: #fff;
+}
+.crumb.current {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: transparent;
+  cursor: default;
+  font-weight: 600;
+}
+.crumb-sep {
+  color: rgba(200,200,200,0.35);
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
 
 /* ── main chart area (CSS Grid stacking — no position:absolute) ──────────── */
 
