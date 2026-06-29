@@ -73,9 +73,11 @@ window.addEventListener('resize',   () => { applySize(); onResize(); });
 function onResize(): void {
   if (!rootNode) return;
   if (mode === 'icicle') {
-    // Recompute layout (width changed) but don't reset focus
+    // Recompute layout (canvas width changed) but keep focus and pan intact
     icRects = computeIcicle(focusNode ?? rootNode);
     drawIcicle();
+    // Rebuild legend in case column count changed — DON'T reset breadcrumb/focus
+    updateLegend();
   } else {
     renderTree(rootNode);
   }
@@ -89,6 +91,7 @@ let rootNode: SgNode | null = null;
 let filterText   = '';
 let focusNode: SgNode | null = null;
 let icRects: IcRect[] = [];
+let icPanX   = 0;   // horizontal pan offset in px (drag left/right)
 let svgZoom: ZoomBehavior<SVGSVGElement, unknown> | null = null;
 
 // ── Colours ───────────────────────────────────────────────────────────────────
@@ -248,16 +251,15 @@ function updateLegend(): void {
 
 // ── ICICLE CHART (Canvas 2D, no zoom/pan — click to focus) ───────────────────
 
-// Maximum depth levels shown at once.  User clicks to focus a subtree for more detail.
 const MAX_ROWS = 6;
-const ROW_H    = 22;   // px per depth level — compact but readable
+const ROW_H    = 26;   // px per row — always fixed, never scaled by tree depth
 
 function computeIcicle(focus: SgNode): IcRect[] {
-  const W      = icCanvas.width  || 800;
-  const totalH = MAX_ROWS * ROW_H;    // fixed chart height regardless of tree size
+  const W = icCanvas.width || 800;
 
+  // Give D3 any height — we override y0/y1 ourselves.
   const layout = d3partition<SgNode>()
-    .size([W, totalH])     // ← was wrong: was (size+2)*ROW_H → enormous canvas
+    .size([W, MAX_ROWS * ROW_H])
     .padding(1)
     .round(true);
 
@@ -267,6 +269,14 @@ function computeIcicle(focus: SgNode): IcRect[] {
 
   layout(hier);
 
+  // Override D3's y positions so every depth level is exactly ROW_H tall.
+  // D3 divides the total height by the actual max-depth, producing variable
+  // row heights when the tree is shallower than MAX_ROWS.
+  hier.each(d => {
+    d.y0 = d.depth * ROW_H;
+    d.y1 = d.y0 + ROW_H;
+  });
+
   return hier.descendants()
     .filter(d => d.depth < MAX_ROWS && (d.x1 - d.x0) >= 0.5)
     .map(d => ({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, data: d.data, depth: d.depth }));
@@ -275,6 +285,8 @@ function computeIcicle(focus: SgNode): IcRect[] {
 function drawIcicle(): void {
   const W = icCanvas.width, H = icCanvas.height;
   ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(icPanX, 0);
 
   for (const r of icRects) {
     const cw = r.x1 - r.x0, ch = r.y1 - r.y0;
@@ -304,54 +316,59 @@ function drawIcicle(): void {
 
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
   }
+
+  ctx.restore();
 }
 
-function renderIcicle(): void {
+function renderIcicle(keepPan = false): void {
   const focus = focusNode ?? rootNode!;
   icRects = computeIcicle(focus);
+  if (!keepPan) icPanX = 0;
   drawIcicle();
   updateBreadcrumb();
+  // typeColorMap is now populated by drawIcicle → updateLegend can read colours
   updateLegend();
 }
 
-// Icicle interaction — click to focus, double-click to go up, hover tooltip
-let lastClickTime = 0;
+// Icicle interaction — drag to pan, click to focus, double-click to go up
 
-icCanvas.addEventListener('click', e => {
-  if (!rootNode) return;
-  const now = Date.now();
-  const isDouble = now - lastClickTime < 300;
-  lastClickTime = now;
+let icDragStart: { ex: number; panX0: number } | null = null;
+let icDragMoved = false;
 
-  if (isDouble) {
-    // Go up one level
-    if (!focusNode || focusNode === rootNode) return;
-    const parent = findParent(rootNode, focusNode);
-    focusNode = parent === rootNode ? null : parent;
-    renderIcicle();
-    return;
-  }
-
-  const lx = e.offsetX, ly = e.offsetY;
+function hitTest(offsetX: number, offsetY: number): SgNode | null {
+  const lx = offsetX - icPanX;   // compensate for pan
+  const ly = offsetY;
   for (let i = icRects.length - 1; i >= 0; i--) {
     const r = icRects[i];
-    if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) {
-      if (r.data.children.length > 0 && r.data !== (focusNode ?? rootNode)) {
-        focusNode = r.data;
-        renderIcicle();
-      }
-      break;
-    }
+    if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) return r.data;
   }
+  return null;
+}
+
+icCanvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  icDragStart = { ex: e.clientX, panX0: icPanX };
+  icDragMoved = false;
+  e.preventDefault();
 });
 
 icCanvas.addEventListener('mousemove', e => {
-  const lx = e.offsetX, ly = e.offsetY;
-  let found: SgNode | null = null;
-  for (let i = icRects.length - 1; i >= 0; i--) {
-    const r = icRects[i];
-    if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) { found = r.data; break; }
+  if (icDragStart) {
+    const dx = e.clientX - icDragStart.ex;
+    if (Math.abs(dx) > 3) icDragMoved = true;
+    if (icDragMoved) {
+      icPanX = icDragStart.panX0 + dx;
+      // Clamp: don't pan past the left edge or more than W past the right
+      const W = icCanvas.width;
+      icPanX = Math.max(-W, Math.min(W, icPanX));
+      drawIcicle();
+      hideTooltip();
+      icCanvas.style.cursor = 'grabbing';
+    }
+    return;
   }
+
+  const found = hitTest(e.offsetX, e.offsetY);
   if (found) {
     scheduleTooltip(found, e.clientX, e.clientY);
     icCanvas.style.cursor = found.children.length > 0 ? 'pointer' : 'default';
@@ -361,7 +378,32 @@ icCanvas.addEventListener('mousemove', e => {
   }
 });
 
-icCanvas.addEventListener('mouseleave', hideTooltip);
+icCanvas.addEventListener('mouseup', e => {
+  const wasDrag = icDragMoved;
+  icDragStart = null; icDragMoved = false;
+  icCanvas.style.cursor = 'default';
+
+  if (!wasDrag && e.button === 0 && rootNode) {
+    const found = hitTest(e.offsetX, e.offsetY);
+    if (found && found.children.length > 0 && found !== (focusNode ?? rootNode)) {
+      focusNode = found;
+      renderIcicle();   // resets pan to 0 for the new focus
+    }
+  }
+});
+
+icCanvas.addEventListener('dblclick', () => {
+  if (!rootNode || !focusNode || focusNode === rootNode) return;
+  const parent = findParent(rootNode, focusNode);
+  focusNode = parent === rootNode ? null : parent;
+  renderIcicle();
+});
+
+icCanvas.addEventListener('mouseleave', () => {
+  hideTooltip();
+  icDragStart = null; icDragMoved = false;
+  icCanvas.style.cursor = 'default';
+});
 
 function findParent(root: SgNode, target: SgNode): SgNode | null {
   for (const c of root.children) {
