@@ -14,5 +14,5 @@
     "sourceMap": true
   },
   "include": ["src/client/**/*", "src/extension.ts"],
-  "exclude": ["src/server/**/*", "src/client/diagnostics/webview/**/*", "src/client/perfetto/webview/**/*", "test/**/*", "node_modules"]
+  "exclude": ["src/server/**/*", "src/client/diagnostics/webview/**/*", "src/client/perfetto/webview/**/*", "src/client/nodes/webview/**/*", "test/**/*", "node_modules"]
 }
