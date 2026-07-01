@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.1.13] - 2026-07-01
+
+### Changed
+- Update casing pass for TypeName tokens; remove observeFieldStyle 'warn'
+
 ## [1.1.12] - 2026-06-24
 
 - Release 1.1.12
