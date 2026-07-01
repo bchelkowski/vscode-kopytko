@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "d3": "^7.9.0",
-    "kopytko-brightscript-parser": "^1.1.4",
+    "kopytko-brightscript-parser": "^1.2.0",
     "kopytko-formatter": "^1.1.12",
     "kopytko-linter": "^1.6.6",
     "vscode-languageclient": "^10.0.0",
@@ -917,14 +917,36 @@
         },
         "kopytko.diagnostics.defaultVisibleCharts": {
           "type": "array",
-          "items": { "type": "string", "enum": ["memory", "cpu", "nodes", "textures"] },
-          "default": ["memory", "cpu", "nodes"],
+          "items": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "cpu",
+              "nodes",
+              "textures"
+            ]
+          },
+          "default": [
+            "memory",
+            "cpu",
+            "nodes"
+          ],
           "description": "Charts shown by default when the diagnostics panel opens. The corresponding data is only collected while at least one visible chart or table needs it."
         },
         "kopytko.diagnostics.defaultVisibleTables": {
           "type": "array",
-          "items": { "type": "string", "enum": ["nodes", "rendezvous", "textures"] },
-          "default": ["nodes", "rendezvous"],
+          "items": {
+            "type": "string",
+            "enum": [
+              "nodes",
+              "rendezvous",
+              "textures"
+            ]
+          },
+          "default": [
+            "nodes",
+            "rendezvous"
+          ],
           "description": "Tables shown by default when the diagnostics panel opens."
         },
         "kopytko.diagnostics.memoryLimits.backgroundMB": {
