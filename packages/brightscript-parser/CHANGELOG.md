@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.0] - 2026-07-01
+
+### Added
+- Add TypeName token kind for type annotations
+
 ## [1.1.4] - 2026-06-24
 
 ### Fixed
