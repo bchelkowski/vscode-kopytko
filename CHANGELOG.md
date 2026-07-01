@@ -1,6 +1,50 @@
 # Changelog
 
 
+## [1.5.0] - 2026-07-01
+
+### Added
+- Expand Diagnostics panel — textures, app-state, beacons, multi-channel recording
+- Add SG Node Tree Explorer + replace uPlot with D3
+- Open Perfetto as editor tab instead of bottom panel
+- Add Kopytko Perfetto live app tracing panel
+- Improve diagnostics panel UX — range selector, scaling, buttons
+- Improve diagnostics panel UX — range selector, scaling, buttons
+- Add diagnostics session replay (Phase 4)
+- Add diagnostics lists + file navigation (Phase 3)
+- Add Roku diagnostics bottom panel (Phase 2)
+- Add Roku diagnostics recording engine
+- Add GitHub Pages documentation site
+
+### Fixed
+- Fix invalid release workflow YAML for formatter/linter
+- Fix node tree canvas blank + crash
+- Remove panning (crash cause), add RAF throttle, style breadcrumb
+- Consistent row heights + horizontal pan + breadcrumb/legend fix
+- Fix icicle chart layout — use fixed MAX_ROWS*ROW_H height
+- Remove icicle zoom, fix overlap, add breadcrumb+legend bars
+- Contain node tree canvas in CSS Grid, preserve zoom on resize
+- Canvas treemap for performance + fix tree invisible bug
+- Incremental chart updates + readable node tree visualisation
+- Set iframe width explicitly in resizeFrame() like height
+- Fix iframe height + replace auto-refresh with manual sync
+- Switch chanperf + sgnodes collectors to ECP (HTTP port 8060)
+- Fix wrong remotedebug=1 assumption, add diagnostics output channel
+- Fix Perfetto iframe size, deploying state, and WS reconnect
+- Build webview bundle as part of compile; add preLaunchTask
+- Correct VS Code Marketplace extension ID in site links
+
+### Changed
+- Remove tree mode from Node Tree Explorer, icicle only
+- Replace treemap with icicle/partition chart
+- Align Perfetto toolbar with Diagnostics panel style
+- Remove open-node click from diagnostics node table
+
+### Maintenance
+- Bump kopytko-linter to v1.6.7
+- Bump kopytko-formatter to v1.1.13
+- Update keywords
+
 ## [1.4.0] - 2026-06-25
 
 ### Added
