@@ -33,6 +33,13 @@ describe('parseEcpChanperf', () => {
     expect(s!.fileKiB).to.equal(Math.round(21618688 / 1024));  // 21112
     expect(s!.sharedKiB).to.equal(Math.round(200704 / 1024));  // 196
     expect(s!.swapKiB).to.equal(0);
+    expect(s!.limitKiB).to.equal(Math.round(859832320 / 1024)); // 839680
+  });
+
+  it('leaves limitKiB undefined when the device omits <limit>', () => {
+    const noLimit = FIXTURE.replace('<limit>859832320</limit>', '');
+    const s = parseEcpChanperf(noLimit);
+    expect(s!.limitKiB).to.be.undefined;
   });
 
   it('parses CPU float percentages', () => {

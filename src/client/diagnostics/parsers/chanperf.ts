@@ -17,6 +17,8 @@ export interface ChanperfSample {
   sharedKiB: number;
   /** Swapped memory, KiB. */
   swapKiB: number;
+  /** Foreground memory limit for the channel, KiB — undefined when the device doesn't report it (raw debug-console `chanperf` has no limit field). */
+  limitKiB?: number;
   /** Total CPU usage of the channel, percent. */
   cpuPct: number;
   /** User-space CPU usage, percent. */

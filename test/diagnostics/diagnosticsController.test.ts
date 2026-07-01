@@ -39,6 +39,11 @@ function makeDeps(device: typeof DEVICE | undefined) {
       enableRendezvousTracking: sinon.stub().resolves(true),
       disableRendezvousTracking: sinon.stub().resolves(true),
       queryRendezvousEvents: sinon.stub().resolves({ events: [], dropCount: 0 }),
+      queryChanperf: sinon.stub().rejects(new Error('offline')),
+      querySgNodes: sinon.stub().rejects(new Error('offline')),
+      queryRegistry: sinon.stub().resolves(
+        '<plugin-registry><registry><dev-id>abc</dev-id><plugins>dev</plugins></registry></plugin-registry>',
+      ),
     },
     rendezvousManager: { suspend: sinon.spy(), resume: sinon.spy() },
     workspaceRoot: '/ws',
@@ -103,5 +108,135 @@ describe('DiagnosticsController', () => {
     expect(a).to.equal(b);
     expect(deps.rendezvousManager.suspend.calledOnce).to.be.true;
     await controller.stopSession();
+  });
+
+  it('setCollectorActive stops/starts a single collector and cannot enable one settings never built', async () => {
+    const clock = sinon.useFakeTimers();
+    const deps = makeDeps(DEVICE);
+    const { sink } = makeFakeSink();
+    const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+    await controller.startSession();
+    try {
+      expect(controller.hasCollector('mem-cpu')).to.be.true;
+
+      // system-mem.enabled defaults to false — setCollectorActive can only narrow, never widen.
+      expect(controller.hasCollector('system-mem')).to.be.false;
+      controller.setCollectorActive('system-mem', true);
+      expect(controller.hasCollector('system-mem')).to.be.false;
+
+      await clock.tickAsync(1);
+      const callsBefore = (deps.ecp.queryChanperf as sinon.SinonStub).callCount;
+      controller.setCollectorActive('mem-cpu', false);
+      await clock.tickAsync(5000);
+      expect((deps.ecp.queryChanperf as sinon.SinonStub).callCount).to.equal(callsBefore);
+    } finally {
+      await controller.stopSession();
+      clock.restore();
+    }
+  });
+
+  describe('multi-channel selection', () => {
+    it('defaults to "dev" and resolves the manifest app from the selected id', async () => {
+      const deps = makeDeps(DEVICE);
+      deps.ecp.queryApps.resolves([
+        { id: 'dev', name: 'DAZN', version: '3.30.3' },
+        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+      ]);
+      const { sink, files } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      expect(controller.selectedApp).to.equal('dev');
+      await controller.startSession();
+      const manifestEntry = [...files.entries()].find(([k]) => k.endsWith('session.json'));
+      const manifest = JSON.parse(manifestEntry![1]);
+      expect(manifest.app.title).to.equal('DAZN');
+      await controller.stopSession();
+    });
+
+    it('setSelectedApp targets the new app id for the next session', async () => {
+      const deps = makeDeps(DEVICE);
+      deps.ecp.queryApps.resolves([
+        { id: 'dev', name: 'DAZN', version: '3.30.3' },
+        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+      ]);
+      const { sink, files } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      await controller.setSelectedApp('268970');
+      expect(controller.selectedApp).to.equal('268970');
+
+      await controller.startSession();
+      const manifestEntry = [...files.entries()].find(([k]) => k.endsWith('session.json'));
+      const manifest = JSON.parse(manifestEntry![1]);
+      expect(manifest.app.title).to.equal('DAZN - PROD TESTER');
+      await controller.stopSession();
+    });
+
+    it('setSelectedApp stops a running session when the selection actually changes', async () => {
+      const deps = makeDeps(DEVICE);
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      await controller.startSession();
+      expect(controller.isRecording).to.be.true;
+
+      await controller.setSelectedApp('268970');
+      expect(controller.isRecording).to.be.false;
+      expect(deps.rendezvousManager.resume.calledOnce).to.be.true;
+    });
+
+    it('setSelectedApp does not stop a running session when the selection is unchanged', async () => {
+      const deps = makeDeps(DEVICE);
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      await controller.startSession();
+      await controller.setSelectedApp('dev'); // already the default — no change
+      expect(controller.isRecording).to.be.true;
+      await controller.stopSession();
+    });
+
+    it('listAvailableApps cross-references registry plugins against queryApps, "dev" first', async () => {
+      const deps = makeDeps(DEVICE);
+      deps.ecp.queryApps.resolves([
+        { id: '12', name: 'Netflix', version: '1.0' },
+        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+        { id: '158987', name: 'DAZN Live Sports Streaming', version: '3.30.5' },
+        { id: '852522', name: 'Binge Tester', version: '3.30.304' },
+        { id: 'dev', name: 'DAZN', version: '3.30.5' },
+      ]);
+      deps.ecp.queryRegistry.resolves(
+        '<plugin-registry><registry><dev-id>x</dev-id><plugins>158987,268970,dev</plugins></registry></plugin-registry>',
+      );
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      const apps = await controller.listAvailableApps();
+      expect(apps.map((a) => a.id)).to.deep.equal(['dev', '268970', '158987']);
+      // Netflix (12) and Binge Tester (852522) are excluded — not in the registry's plugins list.
+      expect(apps.some((a) => a.id === '12')).to.be.false;
+      expect(apps.some((a) => a.id === '852522')).to.be.false;
+    });
+
+    it('listAvailableApps falls back to dev-only when the registry query fails', async () => {
+      const deps = makeDeps(DEVICE);
+      deps.ecp.queryRegistry.resolves(
+        '<plugin-registry><status>FAILED</status><error>Specified dev ID does not match the device key</error></plugin-registry>',
+      );
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      const apps = await controller.listAvailableApps();
+      expect(apps).to.deep.equal([{ id: 'dev', title: 'DAZN', version: '3.30.3' }]);
+    });
+
+    it('listAvailableApps returns an empty array with no active device', async () => {
+      const deps = makeDeps(undefined);
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      expect(await controller.listAvailableApps()).to.deep.equal([]);
+    });
   });
 });

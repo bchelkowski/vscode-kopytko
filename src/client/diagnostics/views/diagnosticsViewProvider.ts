@@ -4,9 +4,13 @@ import type { DiagnosticsController } from '../diagnosticsController';
 import type { DiagnosticsSession } from '../session/diagnosticsSession';
 import type {
   DiagnosticEvent,
+  DiagnosticEventType,
   MemCpuEvent,
   NodeCountsEvent,
   RendezvousEvent,
+  TexturesEvent,
+  AppStateEvent,
+  FwBeaconEvent,
 } from '../session/eventModel';
 import type {
   ExtMsg,
@@ -15,8 +19,14 @@ import type {
   SerializedMemCpuPoint,
   SerializedNodePoint,
   SerializedRendezvousPoint,
+  SerializedTexturePoint,
+  SerializedAppStatePoint,
+  SerializedBeaconPoint,
   SerializedSessionInfo,
+  ChartId,
+  TableId,
 } from '../webview/protocol';
+import type { RecordableApp } from '../diagnosticsController';
 import { SessionReader } from '../storage/sessionReader';
 import { readManifest } from '../storage/sessionStore';
 import { nodeSink } from '../storage/sink';
@@ -24,6 +34,33 @@ import { resolveRendezvousFile } from '../../roku/util/resolveSourceFile';
 
 const VIEW_ID = 'kopytko.diagnostics';
 const BATCH_INTERVAL_MS = 250;
+
+interface VisibilityState {
+  charts: ChartId[];
+  tables: TableId[];
+  rendezvousOverlay: boolean;
+  beaconOverlay: boolean;
+}
+
+/** Collector event types whose lifecycle is driven by webview visibility (excludes system-mem/app-state, which are session-wide). */
+const VISIBILITY_DRIVEN_TYPES: DiagnosticEventType[] = ['mem-cpu', 'node-counts', 'rendezvous', 'textures', 'fw-beacon'];
+
+function neededTypesFor(vis: VisibilityState): Set<DiagnosticEventType> {
+  const needed = new Set<DiagnosticEventType>();
+  if (vis.charts.includes('memory') || vis.charts.includes('cpu')) needed.add('mem-cpu');
+  if (vis.charts.includes('nodes')) needed.add('node-counts');
+  if (vis.charts.includes('textures')) needed.add('textures');
+  if (vis.tables.includes('nodes')) needed.add('node-counts');
+  if (vis.tables.includes('rendezvous')) needed.add('rendezvous');
+  if (vis.tables.includes('textures')) needed.add('textures');
+  if (vis.rendezvousOverlay && vis.charts.length > 0) needed.add('rendezvous');
+  if (vis.beaconOverlay && vis.charts.length > 0) needed.add('fw-beacon');
+  return needed;
+}
+
+function emptyHistory() {
+  return { memCpu: [], nodes: [], rendezvous: [], textures: [], appState: [], beacons: [] };
+}
 
 /** Converts the manifest `streams` map to a plain `{ type -> count }` record. */
 function streamCounts(
@@ -60,13 +97,25 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   private pendingMemCpu: SerializedMemCpuPoint[] = [];
   private pendingNodes: SerializedNodePoint[] = [];
   private pendingRendezvous: SerializedRendezvousPoint[] = [];
+  private pendingTextures: SerializedTexturePoint[] = [];
+  private pendingAppState: SerializedAppStatePoint[] = [];
+  private pendingBeacons: SerializedBeaconPoint[] = [];
   private sessionListener: ((event: DiagnosticEvent) => void) | undefined;
   private trackedSession: DiagnosticsSession | undefined;
+  private visibility: VisibilityState;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly controller: DiagnosticsController,
-  ) {}
+  ) {
+    const cfg = vscode.workspace.getConfiguration('kopytko');
+    this.visibility = {
+      charts: cfg.get<ChartId[]>('diagnostics.defaultVisibleCharts', ['memory', 'cpu', 'nodes']),
+      tables: cfg.get<TableId[]>('diagnostics.defaultVisibleTables', ['nodes', 'rendezvous']),
+      rendezvousOverlay: true,
+      beaconOverlay: false,
+    };
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.webviewView = webviewView;
@@ -87,6 +136,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
             // If startSession returned undefined (e.g. lock blocked it), still
             // update state so the webview reflects the current recording status.
             if (!session) this.sendState();
+            else this.applyVisibility();
           });
           break;
         case 'stop':
@@ -108,9 +158,45 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
           this.post({
             kind: 'init',
             state: this.buildState(),
-            history: { memCpu: [], nodes: [], rendezvous: [] },
+            history: emptyHistory(),
           } satisfies ExtMsg);
           break;
+        case 'visibility':
+          this.visibility = {
+            charts: msg.charts,
+            tables: msg.tables,
+            rendezvousOverlay: msg.rendezvousOverlay,
+            beaconOverlay: msg.beaconOverlay,
+          };
+          this.applyVisibility();
+          break;
+        case 'select-app': {
+          // setSelectedApp() sets the controller's selectedAppId synchronously
+          // (before its internal `await stopSession()`, if any), so calling it
+          // first means the immediate reset below already reflects the new
+          // selection instead of flashing the old one first.
+          const applied = this.controller.setSelectedApp(msg.appId);
+          // Reset the view immediately, synchronously — the previously
+          // displayed data belongs to a different channel now, and
+          // setSelectedApp() may await stopSession() (a real device round
+          // trip), so it shouldn't linger on screen for however long that
+          // takes. The next Start always builds a brand new session (new
+          // timestamped folder/manifest), so nothing here risks writing into
+          // the old channel's files.
+          this.post({
+            kind: 'init',
+            state: this.buildState(),
+            history: emptyHistory(),
+          } satisfies ExtMsg);
+          void applied.then(() => {
+            // A stop triggered by the app change fires 'stopped' on the session,
+            // which already calls onSessionStopped() (detaches listeners, sends
+            // state/sessions) via the listener registered in syncSession().
+            // Send state again here too in case no stop actually occurred.
+            this.sendState();
+          });
+          break;
+        }
       }
     });
 
@@ -118,11 +204,13 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       if (webviewView.visible) {
         this.sendInit();
         void this.sendSessions();
+        void this.sendApps();
       }
     });
 
     this.sendInit();
     void this.sendSessions();
+    void this.sendApps();
     this.syncSession();
   }
 
@@ -162,6 +250,18 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     void this.sendSessions();
   }
 
+  /**
+   * Starts/stops collectors on the active session to match the webview's current
+   * chart/table/overlay selection — so we never poll a metric nothing displays.
+   */
+  private applyVisibility(): void {
+    if (!this.controller.isRecording) return;
+    const needed = neededTypesFor(this.visibility);
+    for (const type of VISIBILITY_DRIVEN_TYPES) {
+      this.controller.setCollectorActive(type, needed.has(type));
+    }
+  }
+
   private syncSession(): void {
     const session = this.controller.activeSession;
     if (session === this.trackedSession) return;
@@ -175,6 +275,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       session.once('stopped', () => this.onSessionStopped());
       this.startBatchTimer();
       this.startNoDataTimer();
+      this.applyVisibility();
     }
 
     this.sendState();
@@ -190,6 +291,9 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
           memKiB: e.memKiB,
           anonKiB: e.anonKiB,
           fileKiB: e.fileKiB,
+          sharedKiB: e.sharedKiB,
+          swapKiB: e.swapKiB,
+          limitKiB: e.limitKiB,
           cpuPct: e.cpuPct,
           cpuUser: e.cpuUser,
           cpuSys: e.cpuSys,
@@ -211,6 +315,29 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
         });
         break;
       }
+      case 'textures': {
+        const e = event as TexturesEvent;
+        this.pendingTextures.push({
+          wall: e.wall,
+          usedBytes: e.usedBytes,
+          maxBytes: e.maxBytes,
+          availableBytes: e.availableBytes,
+          count: e.count,
+          totalSizeBytes: e.totalSizeBytes,
+          bitmaps: e.bitmaps.map((b) => ({ width: b.width, height: b.height, sizeBytes: b.sizeBytes, name: b.name })),
+        });
+        break;
+      }
+      case 'app-state': {
+        const e = event as AppStateEvent;
+        this.pendingAppState.push({ wall: e.wall, state: e.state });
+        break;
+      }
+      case 'fw-beacon': {
+        const e = event as FwBeaconEvent;
+        this.pendingBeacons.push({ wall: e.wall, name: e.name, timeBaseMs: e.timeBaseMs });
+        break;
+      }
     }
   }
 
@@ -218,7 +345,10 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     if (
       this.pendingMemCpu.length === 0 &&
       this.pendingNodes.length === 0 &&
-      this.pendingRendezvous.length === 0
+      this.pendingRendezvous.length === 0 &&
+      this.pendingTextures.length === 0 &&
+      this.pendingAppState.length === 0 &&
+      this.pendingBeacons.length === 0
     ) {
       return;
     }
@@ -227,6 +357,9 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       memCpu: this.pendingMemCpu.splice(0),
       nodes: this.pendingNodes.splice(0),
       rendezvous: this.pendingRendezvous.splice(0),
+      textures: this.pendingTextures.splice(0),
+      appState: this.pendingAppState.splice(0),
+      beacons: this.pendingBeacons.splice(0),
     } satisfies ExtMsg);
   }
 
@@ -244,6 +377,9 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     this.pendingMemCpu = [];
     this.pendingNodes = [];
     this.pendingRendezvous = [];
+    this.pendingTextures = [];
+    this.pendingAppState = [];
+    this.pendingBeacons = [];
   }
 
   private startNoDataTimer(): void {
@@ -275,6 +411,13 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     }
     this.trackedSession = undefined;
     this.sessionListener = undefined;
+  }
+
+  // ── App selection ────────────────────────────────────────────────────────────
+
+  private async sendApps(): Promise<void> {
+    const apps: RecordableApp[] = await this.controller.listAvailableApps();
+    this.post({ kind: 'apps', apps } satisfies ExtMsg);
   }
 
   // ── Session replay ────────────────────────────────────────────────────────────
@@ -317,6 +460,9 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       memKiB: e.memKiB,
       anonKiB: e.anonKiB,
       fileKiB: e.fileKiB,
+      sharedKiB: e.sharedKiB,
+      swapKiB: e.swapKiB,
+      limitKiB: e.limitKiB,
       cpuPct: e.cpuPct,
       cpuUser: e.cpuUser,
       cpuSys: e.cpuSys,
@@ -343,6 +489,29 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       line: e.line,
     }));
 
+    // Read textures stream — bitmaps only for first+last to keep the message small
+    const texRaw = await reader.readStream<TexturesEvent>(dir, 'textures');
+    const texCapped = texRaw.slice(-maxPoints);
+    const textures: SerializedTexturePoint[] = texCapped.map((e, i) => ({
+      wall: e.wall,
+      usedBytes: e.usedBytes,
+      maxBytes: e.maxBytes,
+      availableBytes: e.availableBytes,
+      count: e.count,
+      totalSizeBytes: e.totalSizeBytes,
+      bitmaps: (i === 0 || i === texCapped.length - 1)
+        ? e.bitmaps.map((b) => ({ width: b.width, height: b.height, sizeBytes: b.sizeBytes, name: b.name }))
+        : [],
+    }));
+
+    // Read app-state stream
+    const stateRaw = await reader.readStream<AppStateEvent>(dir, 'app-state');
+    const appState: SerializedAppStatePoint[] = stateRaw.slice(-maxPoints).map((e) => ({ wall: e.wall, state: e.state }));
+
+    // Read fw-beacon stream
+    const beaconRaw = await reader.readStream<FwBeaconEvent>(dir, 'fw-beacon');
+    const beacons: SerializedBeaconPoint[] = beaconRaw.slice(-maxPoints).map((e) => ({ wall: e.wall, name: e.name, timeBaseMs: e.timeBaseMs }));
+
     // Build session info from the manifest
     const manifest = await readManifest(nodeSink, dir);
     if (!manifest) {
@@ -360,7 +529,11 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       sampleCounts: streamCounts(manifest.streams),
     };
 
-    this.post({ kind: 'replay', session, history: { memCpu, nodes, rendezvous } } satisfies ExtMsg);
+    this.post({
+      kind: 'replay',
+      session,
+      history: { memCpu, nodes, rendezvous, textures, appState, beacons },
+    } satisfies ExtMsg);
   }
 
   private resolveOutputRoot(): string | undefined {
@@ -375,6 +548,16 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   // ── New session ───────────────────────────────────────────────────────────────
 
   private async handleNewSession(): Promise<void> {
+    // Reset the view immediately, synchronously, before any of the async
+    // stop/start work below — that involves real network calls to the device
+    // and can take a noticeable moment, during which the old session's charts
+    // would otherwise keep showing stale data on screen.
+    this.post({
+      kind: 'init',
+      state: this.buildState(),
+      history: emptyHistory(),
+    } satisfies ExtMsg);
+
     if (this.controller.isRecording) {
       await this.controller.stopSession();
       // onSessionStopped() fires via the 'stopped' event during stopSession(),
@@ -384,13 +567,6 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
         this.syncSession();
         this.sendInit();
       }
-    } else {
-      // Not recording — just clear the displayed data.
-      this.post({
-        kind: 'init',
-        state: this.buildState(),
-        history: { memCpu: [], nodes: [], rendezvous: [] },
-      } satisfies ExtMsg);
     }
   }
 
@@ -417,9 +593,14 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   private buildState(): WebviewState {
     const session = this.controller.activeSession;
     const device = this.controller.getActiveDevice();
+    const backgroundMemLimitMB = vscode.workspace
+      .getConfiguration('kopytko')
+      .get<number>('diagnostics.memoryLimits.backgroundMB', 100);
     return {
       recording: this.controller.isRecording,
       sessionStartWall: session?.manifest.startedWall,
+      backgroundMemLimitMB,
+      selectedAppId: this.controller.selectedApp,
       device: device
         ? {
             name: device.friendlyName ?? device.modelName,
@@ -432,13 +613,16 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private buildHistory(session: DiagnosticsSession | undefined) {
-    if (!session) return { memCpu: [], nodes: [], rendezvous: [] };
+    if (!session) return emptyHistory();
     const memCpu: SerializedMemCpuPoint[] = (session.getRing('mem-cpu') as MemCpuEvent[]).map(
       (e) => ({
         wall: e.wall,
         memKiB: e.memKiB,
         anonKiB: e.anonKiB,
         fileKiB: e.fileKiB,
+        sharedKiB: e.sharedKiB,
+        swapKiB: e.swapKiB,
+        limitKiB: e.limitKiB,
         cpuPct: e.cpuPct,
         cpuUser: e.cpuUser,
         cpuSys: e.cpuSys,
@@ -450,7 +634,24 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     const rendezvous: SerializedRendezvousPoint[] = (
       session.getRing('rendezvous') as RendezvousEvent[]
     ).map((e) => ({ wall: e.wall, durationMs: e.durationMs, file: e.file, line: e.line }));
-    return { memCpu, nodes, rendezvous };
+    const textures: SerializedTexturePoint[] = (session.getRing('textures') as TexturesEvent[]).map(
+      (e) => ({
+        wall: e.wall,
+        usedBytes: e.usedBytes,
+        maxBytes: e.maxBytes,
+        availableBytes: e.availableBytes,
+        count: e.count,
+        totalSizeBytes: e.totalSizeBytes,
+        bitmaps: e.bitmaps.map((b) => ({ width: b.width, height: b.height, sizeBytes: b.sizeBytes, name: b.name })),
+      }),
+    );
+    const appState: SerializedAppStatePoint[] = (session.getRing('app-state') as AppStateEvent[]).map(
+      (e) => ({ wall: e.wall, state: e.state }),
+    );
+    const beacons: SerializedBeaconPoint[] = (session.getRing('fw-beacon') as FwBeaconEvent[]).map(
+      (e) => ({ wall: e.wall, name: e.name, timeBaseMs: e.timeBaseMs }),
+    );
+    return { memCpu, nodes, rendezvous, textures, appState, beacons };
   }
 
   private post(msg: ExtMsg): void {

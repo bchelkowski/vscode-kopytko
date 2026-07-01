@@ -24,6 +24,31 @@ body { display: flex; flex-direction: column; }
   min-height: 34px;
 }
 
+/* ── status dot (matches Diagnostics/Perfetto panels) ────────────────────── */
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vscode-editorHint-foreground, #aaaaaa);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.ok {
+  background: var(--vscode-charts-green, #81C784);
+}
+.status-dot.error {
+  background: #e05252;
+  box-shadow: 0 0 4px rgba(224,82,82,0.6);
+}
+.status-dot.loading {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
 #channel-label {
   font-size: 11px;
   opacity: 0.75;

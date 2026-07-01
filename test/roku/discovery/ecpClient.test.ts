@@ -759,6 +759,85 @@ describe('EcpClient', () => {
       }
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // queryAppState
+  // ---------------------------------------------------------------------------
+
+  describe('queryAppState', () => {
+    it('returns "active" for a foreground app-state (verified live response shape)', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(
+          '<app-state><app-id>dev</app-id><app-title>DAZN</app-title><app-version>3.30.5</app-version>' +
+          '<app-dev-id>abc123</app-dev-id><state>active</state><status>OK</status></app-state>',
+        );
+      });
+      try {
+        const state = await client.queryAppState('127.0.0.1', 'dev', port);
+        expect(state).to.equal('active');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns "background" for a backgrounded app-state', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<app-state><app-id>dev</app-id><state>background</state><status>OK</status></app-state>');
+      });
+      try {
+        const state = await client.queryAppState('127.0.0.1', 'dev', port);
+        expect(state).to.equal('background');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns "unknown" on non-200 response', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(503);
+        res.end('');
+      });
+      try {
+        const state = await client.queryAppState('127.0.0.1', 'dev', port);
+        expect(state).to.equal('unknown');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns "unknown" on connection error', async () => {
+      const state = await client.queryAppState('127.0.0.1', 'dev', 1);
+      expect(state).to.equal('unknown');
+    });
+
+    it('returns "unknown" for an unrecognized state value', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<app-state><app-id>dev</app-id><state>weird</state><status>OK</status></app-state>');
+      });
+      try {
+        const state = await client.queryAppState('127.0.0.1', 'dev', port);
+        expect(state).to.equal('unknown');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns "unknown" for a FAILED status (e.g. querying an unauthorized app id)', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<app-state><app-id>12</app-id><status>FAILED</status><error>Channel access not authorized: 12</error></app-state>');
+      });
+      try {
+        const state = await client.queryAppState('127.0.0.1', '12', port);
+        expect(state).to.equal('unknown');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

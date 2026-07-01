@@ -152,63 +152,13 @@ Compile errors from the device are shown as VS Code diagnostics (red squiggles i
 
 ---
 
-## Rendezvous Logging
+## Rendezvous tracking
 
 Roku SceneGraph apps synchronize Task threads with the render thread at **rendezvous points** — every time a background task reads or writes a field on a SceneGraph node. Each rendezvous costs time on the render thread; too many or too slow ones cause frame drops and jank.
 
-The **Rendezvous Log** panel (second view in the Kopytko sidebar) lets you monitor these events live, grouped by source location.
+Rendezvous tracking is now exclusively part of the **Runtime Diagnostics** recorder (per-channel CPU/memory, node counts, textures, rendezvous, …) — see [diagnostics.md](./diagnostics.md). The standalone "Rendezvous Log" sidebar tree view has been removed; everything it did (live events grouped by file:line, click-to-open-file) is covered by the Diagnostics panel's Rendezvous table and chart overlay, with no separate enable/disable step required.
 
-> Rendezvous are also one of the streams captured by the broader **Runtime Diagnostics** recorder (per-channel CPU/memory, node counts, textures, …) — see [diagnostics.md](./diagnostics.md). While a diagnostics session records rendezvous, this legacy Rendezvous Log poller is paused so the two don't both drain the device's shared event queue.
-
-### Enabling rendezvous logging
-
-The panel is independent of the debug session — it works whenever the active device is reachable on the network.
-
-1. Set an active device in the **Roku Devices** panel.
-2. In the **Rendezvous Log** panel, check the **Rendezvous Logging** checkbox.
-3. The extension sends `POST /query/sgrendezvous/track` to the device via ECP, then polls `GET /query/sgrendezvous` every second.
-
-> **Requirements**: Developer mode must be enabled on the device and "Control by mobile apps" must be set to Enabled in Roku settings.
-
-When tracking is enabled while running an app, rendezvous events start appearing grouped by file and line number.
-
-### Reading the panel
-
-```
-Rendezvous Log
-  [☑] Rendezvous Logging
-
-  Foo.brs:42 (3)              ← file:line, entry count
-    15ms  2:30:05 PM          ← duration, timestamp
-    8ms   2:30:12 PM
-    22ms  2:30:25 PM
-
-  Bar.brs:88 (1)
-    5ms   2:30:08 PM
-```
-
-- Click any **group header** or **entry** to open the file at the exact line in the editor.
-- Use the **Clear** (trash) button in the panel title bar to reset the log while keeping tracking enabled.
-
-### Disabling rendezvous logging
-
-Uncheck the **Rendezvous Logging** checkbox. The extension sends `POST /query/sgrendezvous/untrack` to stop tracking on the device. The log is cleared.
-
-### Per-device state
-
-The enabled/disabled state is saved per device serial number in workspace state. Switching to a different active device resets the panel to unchecked (the device's current tracking state is not queried — see below). When you switch back to the original device, its stored state is restored and tracking resumes automatically if it was enabled.
-
-> If the device's actual tracking state cannot be verified (just activated, just discovered, extension restarted), the panel defaults to **unchecked** to avoid showing stale data. Check the checkbox to start fresh.
-
-### Architecture
-
-| Component | File | Responsibility |
-|---|---|---|
-| ECP client methods | `src/client/roku/discovery/ecpClient.ts` | `enableRendezvousTracking`, `disableRendezvousTracking`, `queryRendezvousEvents` |
-| Rendezvous manager | `src/client/roku/rendezvous/rendezvousManager.ts` | ECP polling, event grouping, device-change handling, persistence |
-| Tree items | `src/client/roku/views/rendezvousTreeItems.ts` | Toggle, group, entry, and empty TreeItem subclasses |
-| Tree provider | `src/client/roku/views/rendezvousTreeProvider.ts` | TreeDataProvider rendering the panel |
-| Activation | `src/client/activation/rendezvous.ts` | Register view, checkbox handler, navigation command |
+`src/client/roku/rendezvous/rendezvousManager.ts` still exists internally — it's what the diagnostics session calls `suspend()`/`resume()` on so a future re-introduction of a second rendezvous consumer can't split the device's shared ECP event queue, but it has no visible UI of its own anymore.
 
 ---
 
@@ -275,10 +225,10 @@ These features could be built on top of the socket-based debug protocol and Roku
 | **Source map support** | Map transpiled BrighterScript `.bs` → `.brs` for breakpoints and stack traces. Load `.map` files from build output. | Medium |
 | **Logpoints** | Evaluate expressions on hit without pausing. Implement via `EXECUTE` on conditional breakpoint. | Medium |
 | **Data breakpoints** | Break when a variable changes. Not natively supported — would require polling via `VARIABLES` command. | High |
-| **Rendezvous tracking** | ~~Implemented~~ — see [Rendezvous Logging](#rendezvous-logging) section above. | — |
-| **Channel performance panel** | CPU, memory, rendering stats from ECP `chanperf` in a VS Code webview. | Medium |
-| **Profiling (Perfetto)** | Capture performance traces (Roku OS 15.2+). Save as `.perfetto-trace`. | High |
-| **SceneGraph Inspector** | Visualize the SceneGraph node tree from a running channel via ECP `/query/sgnodes`. | High |
+| **Rendezvous tracking** | ~~Implemented~~ — see [Rendezvous tracking](#rendezvous-tracking) section above and [diagnostics.md](./diagnostics.md). | — |
+| **Channel performance panel** | ~~Implemented~~ — see [diagnostics.md](./diagnostics.md) (Memory/CPU charts, ECP `chanperf`). | — |
+| **Profiling (Perfetto)** | ~~Implemented~~ — see the Kopytko Perfetto panel in [diagnostics.md](./diagnostics.md). | — |
+| **SceneGraph Inspector** | ~~Implemented~~ — see the Node Tree Explorer (`kopytko.nodes.open`). | — |
 | **Remote file system** | Browse and download files from `tmp:/` and `cachefs:/` via ECP. | Low |
 | **Log streaming panel** | Always-on output channel streaming device syslog, independent of debug sessions. | Low |
 | **Component library debugging** | `lib:/<name>/<path>` breakpoints for multi-component-library projects. | High |

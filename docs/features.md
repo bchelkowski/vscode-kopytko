@@ -168,7 +168,6 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 | Stepping (over/into/out), pause (STOP) | ✅ | [roku-debug.md](./roku-debug.md) |
 | Debug console REPL (EXECUTE) and hover-to-evaluate | ✅ | [roku-debug.md](./roku-debug.md) |
 | Compile errors as diagnostics; program output via IO channel | ✅ | [roku-debug.md](./roku-debug.md) |
-| Rendezvous logging panel — per-device ECP toggle, live polling, events grouped by file:line with navigation | ✅ | [roku-debug.md](./roku-debug.md) |
 
 ## Runtime Diagnostics & Profiling
 
@@ -179,13 +178,15 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Resilient debug-console transport (TCP 8080) — serialized commands, idle framing, auto-reconnect | ✅ | [diagnostics.md](./diagnostics.md) |
 | Per-channel CPU + memory collection (`chanperf`) | ✅ | [diagnostics.md](./diagnostics.md) |
 | SceneGraph node counts by type incl. custom components (`sgnodes counts`) | ✅ | [diagnostics.md](./diagnostics.md) |
-| Rendezvous collection via ECP (suspends legacy log to avoid queue double-drain) | ✅ | [diagnostics.md](./diagnostics.md) |
+| Rendezvous collection via ECP | ✅ | [diagnostics.md](./diagnostics.md) |
 | Device memory (`free`) + GPU texture memory (`r2d2_bitmaps`) — opt-in collectors | ✅ | [diagnostics.md](./diagnostics.md) |
 | Open event model + NDJSON-per-stream session storage (crash/network-safe) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Session manifest + reader (replay, torn-line tolerant) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Start/Stop session commands | ✅ | [diagnostics.md](./diagnostics.md) |
-| Bottom-panel webview with live charts (uPlot) — mem/cpu/nodes + rendezvous markers | ✅ | [diagnostics.md](./diagnostics.md) |
-| In-panel node / rendezvous lists with click-to-open-file | ✅ | [diagnostics.md](./diagnostics.md) |
+| Bottom-panel webview with live D3 charts — memory/CPU/nodes/textures, rendezvous + beacon overlays, app-state shading | ✅ | [diagnostics.md](./diagnostics.md) |
+| In-panel node / rendezvous / texture lists with click-to-open-file | ✅ | [diagnostics.md](./diagnostics.md) |
+| Record any channel sharing the sideloaded dev key, not just "dev" | ✅ | [diagnostics.md](./diagnostics.md) |
+| Tools sidebar — quick-nav buttons to Diagnostics/Perfetto/Node Tree | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
 

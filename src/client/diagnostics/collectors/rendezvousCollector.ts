@@ -31,8 +31,13 @@ export interface RendezvousTarget {
  * has an enable/disable lifecycle (`POST /sgrendezvous/track` …) and drains the
  * device's event queue on each poll.
  *
- * NB: the ECP query drains a *shared* device queue, so the legacy Rendezvous Log
- * poller must be suspended while this runs — the session handles that.
+ * NB: the ECP query drains a *shared* device queue, so `RendezvousManager`'s
+ * internal coordination poller must be suspended while this runs — the
+ * session handles that.
+ *
+ * Also emits `'enabled'` / `'enable-failed'` after each `enableRendezvousTracking()`
+ * attempt (initial and any re-enable after a dropped connection), so callers
+ * can surface a persistent failure instead of it silently retrying forever.
  */
 export class RendezvousCollector extends EventEmitter implements Collector {
   readonly type = 'rendezvous' as const;
@@ -74,8 +79,10 @@ export class RendezvousCollector extends EventEmitter implements Collector {
   private async enable(): Promise<void> {
     try {
       this.enabled = await this.ecp.enableRendezvousTracking(this.target.ip, this.target.port);
+      this.emit(this.enabled ? 'enabled' : 'enable-failed');
     } catch {
       this.enabled = false;
+      this.emit('enable-failed');
     }
   }
 

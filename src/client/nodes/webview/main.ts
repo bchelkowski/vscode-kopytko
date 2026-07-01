@@ -5,6 +5,7 @@
  * Click → focus subtree.  Double-click → go up.
  */
 
+import './styles.css';
 import { hierarchy, partition as d3partition } from 'd3-hierarchy';
 import type { ExtMsg, WebMsg } from './protocol';
 
@@ -37,6 +38,7 @@ const overlayEl     = document.getElementById('overlay')!;
 const tooltipEl     = document.getElementById('tooltip')!;
 const nodeCountEl   = document.getElementById('node-count')!;
 const channelLabel  = document.getElementById('channel-label')!;
+const statusDot     = document.getElementById('status-dot')!;
 const btnRefresh    = document.getElementById('btn-refresh') as HTMLButtonElement;
 const ic            = document.getElementById('ic-canvas') as HTMLCanvasElement;
 const ctx           = ic.getContext('2d')!;
@@ -74,14 +76,27 @@ function rgba(hex: string, a: number): string {
 
 // ── Canvas sizing ─────────────────────────────────────────────────────────────
 
+// Logical (CSS-pixel) canvas size — what layout math, hit-testing, and drawing
+// all operate in. The canvas's actual backing store (ic.width/height) is sized
+// to logical * devicePixelRatio and the context is scaled to match, so
+// rendering is sharp on HiDPI displays / non-100% VS Code zoom instead of the
+// browser stretching a 1x-resolution bitmap up to fill the physical pixels.
+let logicalW = 0, logicalH = 0;
+
 function resize(): void {
   // Use the canvas's own clientWidth/Height — most accurate after CSS layout.
   const W = ic.clientWidth  || mainEl.clientWidth  || 800;
   const H = ic.clientHeight || mainEl.clientHeight || 400;
-  if (ic.width !== W || ic.height !== H) {
-    ic.width  = W;
-    ic.height = H;
+  const dpr = window.devicePixelRatio || 1;
+  const pixelW = Math.round(W * dpr);
+  const pixelH = Math.round(H * dpr);
+  if (ic.width !== pixelW || ic.height !== pixelH) {
+    ic.width  = pixelW;
+    ic.height = pixelH;
   }
+  logicalW = W;
+  logicalH = H;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 // ── Overlay ───────────────────────────────────────────────────────────────────
@@ -165,7 +180,7 @@ function buildNode(el: Element): SgNode {
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 function computeRects(node: SgNode): Rect[] {
-  const W = ic.width;
+  const W = logicalW;
   if (!W || W < 2) return [];
 
   try {
@@ -196,7 +211,7 @@ function computeRects(node: SgNode): Rect[] {
 
 function draw(): void {
   rafId = null;
-  const W = ic.width, H = ic.height;
+  const W = logicalW, H = logicalH;
   if (!W || !H || !ctx) return;
 
   try {
@@ -368,6 +383,7 @@ window.addEventListener('message', e => {
   const msg = e.data as ExtMsg;
   switch (msg.kind) {
     case 'loading':
+      statusDot.className = 'status-dot loading';
       showOverlay('Fetching node tree…', true);
       break;
 
@@ -376,11 +392,16 @@ window.addEventListener('message', e => {
       // Defer heavy work to next tick so overlay renders first.
       setTimeout(() => {
         const parsed = parseXml(msg.xml);
-        if (!parsed) { showOverlay('Could not parse node tree — check the Output channel.'); return; }
+        if (!parsed) {
+          statusDot.className = 'status-dot error';
+          showOverlay('Could not parse node tree — check the Output channel.');
+          return;
+        }
         root = parsed;
         focus = null;
         colorMap.clear();
         lastHover = null;
+        statusDot.className = 'status-dot ok';
         channelLabel.textContent = msg.channelTitle
           ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
         nodeCountEl.textContent = `${root.size - 1} nodes`;
@@ -395,6 +416,7 @@ window.addEventListener('message', e => {
     }
 
     case 'error':
+      statusDot.className = 'status-dot error';
       showOverlay(`⚠ ${msg.message}`);
       break;
   }

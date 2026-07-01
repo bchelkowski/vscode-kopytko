@@ -25,13 +25,14 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:perfetto-webview": "esbuild src/client/perfetto/webview/main.ts --bundle --outfile=out/perfetto-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:node-tree-webview": "esbuild src/client/nodes/webview/main.ts --bundle --outfile=out/node-tree-webview/main.js --platform=browser --format=iife --sourcemap",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview",
+    "bundle:nav-webview": "esbuild src/client/nav/webview/main.ts --bundle --outfile=out/nav-webview/main.js --platform=browser --format=iife --sourcemap",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
     "watch:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap --watch",
@@ -867,7 +868,7 @@
         "kopytko.diagnostics.collectors.rendezvous.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Collect render-thread rendezvous via ECP. While a session records rendezvous, the legacy Rendezvous Log poller is paused to avoid splitting the device's event queue."
+          "description": "Collect render-thread rendezvous via ECP."
         },
         "kopytko.diagnostics.collectors.rendezvous.intervalMs": {
           "type": "number",
@@ -886,13 +887,50 @@
         },
         "kopytko.diagnostics.collectors.textures.enabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Collect GPU texture/bitmap memory (r2d2_bitmaps). Off by default."
+          "default": true,
+          "description": "Collect GPU texture/bitmap memory (r2d2_bitmaps). Enabled by default; the Textures chart/table only shows when selected in the Charts/Tables dropdowns."
         },
         "kopytko.diagnostics.collectors.textures.intervalMs": {
           "type": "number",
           "default": 5000,
           "description": "Polling interval in milliseconds for texture memory."
+        },
+        "kopytko.diagnostics.collectors.appState.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Track app foreground/background state via ECP /query/app-state, shown as background shading on the charts. Requires \"Control by mobile apps\" enabled on the device — degrades to no shading (not an error) when unavailable."
+        },
+        "kopytko.diagnostics.collectors.appState.intervalMs": {
+          "type": "number",
+          "default": 2000,
+          "description": "Polling interval in milliseconds for app state."
+        },
+        "kopytko.diagnostics.collectors.fwBeacon.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Track framework beacon markers (AppLaunch/AppResume/VODStart Initiate/Complete) from the port-8085 BrightScript log. Enabled by default; markers only appear when the Beacons checkbox is checked."
+        },
+        "kopytko.diagnostics.beaconLogPort": {
+          "type": "number",
+          "default": 8085,
+          "description": "TCP port of the Roku BrightScript log stream used for framework beacon markers."
+        },
+        "kopytko.diagnostics.defaultVisibleCharts": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["memory", "cpu", "nodes", "textures"] },
+          "default": ["memory", "cpu", "nodes"],
+          "description": "Charts shown by default when the diagnostics panel opens. The corresponding data is only collected while at least one visible chart or table needs it."
+        },
+        "kopytko.diagnostics.defaultVisibleTables": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["nodes", "rendezvous", "textures"] },
+          "default": ["nodes", "rendezvous"],
+          "description": "Tables shown by default when the diagnostics panel opens."
+        },
+        "kopytko.diagnostics.memoryLimits.backgroundMB": {
+          "type": "number",
+          "default": 100,
+          "description": "Reference line on the Memory chart for Roku's published background-app DRAM guidance. Not device-reported (unlike the foreground limit, which comes from chanperf) — Roku publishes this as a fixed recommendation that may change between OS versions, hence configurable here."
         },
         "kopytko.perfetto.ecpPort": {
           "type": "number",
@@ -1021,9 +1059,10 @@
           "name": "Roku Devices"
         },
         {
-          "id": "kopytko.rendezvous",
-          "icon": "images/roku-device.svg",
-          "name": "Rendezvous Log"
+          "type": "webview",
+          "id": "kopytko.nav",
+          "icon": "images/kopytko-logo.svg",
+          "name": "Tools"
         }
       ]
     },
@@ -1124,23 +1163,6 @@
         "category": "Kopytko"
       },
       {
-        "command": "kopytko.clearRendezvousLog",
-        "title": "Clear Rendezvous Log",
-        "icon": "$(clear-all)",
-        "category": "Kopytko"
-      },
-      {
-        "command": "kopytko.navigateToRendezvous",
-        "title": "Go to Rendezvous Location",
-        "category": "Kopytko"
-      },
-      {
-        "command": "kopytko.toggleRendezvousSort",
-        "title": "Toggle Sort Order",
-        "icon": "$(arrow-swap)",
-        "category": "Kopytko"
-      },
-      {
         "command": "kopytko.diagnostics.startSession",
         "title": "Start Diagnostics Session",
         "icon": "$(record)",
@@ -1194,28 +1216,9 @@
           "command": "kopytko.addDevice",
           "when": "view == kopytko.rokuDevices",
           "group": "navigation@2"
-        },
-        {
-          "command": "kopytko.clearRendezvousLog",
-          "when": "view == kopytko.rendezvous",
-          "group": "navigation@1"
-        },
-        {
-          "command": "kopytko.toggleRendezvousSort",
-          "when": "view == kopytko.rendezvous",
-          "group": "navigation@2"
         }
       ],
-      "commandPalette": [
-        {
-          "command": "kopytko.navigateToRendezvous",
-          "when": "false"
-        },
-        {
-          "command": "kopytko.toggleRendezvousSort",
-          "when": "false"
-        }
-      ],
+      "commandPalette": [],
       "view/item/context": [
         {
           "command": "kopytko.selectDevice",

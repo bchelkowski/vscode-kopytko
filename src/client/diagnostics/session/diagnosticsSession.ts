@@ -44,6 +44,7 @@ export interface DiagnosticsSessionOptions {
 export class DiagnosticsSession extends EventEmitter {
   private readonly writer: NdjsonWriter;
   private readonly rings = new Map<DiagnosticEventType, DiagnosticEvent[]>();
+  private readonly collectorsByType = new Map<DiagnosticEventType, Collector>();
   private readonly ringSize: number;
   private startedWall = 0;
   private running = false;
@@ -52,6 +53,25 @@ export class DiagnosticsSession extends EventEmitter {
     super();
     this.ringSize = opts.ringSize ?? 3600;
     this.writer = new NdjsonWriter(opts.sink, opts.dir, opts.flushIntervalMs);
+    for (const c of opts.collectors) this.collectorsByType.set(c.type, c);
+  }
+
+  /** Whether a collector for this event type was built into this session (i.e. enabled in settings). */
+  hasCollector(type: DiagnosticEventType): boolean {
+    return this.collectorsByType.has(type);
+  }
+
+  /**
+   * Starts or stops a single collector inside an already-running session, without
+   * touching the others. No-op (returns `false`) when no collector of this type
+   * was built — settings remain a hard ceiling; this can only narrow what's
+   * already enabled, never widen it.
+   */
+  setCollectorActive(type: DiagnosticEventType, active: boolean): boolean {
+    const c = this.collectorsByType.get(type);
+    if (!c) return false;
+    if (active) c.start(); else c.stop();
+    return true;
   }
 
   get dir(): string {

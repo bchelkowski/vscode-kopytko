@@ -1,0 +1,70 @@
+/* Kopytko Tools nav panel — mirrors the Diagnostics webview's theming
+   conventions (button colors, radii, font sizes) for visual consistency. */
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--vscode-panel-background, transparent);
+  color: var(--vscode-editor-foreground, #cccccc);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 12px);
+  margin: 0;
+  padding: 6px;
+}
+
+#nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+  border-radius: 2px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.nav-item:hover {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+.nav-item:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+}
+
+.nav-icon {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--vscode-button-background, #0e639c);
+}
+.nav-item:hover .nav-icon {
+  color: inherit;
+}
+
+.nav-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.nav-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.nav-desc {
+  font-size: 10px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

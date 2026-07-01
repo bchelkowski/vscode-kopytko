@@ -24,6 +24,7 @@ export class TextureCollector extends PollingCollector {
         availableBytes: t.availableBytes,
         count: t.count,
         totalSizeBytes: t.totalSizeBytes,
+        bitmaps: t.bitmaps,
       },
     ];
   }

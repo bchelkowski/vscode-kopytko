@@ -64,6 +64,30 @@ describe('RendezvousManager', () => {
     sinon.restore();
   });
 
+  // ── construction ────────────────────────────────────────────────────────────
+
+  describe('construction', () => {
+    it('does NOT auto-enable from a stale persisted "true" for the current device', async () => {
+      // Before the Rendezvous Log sidebar was removed, this flag reflected the
+      // user's checkbox and there was a UI to turn it back off. Now there is
+      // none — auto-restoring it would silently start a background poller
+      // nobody can stop, competing with a diagnostics session for the same
+      // drain-on-read ECP queue.
+      const ecp = createMockEcp();
+      const memento = createMockMemento();
+      await memento.update('kopytko.rendezvousEnabled', { [DEVICE_A.serialNumber]: true });
+      const dm = createMockDeviceManager(DEVICE_A);
+
+      const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', memento as any);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mgr.isEnabled).to.be.false;
+      expect(ecp.enableRendezvousTracking.called).to.be.false;
+      mgr.dispose();
+    });
+  });
+
   // ── setEnabled ──────────────────────────────────────────────────────────────
 
   describe('setEnabled(true)', () => {
@@ -261,23 +285,26 @@ describe('RendezvousManager', () => {
       mgr.dispose();
     });
 
-    it('auto-enables on the new device when its persisted state is true', async () => {
+    it('does NOT auto-enable on the new device even if a stale persisted state says true', async () => {
+      // No UI can set this persisted flag anymore (the tree view that used to
+      // let users toggle it was removed) — auto-restoring from it would silently
+      // resurrect a background poller nobody can turn off and that competes
+      // with a diagnostics session for the same shared ECP queue. See
+      // RendezvousManager.suspend()/resume() and the diagnostics "shared queue"
+      // docs for why a second consumer of that queue is a real problem.
       const ecp = createMockEcp();
       const memento = createMockMemento();
-      // Pre-populate persisted state for DEVICE_B
       await memento.update('kopytko.rendezvousEnabled', { [DEVICE_B.serialNumber]: true });
 
       const dm = createMockDeviceManager(DEVICE_A);
       const mgr = new RendezvousManager(dm as any, ecp as any, '/ws', memento as any);
 
       dm.setActive(DEVICE_B);
-
-      // Allow async setEnabled to run
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(mgr.isEnabled).to.be.true;
-      expect(ecp.enableRendezvousTracking.calledWith(DEVICE_B.ip, DEVICE_B.port)).to.be.true;
+      expect(mgr.isEnabled).to.be.false;
+      expect(ecp.enableRendezvousTracking.called).to.be.false;
       mgr.dispose();
     });
   });

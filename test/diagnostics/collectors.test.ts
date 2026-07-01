@@ -3,6 +3,7 @@ import * as sinon from 'sinon';
 import { ChanperfCollector } from '../../src/client/diagnostics/collectors/chanperfCollector';
 import { NodeCountsCollector } from '../../src/client/diagnostics/collectors/nodeCountsCollector';
 import { RendezvousCollector } from '../../src/client/diagnostics/collectors/rendezvousCollector';
+import { AppStateCollector } from '../../src/client/diagnostics/collectors/appStateCollector';
 import type { DiagnosticSample } from '../../src/client/diagnostics/session/eventModel';
 
 const CHANPERF =
@@ -139,6 +140,39 @@ describe('diagnostics collectors', () => {
       collector.start();
       await clock.tickAsync(2000);
       expect(collector.totalDropCount).to.be.greaterThan(0);
+      collector.stop();
+    });
+  });
+
+  describe('AppStateCollector', () => {
+    it('emits an app-state sample with type and wall stamp', async () => {
+      const ecp = { queryAppState: sinon.stub().resolves('active') };
+      const collector = new AppStateCollector(ecp as any, '1.2.3.4', 8060, 'dev', 2000);
+      const samples: DiagnosticSample[] = [];
+      collector.on('sample', (s) => samples.push(s));
+
+      collector.start();
+      await clock.tickAsync(1);
+
+      expect(samples).to.have.length(1);
+      const s = samples[0] as any;
+      expect(s.type).to.equal('app-state');
+      expect(s.state).to.equal('active');
+      expect(s.wall).to.be.a('number');
+      expect(ecp.queryAppState.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
+      collector.stop();
+    });
+
+    it('polls again on the interval', async () => {
+      const ecp = { queryAppState: sinon.stub().resolves('background') };
+      const collector = new AppStateCollector(ecp as any, '1.2.3.4', 8060, 'dev', 2000);
+      let count = 0;
+      collector.on('sample', () => { count++; });
+
+      collector.start();
+      await clock.tickAsync(1);
+      await clock.tickAsync(2000);
+      expect(count).to.equal(2);
       collector.stop();
     });
   });

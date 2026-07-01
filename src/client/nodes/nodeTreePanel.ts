@@ -114,8 +114,9 @@ export class NodeTreePanel {
 </head>
 <body>
   <div id="toolbar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="channel-label">No device</span>
     <button id="btn-refresh" title="Fetch latest node tree from device">Refresh</button>
-    <span id="channel-label"></span>
     <span id="node-count"></span>
   </div>
   <div id="breadcrumb-bar"></div>

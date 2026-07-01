@@ -39,9 +39,11 @@ returns `<item>` events with id/start/end/line/file + drop count) →
 `POST /sgrendezvous/untrack`.
 
 > **Shared queue caveat:** `GET /query/sgrendezvous` *drains* a single device
-> queue. If two pollers run at once they split events. So while a diagnostics
-> session records rendezvous, the legacy **Rendezvous Log** poller is suspended
-> and restored when the session stops.
+> queue. If two pollers run at once they split events. `RendezvousManager`
+> (an internal coordination class, no visible UI of its own — the sidebar
+> tree view that used to expose it directly was removed in favor of this
+> panel) is suspended before a diagnostics session starts and restored when
+> it stops, so nothing else can drain the queue concurrently.
 
 ---
 
@@ -136,6 +138,64 @@ into a new folder, and stops/finalizes on the stop command.
 
 ---
 
+## Tools sidebar
+
+A small panel in the Kopytko activity-bar sidebar (labeled "Tools", alongside
+Roku Devices) with three buttons for quick navigation:
+
+| Button | Opens |
+|---|---|
+| **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
+| **Perfetto** | Opens the Perfetto tracing tab (`kopytko.perfetto.open`) |
+| **Node Tree** | Opens the SceneGraph Node Tree Explorer (`kopytko.nodes.open`) |
+
+It's a plain navigation aid — no data flows through it, it just executes the
+corresponding reveal command. Styled to match this panel's toolbar (same
+color/spacing/radius conventions) for visual consistency across the
+extension's runtime-inspection tools.
+
+Source: `src/client/nav/` (`views/navViewProvider.ts`, `webview/main.ts`,
+`webview/styles.css`), registered via `src/client/activation/nav.ts`.
+
+---
+
+## Recording a different channel
+
+By default, sessions record the sideloaded **dev** channel. The toolbar's
+channel dropdown lets you record any *other* installed channel that shares
+the same developer key — useful for profiling a "prod tester"/QA build
+installed alongside the dev channel, without re-sideloading.
+
+The list is built by cross-referencing ECP `GET /query/registry/dev`'s
+`<plugins>` field (every channel id signed with the same developer key as the
+sideloaded channel) against `GET /query/apps` for display names. Channels
+signed with a different key (any regular store app, or another developer's
+sideload) never appear — the device itself rejects the registry lookup for
+them with "Specified dev ID does not match the device key". If no dev
+channel is sideloaded at all, the dropdown falls back to just "dev".
+
+**Selecting a channel only changes what the *next* session targets and how
+its manifest labels it — it does not switch the device to that channel.**
+`chanperf`/`sgnodes`/the raw debug console (Memory/CPU/Nodes/Textures) always
+report whatever channel is *currently the foreground UI* on the device,
+regardless of which one is selected here; only app-state tracking targets
+the selected channel specifically (via its app id). So to get real
+Memory/CPU/Node data for a non-dev channel, you still need to actually
+navigate the device to that channel.
+
+Changing the selection while a session is recording **stops that session
+immediately** — a running session always reflects the channel it was
+started for, never a silently-swapped target. Either way (recording or not),
+changing the channel **resets the panel to a clean live view** — charts,
+tables, and the app-state badge are all cleared, the same as opening the
+panel fresh — since data from the previous channel would otherwise linger on
+screen looking like it belongs to the new one. "dev" is always the default on
+panel open. Starting a new recording after a channel change always creates a
+brand-new session folder for the new channel; it never appends to or reuses
+the previous channel's session files.
+
+---
+
 ## Settings
 
 All under `kopytko.diagnostics.*`:
@@ -149,7 +209,19 @@ All under `kopytko.diagnostics.*`:
 | `collectors.nodeCounts.enabled` / `.intervalMs` | `true` / `2000` | Node counts by type |
 | `collectors.rendezvous.enabled` / `.intervalMs` | `true` / `1000` | Rendezvous via ECP |
 | `collectors.systemMem.enabled` / `.intervalMs` | `false` / `5000` | Device-wide memory |
-| `collectors.textures.enabled` / `.intervalMs` | `false` / `5000` | GPU texture memory |
+| `collectors.textures.enabled` / `.intervalMs` | `true` / `5000` | GPU texture memory. Only polled while the Textures chart or table is visible |
+| `collectors.appState.enabled` / `.intervalMs` | `true` / `2000` | App foreground/background state via ECP, shown as background shading on every chart. Requires "Control by mobile apps" enabled on-device — degrades to no shading (not an error) when unavailable |
+| `collectors.fwBeacon.enabled` | `true` | Framework beacon markers (AppLaunch/AppResume/VODStart Initiate/Complete) from the port-8085 BrightScript log. Only polled while the Beacons checkbox is on. **Port 8085 accepts only one consumer at a time** — if an active debug session (or another tool) already holds it, beacon markers won't appear; check the "Kopytko Diagnostics" output channel for a "rejected the connection" message |
+| `beaconLogPort` | `8085` | TCP port of the BrightScript log stream used for beacon markers |
+| `defaultVisibleCharts` | `["memory","cpu","nodes"]` | Charts shown by default when the panel opens |
+| `defaultVisibleTables` | `["nodes","rendezvous"]` | Tables shown by default when the panel opens |
+| `memoryLimits.backgroundMB` | `100` | Reference line on the Memory chart for Roku's published background-app DRAM guidance. Not device-reported (the foreground limit is, from `chanperf`) |
+
+A collector enabled in settings is still only **polled** while at least one
+visible chart, table, or overlay needs its data — toggling charts/tables/overlays
+in the panel's "Charts"/"Tables" dropdowns and the Rendezvous/Beacons checkboxes
+starts and stops individual collectors on the running session in real time, so
+nothing not currently displayed is fetched from the device.
 
 ---
 
@@ -186,10 +258,12 @@ Selecting **● Live** from the dropdown sends `load-live`; the extension respon
 a fresh `init` message containing the live ring-buffer data (if a session is running)
 or an empty state. The toolbar and button are restored.
 
-## Lists & navigation (Phase 3)
+## Lists & navigation (Phase 3+)
 
-Below the three charts the panel shows two side-by-side data tables, each 138 px tall
-and independently scrollable.
+Below the charts the panel shows up to three side-by-side data tables, each
+independently scrollable and independently shown/hidden via the toolbar's
+"Tables" dropdown. Each table's header badge shows a running total (event
+count + total time for Rendezvous; bitmap count + total size for Textures).
 
 ### Node types table
 
@@ -217,35 +291,100 @@ rendezvous line using `resolveRendezvousFile`:
 2. Multiple matches → prefer node_modules (kopytko npm packages are the typical source).
 3. Filename-only fallback.
 
+### Textures table
+
+Lists individual loaded bitmaps from the latest `textures` snapshot. Columns:
+**Name** (basename, full path on hover), **Dimensions** (width×height), **kB**.
+Sorted by size descending, capped at 50 rows.
+
 ### Shared file-resolution util
 
 `src/client/roku/util/resolveSourceFile.ts` exports both `resolveRendezvousFile`
-and `resolveNodeComponentFile`. The legacy **Rendezvous Log** tree (`activation/rendezvous.ts`)
-was updated to import from this shared util rather than duplicating the logic.
+and `resolveNodeComponentFile`, used by this panel's Rendezvous/Nodes tables to
+open source files on click.
 
-## Webview panel (Phase 2)
+## Webview panel (Phase 2+)
 
-The panel appears in the VS Code bottom bar under **Kopytko Diagnostics**.
+The panel appears in the VS Code bottom bar under **Kopytko Diagnostics**. The
+webview is hand-rolled D3.js/SVG, not a charting library.
 
 ### Layout
 
-A toolbar row (device indicator, Start/Stop button, elapsed timer) above three
-side-by-side uPlot charts:
+A toolbar row (device indicator, a live app-state badge, Start/Stop, elapsed
+timer, Charts/Tables visibility dropdowns, Rendezvous/Beacons overlay
+checkboxes) above up to four charts, each independently shown/hidden via the
+"Charts" dropdown:
 
 | Chart | Series | Source |
 |---|---|---|
-| **Memory** | Total MB (line), Anon (line), File (line) | `chanperf` |
+| **Memory** | Total MB (area), Anon, File, Shared, Swap, plus a device-reported foreground-limit line ("FG Limit") and Roku's published background-DRAM-guidance line ("BG Limit", default 100 MB, `kopytko.diagnostics.memoryLimits.backgroundMB`) | `chanperf` |
 | **CPU** | Total %, User, Sys | `chanperf` |
-| **SceneGraph Nodes** | Total node count (line) + rendezvous markers (vertical lines) | `sgnodes counts` + ECP rendezvous |
+| **SceneGraph Nodes** | Stacked area by node type (top 8 + "Other"), with a legend | `sgnodes counts` |
+| **Textures** | Used MB (area) + a max-texture-memory reference line | `r2d2_bitmaps` |
+
+Every chart can optionally overlay rendezvous markers (vertical lines) and
+framework beacon markers (dashed vertical lines), toggled independently via
+the toolbar checkboxes, and shades its background for time ranges the app was
+backgrounded/inactive (from the `app-state` collector, on by default). The
+toolbar's app-state badge (`● active` / `● background` / `● inactive` /
+`● unknown`) shows the *current* live state directly — useful when the app has
+been in one state for the whole session, since the chart shading alone only
+reads as a signal when there's a visible transition. Requires "Control by
+mobile apps" enabled on the device; shows `● unknown` otherwise (not an
+error).
+
+**The diagnostics *session* itself never stops or pauses when the app is
+backgrounded** — recording, the NDJSON writer, and the rendezvous/app-state/
+beacon collectors all keep running the entire time a session is active,
+regardless of the app's foreground/background state. What *does* go quiet
+during background is CPU/Memory/Node/Texture data specifically, because the
+Roku device itself refuses to serve it: `GET /query/chanperf` and
+`GET /query/sgnodes/all` both return `<status>FAILED</status><error>Channel
+not running: active UI</error>` while the channel isn't the foreground UI, and
+the raw SceneGraph debug console (port 8080, used for Textures) accepts the
+TCP connection but doesn't respond to any command until the app returns to
+the foreground. This is a Roku OS/ECP platform limitation (confirmed live
+against a dev Ultra, firmware 15.2.4) that no client-side polling change can
+work around — the resulting gap in those charts is exactly what the
+background/inactive shading is meant to explain, not a bug.
+
+Hovering
+any chart shows a tooltip with each series' value plus the nearest
+rendezvous/beacon at the cursor (file:line + duration, or beacon name + time).
+
+The "Helper lines" toolbar checkbox toggles the FG/BG memory-limit and
+texture-max reference lines off — when off, those lines stop being included
+in the y-axis auto-range too, so the remaining series can use the full chart
+height to show lower values more clearly (useful when a limit is far above
+normal usage and compresses everything else near the bottom).
+
+Dragging directly on **any** chart — not just the navigator strip — selects a
+time range and zooms all charts to it, the same as dragging the navigator. The
+dragged rectangle clears itself immediately afterward; the navigator strip is
+what continues to show the current zoom range. A plain click (no drag) is a
+no-op and doesn't reset an existing zoom — use "Clear Range" or drag an empty
+selection on the navigator for that.
+
+A single navigator/range-select strip below the charts overlays the headline
+metric of **every** currently visible chart simultaneously (Memory, CPU, Nodes,
+Textures), each normalized to a shared 0–1 scale since their units differ —
+not just the first one.
+
+Charts are laid out in equal-width columns matching how many are visible (one
+chart = full width, two = 50/50, etc.) and likewise for tables. The charts
+area grows with the panel up to a height cap; once that cap is hit, further
+panel growth goes to the tables area instead. A drag handle between the two
+areas works the same way manually. When no charts are selected the tables
+area fills the space, and vice versa.
 
 All charts resize with the panel. Colors adapt to the VS Code theme via CSS
 variables.
 
 ### Webview bundle
 
-Built by `npm run bundle:webview` → `out/diagnostics-webview/main.js` (153 KB,
-includes uPlot) and `out/diagnostics-webview/main.css` (3.6 KB). The bundle is
-excluded from tsc (browser globals) and compiled by esbuild only.
+Built by `npm run bundle:webview` → `out/diagnostics-webview/main.js` and
+`out/diagnostics-webview/main.css`. The bundle is excluded from tsc (browser
+globals) and compiled by esbuild only.
 
 Source: `src/client/diagnostics/webview/` — `protocol.ts` (message types),
 `main.ts` (DOM + chart logic), `styles.css`.

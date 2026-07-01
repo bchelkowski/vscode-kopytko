@@ -378,25 +378,6 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
-    <!-- Rendezvous -->
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-3">Rendezvous panel</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        <div>
-          <p class="text-slate-400 leading-relaxed mb-3">
-            Real-time monitoring of SceneGraph <a href="https://developer.roku.com/dev/docs/threads#thread-rendezvous" target="_blank" class="prose-link">rendezvous events</a> — the synchronization points between the render thread and task threads that cause UI jank when they stack up.
-          </p>
-          <p class="text-slate-400 text-sm leading-relaxed">
-            Events are grouped by file and line number with click-to-navigate. State is persisted per device session. Toggle monitoring with the checkbox in the panel header.
-          </p>
-        </div>
-        <Screenshot
-          alt="Rendezvous panel"
-          placeholder="Rendezvous panel tree showing events grouped by file:line, each showing count and timing info, with navigation arrows"
-        />
-      </div>
-    </section>
-
     <!-- Kopytko Perfetto -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">Kopytko Perfetto (App Tracing)</h2>
@@ -468,7 +449,6 @@ const kopytkoRcExample = `// .kopytkorc
               ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
               ['Read registry', '', 'View device registry sections in a virtual document'],
               ['Add / Remove favorite', '', 'Persist a device across restarts'],
-              ['Clear rendezvous log', '', 'Clear all events from the rendezvous panel'],
             ].map(([cmd, kb, desc]) => (
               <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">
                 <td class="px-4 py-2.5 text-white text-xs font-medium">{cmd}</td>

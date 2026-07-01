@@ -13,12 +13,16 @@ import type { ChanperfSample } from './chanperf';
  *     <cpu-percent><user>0.0</user><sys>0.0</sys></cpu-percent>
  *     <memory>
  *       <used>42905600</used><anon>21086208</anon><file>21618688</file>
- *       <shared>200704</shared><swap>0</swap>
+ *       <shared>200704</shared><swap>0</swap><limit>859832320</limit>
  *     </memory>
  *   </plugin>
  *   <status>OK</status>
  * </chanperf>
  * ```
+ *
+ * `<limit>` is the device-reported foreground memory ceiling for the channel
+ * (bytes) — exceeding it gets the app terminated by the Roku OS. Not present
+ * on the raw debug-console `chanperf` command, only ECP.
  */
 export function parseEcpChanperf(xml: string): ChanperfSample | null {
   if (!xml.includes('<status>OK</status>')) return null;
@@ -33,6 +37,7 @@ export function parseEcpChanperf(xml: string): ChanperfSample | null {
   const file    = num('file');
   const shared  = num('shared');
   const swap    = num('swap');
+  const limit   = num('limit');
   const cpuUser = num('user');
   const cpuSys  = num('sys');
 
@@ -46,6 +51,7 @@ export function parseEcpChanperf(xml: string): ChanperfSample | null {
     fileKiB:   toKiB(file),
     sharedKiB: toKiB(shared),
     swapKiB:   toKiB(swap),
+    limitKiB:  isNaN(limit) ? undefined : toKiB(limit),
     cpuPct:    Math.round(cpuUser + (isNaN(cpuSys) ? 0 : cpuSys)),
     cpuUser:   Math.round(cpuUser),
     cpuSys:    Math.round(isNaN(cpuSys) ? 0 : cpuSys),

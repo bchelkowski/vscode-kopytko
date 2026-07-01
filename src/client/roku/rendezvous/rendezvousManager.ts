@@ -175,34 +175,13 @@ export class RendezvousManager extends EventEmitter {
     this._groups = [];
     this._totalDropCount = 0;
     this._lastKnownSerial = newSerial;
-
-    if (newSerial) {
-      const stored = this.workspaceState.get<Record<string, boolean>>(PERSISTENCE_KEY) ?? {};
-      const shouldEnable = stored[newSerial] ?? false;
-      this._enabled = false;
-
-      if (shouldEnable) {
-        this.setEnabled(true).catch(() => {});
-        return;
-      }
-    } else {
-      this._enabled = false;
-    }
-
+    this._enabled = false;
     this.emit('changed');
   };
 
   private _initForCurrentDevice(): void {
     const device = this.deviceManager.getActiveDevice();
     this._lastKnownSerial = device?.serialNumber;
-
-    if (device) {
-      const stored = this.workspaceState.get<Record<string, boolean>>(PERSISTENCE_KEY) ?? {};
-      const shouldEnable = stored[device.serialNumber] ?? false;
-      if (shouldEnable) {
-        this.setEnabled(true).catch(() => {});
-      }
-    }
   }
 
   private _startPolling(ip: string, port: number): void {

@@ -327,6 +327,48 @@ export class EcpClient {
   }
 
   /**
+   * Queries an app's lifecycle state via ECP (`/query/app-state/<appId>`).
+   *
+   * Returns `'active'` (foreground), `'background'`, or `'inactive'` based on
+   * the device's `<state>` tag. Requires "Control by mobile apps" to be
+   * enabled on the device — never throws; returns `'unknown'` on any failure
+   * (device offline, setting disabled, unrecognized response) so polling
+   * collectors can keep going without special-casing this endpoint.
+   *
+   * Verified live response shape (Roku Ultra, firmware 15.2.4):
+   * ```xml
+   * <app-state>
+   *   <app-id>dev</app-id><app-title>DAZN</app-title><app-version>3.30.5</app-version>
+   *   <app-dev-id>...</app-dev-id>
+   *   <state>background</state>
+   *   <status>OK</status>
+   * </app-state>
+   * ```
+   * On failure (e.g. querying an app ID other than the active dev channel):
+   * `<app-state><app-id>12</app-id><status>FAILED</status><error>...</error></app-state>`
+   */
+  async queryAppState(
+    ip: string,
+    appId: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<'active' | 'background' | 'inactive' | 'unknown'> {
+    try {
+      const { statusCode, body } = await httpGet(
+        `http://${ip}:${port}/query/app-state/${encodeURIComponent(appId)}`,
+        DEFAULT_TIMEOUT_MS,
+      );
+      if (statusCode !== 200) return 'unknown';
+      if (!/<status>\s*OK\s*<\/status>/i.test(body)) return 'unknown';
+      const m = /<state>\s*([^<\s]+)\s*<\/state>/i.exec(body);
+      const state = m?.[1]?.toLowerCase();
+      if (state === 'active' || state === 'background' || state === 'inactive') return state;
+      return 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
    * Validates a developer password against a Roku device using HTTP Digest
    * Authentication.
    *
