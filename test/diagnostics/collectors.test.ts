@@ -4,6 +4,7 @@ import { ChanperfCollector } from '../../src/client/diagnostics/collectors/chanp
 import { NodeCountsCollector } from '../../src/client/diagnostics/collectors/nodeCountsCollector';
 import { RendezvousCollector } from '../../src/client/diagnostics/collectors/rendezvousCollector';
 import { AppStateCollector } from '../../src/client/diagnostics/collectors/appStateCollector';
+import { FwBeaconCollector } from '../../src/client/diagnostics/collectors/fwBeaconCollector';
 import type { DiagnosticSample } from '../../src/client/diagnostics/session/eventModel';
 
 const CHANPERF =
@@ -140,6 +141,70 @@ describe('diagnostics collectors', () => {
       collector.start();
       await clock.tickAsync(2000);
       expect(collector.totalDropCount).to.be.greaterThan(0);
+      collector.stop();
+    });
+  });
+
+  describe('FwBeaconCollector', () => {
+    function makeEcp() {
+      return {
+        enableFwBeaconTracking: sinon.stub().resolves(true),
+        disableFwBeaconTracking: sinon.stub().resolves(true),
+        queryFwBeacons: sinon.stub().resolves({ events: [], dropCount: 0 }),
+      };
+    }
+
+    it('enables tracking for the target app id on start and emits beacon samples', async () => {
+      const ecp = makeEcp();
+      ecp.queryFwBeacons.resolves({
+        events: [{ name: 'app-launch-complete', timestampMs: 1782980514114 }],
+        dropCount: 0,
+      });
+      const collector = new FwBeaconCollector(ecp as any, { ip: '1.2.3.4', port: 8060, appId: 'dev' }, 1000);
+      const samples: any[] = [];
+      collector.on('sample', (s) => samples.push(s));
+
+      collector.start();
+      await clock.tickAsync(1000);
+
+      expect(ecp.enableFwBeaconTracking.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
+      expect(samples.length).to.be.greaterThan(0);
+      expect(samples[0]).to.include({
+        type: 'fw-beacon', name: 'app-launch-complete', wall: 1782980514114,
+      });
+      collector.stop();
+    });
+
+    it('disables tracking for the target app id on stop', async () => {
+      const ecp = makeEcp();
+      const collector = new FwBeaconCollector(ecp as any, { ip: '1.2.3.4', port: 8060, appId: 'dev' }, 1000);
+      collector.start();
+      await clock.tickAsync(1);
+      collector.stop();
+      expect(ecp.disableFwBeaconTracking.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
+    });
+
+    it('accumulates device drop counts', async () => {
+      const ecp = makeEcp();
+      ecp.queryFwBeacons.resolves({ events: [], dropCount: 3 });
+      const collector = new FwBeaconCollector(ecp as any, { ip: '1.2.3.4', port: 8060, appId: 'dev' }, 1000);
+      collector.start();
+      await clock.tickAsync(2000);
+      expect(collector.totalDropCount).to.be.greaterThan(0);
+      collector.stop();
+    });
+
+    it('emits nothing and does not throw when enabling tracking fails', async () => {
+      const ecp = makeEcp();
+      ecp.enableFwBeaconTracking.resolves(false);
+      const collector = new FwBeaconCollector(ecp as any, { ip: '1.2.3.4', port: 8060, appId: 'dev' }, 1000);
+      let count = 0;
+      collector.on('sample', () => { count++; });
+
+      collector.start();
+      await clock.tickAsync(1000);
+      expect(count).to.equal(0);
+      expect(ecp.queryFwBeacons.called).to.be.false;
       collector.stop();
     });
   });

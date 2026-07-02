@@ -39,6 +39,9 @@ function makeDeps(device: typeof DEVICE | undefined) {
       enableRendezvousTracking: sinon.stub().resolves(true),
       disableRendezvousTracking: sinon.stub().resolves(true),
       queryRendezvousEvents: sinon.stub().resolves({ events: [], dropCount: 0 }),
+      enableFwBeaconTracking: sinon.stub().resolves(true),
+      disableFwBeaconTracking: sinon.stub().resolves(true),
+      queryFwBeacons: sinon.stub().resolves({ events: [], dropCount: 0 }),
       queryChanperf: sinon.stub().rejects(new Error('offline')),
       querySgNodes: sinon.stub().rejects(new Error('offline')),
       queryRegistry: sinon.stub().resolves(
@@ -90,7 +93,7 @@ describe('DiagnosticsController', () => {
     expect(manifest.app.title).to.equal('DAZN');
     expect(manifest.device.ip).to.equal('1.2.3.4');
     expect(manifest.collectors.map((c: any) => c.type)).to.include.members([
-      'mem-cpu', 'node-counts', 'rendezvous',
+      'mem-cpu', 'node-counts', 'rendezvous', 'fw-beacon',
     ]);
 
     await controller.stopSession();
@@ -136,6 +139,60 @@ describe('DiagnosticsController', () => {
     }
   });
 
+  describe('framework beacon collector (ECP)', () => {
+    it('enables beacon tracking for the resolved app id via ECP, not the port-8085 log', async () => {
+      const clock = sinon.useFakeTimers();
+      const deps = makeDeps(DEVICE);
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      await controller.startSession();
+      try {
+        await clock.tickAsync(1);
+        expect(deps.ecp.enableFwBeaconTracking.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
+      } finally {
+        await controller.stopSession();
+        clock.restore();
+      }
+    });
+
+    it('tracks whichever channel is selected in the dropdown, not just "dev"', async () => {
+      const clock = sinon.useFakeTimers();
+      const deps = makeDeps(DEVICE);
+      deps.ecp.queryApps.resolves([
+        { id: 'dev', name: 'DAZN', version: '3.30.3' },
+        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+      ]);
+      const { sink } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      await controller.setSelectedApp('268970');
+      await controller.startSession();
+      try {
+        await clock.tickAsync(1);
+        expect(deps.ecp.enableFwBeaconTracking.calledWith('1.2.3.4', '268970', 8060)).to.be.true;
+        expect(deps.ecp.enableFwBeaconTracking.calledWith('1.2.3.4', 'dev', 8060)).to.be.false;
+      } finally {
+        await controller.stopSession();
+        clock.restore();
+      }
+    });
+
+    it('skips the collector when the selected app id cannot be resolved', async () => {
+      const deps = makeDeps(DEVICE);
+      deps.ecp.queryApps.resolves([]); // "dev" not found — resolveApp() returns {}
+      const { sink, files } = makeFakeSink();
+      const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
+
+      await controller.startSession();
+      const manifestEntry = [...files.entries()].find(([k]) => k.endsWith('session.json'));
+      const manifest = JSON.parse(manifestEntry![1]);
+      expect(manifest.collectors.map((c: any) => c.type)).to.not.include('fw-beacon');
+      expect(controller.hasCollector('fw-beacon')).to.be.false;
+      await controller.stopSession();
+    });
+  });
+
   describe('multi-channel selection', () => {
     it('defaults to "dev" and resolves the manifest app from the selected id', async () => {
       const deps = makeDeps(DEVICE);
@@ -174,16 +231,23 @@ describe('DiagnosticsController', () => {
     });
 
     it('setSelectedApp stops a running session when the selection actually changes', async () => {
+      const clock = sinon.useFakeTimers();
       const deps = makeDeps(DEVICE);
       const { sink } = makeFakeSink();
       const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
 
       await controller.startSession();
+      await clock.tickAsync(1);
       expect(controller.isRecording).to.be.true;
+      expect(deps.ecp.enableFwBeaconTracking.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
 
       await controller.setSelectedApp('268970');
       expect(controller.isRecording).to.be.false;
       expect(deps.rendezvousManager.resume.calledOnce).to.be.true;
+      // Untracks the *old* (dev) channel's beacons — switching channels never
+      // leaves a stale /fwbeacons/track registered on the device.
+      expect(deps.ecp.disableFwBeaconTracking.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
+      clock.restore();
     });
 
     it('setSelectedApp does not stop a running session when the selection is unchanged', async () => {

@@ -908,12 +908,12 @@
         "kopytko.diagnostics.collectors.fwBeacon.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Track framework beacon markers (AppLaunch/AppResume/VODStart Initiate/Complete) from the port-8085 BrightScript log. Enabled by default; markers only appear when the Beacons checkbox is checked."
+          "description": "Track framework beacon markers (AppLaunch/AppResume/VODStart Initiate/Complete) via ECP /fwbeacons. Enabled by default, including the Beacons checkbox."
         },
-        "kopytko.diagnostics.beaconLogPort": {
+        "kopytko.diagnostics.collectors.fwBeacon.intervalMs": {
           "type": "number",
-          "default": 8085,
-          "description": "TCP port of the Roku BrightScript log stream used for framework beacon markers."
+          "default": 1000,
+          "description": "Polling interval in milliseconds for framework beacon events."
         },
         "kopytko.diagnostics.defaultVisibleCharts": {
           "type": "array",

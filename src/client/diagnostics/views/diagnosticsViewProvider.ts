@@ -113,7 +113,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       charts: cfg.get<ChartId[]>('diagnostics.defaultVisibleCharts', ['memory', 'cpu', 'nodes']),
       tables: cfg.get<TableId[]>('diagnostics.defaultVisibleTables', ['nodes', 'rendezvous']),
       rendezvousOverlay: true,
-      beaconOverlay: false,
+      beaconOverlay: true,
     };
   }
 
@@ -335,7 +335,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       }
       case 'fw-beacon': {
         const e = event as FwBeaconEvent;
-        this.pendingBeacons.push({ wall: e.wall, name: e.name, timeBaseMs: e.timeBaseMs });
+        this.pendingBeacons.push({ wall: e.wall, name: e.name });
         break;
       }
     }
@@ -510,7 +510,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
 
     // Read fw-beacon stream
     const beaconRaw = await reader.readStream<FwBeaconEvent>(dir, 'fw-beacon');
-    const beacons: SerializedBeaconPoint[] = beaconRaw.slice(-maxPoints).map((e) => ({ wall: e.wall, name: e.name, timeBaseMs: e.timeBaseMs }));
+    const beacons: SerializedBeaconPoint[] = beaconRaw.slice(-maxPoints).map((e) => ({ wall: e.wall, name: e.name }));
 
     // Build session info from the manifest
     const manifest = await readManifest(nodeSink, dir);
@@ -649,7 +649,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       (e) => ({ wall: e.wall, state: e.state }),
     );
     const beacons: SerializedBeaconPoint[] = (session.getRing('fw-beacon') as FwBeaconEvent[]).map(
-      (e) => ({ wall: e.wall, name: e.name, timeBaseMs: e.timeBaseMs }),
+      (e) => ({ wall: e.wall, name: e.name }),
     );
     return { memCpu, nodes, rendezvous, textures, appState, beacons };
   }

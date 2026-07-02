@@ -81,7 +81,7 @@ let lastBitmaps: BitmapEntry[] = [];
 interface AppStatePoint { wall: number; state: 'active' | 'background' | 'inactive' | 'unknown' }
 const appStateEvents: AppStatePoint[] = [];
 
-interface BeaconEvent { wall: number; name: string; timeBaseMs: number }
+interface BeaconEvent { wall: number; name: string }
 const beaconEvents: BeaconEvent[] = [];
 
 interface RenEvent { wall: number; durationMs: number; file: string; line: number }
@@ -91,7 +91,7 @@ let xVisible: [number, number] | null = null;
 let lastNodeTypes: SerializedNodeTypeEntry[] = [];
 let prevNodeTypes  = new Map<string, number>();
 let showRendezvousOverlay = true;
-let showBeaconOverlay = false;
+let showBeaconOverlay = true;
 let showHelperLines = true;
 
 const visibleCharts = new Set<ChartId>(['memory', 'cpu', 'nodes']);
@@ -301,7 +301,7 @@ function createChart(cfg: ChartConfig): ChartHandle {
     const nearestBcn = nearestBeacon(ms, domain, thresholdMs);
     let bcnRow = '';
     if (nearestBcn) {
-      bcnRow = `<div class="tt-row tt-bcn">${nearestBcn.name} — ${nearestBcn.timeBaseMs} ms</div>`;
+      bcnRow = `<div class="tt-row tt-bcn">${nearestBcn.name}</div>`;
     }
     const t0  = sessionStartWall || domain[0];
     const sec = Math.floor((ts[idx] - t0) / 1000);
@@ -927,7 +927,7 @@ function updateAppStateBadge(state: AppStatePoint['state']): void {
 }
 
 function ingestBeacons(pts: SerializedBeaconPoint[]): void {
-  for (const p of pts) beaconEvents.push({ wall: p.wall, name: p.name, timeBaseMs: p.timeBaseMs });
+  for (const p of pts) beaconEvents.push({ wall: p.wall, name: p.name });
 }
 
 function clearData(): void {
@@ -1120,7 +1120,7 @@ function buildDom(): void {
   ${visibilityDropdown('dd-charts', 'Charts', CHART_DEFS, visibleCharts)}
   ${visibilityDropdown('dd-tables', 'Tables', TABLE_DEFS, visibleTables)}
   <label class="toolbar-check"><input type="checkbox" id="chk-rendezvous" checked> Rendezvous</label>
-  <label class="toolbar-check"><input type="checkbox" id="chk-beacon"> Beacons</label>
+  <label class="toolbar-check"><input type="checkbox" id="chk-beacon" checked> Beacons</label>
   <label class="toolbar-check"><input type="checkbox" id="chk-helper-lines" checked> Helper lines</label>
 </div>
 <div id="main-area">

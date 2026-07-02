@@ -761,6 +761,177 @@ describe('EcpClient', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // enableFwBeaconTracking / disableFwBeaconTracking
+  // ---------------------------------------------------------------------------
+
+  describe('enableFwBeaconTracking', () => {
+    it('posts to /fwbeacons/track/<appId> and returns true on 200', async () => {
+      let requestMethod = '';
+      let requestPath = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestMethod = req.method || '';
+        requestPath = req.url || '';
+        res.writeHead(200, { 'Content-Type': 'text/xml' });
+        res.end('<fwbeacons><tracking-enabled>true</tracking-enabled><status>OK</status></fwbeacons>');
+      });
+
+      try {
+        const result = await client.enableFwBeaconTracking('127.0.0.1', 'dev', port);
+        expect(result).to.be.true;
+        expect(requestMethod).to.equal('POST');
+        expect(requestPath).to.equal('/fwbeacons/track/dev');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end('');
+      });
+
+      try {
+        const result = await client.enableFwBeaconTracking('127.0.0.1', 'dev', port);
+        expect(result).to.be.false;
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false on connection error', async () => {
+      const result = await client.enableFwBeaconTracking('127.0.0.1', 'dev', 1);
+      expect(result).to.be.false;
+    });
+  });
+
+  describe('disableFwBeaconTracking', () => {
+    it('posts to /fwbeacons/untrack/<appId> and returns true on 200', async () => {
+      let requestPath = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url || '';
+        res.writeHead(200);
+        res.end('');
+      });
+
+      try {
+        const result = await client.disableFwBeaconTracking('127.0.0.1', 'dev', port);
+        expect(result).to.be.true;
+        expect(requestPath).to.equal('/fwbeacons/untrack/dev');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns false on connection error', async () => {
+      const result = await client.disableFwBeaconTracking('127.0.0.1', 'dev', 1);
+      expect(result).to.be.false;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryFwBeacons
+  // ---------------------------------------------------------------------------
+
+  describe('queryFwBeacons', () => {
+    // Matches a real device response (captured live via curl against /query/fwbeacons)
+    const FW_BEACONS_XML = [
+      '<?xml version="1.0" encoding="UTF-8" ?>',
+      '<fwbeacons>',
+      '\t<tracking-enabled>true</tracking-enabled>',
+      '\t<plugin-id>dev</plugin-id>',
+      '\t<plugin-title>DAZN</plugin-title>',
+      '\t<drop-count>0</drop-count>',
+      '\t<interval-drop-count>0</interval-drop-count>',
+      '\t<count>2</count>',
+      '\t<app-launch-complete>',
+      '\t\t<timestamp>1782980514114</timestamp>',
+      '\t</app-launch-complete>',
+      '\t<vod-start-complete>',
+      '\t\t<timestamp>1782980514288</timestamp>',
+      '\t</vod-start-complete>',
+      '\t<timestamp>1782980516220</timestamp>',
+      '\t<status>OK</status>',
+      '</fwbeacons>',
+    ].join('\n');
+
+    it('gets /query/fwbeacons and parses named beacon events', async () => {
+      let requestPath = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url || '';
+        res.writeHead(200, { 'Content-Type': 'text/xml' });
+        res.end(FW_BEACONS_XML);
+      });
+
+      try {
+        const result = await client.queryFwBeacons('127.0.0.1', port);
+        expect(requestPath).to.equal('/query/fwbeacons');
+        expect(result.dropCount).to.equal(0);
+        expect(result.events).to.deep.equal([
+          { name: 'app-launch-complete', timestampMs: 1782980514114 },
+          { name: 'vod-start-complete', timestampMs: 1782980514288 },
+        ]);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns an empty event list when count is 0 (no beacons since last poll)', async () => {
+      const xml =
+        '<fwbeacons><tracking-enabled>true</tracking-enabled><plugin-id>dev</plugin-id>' +
+        '<drop-count>0</drop-count><interval-drop-count>0</interval-drop-count><count>0</count>' +
+        '<timestamp>1782980542408</timestamp><status>OK</status></fwbeacons>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const result = await client.queryFwBeacons('127.0.0.1', port);
+        expect(result.events).to.have.length(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('parses drop-count from response', async () => {
+      const xml = '<fwbeacons><drop-count>7</drop-count><count>0</count></fwbeacons>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const result = await client.queryFwBeacons('127.0.0.1', port);
+        expect(result.dropCount).to.equal(7);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns empty results on non-200 response', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(503);
+        res.end('');
+      });
+
+      try {
+        const result = await client.queryFwBeacons('127.0.0.1', port);
+        expect(result.events).to.have.length(0);
+        expect(result.dropCount).to.equal(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('returns empty results on connection error', async () => {
+      const result = await client.queryFwBeacons('127.0.0.1', 1);
+      expect(result.events).to.have.length(0);
+      expect(result.dropCount).to.equal(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // queryAppState
   // ---------------------------------------------------------------------------
 

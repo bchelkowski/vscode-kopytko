@@ -237,16 +237,16 @@ export class DiagnosticsController {
       }
     }
     if (bool('diagnostics.collectors.fwBeacon.enabled', true)) {
-      const beaconPort = num('diagnostics.beaconLogPort', 8085);
-      // ConsoleSocket is a structural superset of LogSocket (adds `write`), so the
-      // same test-injected socket factory can be reused for the beacon log client.
-      const fwBeacon = new FwBeaconCollector(device.ip, beaconPort, this.socketFactory);
-      fwBeacon.on('rejected', (line: string) =>
-        log(`Framework beacon log (port ${beaconPort}) rejected the connection — ` +
-          `this port only accepts one consumer at a time, so it's likely already ` +
-          `held by an active debug session's IO channel or another tool. Beacons ` +
-          `will keep retrying but won't appear until the port is free. Device said: "${line}"`));
-      add(fwBeacon, 0);
+      if (app.id) {
+        const i = num('diagnostics.collectors.fwBeacon.intervalMs', 1000);
+        const fwBeacon = new FwBeaconCollector(this.deps.ecp, { ip: device.ip, port: ecpPort, appId: app.id }, i);
+        fwBeacon.on('enable-failed', () =>
+          log(`Framework beacon tracking failed to enable on ${device.ip}:${ecpPort} for app ` +
+            `"${app.id}". Retrying every ${i}ms.`));
+        add(fwBeacon, i);
+      } else {
+        log(`Framework beacon tracking skipped: could not resolve app id "${this.selectedAppId}" via ECP /query/apps.`);
+      }
     }
 
     const startedWall = Date.now();

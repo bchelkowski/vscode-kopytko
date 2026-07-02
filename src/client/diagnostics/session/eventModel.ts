@@ -102,13 +102,11 @@ export interface AppStateEvent extends BaseEvent {
   state: 'active' | 'background' | 'inactive' | 'unknown';
 }
 
-/** A framework beacon marker (from the port-8085 BrightScript log, `[beacon.signal]` lines). */
+/** A framework beacon marker (from ECP `/query/fwbeacons`, drained the same way as `/query/sgrendezvous`). */
 export interface FwBeaconEvent extends BaseEvent {
   type: 'fw-beacon';
-  /** Beacon name, e.g. `AppLaunchInitiate`, `AppLaunchComplete`, `VODStartComplete`. */
+  /** Beacon name as reported by the device, e.g. `app-launch-complete`, `vod-start-complete`. */
   name: string;
-  /** Device-reported TimeBase offset (ms) from the log line. */
-  timeBaseMs: number;
 }
 
 export type DiagnosticEvent =

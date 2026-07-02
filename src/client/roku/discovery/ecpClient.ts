@@ -66,6 +66,56 @@ function extractXmlTagsLocal(xml: string): Record<string, string> {
   return result;
 }
 
+export interface FwBeaconEcpEvent {
+  /** Beacon name as reported by the device, e.g. `app-launch-complete`, `vod-start-complete`. */
+  name: string;
+  /** Absolute epoch-ms timestamp the device recorded for this beacon. */
+  timestampMs: number;
+}
+
+/**
+ * Parses a GET /query/fwbeacons XML response.
+ *
+ * Actual device response structure — every child tag other than the fixed
+ * status/metadata fields is a named beacon event wrapping its own `<timestamp>`:
+ * <fwbeacons>
+ *   <tracking-enabled>true</tracking-enabled>
+ *   <plugin-id>dev</plugin-id>
+ *   <plugin-title>DAZN</plugin-title>
+ *   <drop-count>0</drop-count>
+ *   <interval-drop-count>0</interval-drop-count>
+ *   <count>2</count>
+ *   <app-launch-complete><timestamp>1782980514114</timestamp></app-launch-complete>
+ *   <vod-start-complete><timestamp>1782980514288</timestamp></vod-start-complete>
+ *   <timestamp>1782980516220</timestamp>
+ *   <status>OK</status>
+ * </fwbeacons>
+ *
+ * Like /query/sgrendezvous, this drains the device's queue — each call only
+ * returns events since the previous call (`count` resets to 0 with nothing new).
+ */
+const FW_BEACON_NON_EVENT_TAGS = new Set([
+  'tracking-enabled', 'plugin-id', 'plugin-title',
+  'drop-count', 'interval-drop-count', 'count', 'timestamp', 'status',
+]);
+
+function parseFwBeaconsXml(xml: string): { events: FwBeaconEcpEvent[]; dropCount: number } {
+  const events: FwBeaconEcpEvent[] = [];
+
+  const blockPattern = /<([\w-]+)>\s*<timestamp>(\d+)<\/timestamp>\s*<\/\1>/g;
+  let match: RegExpExecArray | null;
+  while ((match = blockPattern.exec(xml)) !== null) {
+    const [, tag, timestampRaw] = match;
+    if (FW_BEACON_NON_EVENT_TAGS.has(tag)) continue;
+    events.push({ name: tag, timestampMs: parseInt(timestampRaw, 10) });
+  }
+
+  const dropCountMatch = xml.match(/<drop-count>(\d+)<\/drop-count>/);
+  const dropCount = dropCountMatch ? parseInt(dropCountMatch[1], 10) : 0;
+
+  return { events, dropCount };
+}
+
 const DEFAULT_ECP_PORT = 8060;
 const DEFAULT_TIMEOUT_MS = 3000;
 const ALIVE_TIMEOUT_MS = 2000;
@@ -365,6 +415,69 @@ export class EcpClient {
       return 'unknown';
     } catch {
       return 'unknown';
+    }
+  }
+
+  /**
+   * Enables framework beacon tracking for an app via ECP.
+   *
+   * Sends `POST /fwbeacons/track/<appId>`. Returns `true` when the device
+   * confirms tracking is enabled. Mirrors `enableRendezvousTracking`, but
+   * scoped to a specific app id (the sideloaded channel is `dev`).
+   */
+  async enableFwBeaconTracking(
+    ip: string,
+    appId: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<boolean> {
+    try {
+      const url = `http://${ip}:${port}/fwbeacons/track/${encodeURIComponent(appId)}`;
+      const { statusCode } = await httpPost(url, DEFAULT_TIMEOUT_MS);
+      return statusCode === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Disables framework beacon tracking for an app via ECP.
+   *
+   * Sends `POST /fwbeacons/untrack/<appId>`, mirroring the `track`/`untrack`
+   * pair used for rendezvous. Not independently confirmed live (only `track`
+   * and `query` were observed) — safe either way since callers swallow failures.
+   */
+  async disableFwBeaconTracking(
+    ip: string,
+    appId: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<boolean> {
+    try {
+      const url = `http://${ip}:${port}/fwbeacons/untrack/${encodeURIComponent(appId)}`;
+      const { statusCode } = await httpPost(url, DEFAULT_TIMEOUT_MS);
+      return statusCode === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Queries queued framework beacon events from a Roku device via ECP.
+   *
+   * Sends `GET /query/fwbeacons`. Like rendezvous, this drains the device's
+   * event queue since tracking was enabled or since the previous query.
+   * Returns empty results on network errors or when no events are queued.
+   */
+  async queryFwBeacons(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<{ events: FwBeaconEcpEvent[]; dropCount: number }> {
+    try {
+      const url = `http://${ip}:${port}/query/fwbeacons`;
+      const { statusCode, body } = await httpGet(url, DEFAULT_TIMEOUT_MS);
+      if (statusCode !== 200) return { events: [], dropCount: 0 };
+      return parseFwBeaconsXml(body);
+    } catch {
+      return { events: [], dropCount: 0 };
     }
   }
 

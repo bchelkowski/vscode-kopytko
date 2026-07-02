@@ -45,6 +45,16 @@ returns `<item>` events with id/start/end/line/file + drop count) →
 > panel) is suspended before a diagnostics session starts and restored when
 > it stops, so nothing else can drain the queue concurrently.
 
+Framework beacon markers also go through ECP, scoped to the recorded app id:
+`POST /fwbeacons/track/<appId>` → `GET /query/fwbeacons` (drains the device
+queue the same way as rendezvous, returning named beacon elements — e.g.
+`<app-launch-complete><timestamp>…</timestamp></app-launch-complete>` — each
+with its own absolute epoch-ms timestamp, plus a drop count). This replaced an
+earlier approach that tailed the port-8085 BrightScript log for `[beacon.signal]`
+lines: that port only accepts one consumer at a time, so beacons silently
+stopped appearing whenever a debug session or another tool already held it. See
+`findings/roku-device-api.md` for the verified response shape.
+
 ---
 
 ## Architecture
@@ -85,6 +95,7 @@ affecting other collectors or the session.
 | `RendezvousCollector` | ECP (8060) | on, 1000 ms | `rendezvous` |
 | `SystemMemCollector` | `free` (8080) | off, 5000 ms | `system-mem` |
 | `TextureCollector` | `r2d2_bitmaps` (8080) | off, 5000 ms | `textures` |
+| `FwBeaconCollector` | ECP (8060) | on, 1000 ms | `fw-beacon` |
 
 ### Event model (open registry)
 
@@ -178,10 +189,12 @@ channel is sideloaded at all, the dropdown falls back to just "dev".
 its manifest labels it — it does not switch the device to that channel.**
 `chanperf`/`sgnodes`/the raw debug console (Memory/CPU/Nodes/Textures) always
 report whatever channel is *currently the foreground UI* on the device,
-regardless of which one is selected here; only app-state tracking targets
-the selected channel specifically (via its app id). So to get real
-Memory/CPU/Node data for a non-dev channel, you still need to actually
-navigate the device to that channel.
+regardless of which one is selected here; only app-state and framework-beacon
+tracking target the selected channel specifically (via its app id — ECP
+`/query/app-state/<appId>` and `/fwbeacons/track/<appId>` both require one).
+So to get real Memory/CPU/Node data for a non-dev channel, you still need to
+actually navigate the device to that channel; beacons and app-state, being
+per-app ECP calls, work correctly for a backgrounded non-foreground channel too.
 
 Changing the selection while a session is recording **stops that session
 immediately** — a running session always reflects the channel it was
@@ -211,8 +224,7 @@ All under `kopytko.diagnostics.*`:
 | `collectors.systemMem.enabled` / `.intervalMs` | `false` / `5000` | Device-wide memory |
 | `collectors.textures.enabled` / `.intervalMs` | `true` / `5000` | GPU texture memory. Only polled while the Textures chart or table is visible |
 | `collectors.appState.enabled` / `.intervalMs` | `true` / `2000` | App foreground/background state via ECP, shown as background shading on every chart. Requires "Control by mobile apps" enabled on-device — degrades to no shading (not an error) when unavailable |
-| `collectors.fwBeacon.enabled` | `true` | Framework beacon markers (AppLaunch/AppResume/VODStart Initiate/Complete) from the port-8085 BrightScript log. Only polled while the Beacons checkbox is on. **Port 8085 accepts only one consumer at a time** — if an active debug session (or another tool) already holds it, beacon markers won't appear; check the "Kopytko Diagnostics" output channel for a "rejected the connection" message |
-| `beaconLogPort` | `8085` | TCP port of the BrightScript log stream used for beacon markers |
+| `collectors.fwBeacon.enabled` / `.intervalMs` | `true` / `1000` | Framework beacon markers (AppLaunch/AppResume/VODStart Initiate/Complete) via ECP `/fwbeacons`, scoped to the recorded app id. Enabled by default, including the Beacons overlay checkbox |
 | `defaultVisibleCharts` | `["memory","cpu","nodes"]` | Charts shown by default when the panel opens |
 | `defaultVisibleTables` | `["nodes","rendezvous"]` | Tables shown by default when the panel opens |
 | `memoryLimits.backgroundMB` | `100` | Reference line on the Memory chart for Roku's published background-app DRAM guidance. Not device-reported (the foreground limit is, from `chanperf`) |
@@ -350,7 +362,7 @@ background/inactive shading is meant to explain, not a bug.
 
 Hovering
 any chart shows a tooltip with each series' value plus the nearest
-rendezvous/beacon at the cursor (file:line + duration, or beacon name + time).
+rendezvous/beacon at the cursor (file:line + duration, or beacon name).
 
 The "Helper lines" toolbar checkbox toggles the FG/BG memory-limit and
 texture-max reference lines off — when off, those lines stop being included

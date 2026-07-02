@@ -91,7 +91,6 @@ export interface SerializedAppStatePoint {
 export interface SerializedBeaconPoint {
   wall: number;
   name: string;
-  timeBaseMs: number;
 }
 
 export interface HistoryPayload {

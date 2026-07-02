@@ -63,6 +63,61 @@ Response when no events:
 
 ---
 
+### Framework beacons via ECP
+
+**`/fwbeacons` is a first-class ECP endpoint, scoped to a specific app id** (unlike
+`/sgrendezvous`, which is channel-agnostic). Confirmed live via curl against a real
+device (`POST /fwbeacons/track/dev` then repeated `GET /query/fwbeacons`):
+
+```
+curl -d '' "http://192.168.2.2:8060/fwbeacons/track/dev"
+```
+```xml
+<fwbeacons><tracking-enabled>true</tracking-enabled><status>OK</status></fwbeacons>
+```
+
+`GET /query/fwbeacons` — same drain semantics as `/query/sgrendezvous`: each call
+only returns events since the previous call, and `count` resets to 0 with nothing
+new. Every child tag other than the fixed metadata fields
+(`tracking-enabled`/`plugin-id`/`plugin-title`/`drop-count`/`interval-drop-count`/
+`count`/`timestamp`/`status`) is a named beacon event wrapping its own absolute
+epoch-ms `<timestamp>` — no year-guessing needed, unlike the port-8085 log format:
+
+```xml
+<fwbeacons>
+	<tracking-enabled>true</tracking-enabled>
+	<plugin-id>dev</plugin-id>
+	<plugin-title>DAZN</plugin-title>
+	<drop-count>0</drop-count>
+	<interval-drop-count>0</interval-drop-count>
+	<count>11</count>
+	<app-suspend-initiate><timestamp>1782980508764</timestamp></app-suspend-initiate>
+	<app-suspend-complete><timestamp>1782980508849</timestamp></app-suspend-complete>
+	<app-launch-chain-initiate><timestamp>1782980513047</timestamp></app-launch-chain-initiate>
+	<app-splash-initiate><timestamp>1782980513056</timestamp></app-splash-initiate>
+	<app-splash-complete><timestamp>1782980513191</timestamp></app-splash-complete>
+	<app-compile-initiate><timestamp>1782980513373</timestamp></app-compile-initiate>
+	<app-compile-complete><timestamp>1782980513801</timestamp></app-compile-complete>
+	<app-launch-chain-complete><timestamp>1782980513820</timestamp></app-launch-chain-complete>
+	<app-launch-complete><timestamp>1782980514114</timestamp></app-launch-complete>
+	<vod-start-initiate><timestamp>1782980514080</timestamp></vod-start-initiate>
+	<vod-start-complete><timestamp>1782980514288</timestamp></vod-start-complete>
+	<timestamp>1782980516220</timestamp>
+	<status>OK</status>
+</fwbeacons>
+```
+
+Note the tag names are hyphenated/lowercase here (`app-launch-complete`), unlike
+the port-8085 log format's PascalCase (`AppLaunchComplete`) — they're two
+independent device-side representations of the same underlying beacon signal.
+
+**`untrack` is unverified.** Only `track` and `query` were curled live; `POST
+/fwbeacons/untrack/<appId>` is inferred by symmetry with `/sgrendezvous/untrack`
+and hasn't been independently confirmed. Harmless either way — `FwBeaconCollector`
+swallows the result on `stop()`, same as `RendezvousCollector`.
+
+---
+
 ## Port 8080 — SceneGraph Debug Server
 
 **Text-based request/response console.** Send `command\r\n`, read until the device stops sending (idle for ~250ms) — the response ends with a `>` prompt but since `>` appears inside XML responses it cannot be used as a terminator. Use idle-time detection instead.
@@ -215,6 +270,14 @@ BRIGHTSCRIPT: WARNING: roSGNode.signalBeacon: initiate before signaling AppResum
 Beacon events (`AppLaunchInitiate`, `AppLaunchComplete`, `AppResumeInitiate`, `AppResumeComplete`, `VODStartInitiate`, `VODStartComplete`, etc.) are particularly useful for measuring performance.
 
 **Cannot send commands to port 8085** — it is output-only. SceneGraph debug commands go to port 8080.
+
+**The extension no longer reads beacons from here.** `FwBeaconCollector` originally
+tailed this stream for `[beacon.signal]` lines, but port 8085 accepts only one
+consumer at a time — if a debug session's IO channel (or any other tool) already
+held it, beacon markers silently stopped appearing with no error surfaced to the
+user. Beacons are now collected via ECP (`/fwbeacons/track` + `/query/fwbeacons`,
+see below), which has no such exclusivity limit. This section is kept only
+because the log format itself is still real/observable on-device.
 
 ---
 
