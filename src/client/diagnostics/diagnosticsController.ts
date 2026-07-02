@@ -15,6 +15,7 @@ import {
 } from './collectors';
 import { EcpChanperfCollector } from './collectors/ecpChanperfCollector';
 import { EcpNodeCountsCollector } from './collectors/ecpNodeCountsCollector';
+import { EcpObjectCountsCollector } from './collectors/ecpObjectCountsCollector';
 import { DiagnosticsSession } from './session/diagnosticsSession';
 import type { DiagnosticEventType } from './session/eventModel';
 import { type DiagnosticsSink, nodeSink } from './storage/sink';
@@ -234,6 +235,14 @@ export class DiagnosticsController {
           'Requires "Control by mobile apps" enabled on-device or it will report "unknown" and no chart shading will appear.');
       } else {
         log(`App-state tracking skipped: could not resolve app id "${this.selectedAppId}" via ECP /query/apps.`);
+      }
+    }
+    if (bool('diagnostics.collectors.objectCounts.enabled', true)) {
+      if (app.id) {
+        const i = num('diagnostics.collectors.objectCounts.intervalMs', 2000);
+        add(new EcpObjectCountsCollector(this.deps.ecp, device.ip, ecpPort, app.id, i), i);
+      } else {
+        log(`Object-count tracking skipped: could not resolve app id "${this.selectedAppId}" via ECP /query/apps.`);
       }
     }
     if (bool('diagnostics.collectors.fwBeacon.enabled', true)) {

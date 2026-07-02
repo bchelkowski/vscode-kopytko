@@ -377,6 +377,26 @@ export class EcpClient {
   }
 
   /**
+   * Queries per-object-type BrightScript object counts and memory via ECP
+   * (`/query/app-object-counts/<appId>`). Scoped to a specific app id (the
+   * sideloaded channel is `dev`). Returns the raw XML body for the caller to
+   * parse; while the channel is backgrounded the device answers with
+   * `<status>FAILED</status>` in the body (HTTP 200), same as chanperf/sgnodes.
+   */
+  async queryAppObjectCounts(
+    ip: string,
+    appId: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(
+      `http://${ip}:${port}/query/app-object-counts/${encodeURIComponent(appId)}`,
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (statusCode !== 200) throw new Error(`app-object-counts: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
    * Queries an app's lifecycle state via ECP (`/query/app-state/<appId>`).
    *
    * Returns `'active'` (foreground), `'background'`, or `'inactive'` based on

@@ -44,6 +44,7 @@ function makeDeps(device: typeof DEVICE | undefined) {
       queryFwBeacons: sinon.stub().resolves({ events: [], dropCount: 0 }),
       queryChanperf: sinon.stub().rejects(new Error('offline')),
       querySgNodes: sinon.stub().rejects(new Error('offline')),
+      queryAppObjectCounts: sinon.stub().rejects(new Error('offline')),
       queryRegistry: sinon.stub().resolves(
         '<plugin-registry><registry><dev-id>abc</dev-id><plugins>dev</plugins></registry></plugin-registry>',
       ),
@@ -93,7 +94,7 @@ describe('DiagnosticsController', () => {
     expect(manifest.app.title).to.equal('DAZN');
     expect(manifest.device.ip).to.equal('1.2.3.4');
     expect(manifest.collectors.map((c: any) => c.type)).to.include.members([
-      'mem-cpu', 'node-counts', 'rendezvous', 'fw-beacon',
+      'mem-cpu', 'node-counts', 'object-counts', 'rendezvous', 'fw-beacon',
     ]);
 
     await controller.stopSession();
@@ -189,6 +190,9 @@ describe('DiagnosticsController', () => {
       const manifest = JSON.parse(manifestEntry![1]);
       expect(manifest.collectors.map((c: any) => c.type)).to.not.include('fw-beacon');
       expect(controller.hasCollector('fw-beacon')).to.be.false;
+      // object-counts is app-scoped too — also skipped without a resolved app id.
+      expect(manifest.collectors.map((c: any) => c.type)).to.not.include('object-counts');
+      expect(controller.hasCollector('object-counts')).to.be.false;
       await controller.stopSession();
     });
   });

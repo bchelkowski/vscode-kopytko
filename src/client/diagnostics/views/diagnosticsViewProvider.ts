@@ -7,6 +7,7 @@ import type {
   DiagnosticEventType,
   MemCpuEvent,
   NodeCountsEvent,
+  ObjectCountsEvent,
   RendezvousEvent,
   TexturesEvent,
   AppStateEvent,
@@ -18,6 +19,7 @@ import type {
   WebviewState,
   SerializedMemCpuPoint,
   SerializedNodePoint,
+  SerializedObjectPoint,
   SerializedRendezvousPoint,
   SerializedTexturePoint,
   SerializedAppStatePoint,
@@ -43,14 +45,16 @@ interface VisibilityState {
 }
 
 /** Collector event types whose lifecycle is driven by webview visibility (excludes system-mem/app-state, which are session-wide). */
-const VISIBILITY_DRIVEN_TYPES: DiagnosticEventType[] = ['mem-cpu', 'node-counts', 'rendezvous', 'textures', 'fw-beacon'];
+const VISIBILITY_DRIVEN_TYPES: DiagnosticEventType[] = ['mem-cpu', 'node-counts', 'object-counts', 'rendezvous', 'textures', 'fw-beacon'];
 
 function neededTypesFor(vis: VisibilityState): Set<DiagnosticEventType> {
   const needed = new Set<DiagnosticEventType>();
   if (vis.charts.includes('memory') || vis.charts.includes('cpu')) needed.add('mem-cpu');
   if (vis.charts.includes('nodes')) needed.add('node-counts');
+  if (vis.charts.includes('objects')) needed.add('object-counts');
   if (vis.charts.includes('textures')) needed.add('textures');
   if (vis.tables.includes('nodes')) needed.add('node-counts');
+  if (vis.tables.includes('objects')) needed.add('object-counts');
   if (vis.tables.includes('rendezvous')) needed.add('rendezvous');
   if (vis.tables.includes('textures')) needed.add('textures');
   if (vis.rendezvousOverlay && vis.charts.length > 0) needed.add('rendezvous');
@@ -59,7 +63,23 @@ function neededTypesFor(vis: VisibilityState): Set<DiagnosticEventType> {
 }
 
 function emptyHistory() {
-  return { memCpu: [], nodes: [], rendezvous: [], textures: [], appState: [], beacons: [] };
+  return { memCpu: [], nodes: [], objects: [], rendezvous: [], textures: [], appState: [], beacons: [] };
+}
+
+/** Trims an object-counts event to its serialized form, optionally dropping the per-type breakdown. */
+function serializeObjectPoint(e: ObjectCountsEvent, includeTypes: boolean): SerializedObjectPoint {
+  return {
+    wall: e.wall,
+    totalCount: e.totalCount,
+    types: includeTypes
+      ? e.types.map((t) => ({
+          type: t.type,
+          ...(t.subtype ? { subtype: t.subtype } : {}),
+          count: t.count,
+          physicalBytes: t.physicalBytes,
+        }))
+      : [],
+  };
 }
 
 /** Converts the manifest `streams` map to a plain `{ type -> count }` record. */
@@ -96,6 +116,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   private noDataTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingMemCpu: SerializedMemCpuPoint[] = [];
   private pendingNodes: SerializedNodePoint[] = [];
+  private pendingObjects: SerializedObjectPoint[] = [];
   private pendingRendezvous: SerializedRendezvousPoint[] = [];
   private pendingTextures: SerializedTexturePoint[] = [];
   private pendingAppState: SerializedAppStatePoint[] = [];
@@ -305,6 +326,10 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
         this.pendingNodes.push({ wall: e.wall, totalCount: e.totalCount, types: e.types });
         break;
       }
+      case 'object-counts': {
+        this.pendingObjects.push(serializeObjectPoint(event as ObjectCountsEvent, true));
+        break;
+      }
       case 'rendezvous': {
         const e = event as RendezvousEvent;
         this.pendingRendezvous.push({
@@ -345,6 +370,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     if (
       this.pendingMemCpu.length === 0 &&
       this.pendingNodes.length === 0 &&
+      this.pendingObjects.length === 0 &&
       this.pendingRendezvous.length === 0 &&
       this.pendingTextures.length === 0 &&
       this.pendingAppState.length === 0 &&
@@ -356,6 +382,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       kind: 'batch',
       memCpu: this.pendingMemCpu.splice(0),
       nodes: this.pendingNodes.splice(0),
+      objects: this.pendingObjects.splice(0),
       rendezvous: this.pendingRendezvous.splice(0),
       textures: this.pendingTextures.splice(0),
       appState: this.pendingAppState.splice(0),
@@ -376,6 +403,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     }
     this.pendingMemCpu = [];
     this.pendingNodes = [];
+    this.pendingObjects = [];
     this.pendingRendezvous = [];
     this.pendingTextures = [];
     this.pendingAppState = [];
@@ -479,6 +507,13 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
       types: (i === 0 || i === ncCapped.length - 1) ? e.types : [],
     }));
 
+    // Read object-counts stream — types only for first+last to keep message small
+    const ocRaw = await reader.readStream<ObjectCountsEvent>(dir, 'object-counts');
+    const ocCapped = ocRaw.slice(-maxPoints);
+    const objects: SerializedObjectPoint[] = ocCapped.map((e, i) =>
+      serializeObjectPoint(e, i === 0 || i === ocCapped.length - 1),
+    );
+
     // Read rendezvous stream
     const renRaw = await reader.readStream<RendezvousEvent>(dir, 'rendezvous');
     const renCapped = renRaw.slice(-maxPoints);
@@ -532,7 +567,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     this.post({
       kind: 'replay',
       session,
-      history: { memCpu, nodes, rendezvous, textures, appState, beacons },
+      history: { memCpu, nodes, objects, rendezvous, textures, appState, beacons },
     } satisfies ExtMsg);
   }
 
@@ -631,6 +666,9 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     const nodes: SerializedNodePoint[] = (session.getRing('node-counts') as NodeCountsEvent[]).map(
       (e) => ({ wall: e.wall, totalCount: e.totalCount, types: e.types }),
     );
+    const objects: SerializedObjectPoint[] = (
+      session.getRing('object-counts') as ObjectCountsEvent[]
+    ).map((e) => serializeObjectPoint(e, true));
     const rendezvous: SerializedRendezvousPoint[] = (
       session.getRing('rendezvous') as RendezvousEvent[]
     ).map((e) => ({ wall: e.wall, durationMs: e.durationMs, file: e.file, line: e.line }));
@@ -651,7 +689,7 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
     const beacons: SerializedBeaconPoint[] = (session.getRing('fw-beacon') as FwBeaconEvent[]).map(
       (e) => ({ wall: e.wall, name: e.name }),
     );
-    return { memCpu, nodes, rendezvous, textures, appState, beacons };
+    return { memCpu, nodes, objects, rendezvous, textures, appState, beacons };
   }
 
   private post(msg: ExtMsg): void {

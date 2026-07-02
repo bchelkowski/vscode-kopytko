@@ -378,6 +378,40 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Kopytko Diagnostics -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Diagnostics (Runtime Telemetry)</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            A bottom-panel recorder that captures live runtime telemetry from the running channel into replayable per-session NDJSON files, charted live with D3. Every chart and table is individually toggleable — data is only polled while something visible needs it.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Memory chart — total/anon/file/shared/swap MB with FG/BG limit lines (chanperf)',
+              'CPU chart — total/user/sys % (chanperf)',
+              'SceneGraph Nodes chart — stacked by node type, top 8 + Other (sgnodes counts)',
+              'Objects chart — BrightScript object counts stacked by type via ECP app-object-counts (hidden by default)',
+              'Texture memory chart with max reference line (r2d2_bitmaps)',
+              'Node / Object / Rendezvous / Texture tables — the Objects table splits roSGNode rows per component subtype',
+              'Rendezvous + framework-beacon markers overlaid on every chart',
+              'App foreground/background shading + live state badge',
+              'Record any channel sharing the sideloaded dev key, with past-session replay',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="Kopytko Diagnostics panel"
+          placeholder="Bottom panel with live D3 charts: Memory, CPU, stacked SceneGraph Nodes and Objects charts, navigator strip, and node/object/rendezvous tables below"
+        />
+      </div>
+    </section>
+
     <!-- Kopytko Perfetto -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">Kopytko Perfetto (App Tracing)</h2>

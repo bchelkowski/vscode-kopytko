@@ -118,6 +118,56 @@ swallows the result on `stop()`, same as `RendezvousCollector`.
 
 ---
 
+### BrightScript object counts via ECP
+
+**`GET /query/app-object-counts/<appId>`** — per-app (like `/query/app-state`,
+unlike `/query/chanperf`), no tracking enable/disable needed, plain
+request/response (no drain semantics). Returns live BrightScript object
+instance counts and memory per type. Response captured live from the dev
+device (`curl http://192.168.2.2:8060/query/app-object-counts/dev`):
+
+```xml
+<app-object-counts>
+<timestamp>1782995684112</timestamp>
+<channel-id>dev</channel-id>
+<channel-title>DAZN</channel-title>
+<channel-version>3.30.5</channel-version>
+<objects>
+  <objects-count>12589</objects-count>
+  <objects-num-bytes-physical>1498532</objects-num-bytes-physical>
+  <objects-num-bytes-logical>1413406</objects-num-bytes-logical>
+  <objects>
+    <object><type>roArray</type><count>1210</count>
+      <num-bytes-physical>118644</num-bytes-physical><num-bytes-logical>84208</num-bytes-logical></object>
+    <object><type>roSGNode</type><subtype>Font</subtype><count>157</count>
+      <num-bytes-physical>6940</num-bytes-physical><num-bytes-logical>6940</num-bytes-logical></object>
+    <!-- … one <object> per type, ~85 entries on the DAZN dev app … -->
+  </objects>
+</objects>
+<status>OK</status>
+</app-object-counts>
+```
+
+Key facts:
+- Note the **doubly-nested `<objects>`**: the outer block holds the totals, an
+  inner `<objects>` holds the `<object>` list. Regex per `<object>` block
+  parses it fine regardless (`parsers/ecpAppObjectCounts.ts`).
+- **`<subtype>` appears only on `roSGNode` entries** — one `<object>` block per
+  SceneGraph component type (built-in and custom alike, e.g. `Font`,
+  `MainScene`, `EventBus`). All other BrightScript types (`roString`,
+  `roAssociativeArray`, …) get exactly one block, no subtype.
+- Bulk of a real app's objects: `roString` (6746), `roAssociativeArray` (3470),
+  `roArray` (1210) — the per-type counts are the leak-hunting signal node
+  counts can't provide.
+- **Backgrounded-channel behavior is assumed, not yet verified**: expected to
+  return `<status>FAILED</status><error>Channel not running: active UI</error>`
+  like chanperf/sgnodes, but the device was unreachable when this was
+  implemented (2026-07-02) — the `FAILED` shape used in tests is extrapolated
+  from the chanperf/sgnodes responses documented above. Verify when the device
+  is back.
+
+---
+
 ## Port 8080 — SceneGraph Debug Server
 
 **Text-based request/response console.** Send `command\r\n`, read until the device stops sending (idle for ~250ms) — the response ends with a `>` prompt but since `>` appears inside XML responses it cannot be used as a terminator. Use idle-time detection instead.

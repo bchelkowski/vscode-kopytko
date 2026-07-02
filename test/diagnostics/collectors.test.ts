@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import * as sinon from 'sinon';
 import { ChanperfCollector } from '../../src/client/diagnostics/collectors/chanperfCollector';
 import { NodeCountsCollector } from '../../src/client/diagnostics/collectors/nodeCountsCollector';
+import { EcpObjectCountsCollector } from '../../src/client/diagnostics/collectors/ecpObjectCountsCollector';
 import { RendezvousCollector } from '../../src/client/diagnostics/collectors/rendezvousCollector';
 import { AppStateCollector } from '../../src/client/diagnostics/collectors/appStateCollector';
 import { FwBeaconCollector } from '../../src/client/diagnostics/collectors/fwBeaconCollector';
@@ -13,6 +14,18 @@ const CHANPERF =
 const SGNODES =
   '<sg-nodes><nodes-count>3</nodes-count><nodes-num-bytes-static>840</nodes-num-bytes-static>' +
   '<nodes><node><type>EventTileModel</type><count>3</count><num-bytes-static>840</num-bytes-static></node></nodes></sg-nodes>';
+
+const OBJECT_COUNTS =
+  '<app-object-counts><objects>' +
+  '<objects-count>1367</objects-count>' +
+  '<objects-num-bytes-physical>125584</objects-num-bytes-physical>' +
+  '<objects-num-bytes-logical>91148</objects-num-bytes-logical>' +
+  '<objects>' +
+  '<object><type>roArray</type><count>1210</count>' +
+  '<num-bytes-physical>118644</num-bytes-physical><num-bytes-logical>84208</num-bytes-logical></object>' +
+  '<object><type>roSGNode</type><subtype>Font</subtype><count>157</count>' +
+  '<num-bytes-physical>6940</num-bytes-physical><num-bytes-logical>6940</num-bytes-logical></object>' +
+  '</objects></objects><status>OK</status></app-object-counts>';
 
 describe('diagnostics collectors', () => {
   let clock: sinon.SinonFakeTimers;
@@ -91,6 +104,59 @@ describe('diagnostics collectors', () => {
       expect(samples[0].types[0]).to.deep.equal({
         type: 'EventTileModel', count: 3, staticBytes: 840,
       });
+      collector.stop();
+    });
+  });
+
+  describe('EcpObjectCountsCollector', () => {
+    it('emits an object-counts sample for the target app id', async () => {
+      const ecp = { queryAppObjectCounts: sinon.stub().resolves(OBJECT_COUNTS) };
+      const collector = new EcpObjectCountsCollector(ecp as any, '1.2.3.4', 8060, 'dev', 2000);
+      const samples: any[] = [];
+      collector.on('sample', (s) => samples.push(s));
+
+      collector.start();
+      await clock.tickAsync(1);
+
+      expect(ecp.queryAppObjectCounts.calledWith('1.2.3.4', 'dev', 8060)).to.be.true;
+      expect(samples).to.have.length(1);
+      expect(samples[0].type).to.equal('object-counts');
+      expect(samples[0].totalCount).to.equal(1367);
+      expect(samples[0].totalPhysicalBytes).to.equal(125584);
+      expect(samples[0].types[0]).to.deep.equal({
+        type: 'roArray', count: 1210, physicalBytes: 118644, logicalBytes: 84208,
+      });
+      expect(samples[0].types[1]).to.deep.equal({
+        type: 'roSGNode', subtype: 'Font', count: 157, physicalBytes: 6940, logicalBytes: 6940,
+      });
+      collector.stop();
+    });
+
+    it('emits nothing when the device reports FAILED (e.g. channel backgrounded)', async () => {
+      const ecp = {
+        queryAppObjectCounts: sinon.stub().resolves(
+          '<app-object-counts><status>FAILED</status><error>Channel not running: active UI</error></app-object-counts>',
+        ),
+      };
+      const collector = new EcpObjectCountsCollector(ecp as any, '1.2.3.4', 8060, 'dev', 2000);
+      let count = 0;
+      collector.on('sample', () => { count++; });
+
+      collector.start();
+      await clock.tickAsync(1);
+      expect(count).to.equal(0);
+      collector.stop();
+    });
+
+    it('emits nothing and does not throw when the query rejects', async () => {
+      const ecp = { queryAppObjectCounts: sinon.stub().rejects(new Error('offline')) };
+      const collector = new EcpObjectCountsCollector(ecp as any, '1.2.3.4', 8060, 'dev', 2000);
+      let count = 0;
+      collector.on('sample', () => { count++; });
+
+      collector.start();
+      await clock.tickAsync(1);
+      expect(count).to.equal(0);
       collector.stop();
     });
   });

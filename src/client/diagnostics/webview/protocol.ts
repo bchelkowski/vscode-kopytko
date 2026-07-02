@@ -58,6 +58,21 @@ export interface SerializedNodePoint {
   types: SerializedNodeTypeEntry[];
 }
 
+export interface SerializedObjectTypeEntry {
+  type: string;
+  /** SceneGraph component name — only present on roSGNode entries. */
+  subtype?: string;
+  count: number;
+  physicalBytes: number;
+}
+
+export interface SerializedObjectPoint {
+  wall: number;
+  totalCount: number;
+  /** Per-type breakdown for the chart stack + list view. Present on every snapshot. */
+  types: SerializedObjectTypeEntry[];
+}
+
 export interface SerializedRendezvousPoint {
   wall: number;
   durationMs: number;
@@ -96,6 +111,7 @@ export interface SerializedBeaconPoint {
 export interface HistoryPayload {
   memCpu: SerializedMemCpuPoint[];
   nodes: SerializedNodePoint[];
+  objects: SerializedObjectPoint[];
   rendezvous: SerializedRendezvousPoint[];
   textures: SerializedTexturePoint[];
   appState: SerializedAppStatePoint[];
@@ -104,8 +120,8 @@ export interface HistoryPayload {
 
 // ── Chart/table visibility ──────────────────────────────────────────────────
 
-export type ChartId = 'memory' | 'cpu' | 'nodes' | 'textures';
-export type TableId = 'nodes' | 'rendezvous' | 'textures';
+export type ChartId = 'memory' | 'cpu' | 'nodes' | 'objects' | 'textures';
+export type TableId = 'nodes' | 'objects' | 'rendezvous' | 'textures';
 
 /** Metadata about a recorded session, sent as part of the session list. */
 export interface SerializedSessionInfo {
@@ -130,6 +146,7 @@ export type ExtMsg =
       kind: 'batch';
       memCpu: SerializedMemCpuPoint[];
       nodes: SerializedNodePoint[];
+      objects: SerializedObjectPoint[];
       rendezvous: SerializedRendezvousPoint[];
       textures: SerializedTexturePoint[];
       appState: SerializedAppStatePoint[];

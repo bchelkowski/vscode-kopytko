@@ -55,6 +55,13 @@ lines: that port only accepts one consumer at a time, so beacons silently
 stopped appearing whenever a debug session or another tool already held it. See
 `findings/roku-device-api.md` for the verified response shape.
 
+BrightScript object counts also come from ECP, scoped to the recorded app id:
+`GET /query/app-object-counts/<appId>` returns per-object-type live instance
+counts and memory (`<type>`, `<count>`, `<num-bytes-physical>`,
+`<num-bytes-logical>`), plus totals. `roSGNode` is broken down further — one
+`<object>` entry per SceneGraph component `<subtype>`. Like `chanperf`/`sgnodes`,
+the device answers `<status>FAILED</status>` while the channel is backgrounded.
+
 ---
 
 ## Architecture
@@ -92,6 +99,7 @@ affecting other collectors or the session.
 |---|---|---|---|
 | `ChanperfCollector` | `chanperf` (8080) | on, 1000 ms | `mem-cpu` |
 | `NodeCountsCollector` | `sgnodes counts` (8080) | on, 2000 ms | `node-counts` |
+| `EcpObjectCountsCollector` | ECP (8060) | on, 2000 ms | `object-counts` |
 | `RendezvousCollector` | ECP (8060) | on, 1000 ms | `rendezvous` |
 | `SystemMemCollector` | `free` (8080) | off, 5000 ms | `system-mem` |
 | `TextureCollector` | `r2d2_bitmaps` (8080) | off, 5000 ms | `textures` |
@@ -220,6 +228,7 @@ All under `kopytko.diagnostics.*`:
 | `debugConsolePort` | `8080` | SceneGraph debug server port |
 | `collectors.memCpu.enabled` / `.intervalMs` | `true` / `1000` | Per-channel CPU+memory |
 | `collectors.nodeCounts.enabled` / `.intervalMs` | `true` / `2000` | Node counts by type |
+| `collectors.objectCounts.enabled` / `.intervalMs` | `true` / `2000` | BrightScript object counts by type via ECP `/query/app-object-counts`, scoped to the recorded app id. Only polled while the Objects chart or table is visible — both are hidden by default |
 | `collectors.rendezvous.enabled` / `.intervalMs` | `true` / `1000` | Rendezvous via ECP |
 | `collectors.systemMem.enabled` / `.intervalMs` | `false` / `5000` | Device-wide memory |
 | `collectors.textures.enabled` / `.intervalMs` | `true` / `5000` | GPU texture memory. Only polled while the Textures chart or table is visible |
@@ -272,10 +281,11 @@ or an empty state. The toolbar and button are restored.
 
 ## Lists & navigation (Phase 3+)
 
-Below the charts the panel shows up to three side-by-side data tables, each
+Below the charts the panel shows up to four side-by-side data tables, each
 independently scrollable and independently shown/hidden via the toolbar's
 "Tables" dropdown. Each table's header badge shows a running total (event
-count + total time for Rendezvous; bitmap count + total size for Textures).
+count + total time for Rendezvous; bitmap count + total size for Textures;
+object/type counts for Nodes and Objects).
 
 ### Node types table
 
@@ -292,6 +302,21 @@ opens the matching `<Type>.xml` file using `resolveNodeComponentFile`:
    components defined in the project take priority).
 3. No match → info toast (built-in Roku types like `Label`, `Rectangle` have no
    source file).
+
+### Objects table (hidden by default)
+
+Populated from every `app-object-counts` snapshot. Rows are keyed by object
+**type, or subtype when available** — every `roSGNode` SceneGraph component
+gets its own `roSGNode:<Subtype>` row (e.g. `roSGNode:Font`), all other
+BrightScript types (e.g. `roString`, `roAssociativeArray`) one row each. Columns:
+
+| Object | Count | Δ | kB |
+|---|---|---|---|
+| `type` or `roSGNode:<subtype>` | Live instance count | Change since previous snapshot (red = up, green = down) | Physical bytes / 1024 |
+
+Sorted by count descending, capped at 50 rows. This is the best view for
+spotting object leaks (e.g. runaway `roString`/`roArray` growth) that node
+counts alone don't show.
 
 ### Rendezvous table
 
@@ -324,7 +349,7 @@ webview is hand-rolled D3.js/SVG, not a charting library.
 
 A toolbar row (device indicator, a live app-state badge, Start/Stop, elapsed
 timer, Charts/Tables visibility dropdowns, Rendezvous/Beacons overlay
-checkboxes) above up to four charts, each independently shown/hidden via the
+checkboxes) above up to five charts, each independently shown/hidden via the
 "Charts" dropdown:
 
 | Chart | Series | Source |
@@ -332,6 +357,7 @@ checkboxes) above up to four charts, each independently shown/hidden via the
 | **Memory** | Total MB (area), Anon, File, Shared, Swap, plus a device-reported foreground-limit line ("FG Limit") and Roku's published background-DRAM-guidance line ("BG Limit", default 100 MB, `kopytko.diagnostics.memoryLimits.backgroundMB`) | `chanperf` |
 | **CPU** | Total %, User, Sys | `chanperf` |
 | **SceneGraph Nodes** | Stacked area by node type (top 8 + "Other"), with a legend | `sgnodes counts` |
+| **Objects** (hidden by default) | Stacked area of BrightScript object counts by type (top 8 + "Other"), with a legend — `roSGNode` subtypes are summed into a single `roSGNode` series here; the Objects table shows the per-subtype breakdown | ECP `/query/app-object-counts` |
 | **Textures** | Used MB (area) + a max-texture-memory reference line | `r2d2_bitmaps` |
 
 Every chart can optionally overlay rendezvous markers (vertical lines) and
@@ -379,8 +405,8 @@ selection on the navigator for that.
 
 A single navigator/range-select strip below the charts overlays the headline
 metric of **every** currently visible chart simultaneously (Memory, CPU, Nodes,
-Textures), each normalized to a shared 0–1 scale since their units differ —
-not just the first one.
+Objects, Textures), each normalized to a shared 0–1 scale since their units
+differ — not just the first one.
 
 Charts are laid out in equal-width columns matching how many are visible (one
 chart = full width, two = 50/50, etc.) and likewise for tables. The charts

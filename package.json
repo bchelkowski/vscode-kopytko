@@ -865,6 +865,16 @@
           "default": 2000,
           "description": "Polling interval in milliseconds for node counts."
         },
+        "kopytko.diagnostics.collectors.objectCounts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collect BrightScript object counts by type via ECP /query/app-object-counts. Only polled while the Objects chart or table is visible in the panel (both hidden by default)."
+        },
+        "kopytko.diagnostics.collectors.objectCounts.intervalMs": {
+          "type": "number",
+          "default": 2000,
+          "description": "Polling interval in milliseconds for object counts."
+        },
         "kopytko.diagnostics.collectors.rendezvous.enabled": {
           "type": "boolean",
           "default": true,
@@ -923,6 +933,7 @@
               "memory",
               "cpu",
               "nodes",
+              "objects",
               "textures"
             ]
           },
@@ -939,6 +950,7 @@
             "type": "string",
             "enum": [
               "nodes",
+              "objects",
               "rendezvous",
               "textures"
             ]

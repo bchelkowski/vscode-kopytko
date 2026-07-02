@@ -11,6 +11,7 @@
 export type DiagnosticEventType =
   | 'mem-cpu'
   | 'node-counts'
+  | 'object-counts'
   | 'rendezvous'
   | 'system-mem'
   | 'textures'
@@ -46,6 +47,25 @@ export interface NodeCountsEvent extends BaseEvent {
   totalCount: number;
   totalStaticBytes: number;
   types: { type: string; count: number; staticBytes: number }[];
+}
+
+/** A single BrightScript object type's live instance counts and memory. */
+export interface ObjectTypeEntry {
+  type: string;
+  /** SceneGraph component name — only present on `roSGNode` entries. */
+  subtype?: string;
+  count: number;
+  physicalBytes: number;
+  logicalBytes: number;
+}
+
+/** BrightScript object counts by type (from ECP `/query/app-object-counts/<appId>`). */
+export interface ObjectCountsEvent extends BaseEvent {
+  type: 'object-counts';
+  totalCount: number;
+  totalPhysicalBytes: number;
+  totalLogicalBytes: number;
+  types: ObjectTypeEntry[];
 }
 
 /** A single render-thread rendezvous (from ECP `/query/sgrendezvous`). */
@@ -112,6 +132,7 @@ export interface FwBeaconEvent extends BaseEvent {
 export type DiagnosticEvent =
   | MemCpuEvent
   | NodeCountsEvent
+  | ObjectCountsEvent
   | RendezvousEvent
   | SystemMemEvent
   | TexturesEvent
@@ -122,6 +143,7 @@ export type DiagnosticEvent =
 export type DiagnosticSample =
   | Omit<MemCpuEvent, 't'>
   | Omit<NodeCountsEvent, 't'>
+  | Omit<ObjectCountsEvent, 't'>
   | Omit<RendezvousEvent, 't'>
   | Omit<SystemMemEvent, 't'>
   | Omit<TexturesEvent, 't'>
@@ -132,6 +154,7 @@ export type DiagnosticSample =
 export const STREAM_FILE: Record<DiagnosticEventType, string> = {
   'mem-cpu': 'mem-cpu.ndjson',
   'node-counts': 'node-counts.ndjson',
+  'object-counts': 'object-counts.ndjson',
   rendezvous: 'rendezvous.ndjson',
   'system-mem': 'system-mem.ndjson',
   textures: 'textures.ndjson',

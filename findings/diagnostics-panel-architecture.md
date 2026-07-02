@@ -684,6 +684,50 @@ just never got the matching treatment. Fixed by explicitly clearing
 (`selectAll('*').remove()`), plus hiding the cursor crosshair, in that early-return
 branch.
 
+## Objects chart + table via ECP app-object-counts (2026-07-02)
+
+Added an "Objects" stacked chart (BrightScript object counts by `<type>`, top-8
++ "Other", cloned from the Nodes-by-type pattern) and an "Objects" table (rows
+by type, or `roSGNode:<subtype>` per SceneGraph component), both **hidden by
+default** — new event type `object-counts`, `EcpObjectCountsCollector`
+(per-app, `EcpClient.queryAppObjectCounts()`), `parsers/ecpAppObjectCounts.ts`.
+See `findings/roku-device-api.md` for the endpoint shape. Non-obvious notes:
+
+- **"Off by default" = not in the default-visible chart/table lists, NOT
+  `collectors.objectCounts.enabled: false`.** The enabled setting defaults
+  `true` so the collector is *built*; `neededTypesFor()` in
+  `diagnosticsViewProvider.ts` simply never activates it until the user checks
+  the Objects chart/table. This is the same lesson as the 2026-06-30
+  beacons/textures bug (a settings-disabled collector makes the webview toggle
+  a silent no-op). The webview's *initial* `visibleCharts`/`visibleTables`
+  sets in `webview/main.ts` are what actually control the default — the
+  `defaultVisibleCharts/Tables` settings only seed the provider's pre-webview
+  state; the webview posts its own hardcoded defaults on load and wins.
+- **Chart aggregates roSGNode subtypes into one `roSGNode` series; the table
+  preserves them as separate rows** (`ingestObjects()` builds the aggregated
+  `Map` for `objTypeHistory` while `lastObjectTypes` keeps the raw entries).
+  With per-subtype series the top-8 slots would be dominated by SG components
+  that the Nodes chart already shows.
+- **`MAX_NAV_SERIES` bumped 4 → 5** — the navigator pre-allocates fixed
+  `<path>` slots; without the bump a 5th visible chart's headline series is
+  silently dropped from the navigator (no error).
+- ECP parsers/collectors are deliberately NOT exported via `parsers/index.ts` /
+  `collectors/index.ts` — `ecpSgNodes`/`ecpChanperf` and the `Ecp*Collector`s
+  are all imported by direct path (only the console-based ones are in the
+  index files). Followed the same convention.
+- `diagnosticsController.test.ts`'s ecp mock needs a `queryAppObjectCounts`
+  stub (rejecting is fine) — without it the collector's tick throws a
+  TypeError that PollingCollector swallows, so tests still pass but silently
+  exercise nothing.
+- The GitHub Pages site had **no Kopytko Diagnostics section at all** on
+  `extension.astro` (only Perfetto) — the panel was only mentioned in
+  `index.astro`'s feature-card grid. Added a full section (before Perfetto)
+  as part of this task; future diagnostics features should update it.
+- Live verification gap: the device was unreachable during implementation, so
+  the parser is validated against the user-captured curl response only; the
+  backgrounded `FAILED` shape is extrapolated from chanperf/sgnodes (see the
+  roku-device-api.md entry).
+
 ---
 
 ## Directory layout
@@ -698,11 +742,13 @@ src/client/diagnostics/
     sgNodesCounts.ts         parseSgNodesCounts() → SgNodesCounts
     free.ts                  parseFree() → FreeSample
     r2d2Bitmaps.ts           parseR2d2Bitmaps() → R2d2Bitmaps
+    ecpAppObjectCounts.ts    parseEcpAppObjectCounts() → AppObjectCounts (not in index.ts, like other ECP parsers)
     index.ts                 Re-exports all parsers
   collectors/
     collector.ts             PollingCollector base class (setInterval, self-healing)
     chanperfCollector.ts     1s interval → mem-cpu events
     nodeCountsCollector.ts   2s interval → node-counts events
+    ecpObjectCountsCollector.ts  2s interval → object-counts events (ECP, per-app)
     rendezvousCollector.ts   1s interval → rendezvous events (via ECP)
     systemMemCollector.ts    5s interval → system-mem events (opt-in)
     textureCollector.ts      5s interval → textures events (opt-in)

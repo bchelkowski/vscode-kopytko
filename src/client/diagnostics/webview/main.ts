@@ -20,6 +20,8 @@ import type {
   WebviewState,
   SerializedMemCpuPoint,
   SerializedNodePoint,
+  SerializedObjectPoint,
+  SerializedObjectTypeEntry,
   SerializedRendezvousPoint,
   SerializedNodeTypeEntry,
   SerializedSessionInfo,
@@ -72,6 +74,18 @@ const nodeTypeHistory: NodeTypeSnapshot[] = [];
 const NODE_TOP_N = 8;
 let topTypeNames: string[] = [];
 
+const objTimes:  number[] = [];
+const objCounts: number[] = [];
+
+/** Per-timestamp object counts aggregated by <type> (roSGNode subtypes summed into one bucket) for the stacked chart. */
+const objTypeHistory: NodeTypeSnapshot[] = [];
+const OBJ_TOP_N = 8;
+let topObjTypeNames: string[] = [];
+/** Latest raw (subtype-preserving) entries for the table view. */
+let lastObjectTypes: SerializedObjectTypeEntry[] = [];
+let lastObjectTotal = 0;
+let prevObjectRows = new Map<string, number>();
+
 const texTimes:  number[] = [];
 const texUsedMB: number[] = [];
 const texMaxMB:  number[] = [];
@@ -105,7 +119,7 @@ const renGroups = new Map<string, RenGroup>();
 const C = {
   mem:  '#4e79a7', anon: '#59a14f', file: '#f28e2b', shared: '#edc949', swap: '#e15759',
   cpu:  '#e15759', user: '#76b7b2', sys:  '#b07aa1',
-  nodes:'#4e79a7', rdv: 'rgba(255,180,0,0.8)', beacon: 'rgba(100,200,255,0.85)',
+  nodes:'#4e79a7', objects: '#59a14f', rdv: 'rgba(255,180,0,0.8)', beacon: 'rgba(100,200,255,0.85)',
   tex:  '#af7aa1', texMax: 'rgba(239,154,154,0.8)',
   memLimit: 'rgba(239,154,154,0.8)', bgMemLimit: 'rgba(159,206,239,0.85)',
   suspendBg: 'rgba(240,173,78,0.22)', suspendInactive: 'rgba(224,82,82,0.22)',
@@ -486,6 +500,7 @@ function createChart(cfg: ChartConfig): ChartHandle {
 function fullDomain(): [number, number] | null {
   if (mcTimes.length > 1) return [mcTimes[0], mcTimes[mcTimes.length - 1]];
   if (nodeTimes.length > 1) return [nodeTimes[0], nodeTimes[nodeTimes.length - 1]];
+  if (objTimes.length > 1) return [objTimes[0], objTimes[objTimes.length - 1]];
   if (texTimes.length > 1) return [texTimes[0], texTimes[texTimes.length - 1]];
   return null;
 }
@@ -573,7 +588,7 @@ function drawLimitLine(g: Selection<SVGGElement, unknown, null, undefined>, w: n
 // ── Navigator ─────────────────────────────────────────────────────────────────
 
 interface NavSeries { times: number[]; values: number[]; label: string; color: string }
-const MAX_NAV_SERIES = 4;
+const MAX_NAV_SERIES = 5;
 
 /** All currently-visible chart headline metrics for the navigator. */
 function allNavSeries(): NavSeries[] {
@@ -581,6 +596,7 @@ function allNavSeries(): NavSeries[] {
   if (visibleCharts.has('memory') && mcTimes.length > 1)    result.push({ times: mcTimes, values: mcMem, label: 'Mem MB', color: C.mem });
   if (visibleCharts.has('cpu')    && mcTimes.length > 1)    result.push({ times: mcTimes, values: mcCpu, label: 'CPU %',  color: C.cpu });
   if (visibleCharts.has('nodes')  && nodeTimes.length > 1)  result.push({ times: nodeTimes, values: nodeCounts, label: 'Nodes', color: C.nodes });
+  if (visibleCharts.has('objects') && objTimes.length > 1)  result.push({ times: objTimes, values: objCounts, label: 'Objects', color: C.objects });
   if (visibleCharts.has('textures') && texTimes.length > 1) result.push({ times: texTimes, values: texUsedMB, label: 'Tex MB', color: C.tex });
   return result;
 }
@@ -736,9 +752,11 @@ function buildLegend(hostId: string, series: Array<{ color: string; label: strin
 let memChart:     ChartHandle;
 let cpuChart:     ChartHandle;
 let nodesChart:   ChartHandle;
+let objectsChart: ChartHandle;
 let texturesChart: ChartHandle;
 let navChart:     { redraw(): void };
 const nodeSeriesDefs: SeriesDef[] = [];
+const objectSeriesDefs: SeriesDef[] = [];
 
 /** Recomputes which node types occupy the 8 stacked slots, based on the latest snapshot. */
 function updateNodeLegend(): void {
@@ -771,6 +789,40 @@ function typesAt(ms: number): Map<string, number> | null {
     if (nodeTypeHistory[mid].wall <= ms) { ans = mid; lo = mid + 1; } else hi = mid - 1;
   }
   return nodeTypeHistory[ans].types;
+}
+
+/** Recomputes which object types occupy the 8 stacked slots, based on the latest snapshot. */
+function updateObjectLegend(): void {
+  const latest = objTypeHistory.length ? objTypeHistory[objTypeHistory.length - 1].types : new Map<string, number>();
+  const sorted = [...latest.entries()].sort((a, b) => b[1] - a[1]);
+  topObjTypeNames = sorted.slice(0, OBJ_TOP_N).map(([type]) => type);
+  for (let slot = 0; slot <= OBJ_TOP_N; slot++) {
+    objectSeriesDefs[slot].label = slot < topObjTypeNames.length ? topObjTypeNames[slot] : 'Other';
+  }
+  buildLegend('legend-objects', objectSeriesDefs.map(s => ({ color: s.color, label: s.label })));
+}
+
+function objectSlotValues(slot: number): number[] {
+  return objTimes.map(t => {
+    const types = objTypesAt(t);
+    if (!types) return 0;
+    if (slot < topObjTypeNames.length) return types.get(topObjTypeNames[slot]) ?? 0;
+    let known = 0;
+    for (const name of topObjTypeNames) known += types.get(name) ?? 0;
+    let total = 0;
+    types.forEach(v => { total += v; });
+    return Math.max(0, total - known);
+  });
+}
+
+function objTypesAt(ms: number): Map<string, number> | null {
+  if (!objTypeHistory.length) return null;
+  let lo = 0, hi = objTypeHistory.length - 1, ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (objTypeHistory[mid].wall <= ms) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return objTypeHistory[ans].types;
 }
 
 function initCharts(): void {
@@ -830,6 +882,24 @@ function initCharts(): void {
   });
   updateNodeLegend();
 
+  for (let slot = 0; slot <= OBJ_TOP_N; slot++) {
+    objectSeriesDefs.push({
+      values: () => objectSlotValues(slot),
+      color: slot === OBJ_TOP_N ? NODE_OTHER_COLOR : NODE_PALETTE[slot % NODE_PALETTE.length],
+      label: slot === OBJ_TOP_N ? 'Other' : '',
+      area: true,
+    });
+  }
+  objectsChart = createChart({
+    hostId: 'host-objects',
+    times:  () => objTimes,
+    yFmt:   v => String(Math.round(+v)),
+    series: objectSeriesDefs,
+    stacked: true,
+    extras: chartExtras,
+  });
+  updateObjectLegend();
+
   texturesChart = createChart({
     hostId: 'host-textures',
     times:  () => texTimes,
@@ -848,7 +918,7 @@ function initCharts(): void {
   navChart = createNavigator('host-nav');
 
   const ro = new ResizeObserver(() => scheduleRedraw());
-  ['host-mem', 'host-cpu', 'host-nodes', 'host-textures', 'host-nav'].forEach(id => {
+  ['host-mem', 'host-cpu', 'host-nodes', 'host-objects', 'host-textures', 'host-nav'].forEach(id => {
     const e = document.getElementById(id);
     if (e) ro.observe(e);
   });
@@ -858,6 +928,7 @@ function redrawCharts(): void {
   if (visibleCharts.has('memory')) memChart?.redraw();
   if (visibleCharts.has('cpu')) cpuChart?.redraw();
   if (visibleCharts.has('nodes')) nodesChart?.redraw();
+  if (visibleCharts.has('objects')) objectsChart?.redraw();
   if (visibleCharts.has('textures')) texturesChart?.redraw();
   navChart?.redraw();
 }
@@ -884,6 +955,21 @@ function ingestNodes(pts: SerializedNodePoint[]): void {
     }
   }
   if (pts.some(p => p.types.length > 0) && nodeSeriesDefs.length > 0) updateNodeLegend();
+}
+
+function ingestObjects(pts: SerializedObjectPoint[]): void {
+  for (const p of pts) {
+    objTimes.push(p.wall); objCounts.push(p.totalCount);
+    if (p.types.length > 0) {
+      lastObjectTypes = p.types;
+      lastObjectTotal = p.totalCount;
+      // The chart stacks by <type>: roSGNode subtype rows collapse into one bucket.
+      const byType = new Map<string, number>();
+      for (const t of p.types) byType.set(t.type, (byType.get(t.type) ?? 0) + t.count);
+      objTypeHistory.push({ wall: p.wall, types: byType });
+    }
+  }
+  if (pts.some(p => p.types.length > 0) && objectSeriesDefs.length > 0) updateObjectLegend();
 }
 
 function ingestRendezvous(pts: SerializedRendezvousPoint[]): void {
@@ -933,10 +1019,12 @@ function ingestBeacons(pts: SerializedBeaconPoint[]): void {
 function clearData(): void {
   [
     mcTimes, mcMem, mcAnon, mcFile, mcShared, mcSwap, mcCpu, mcUser, mcSys,
-    nodeTimes, nodeCounts, renEvents, texTimes, texUsedMB, texMaxMB,
+    nodeTimes, nodeCounts, objTimes, objCounts, renEvents, texTimes, texUsedMB, texMaxMB,
     appStateEvents, beaconEvents,
   ].forEach(a => a.length = 0);
   nodeTypeHistory.length = 0;
+  objTypeHistory.length = 0;
+  lastObjectTypes = []; lastObjectTotal = 0; prevObjectRows.clear();
   renGroups.clear(); lastNodeTypes = []; prevNodeTypes.clear(); lastBitmaps = []; mcLimitMB = null;
   xVisible = null; el('btn-reset-zoom').style.display = 'none';
   const badge = document.getElementById('app-state-badge');
@@ -964,6 +1052,27 @@ function renderNodeTable(): void {
   }).join('');
   prevNodeTypes = new Map(lastNodeTypes.map(t => [t.type, t.count]));
   el('node-badge').textContent = `${total} nodes · ${sorted.length} types`;
+}
+
+function renderObjectsTable(): void {
+  const tbody = el('tbody-objects');
+  const hint  = el('hint-list-objects');
+  if (!lastObjectTypes.length) { tbody.innerHTML = ''; hint.style.display = ''; el('obj-badge').textContent = ''; return; }
+  hint.style.display = 'none';
+  // Rows are keyed by type, or type:subtype for roSGNode entries (one row per SG component type).
+  const sorted = [...lastObjectTypes].sort((a, b) => b.count - a.count).slice(0, 50);
+  tbody.innerHTML = sorted.map(t => {
+    const label = t.subtype ? `${t.type}:${t.subtype}` : t.type;
+    const delta = t.count - (prevObjectRows.get(label) ?? t.count);
+    const cls   = delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : '';
+    const dStr  = delta === 0 ? '' : (delta > 0 ? '+' : '') + delta;
+    return `<tr><td class="col-type" title="${label}">${label}</td>
+      <td class="col-num">${t.count}</td>
+      <td class="col-num ${cls}">${dStr}</td>
+      <td class="col-num">${t.physicalBytes ? Math.round(t.physicalBytes / 1024) : '—'}</td></tr>`;
+  }).join('');
+  prevObjectRows = new Map(lastObjectTypes.map(t => [t.subtype ? `${t.type}:${t.subtype}` : t.type, t.count]));
+  el('obj-badge').textContent = `${lastObjectTotal} objects · ${lastObjectTypes.length} types`;
 }
 
 function renderRendezvousTable(): void {
@@ -1085,10 +1194,11 @@ function populateSessionSelector(sessions: SerializedSessionInfo[]): void {
 
 const CHART_DEFS: Array<{ id: ChartId; label: string }> = [
   { id: 'memory', label: 'Memory' }, { id: 'cpu', label: 'CPU' },
-  { id: 'nodes', label: 'Nodes' }, { id: 'textures', label: 'Textures' },
+  { id: 'nodes', label: 'Nodes' }, { id: 'objects', label: 'Objects' }, { id: 'textures', label: 'Textures' },
 ];
 const TABLE_DEFS: Array<{ id: TableId; label: string }> = [
-  { id: 'nodes', label: 'Nodes' }, { id: 'rendezvous', label: 'Rendezvous' }, { id: 'textures', label: 'Textures' },
+  { id: 'nodes', label: 'Nodes' }, { id: 'objects', label: 'Objects' },
+  { id: 'rendezvous', label: 'Rendezvous' }, { id: 'textures', label: 'Textures' },
 ];
 
 function visibilityDropdown(domId: string, label: string, items: Array<{ id: string; label: string }>, checkedSet: Set<string>): string {
@@ -1134,6 +1244,9 @@ function buildDom(): void {
     <div class="chart-pane" id="pane-chart-nodes"><div class="chart-title">SceneGraph Nodes (by type)</div>
       <div class="chart-host" id="host-nodes"><div class="empty-hint" id="hint-nodes">Waiting for data…</div></div>
       <div class="legend-row" id="legend-nodes"></div></div>
+    <div class="chart-pane" id="pane-chart-objects"><div class="chart-title">Objects (by type)</div>
+      <div class="chart-host" id="host-objects"><div class="empty-hint" id="hint-objects">Waiting for data…</div></div>
+      <div class="legend-row" id="legend-objects"></div></div>
     <div class="chart-pane" id="pane-chart-textures"><div class="chart-title">Texture Memory</div>
       <div class="chart-host" id="host-textures"><div class="empty-hint" id="hint-textures">Waiting for data…</div></div>
       <div class="legend-row" id="legend-textures"></div></div>
@@ -1150,6 +1263,16 @@ function buildDom(): void {
           <tbody id="tbody-nodes"></tbody>
         </table>
         <div class="empty-hint list-empty" id="hint-list-nodes">Start a session to see node types</div>
+      </div>
+    </div>
+    <div class="list-pane" id="pane-table-objects" style="display:none">
+      <div class="list-header"><span class="list-title">Objects</span><span class="list-badge" id="obj-badge"></span></div>
+      <div class="list-scroll">
+        <table class="data-table" id="table-objects">
+          <thead><tr><th class="col-type">Object</th><th class="col-num">Count</th><th class="col-num">Δ</th><th class="col-num">kB</th></tr></thead>
+          <tbody id="tbody-objects"></tbody>
+        </table>
+        <div class="empty-hint list-empty" id="hint-list-objects">No object-count data recorded yet</div>
       </div>
     </div>
     <div class="list-pane" id="pane-table-rendezvous">
@@ -1181,11 +1304,11 @@ function buildDom(): void {
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 function renderAllTables(): void {
-  renderNodeTable(); renderRendezvousTable(); renderTexturesTable();
+  renderNodeTable(); renderObjectsTable(); renderRendezvousTable(); renderTexturesTable();
 }
 
 function ingestHistory(h: HistoryPayload): void {
-  ingestMemCpu(h.memCpu); ingestNodes(h.nodes); ingestRendezvous(h.rendezvous);
+  ingestMemCpu(h.memCpu); ingestNodes(h.nodes); ingestObjects(h.objects); ingestRendezvous(h.rendezvous);
   ingestTextures(h.textures); ingestAppState(h.appState); ingestBeacons(h.beacons);
 }
 
@@ -1200,7 +1323,7 @@ window.addEventListener('message', ev => {
       redrawCharts(); renderAllTables();
       break;
     case 'batch':
-      ingestMemCpu(msg.memCpu); ingestNodes(msg.nodes); ingestRendezvous(msg.rendezvous);
+      ingestMemCpu(msg.memCpu); ingestNodes(msg.nodes); ingestObjects(msg.objects); ingestRendezvous(msg.rendezvous);
       ingestTextures(msg.textures); ingestAppState(msg.appState); ingestBeacons(msg.beacons);
       scheduleRedraw(); renderAllTables();
       break;
