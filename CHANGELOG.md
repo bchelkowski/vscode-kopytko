@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.5.1] - 2026-07-02
+
+### Fixed
+- Collect framework beacons via ECP instead of the port-8085 log
+
 ## [1.5.0] - 2026-07-01
 
 ### Added
