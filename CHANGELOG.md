@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.6.0] - 2026-07-02
+
+### Added
+- Add Objects chart and table to Kopytko Diagnostics
+
 ## [1.5.1] - 2026-07-02
 
 ### Fixed
