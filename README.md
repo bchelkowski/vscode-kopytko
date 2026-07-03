@@ -23,7 +23,7 @@
 - **Find All References** — workspace-wide symbol references
 - **Rename symbol** — safe rename across the workspace
 - **Outline & Workspace Symbols** — navigate functions, subs, AA methods, and test cases via the Outline view or `Ctrl+T`
-- **21 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
+- **31 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
 - **Inline suppression** — `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` comments to suppress individual diagnostics per-line (glob patterns and `rem` style supported; use `disable-next-line` on the preceding line for `@import`/`@mock` annotations)
 - **Code actions** — quick fixes for import diagnostics and unused parameters
 - **Document formatting** — multi-pass engine with 60+ configurable rules (indentation, spacing, casing, blank lines, keyword style, and more)
@@ -42,8 +42,9 @@ The formatting engine and linter are also available as standalone npm packages f
 
 | Package | Description |
 |---|---|
-| [**kopytko-formatter**](packages/kopytko-formatter/README.md) | BrightScript formatter — `kopytko-format --check` / `--write` for CI, plus a library API |
-| [**kopytko-linter**](packages/kopytko-linter/README.md) | BrightScript linter with 21 rules and inline suppression comments — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
+| [**kopytko-formatter**](packages/formatter/README.md) | BrightScript formatter — `kopytko-format --check` / `--write` for CI, plus a library API |
+| [**kopytko-linter**](packages/linter/README.md) | BrightScript linter with 31 rules and inline suppression comments — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
+| [**kopytko-roku-device**](packages/roku-device/README.md) | Roku device communication toolkit — SSDP, ECP, debug console/protocol, diagnostic collectors, Perfetto |
 
 ---
 
@@ -51,7 +52,7 @@ The formatting engine and linter are also available as standalone npm packages f
 
 All settings use the `kopytko.` prefix in `.vscode/settings.json` or VS Code's user settings.
 
-For formatting settings (`kopytko.format.*`) see the [kopytko-formatter README](packages/kopytko-formatter/README.md#vs-code-settings-reference). For linting settings (`kopytko.lint.*`) see the [kopytko-linter README](packages/kopytko-linter/README.md#configuration).
+For formatting settings (`kopytko.format.*`) see the [kopytko-formatter README](packages/formatter/README.md#vs-code-settings-reference). For linting settings (`kopytko.lint.*`) see the [kopytko-linter README](packages/linter/README.md#configuration).
 
 ### Language Server
 

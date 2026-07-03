@@ -21,7 +21,7 @@
 
 VS Code extension for **BrightScript** (Roku) and the **Kopytko Framework** — LSP server (diagnostics, completion, hover, go-to-definition, formatting), built-in debugger, device discovery, and a runtime diagnostics panel.
 
-Four standalone npm packages live in `packages/`: `kopytko-brightscript-parser`, `kopytko-formatter`, `kopytko-linter`, and `kopytko-roku-device` (all Roku device communication — consumed by the extension as a `file:` dependency until first npm publish; the root `postinstall` builds it). `kopytko-roku-device` is deliberately Kopytko-ecosystem-unaware (no CLI spawning, no `.kopytkorc`) so Kopytko packages can depend on it — the Kopytko CLI deployer and `.kopytkorc` reader stay in the extension (`src/client/roku/rokuDeployer.ts`, `src/client/roku/kopytkorc.ts`).
+Four standalone npm packages live in `packages/`: `kopytko-brightscript-parser`, `kopytko-formatter`, `kopytko-linter`, and `kopytko-roku-device`. All four are published to npm and consumed by the extension as versioned dependencies (see `docs/publishing.md`). `kopytko-roku-device` handles all Roku device communication and is deliberately Kopytko-ecosystem-unaware (no CLI spawning, no `.kopytkorc`) so Kopytko packages can depend on it — the Kopytko CLI deployer and `.kopytkorc` reader stay in the extension (`src/client/roku/rokuDeployer.ts`, `src/client/roku/kopytkorc.ts`).
 
 ---
 
@@ -60,7 +60,7 @@ npm run lint         # ESLint
 
 `compile` outputs individual JS files for the Extension Development Host. `bundle` produces self-contained files for the published VSIX. See `findings/dev-environment.md` for the full build workflow, WSL setup, and F5 caveats.
 
-For `packages/formatter`, `packages/linter`, or `packages/roku-device` changes: `cd packages/<name> && npm test`. After editing `packages/roku-device` sources, run `npm run build:roku-device` (or `npm run build` inside the package) before root compile/test/F5 — the extension consumes its built `dist/`, not its sources.
+For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or `packages/roku-device` changes: `cd packages/<name> && npm test`. These packages are consumed by the extension via their published npm versions, not local sources — root compile/test/F5 do not pick up in-progress package edits. To verify a package change against the extension before publishing, use `npm link` or bump the extension's dependency to a locally packed tarball.
 
 ---
 
@@ -134,6 +134,7 @@ No `Co-authored-by:` lines. Use conventional commits.
 | `feat/fix/refactor(formatter):` | Formatter CHANGELOG |
 | `feat/fix/refactor(linter):` | Linter CHANGELOG |
 | `feat/fix/refactor(brightscript-parser):` | Parser CHANGELOG |
+| `feat/fix/refactor(roku-device):` | Roku device CHANGELOG |
 | `feat(scope)!:` | Breaking Changes section |
 | `chore(scope):` | Maintenance section |
 | `test:` / unscoped | Not in any changelog |
@@ -142,13 +143,14 @@ No `Co-authored-by:` lines. Use conventional commits.
 
 ## Package architecture
 
-Three packages with strict, non-overlapping responsibilities:
+Four packages with strict, non-overlapping responsibilities:
 
 | Question | Package |
 |---|---|
 | "Does this come from reading/analysing a `.brs` file?" | **brightscript-parser** |
 | "Does this transform source text to make it prettier?" | **formatter** |
 | "Does this check a rule and report a diagnostic?" | **linter** |
+| "Does this talk to a Roku device over the network?" | **roku-device** |
 
 **Key check:** before adding a helper to the formatter or linter, ask *"Would another tool ever need this?"* If yes, it belongs in the parser — the single source of truth for all per-file structural facts.
 
