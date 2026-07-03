@@ -25,6 +25,15 @@ export { computeNetworkId } from './net/networkId';
 // SSDP discovery
 export { SsdpClient } from './ssdp/ssdpClient';
 
+// Device discovery orchestration
+export {
+  DeviceManager,
+  type DeviceManagerOptions,
+  type DeviceStorage,
+  type NetworkWatcher,
+  type NetworkWatcherEvents,
+} from './discovery/deviceManager';
+
 // ECP (External Control Protocol)
 export {
   EcpClient,
