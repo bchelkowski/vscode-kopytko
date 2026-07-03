@@ -208,7 +208,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
 
   /**
    * Returns the effective environment for a device: the stored env,
-   * or the first available env from .kopytkorc, or undefined.
+   * or the first host-provided available env, or undefined.
    */
   getEffectiveEnvironment(serial: string, availableEnvs: string[]): string | undefined {
     const stored = this.store.getDeviceEnvironment(serial);

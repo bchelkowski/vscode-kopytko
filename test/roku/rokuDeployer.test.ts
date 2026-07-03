@@ -18,7 +18,7 @@ describe('rokuDeployer — manifest injection', () => {
   // We import deploy dynamically. The exec call will fail (no real project),
   // but manifest injection/restore happens synchronously before exec.
   async function runDeploy(options: Record<string, unknown>): Promise<void> {
-    const { deploy } = await import('../../src/deploy/rokuDeployer');
+    const { deploy } = await import('../../src/client/roku/rokuDeployer');
     try {
       await deploy({
         host: '192.168.1.100',
@@ -129,7 +129,7 @@ describe('rokuDeployer — manifest injection', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({}));
 
-      const { deploy } = await import('../../src/deploy/rokuDeployer');
+      const { deploy } = await import('../../src/client/roku/rokuDeployer');
       await deploy({
         host: '192.168.1.100',
         password: 'pass',
@@ -150,7 +150,7 @@ describe('rokuDeployer — manifest injection', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({}));
 
-      const { deploy } = await import('../../src/deploy/rokuDeployer');
+      const { deploy } = await import('../../src/client/roku/rokuDeployer');
       await deploy({
         host: '192.168.2.2',
         password: 'rokudev',
@@ -185,7 +185,7 @@ describe('rokuDeployer — manifest injection', () => {
       const markerFile = path.join(tmpDir, 'deployed.txt');
       const successCmd = `node -e "require('fs').writeFileSync('${markerFile}', 'ok')"`;
 
-      const { deploy } = await import('../../src/deploy/rokuDeployer');
+      const { deploy } = await import('../../src/client/roku/rokuDeployer');
       await deploy({
         host: '192.168.1.100',
         password: 'pass',
@@ -209,7 +209,7 @@ describe('rokuDeployer — manifest injection', () => {
 
       fs.writeFileSync(path.join(tmpDir, '.kopytkorc'), JSON.stringify({}));
 
-      const { upload } = await import('../../src/deploy/rokuDeployer');
+      const { upload } = await import('../../src/client/roku/rokuDeployer');
       await upload({
         host: '192.168.1.100',
         password: 'pass',

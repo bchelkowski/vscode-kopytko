@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getAvailableEnvironments } from '../../src/config/kopytkorc';
+import { getAvailableEnvironments } from '../../src/client/roku/kopytkorc';
 
 describe('kopytkorc — getAvailableEnvironments', () => {
   let tmpDir: string;

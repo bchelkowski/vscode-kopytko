@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { deploy, type DeployOptions } from 'kopytko-roku-device';
+import { deploy, type DeployOptions } from '../roku/rokuDeployer';
 import { DebugCommands } from 'kopytko-roku-device';
 import { ProtocolClient } from 'kopytko-roku-device';
 import { IOClient } from 'kopytko-roku-device';

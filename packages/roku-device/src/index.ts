@@ -7,7 +7,9 @@
 //   - BrightScript remote debug protocol (TCP 8081 + dynamic IO port)
 //   - Diagnostics parsers + polling collectors (chanperf, sgnodes, textures, …)
 //   - Perfetto trace streaming (WebSocket on 8060)
-//   - Sideload deployment via the Kopytko CLI
+//
+// Deliberately Kopytko-ecosystem-unaware: no CLI spawning, no .kopytkorc
+// knowledge — so kopytko packages themselves can depend on it.
 
 // Shared device types
 export * from './types';
@@ -67,15 +69,3 @@ export { DebugCommands } from './debug-protocol/commands';
 
 // Perfetto trace streaming
 export { PerfettoWebSocketClient } from './perfetto/webSocketClient';
-
-// Sideload deployment
-export {
-  deploy,
-  deployForPerfetto,
-  upload,
-  type DeployOptions,
-  type PerfettoDeployOptions,
-} from './deploy/rokuDeployer';
-
-// Project configuration
-export { getAvailableEnvironments } from './config/kopytkorc';

@@ -1,7 +1,7 @@
 {
   "name": "kopytko-roku-device",
   "version": "0.1.0",
-  "description": "Roku device communication toolkit: SSDP discovery, ECP client, SceneGraph debug console, BrightScript debug protocol, diagnostics collectors, Perfetto tracing, and sideload deployment.",
+  "description": "Roku device communication toolkit: SSDP discovery, ECP client, SceneGraph debug console, BrightScript debug protocol, diagnostics collectors, and Perfetto tracing.",
   "license": "MIT",
   "author": "bchelkowski",
   "repository": {
@@ -17,8 +17,7 @@
     "scenegraph",
     "debugger",
     "diagnostics",
-    "perfetto",
-    "sideload"
+    "perfetto"
   ],
   "engines": {
     "node": ">=24.0.0"

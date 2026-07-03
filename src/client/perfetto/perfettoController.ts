@@ -3,8 +3,8 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import { diagnosticsLock } from '../diagnostics/diagnosticsLock';
-import { deployForPerfetto } from 'kopytko-roku-device';
-import { getAvailableEnvironments } from 'kopytko-roku-device';
+import { deployForPerfetto } from '../roku/rokuDeployer';
+import { getAvailableEnvironments } from '../roku/kopytkorc';
 import { enablePerfettoTracing, triggerHeapSnapshot } from 'kopytko-roku-device';
 import { PerfettoWebSocketClient } from 'kopytko-roku-device';
 import {

@@ -1,10 +1,6 @@
 import * as vscode from 'vscode';
-import {
-  SsdpClient,
-  EcpClient,
-  DeviceManager,
-  getAvailableEnvironments,
-} from 'kopytko-roku-device';
+import { SsdpClient, EcpClient, DeviceManager } from 'kopytko-roku-device';
+import { getAvailableEnvironments } from '../roku/kopytkorc';
 import { NetworkMonitor } from '../roku/discovery/networkMonitor';
 import { DeviceStore } from '../roku/persistence/deviceStore';
 import { CredentialStore } from '../roku/persistence/credentialStore';

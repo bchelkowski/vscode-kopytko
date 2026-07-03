@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import { EventEmitter } from 'events';
 import { SessionController, type SessionControllerCallbacks } from '../../src/client/debug/sessionController';
 import { BreakpointService } from '../../src/client/debug/services/breakpointService';
-import type { DeployOptions } from 'kopytko-roku-device';
+import type { DeployOptions } from '../../src/client/roku/rokuDeployer';
 import type { ProtocolClient } from 'kopytko-roku-device';
 import type { DebugCommands } from 'kopytko-roku-device';
 import { DEBUGGER_MAGIC } from 'kopytko-roku-device';
