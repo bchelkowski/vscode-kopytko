@@ -80,6 +80,22 @@ Then reload the Extension Development Host window (`Ctrl+R` in the EH window) to
 | `npm run watch:webview` | esbuild watch for webview (live rebuild on save) |
 | `npm test` | Mocha + tsx — all tests, no compile needed |
 | `npm run lint` | ESLint for src/ + test/ |
+| `npm run build:roku-device` | Installs + builds `packages/roku-device` (also runs automatically via `postinstall`) |
+
+### kopytko-roku-device build-order rule (added 2026-07-03)
+
+The extension consumes `packages/roku-device` as a **`file:` dependency** — root compile/test/bundle
+resolve it through `node_modules/kopytko-roku-device` → the package's **built `dist/`**, not its
+TypeScript sources. Consequences:
+
+- **After editing anything under `packages/roku-device/src/`, run `npm run build:roku-device`**
+  (or `npm run build` inside the package) before root `npm run compile`, `npm test`, or F5 —
+  otherwise the extension silently keeps using the stale previous build with no error.
+- A fresh `npm install`/`npm ci` at the root triggers the `postinstall` hook which builds the
+  package, so clean checkouts work without extra steps.
+- The `postinstall` hook and the `file:` spec are removed at the package's first npm publish —
+  the `release-roku-device.yml` workflow does both automatically when it bumps the root dependency.
+- Package tests run independently: `cd packages/roku-device && npm test` (works via WSL like the root).
 
 ---
 

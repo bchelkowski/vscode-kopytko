@@ -8,6 +8,8 @@ Automatic discovery and management of Roku devices on the local network. Devices
 
 The device discovery system finds Roku devices via [SSDP](https://en.wikipedia.org/wiki/Simple_Service_Discovery_Protocol), queries each device for hardware details via the [ECP](https://developer.roku.com/docs/developer-program/dev-tools/external-control-api.md) API, and presents them in a VS Code tree view. It handles network changes, sleep/wake cycles, and device health monitoring automatically.
 
+> The device-communication layer (`SsdpClient`, `EcpClient`, `DeviceManager`) lives in the standalone [`kopytko-roku-device`](../packages/roku-device/README.md) package. The extension supplies the VS Code-specific pieces: persistence (`DeviceStore` over `Memento`, `CredentialStore` over `SecretStorage`), the focus-aware `NetworkMonitor`, and the tree view.
+
 ---
 
 ## Architecture

@@ -11,6 +11,11 @@ verified against real hardware. Nothing is synthesized.
 > **Status:** All four phases are implemented. See the status table in
 > [features.md](./features.md).
 
+> The transports, response parsers, and polling collectors live in the standalone
+> [`kopytko-roku-device`](../packages/roku-device/README.md) package
+> (`DebugConsoleClient`, `parseChanperf`, `ChanperfCollector`, …). The extension
+> keeps session orchestration, NDJSON storage, and the webview.
+
 ---
 
 ## Data sources (verified on-device)

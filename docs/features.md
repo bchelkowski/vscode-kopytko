@@ -2,7 +2,7 @@
 
 Canonical list of extension and package features. Each row links to its topic doc. **A feature is not "done" until it appears here.** Status legend: ✅ Implemented · 🟡 Partial · ⬜ Planned.
 
-> Package layout: the BrightScript engine ships as three npm packages — `kopytko-brightscript-parser` (`packages/brightscript-parser/`), `kopytko-formatter` (`packages/formatter/`), and `kopytko-linter` (`packages/linter/`). The extension's LSP server is a thin adapter over them.
+> Package layout: the BrightScript engine ships as three npm packages — `kopytko-brightscript-parser` (`packages/brightscript-parser/`), `kopytko-formatter` (`packages/formatter/`), and `kopytko-linter` (`packages/linter/`) — and all Roku device communication (SSDP discovery, ECP, SceneGraph debug console, BrightScript remote debug protocol, diagnostics collectors, Perfetto streaming) lives in a fourth package, `kopytko-roku-device` (`packages/roku-device/`), which is deliberately Kopytko-ecosystem-unaware so Kopytko packages can depend on it. The extension's LSP server is a thin adapter over the language packages, and its device features are thin VS Code glue over `kopytko-roku-device` plus the Kopytko CLI deployer (`src/client/roku/rokuDeployer.ts`).
 
 ---
 

@@ -1,0 +1,178 @@
+---
+import Layout from '../components/Layout.astro';
+import CodePanel from '../components/CodePanel.astro';
+import devicePkg from '../../../packages/roku-device/package.json';
+
+const installExample = `npm install kopytko-roku-device`;
+
+const discoveryExample = `import { SsdpClient, EcpClient, DeviceManager } from 'kopytko-roku-device';
+
+// DeviceStorage + NetworkWatcher are host-provided interfaces:
+// the VS Code extension backs them with Memento global state and a
+// focus-aware network poller; a CLI can use a JSON file + no-op watcher.
+const manager = new DeviceManager(
+  new SsdpClient(),
+  new EcpClient(),
+  myStorage,        // implements DeviceStorage
+  myNetworkWatcher, // implements NetworkWatcher
+);
+
+manager.on('devices-changed', () => {
+  for (const device of manager.getDevices()) {
+    console.log(device.friendlyName, device.ip, device.state);
+  }
+});
+
+await manager.initialize(); // starts SSDP + initial M-SEARCH scan`;
+
+const ecpExample = `import { EcpClient, parseRegistryXml } from 'kopytko-roku-device';
+
+const ecp = new EcpClient();
+
+const info = await ecp.queryDeviceInfo('192.168.1.20');
+console.log(info['model-name'], info['software-version']);
+
+const apps = await ecp.queryApps('192.168.1.20');
+const dev = apps.find((a) => a.id === 'dev'); // sideloaded channel
+
+// Registry of the sideloaded channel (all channels sharing the dev key)
+const registryXml = await ecp.queryRegistry('192.168.1.20', 'dev');
+const registry = parseRegistryXml(registryXml);
+console.log(registry.plugins); // e.g. "158987,268970,dev"`;
+
+const collectorExample = `import {
+  DebugConsoleClient,
+  ChanperfCollector,
+  EcpObjectCountsCollector,
+} from 'kopytko-roku-device';
+
+// SceneGraph debug console (port 8080) — idle-framed, auto-reconnecting
+const console8080 = new DebugConsoleClient('192.168.1.20');
+
+// Poll per-channel CPU + memory every second
+const chanperf = new ChanperfCollector(console8080, 1000);
+chanperf.on('sample', (s) => {
+  // { type: 'mem-cpu', wall, memKiB, anonKiB, cpuPct, ... }
+  console.log(s);
+});
+chanperf.start();
+
+// Collectors never throw into callers: a failed poll skips that
+// interval and the collector self-heals when the device answers again.`;
+
+const debugExample = `import { ProtocolClient, DebugCommands, IOClient } from 'kopytko-roku-device';
+
+// Binary BrightScript remote debug protocol (port 8081)
+const client = new ProtocolClient('192.168.1.20');
+client.on('update', (update) => console.log(update)); // stops, compile errors, IO port
+await client.connect(); // 8-byte magic handshake + version negotiation
+
+const commands = new DebugCommands(client);
+const threads = await commands.threads();
+const stack = await commands.stacktrace(threads.primary);
+await commands.addBreakpoints([{ filePath: 'pkg:/source/main.brs', lineNumber: 42 }]);`;
+
+const subsystems = [
+  { name: 'SSDP discovery', port: 'UDP 1900', api: 'SsdpClient', desc: 'Active M-SEARCH scans + passive NOTIFY alive/byebye monitoring with per-IP debounce.' },
+  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, registry, app state, chanperf, sgnodes, object counts, rendezvous + beacon tracking, dev-password validation (digest auth).' },
+  { name: 'Discovery orchestration', port: '—', api: 'DeviceManager', desc: 'Merges SSDP, ECP health checks, persistence, and network-change events into one device list. Storage and network signals are injected interfaces.' },
+  { name: 'SceneGraph debug console', port: 'TCP 8080', api: 'DebugConsoleClient', desc: 'Idle-framed request/response console (chanperf, sgnodes, r2d2_bitmaps, free) with exponential-backoff auto-reconnect.' },
+  { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
+  { name: 'Remote debug protocol', port: 'TCP 8081', api: 'ProtocolClient, DebugCommands, IOClient', desc: 'Binary socket-based debugger: threads, stack traces, variables, breakpoints, step control, app output via the dynamic IO port.' },
+  { name: 'Perfetto streaming', port: 'WS 8060', api: 'PerfettoWebSocketClient, enablePerfettoTracing', desc: 'Streams raw Perfetto TracePacket protobuf from ws://device:8060/perfetto-session with a quiet-window stop.' },
+];
+---
+<Layout title="Roku Device" activePage="roku-device">
+  <!-- Page header -->
+  <div class="bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(244,63,94,0.12),transparent)] border-b border-[#1e2d4a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+      <div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+        <span>npm</span>
+        <span>/</span>
+        <code class="text-slate-300">kopytko-roku-device</code>
+        <span class="bg-slate-700/60 text-slate-400 text-xs px-2 py-0.5 rounded-full ml-1">v{devicePkg.version}</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">Roku Device Toolkit</h1>
+      <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
+        Everything needed to discover, control, profile, and debug a Roku device — one standalone, editor-agnostic npm package. Deliberately Kopytko-ecosystem-unaware (pure Roku protocols, no CLI or .kopytkorc knowledge), it powers every device feature of the VS Code extension: device tree, debugger, diagnostics panel, Node Tree explorer, and Perfetto tracing.
+      </p>
+      <div class="flex flex-wrap gap-3 mt-6">
+        <a href="https://www.npmjs.com/package/kopytko-roku-device" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.331h-2.669v0zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10h1.336v2.667h-1.336V10z"/></svg>
+          npm
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko/tree/main/packages/roku-device" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Source
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16">
+
+    <!-- Subsystem map -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Subsystems</h2>
+      <p class="text-slate-400 text-sm mb-6">One package, every device protocol. All response shapes are verified against real hardware.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {subsystems.map((s) => (
+          <div class="bg-[#0f1923] border border-[#1e2d4a] rounded-xl p-5">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-semibold text-white text-sm">{s.name}</h3>
+              <span class="bg-rose-900/40 border border-rose-700/50 text-rose-300 text-xs px-2 py-0.5 rounded-full shrink-0 ml-2">{s.port}</span>
+            </div>
+            <code class="text-xs text-rose-300">{s.api}</code>
+            <p class="text-sm text-slate-400 mt-2 leading-relaxed">{s.desc}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">Installation</h2>
+      <CodePanel code={installExample} lang="bash" />
+      <p class="text-slate-500 text-sm mt-3">Requires Node.js ≥ 24. The only runtime dependency is <code class="text-slate-300">ws</code> (Perfetto streaming).</p>
+    </section>
+
+    <!-- Discovery -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Device discovery</h2>
+      <p class="text-slate-400 text-sm mb-4"><code class="text-rose-300">DeviceManager</code> orchestrates SSDP, ECP health checks, and persistence. Storage and network-change signals are injected interfaces, so it runs anywhere — VS Code, a CLI, or CI.</p>
+      <CodePanel code={discoveryExample} lang="typescript" />
+    </section>
+
+    <!-- ECP -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">ECP queries</h2>
+      <p class="text-slate-400 text-sm mb-4">Typed wrappers over Roku's External Control Protocol on port 8060, plus dev-password validation via digest auth on port 80.</p>
+      <CodePanel code={ecpExample} lang="typescript" />
+    </section>
+
+    <!-- Diagnostics -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Runtime metrics</h2>
+      <p class="text-slate-400 text-sm mb-4">Polling collectors emit a typed event stream (<code class="text-rose-300">mem-cpu</code>, <code class="text-rose-300">node-counts</code>, <code class="text-rose-300">textures</code>, <code class="text-rose-300">rendezvous</code>, <code class="text-rose-300">fw-beacon</code>, …) — the data source of the extension's Kopytko Diagnostics panel.</p>
+      <CodePanel code={collectorExample} lang="typescript" />
+    </section>
+
+    <!-- Debug protocol -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">BrightScript debugger protocol</h2>
+      <p class="text-slate-400 text-sm mb-4">A client for Roku's socket-based debug protocol — the transport under the extension's DAP debugger.</p>
+      <CodePanel code={debugExample} lang="typescript" />
+    </section>
+
+    <!-- Gotchas -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-4">Device behaviour notes</h2>
+      <ul class="space-y-3 text-sm text-slate-400">
+        <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span><code class="text-slate-300">GET /query/sgrendezvous</code> and <code class="text-slate-300">GET /query/fwbeacons</code> <strong class="text-slate-200">drain</strong> the device-side event queue — two simultaneous pollers each miss half the events.</span></li>
+        <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span>chanperf / sgnodes / the port-8080 console report nothing while the channel is backgrounded — a Roku OS limitation, not an error. Rendezvous, beacons, and app-state keep working.</span></li>
+        <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span>Port-8080 responses are idle-framed: <code class="text-slate-300">&gt;</code> appears inside XML output, so it can't be used as a terminator.</span></li>
+        <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span>The port-8085 log stream accepts only one consumer at a time — beacons are collected via ECP instead.</span></li>
+      </ul>
+    </section>
+  </div>
+</Layout>

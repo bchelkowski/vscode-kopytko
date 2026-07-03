@@ -21,7 +21,7 @@
 
 VS Code extension for **BrightScript** (Roku) and the **Kopytko Framework** — LSP server (diagnostics, completion, hover, go-to-definition, formatting), built-in debugger, device discovery, and a runtime diagnostics panel.
 
-Three standalone npm packages live in `packages/`: `kopytko-brightscript-parser`, `kopytko-formatter`, `kopytko-linter`.
+Four standalone npm packages live in `packages/`: `kopytko-brightscript-parser`, `kopytko-formatter`, `kopytko-linter`, and `kopytko-roku-device` (all Roku device communication — consumed by the extension as a `file:` dependency until first npm publish; the root `postinstall` builds it). `kopytko-roku-device` is deliberately Kopytko-ecosystem-unaware (no CLI spawning, no `.kopytkorc`) so Kopytko packages can depend on it — the Kopytko CLI deployer and `.kopytkorc` reader stay in the extension (`src/client/roku/rokuDeployer.ts`, `src/client/roku/kopytkorc.ts`).
 
 ---
 
@@ -31,11 +31,14 @@ Three standalone npm packages live in `packages/`: `kopytko-brightscript-parser`
 packages/brightscript-parser/   Shared parser: lexer, CST, AST, scope analysis, catalogs
 packages/formatter/              Standalone formatter: CLI + library, 27 CST passes
 packages/linter/                 Standalone linter: rule descriptors, fileAnalysis, project indexer
+packages/roku-device/            All Roku device communication: SSDP, ECP, debug console (8080),
+                                 debug protocol (8081), diagnostics parsers/collectors, Perfetto
 src/extension.ts                 Extension entry; delegates to client/activation/*
 src/client/activation/           Wires all services on extension start
-src/client/debug/                DAP adapter, session controller, protocol client (port 8081)
-src/client/roku/                 Device discovery (SSDP, ECP), credential store, tree views
-src/client/diagnostics/          Runtime diagnostics panel (transport, parsers, collectors, webview)
+src/client/debug/                DAP adapter + session controller (protocol client in packages/roku-device)
+src/client/roku/                 VS Code glue: stores (Memento/SecretStorage), network monitor, tree views,
+                                 Kopytko CLI deployer + .kopytkorc reader (kept out of packages/roku-device)
+src/client/diagnostics/          Runtime diagnostics panel (session, storage, webview; transports in packages/roku-device)
 src/server/                      LSP server: 12 providers, document cache, import resolver
 test/                            Mocha + Chai + Sinon; mirrors src/server/ structure
 docs/                            Feature docs (see Documentation section)
@@ -57,7 +60,7 @@ npm run lint         # ESLint
 
 `compile` outputs individual JS files for the Extension Development Host. `bundle` produces self-contained files for the published VSIX. See `findings/dev-environment.md` for the full build workflow, WSL setup, and F5 caveats.
 
-For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && npm test`.
+For `packages/formatter`, `packages/linter`, or `packages/roku-device` changes: `cd packages/<name> && npm test`. After editing `packages/roku-device` sources, run `npm run build:roku-device` (or `npm run build` inside the package) before root compile/test/F5 — the extension consumes its built `dist/`, not its sources.
 
 ---
 
@@ -93,6 +96,7 @@ For `packages/formatter` or `packages/linter` changes: `cd packages/<name> && np
 | [docs/roku-debug.md](docs/roku-debug.md) | Debugger, launch config |
 | [docs/diagnostics.md](docs/diagnostics.md) | Runtime diagnostics panel — data sources, collectors, NDJSON, settings |
 | [packages/formatter/README.md](packages/formatter/README.md) | Formatter CLI, library API, CI integration |
+| [packages/roku-device/README.md](packages/roku-device/README.md) | Device communication package — SSDP, ECP, debug console/protocol, collectors, Perfetto |
 | [docs/publishing.md](docs/publishing.md) | npm and VS Code Marketplace publishing |
 
 **Every change that adds, modifies, or removes a feature must update `docs/features.md`, the relevant topic doc, and the corresponding site page.**

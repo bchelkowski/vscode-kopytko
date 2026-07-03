@@ -730,31 +730,61 @@ See `findings/roku-device-api.md` for the endpoint shape. Non-obvious notes:
 
 ---
 
+## "Missing" app-state badge was a stale-webview glitch, not a code bug (2026-07-03)
+
+User reported the `#app-state-badge` toolbar badge (added 2026-07-01, see above)
+was gone. Traced the full path — DOM template in `buildDom()`, CSS classes in
+`styles.css`, `ingestAppState()` → `updateAppStateBadge()` wiring, `AppStateCollector`
+construction/enable-by-default in `diagnosticsController.ts` and `package.json`'s
+config schema, and confirmed `out/diagnostics-webview/main.js` was compiled and
+current — everything was intact, no commit ever removed it. Root cause turned out
+to be environmental: **VS Code's window came back from a macOS sleep in a bad
+state and the webview (which uses `retainContextWhenHidden: true`, see below)
+was stuck** — restarting VS Code fixed it immediately, no code change needed.
+**Lesson: if a diagnostics-panel feature that provably exists in source/build
+appears "gone," ask whether the VS Code window survived a sleep/wake cycle
+before assuming a regression** — `retainContextWhenHidden` keeps the webview's
+JS execution alive across hide/show, which also means it can carry forward into
+a bad state after the host process suspends/resumes, unlike a normal page reload.
+
 ## Directory layout
 
+**Since 2026-07-03 the transport/parsers/collectors layers live in `packages/roku-device/`
+(npm: `kopytko-roku-device`), consumed by the extension as a `file:` dependency** — see
+`findings/dev-environment.md` for the build-order rule (edit package → build package → then
+root compile/F5). The old convention of keeping ECP parsers/collectors out of the index files
+was dropped at extraction: the package's `index.ts` barrel exports everything, including the
+`Ecp*Collector`s and ECP parsers.
+
 ```
-src/client/diagnostics/
-  transport/
+packages/roku-device/src/
+  console/
     debugConsoleClient.ts    Resilient TCP to port 8080 (idle-framed, auto-reconnect)
-  parsers/
-    consoleResponse.ts       Strip banner + prompts from raw responses
-    chanperf.ts              parseChanperf() → ChanperfSample
-    sgNodesCounts.ts         parseSgNodesCounts() → SgNodesCounts
-    free.ts                  parseFree() → FreeSample
-    r2d2Bitmaps.ts           parseR2d2Bitmaps() → R2d2Bitmaps
-    ecpAppObjectCounts.ts    parseEcpAppObjectCounts() → AppObjectCounts (not in index.ts, like other ECP parsers)
-    index.ts                 Re-exports all parsers
-  collectors/
-    collector.ts             PollingCollector base class (setInterval, self-healing)
-    chanperfCollector.ts     1s interval → mem-cpu events
-    nodeCountsCollector.ts   2s interval → node-counts events
-    ecpObjectCountsCollector.ts  2s interval → object-counts events (ECP, per-app)
-    rendezvousCollector.ts   1s interval → rendezvous events (via ECP)
-    systemMemCollector.ts    5s interval → system-mem events (opt-in)
-    textureCollector.ts      5s interval → textures events (opt-in)
-    index.ts                 Re-exports
+  diagnostics/
+    eventModel.ts            DiagnosticEvent/DiagnosticSample union types (device-data shapes)
+    parsers/
+      consoleResponse.ts     Strip banner + prompts from raw responses
+      chanperf.ts            parseChanperf() → ChanperfSample
+      sgNodesCounts.ts       parseSgNodesCounts() → SgNodesCounts
+      free.ts                parseFree() → FreeSample
+      r2d2Bitmaps.ts         parseR2d2Bitmaps() → R2d2Bitmaps
+      ecpChanperf.ts / ecpSgNodes.ts / ecpAppObjectCounts.ts   ECP-response parsers
+      index.ts               Re-exports all parsers (ECP ones included)
+    collectors/
+      collector.ts           PollingCollector base class (setInterval, self-healing)
+      chanperfCollector.ts   1s interval → mem-cpu events
+      nodeCountsCollector.ts 2s interval → node-counts events
+      ecpChanperfCollector.ts / ecpNodeCountsCollector.ts / ecpObjectCountsCollector.ts   ECP variants
+      rendezvousCollector.ts 1s interval → rendezvous events (via ECP)
+      fwBeaconCollector.ts   1s interval → fw-beacon events (via ECP)
+      appStateCollector.ts   2s interval → app-state events (via ECP)
+      systemMemCollector.ts  5s interval → system-mem events (opt-in)
+      textureCollector.ts    5s interval → textures events (opt-in)
+      index.ts               Re-exports all collectors
+
+src/client/diagnostics/          (extension side — VS Code glue only)
   session/
-    eventModel.ts            DiagnosticEvent union type, STREAM_FILE map, ALL_EVENT_TYPES
+    eventModel.ts            Re-exports the package's event types + local STREAM_FILE map, ALL_EVENT_TYPES
     diagnosticsSession.ts    Owns collectors + writer + ring buffers; emits 'event'
   storage/
     sink.ts                  DiagnosticsSink interface + nodeSink (real fs) + joinPath

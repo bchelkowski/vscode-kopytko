@@ -2,6 +2,15 @@
 
 All findings below were verified live against a **Roku Ultra (model 4850X, firmware 15.2.4.3442, serial X02800C5FKLV)** running a sideloaded DAZN dev app.
 
+> **Code location (since 2026-07-03):** all implementations of these protocols live in
+> `packages/roku-device/` (npm: `kopytko-roku-device`) — `EcpClient` in `src/ecp/ecpClient.ts`,
+> the port-8080 console in `src/console/debugConsoleClient.ts`, parsers under
+> `src/diagnostics/parsers/`, the port-8081 protocol under `src/debug-protocol/`, Perfetto under
+> `src/ecp/tracing.ts` + `src/perfetto/webSocketClient.ts`. Old `src/client/…` paths mentioned in
+> this file predate the extraction. **Deliberate boundary:** the package is Kopytko-ecosystem-unaware
+> (so Kopytko packages can depend on it) — the Kopytko CLI deployer and `.kopytkorc` reader stayed in
+> the extension at `src/client/roku/rokuDeployer.ts` / `src/client/roku/kopytkorc.ts`.
+
 ---
 
 ## Network topology note

@@ -5,6 +5,8 @@ This document covers the two runtime-facing features of vscode-kopytko:
 1. **Roku device discovery** — find Roku devices on the local network and select one as the active target
 2. **BrightScript debugger** — deploy your project and debug it live on the device
 
+> The underlying device protocols — the binary remote debug protocol (port 8081) and all ECP/SSDP communication — live in the standalone [`kopytko-roku-device`](../packages/roku-device/README.md) package. The extension keeps the DAP adapter, session controller, the Kopytko CLI deployer (`src/client/roku/rokuDeployer.ts`), and the VS Code UI on top of it.
+
 ---
 
 ## Prerequisites

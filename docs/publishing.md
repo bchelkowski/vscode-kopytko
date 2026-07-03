@@ -1,6 +1,6 @@
 # Publishing Guide
 
-Step-by-step instructions for publishing `kopytko-formatter`, `kopytko-linter`, and the VS Code extension.
+Step-by-step instructions for publishing `kopytko-formatter`, `kopytko-linter`, `kopytko-roku-device`, and the VS Code extension.
 
 ---
 
@@ -48,6 +48,15 @@ npm publishing uses **OIDC provenance** — no token needed. Just link your npm 
    - Publish to npm
    - Create a GitHub Release
    - **Auto-bump** the root `package.json` dependency to the newly published version (waits for npm propagation, then commits and pushes)
+
+### Releasing kopytko-roku-device
+
+1. Go to **Actions** → **Release kopytko-roku-device**
+2. Click **Run workflow**
+3. Select bump type: `patch`, `minor`, or `major`
+4. The workflow follows the same steps as the linter release (tests, version bump, changelog from `feat(roku-device):` / `fix(roku-device):` commits, tag `kopytko-roku-device-v{version}`, npm publish, GitHub Release, root dependency auto-bump).
+
+**First publish note:** the root `package.json` starts with `"kopytko-roku-device": "file:packages/roku-device"` plus a `postinstall` hook that builds the package locally. The workflow's root-dependency step replaces the `file:` spec with the published version and removes the now-unneeded `postinstall` hook automatically.
 
 ### Releasing vscode-kopytko
 
@@ -179,9 +188,10 @@ npx vsce publish --pre-release
 
 1. **First**: publish `kopytko-formatter` to npm (if changed)
 2. **Second**: publish `kopytko-linter` to npm (if changed)
-3. **Then**: update root `package.json` to use versioned deps (`"kopytko-formatter": "^0.1.x"`, `"kopytko-linter": "^0.1.x"`)
-4. **Then**: `npm install` + `npm test` to verify
-5. **Finally**: publish the VS Code extension
+3. **Third**: publish `kopytko-roku-device` to npm (if changed)
+4. **Then**: update root `package.json` to use versioned deps (`"kopytko-formatter": "^0.1.x"`, `"kopytko-linter": "^0.1.x"`, `"kopytko-roku-device": "^0.1.x"`)
+5. **Then**: `npm install` + `npm test` to verify
+6. **Finally**: publish the VS Code extension
 
 This ensures the VSIX can install both packages from npm rather than bundling local copies.
 
