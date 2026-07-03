@@ -118,8 +118,8 @@ export interface FormattingConfig {
   lineCommentPosition: 'above' | 'inline' | 'preserve';
 
   // ── BrightScript Patterns ───────────────────────────────────────────────
-  /** Enforce observeFieldScoped over observeField. 'always-scoped' converts to scoped, 'warn' flags non-scoped, 'preserve' leaves as-is. */
-  observeFieldStyle: 'always-scoped' | 'warn' | 'preserve';
+  /** Enforce observeFieldScoped over observeField. 'always-scoped' converts to scoped, 'preserve' leaves as-is. */
+  observeFieldStyle: 'always-scoped' | 'preserve';
   /** m-prefix field access style. 'dot' enforces m.field, 'bracket' enforces m["field"], 'preserve' leaves as-is. */
   mPrefixStyle: 'dot' | 'bracket' | 'preserve';
   /** Align = signs in consecutive assignment lines. */
