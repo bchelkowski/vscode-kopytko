@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { Collector } from '../collectors/collector';
+import type { Collector } from 'kopytko-roku-device';
 import {
   type DiagnosticEvent,
   type DiagnosticEventType,

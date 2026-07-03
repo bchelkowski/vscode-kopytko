@@ -1,9 +1,9 @@
 import * as path from 'path';
-import { deploy, type DeployOptions } from '../roku/rokuDeployer';
-import { DebugCommands } from './protocol/commands';
-import { ProtocolClient } from './protocol/protocolClient';
-import { IOClient } from './protocol/ioClient';
-import { ErrorCode } from './protocol/constants';
+import { deploy, type DeployOptions } from 'kopytko-roku-device';
+import { DebugCommands } from 'kopytko-roku-device';
+import { ProtocolClient } from 'kopytko-roku-device';
+import { IOClient } from 'kopytko-roku-device';
+import { ErrorCode } from 'kopytko-roku-device';
 import { BreakpointService } from './services/breakpointService';
 import { ProtocolEventMapper } from './protocolEventMapper';
 

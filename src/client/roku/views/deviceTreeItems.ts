@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RokuDevice } from '../types';
+import { RokuDevice } from 'kopytko-roku-device';
 
 /** Root tree item representing a single Roku device. */
 export class DeviceTreeItem extends vscode.TreeItem {

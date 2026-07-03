@@ -1,3 +1,0 @@
-X02800C5FKLV (Roku Ultra - 15.2.4.3442)
->channel: mem=52492KiB{anon=31124,file=21172,shared=196,swap=0},%cpu=0{user=0,sys=0}
->

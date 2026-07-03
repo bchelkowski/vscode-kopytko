@@ -1,6 +1,6 @@
 import { expect } from 'chai';
-import { BinaryWriter } from '../../src/client/debug/protocol/binaryIO';
-import { StopReason, UpdateType } from '../../src/client/debug/protocol/constants';
+import { BinaryWriter } from 'kopytko-roku-device';
+import { StopReason, UpdateType } from 'kopytko-roku-device';
 import { ProtocolEventMapper } from '../../src/client/debug/protocolEventMapper';
 
 function stoppedPayload(threadIndex: number, reason: StopReason, detail = ''): Buffer {

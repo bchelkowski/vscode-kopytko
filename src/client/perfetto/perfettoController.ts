@@ -3,10 +3,10 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import { diagnosticsLock } from '../diagnostics/diagnosticsLock';
-import { deployForPerfetto } from '../roku/rokuDeployer';
-import { getAvailableEnvironments } from '../roku/kopytkorc';
-import { enablePerfettoTracing, triggerHeapSnapshot } from './ecpTracing';
-import { PerfettoWebSocketClient } from './transport/perfettoWebSocketClient';
+import { deployForPerfetto } from 'kopytko-roku-device';
+import { getAvailableEnvironments } from 'kopytko-roku-device';
+import { enablePerfettoTracing, triggerHeapSnapshot } from 'kopytko-roku-device';
+import { PerfettoWebSocketClient } from 'kopytko-roku-device';
 import {
   buildPerfettoSessionId,
   writeManifest,
@@ -17,9 +17,9 @@ import {
   type PerfettoSessionInfo,
 } from './session/perfettoSessionStore';
 import type { CredentialStore } from '../roku/persistence/credentialStore';
-import type { DeviceManager } from '../roku/discovery/deviceManager';
-import type { EcpClient } from '../roku/discovery/ecpClient';
-import type { RokuDevice } from '../roku/types';
+import type { DeviceManager } from 'kopytko-roku-device';
+import type { EcpClient } from 'kopytko-roku-device';
+import type { RokuDevice } from 'kopytko-roku-device';
 
 export interface PerfettoControllerDeps {
   deviceManager: DeviceManager;

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BrightScriptDebugAdapterFactory } from '../debug/debugAdapterFactory';
-import { getAvailableEnvironments } from '../roku/kopytkorc';
+import { getAvailableEnvironments } from 'kopytko-roku-device';
 import { DiscoveryServices } from './discovery';
 
 export function registerDebug(

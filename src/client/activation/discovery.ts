@@ -1,13 +1,15 @@
 import * as vscode from 'vscode';
-import { SsdpClient } from '../roku/ssdp/ssdpClient';
-import { EcpClient } from '../roku/discovery/ecpClient';
-import { DeviceManager } from '../roku/discovery/deviceManager';
+import {
+  SsdpClient,
+  EcpClient,
+  DeviceManager,
+  getAvailableEnvironments,
+} from 'kopytko-roku-device';
 import { NetworkMonitor } from '../roku/discovery/networkMonitor';
 import { DeviceStore } from '../roku/persistence/deviceStore';
 import { CredentialStore } from '../roku/persistence/credentialStore';
 import { DeviceTreeProvider } from '../roku/views/deviceTreeProvider';
 import { RendezvousManager } from '../roku/rendezvous/rendezvousManager';
-import { getAvailableEnvironments } from '../roku/kopytkorc';
 
 export interface DiscoveryServices {
   deviceManager: DeviceManager;
@@ -33,7 +35,7 @@ export function registerDiscovery(context: vscode.ExtensionContext): DiscoverySe
   const discoveryChannel = vscode.window.createOutputChannel('Roku Discovery');
   context.subscriptions.push(discoveryChannel);
 
-  const deviceManager = new DeviceManager(ssdp, ecp, store, credentials, networkMonitor, discoveryChannel, {
+  const deviceManager = new DeviceManager(ssdp, ecp, store, networkMonitor, discoveryChannel, {
     scanTimeout,
     showNotifications,
     notify: (msg) => vscode.window.showInformationMessage(msg),

@@ -1,9 +1,5 @@
 import * as vscode from 'vscode';
-import {
-  StepType,
-  ErrorCode,
-} from './protocol/constants';
-import type { ThreadInfo } from './protocol/types';
+import { StepType, ErrorCode, type ThreadInfo } from 'kopytko-roku-device';
 import { BreakpointService, BreakpointSpec } from './services/breakpointService';
 import { VariableService, variableTypeName } from './services/variableService';
 import { rokuPathToLocal } from './services/pathMapping';

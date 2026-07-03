@@ -1,8 +1,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { EventEmitter } from 'events';
-import { DeviceManager } from '../discovery/deviceManager';
-import { EcpClient } from '../discovery/ecpClient';
+import { DeviceManager } from 'kopytko-roku-device';
+import { EcpClient } from 'kopytko-roku-device';
 import { rokuPathToLocal } from '../../debug/services/pathMapping';
 
 const POLL_INTERVAL_MS = 1000;

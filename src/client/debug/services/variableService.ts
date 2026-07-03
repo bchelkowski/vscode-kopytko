@@ -1,5 +1,5 @@
-import { VariableType } from '../protocol/constants';
-import type { VariableInfo } from '../protocol/types';
+import { VariableType } from 'kopytko-roku-device';
+import type { VariableInfo } from 'kopytko-roku-device';
 
 const VAR_REF_BASE = 1000;
 

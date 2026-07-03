@@ -1,5 +1,5 @@
-import { DebugCommands } from '../protocol/commands';
-import { ErrorCode } from '../protocol/constants';
+import { DebugCommands } from 'kopytko-roku-device';
+import { ErrorCode } from 'kopytko-roku-device';
 import { localPathToRoku } from './pathMapping';
 
 export interface BreakpointSpec {

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { KopytkoLanguageClient } from './client/languageClient';
-import { DeviceManager } from './client/roku/discovery/deviceManager';
+import { DeviceManager } from 'kopytko-roku-device';
 import { DeviceTreeProvider } from './client/roku/views/deviceTreeProvider';
 import { BrightScriptDebugAdapterFactory } from './client/debug/debugAdapterFactory';
 import { registerLanguageServer } from './client/activation/languageServer';

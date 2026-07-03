@@ -1,7 +1,7 @@
 import '../vscode-mock';
 import { expect } from 'chai';
 import { DeviceEnvironmentItem, DeviceTreeItem, DeviceInfoItem } from '../../../src/client/roku/views/deviceTreeItems';
-import { RokuDevice } from '../../../src/client/roku/types';
+import { RokuDevice } from 'kopytko-roku-device';
 
 function makeDevice(overrides?: Partial<RokuDevice>): RokuDevice {
   return {

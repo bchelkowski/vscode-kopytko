@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { DeviceTreeItem, DeviceEnvironmentItem } from '../roku/views/deviceTreeItems';
-import { getAvailableEnvironments } from '../roku/kopytkorc';
-import { upload } from '../roku/rokuDeployer';
-import { RokuDevice } from '../roku/types';
+import { getAvailableEnvironments } from 'kopytko-roku-device';
+import { upload } from 'kopytko-roku-device';
+import { RokuDevice } from 'kopytko-roku-device';
 import { DiscoveryServices } from './discovery';
 
 export function registerCommands(context: vscode.ExtensionContext, services: DiscoveryServices): void {

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import type { EcpClient } from '../roku/discovery/ecpClient';
-import type { DeviceManager } from '../roku/discovery/deviceManager';
+import type { EcpClient } from 'kopytko-roku-device';
+import type { DeviceManager } from 'kopytko-roku-device';
 import type { ExtMsg, WebMsg } from './webview/protocol';
 
 const VIEW_TYPE = 'kopytkoNodeTree';

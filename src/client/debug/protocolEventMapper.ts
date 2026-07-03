@@ -1,5 +1,5 @@
-import { BinaryReader } from './protocol/binaryIO';
-import { StopReason, UpdateType } from './protocol/constants';
+import { BinaryReader } from 'kopytko-roku-device';
+import { StopReason, UpdateType } from 'kopytko-roku-device';
 import { rokuPathToLocal } from './services/pathMapping';
 
 export interface DapEvent {

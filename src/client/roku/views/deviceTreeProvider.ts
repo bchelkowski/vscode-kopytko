@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DeviceManager } from '../discovery/deviceManager';
+import { DeviceManager } from 'kopytko-roku-device';
 import {
   DeviceTreeItem,
   DeviceInfoItem,

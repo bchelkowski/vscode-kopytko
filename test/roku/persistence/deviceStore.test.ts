@@ -2,7 +2,7 @@ import '../vscode-mock';
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import { DeviceStore } from '../../../src/client/roku/persistence/deviceStore';
-import { StoredDevice } from '../../../src/client/roku/types';
+import { StoredDevice } from 'kopytko-roku-device';
 
 interface MockMemento {
   get<T>(key: string, defaultValue?: T): T;

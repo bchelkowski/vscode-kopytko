@@ -1,21 +1,23 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import type { DeviceManager } from '../roku/discovery/deviceManager';
-import type { EcpClient } from '../roku/discovery/ecpClient';
 import type { RendezvousManager } from '../roku/rendezvous/rendezvousManager';
-import { DebugConsoleClient, type ConsoleSocketFactory } from './transport/debugConsoleClient';
-import { diagnosticsLock } from './diagnosticsLock';
 import {
+  type DeviceManager,
+  type EcpClient,
+  DebugConsoleClient,
+  type ConsoleSocketFactory,
   type Collector,
   SystemMemCollector,
   TextureCollector,
   RendezvousCollector,
   AppStateCollector,
   FwBeaconCollector,
-} from './collectors';
-import { EcpChanperfCollector } from './collectors/ecpChanperfCollector';
-import { EcpNodeCountsCollector } from './collectors/ecpNodeCountsCollector';
-import { EcpObjectCountsCollector } from './collectors/ecpObjectCountsCollector';
+  EcpChanperfCollector,
+  EcpNodeCountsCollector,
+  EcpObjectCountsCollector,
+  parseRegistryXml,
+} from 'kopytko-roku-device';
+import { diagnosticsLock } from './diagnosticsLock';
 import { DiagnosticsSession } from './session/diagnosticsSession';
 import type { DiagnosticEventType } from './session/eventModel';
 import { type DiagnosticsSink, nodeSink } from './storage/sink';
@@ -24,7 +26,6 @@ import {
   SCHEMA_VERSION,
   buildSessionId,
 } from './storage/sessionStore';
-import { parseRegistryXml } from '../roku/views/registryProvider';
 
 export interface RecordableApp {
   id: string;
