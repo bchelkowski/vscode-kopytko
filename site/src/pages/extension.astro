@@ -24,6 +24,7 @@ const allSettings = [
   { key: 'kopytko.casing.mathOperator', type: 'enum', default: '(keyword)', desc: 'Casing for mod.' },
   { key: 'kopytko.casing.userFunction', type: 'enum', default: 'preserve', desc: 'Casing for user-defined function names.' },
   { key: 'kopytko.casing.userMethod', type: 'enum', default: 'preserve', desc: 'Casing for user-defined AA method names.' },
+  { key: 'kopytko.casing.method', type: 'enum', default: 'preserve', desc: 'Casing for component method names.' },
   { key: 'kopytko.casing.exact', type: 'object', default: '{}', desc: 'Per-identifier casing overrides: { "myFn": "camel-case" }.' },
   // Device Discovery
   { key: 'kopytko.deviceDiscovery.enabled', type: 'boolean', default: 'true', desc: 'Enable SSDP-based automatic Roku device discovery.' },
@@ -278,10 +279,10 @@ const kopytkoRcExample = `// .kopytkorc
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div>
           <p class="text-slate-400 leading-relaxed mb-4">
-            The extension embeds the <a href={`${base}/formatter`} class="prose-link">kopytko-formatter</a> engine. Format a file with <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">Shift+Alt+F</kbd>, or enable format-on-save. All 39+ formatting options and casing settings are configurable from <code class="text-violet-300">.vscode/settings.json</code>.
+            The extension embeds the <a href={`${base}/formatter`} class="prose-link">kopytko-formatter</a> engine. Format a file with <kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-xs">Shift+Alt+F</kbd>, or enable format-on-save. All 49 formatting options and casing settings are configurable from <code class="text-violet-300">.vscode/settings.json</code>.
           </p>
           <div class="space-y-2 text-sm text-slate-300">
-            <p>✓ 39+ formatting rules</p>
+            <p>✓ 49 formatting rules</p>
             <p>✓ 10 independent casing dimensions</p>
             <p>✓ Preserves @import order or sorts alphabetically</p>
             <p>✓ Format-on-save support</p>
@@ -431,14 +432,13 @@ const kopytkoRcExample = `// .kopytkorc
           </ul>
         </div>
         <div class="bg-slate-800 rounded-lg p-4 flex flex-col gap-2 text-sm text-slate-300">
-          <p class="text-slate-400 font-semibold mb-1">How it works</p>
+          <p class="text-slate-400 font-semibold mb-1">Using it</p>
           <ol class="list-decimal list-inside space-y-1 text-slate-400">
-            <li>Injects <code class="text-violet-300">run_as_process=1</code> into manifest, deploys, restores</li>
-            <li><code class="text-violet-300">POST /perfetto/enable/dev</code> → enable tracing</li>
-            <li><code class="text-violet-300">ws://device:8060/perfetto-session</code> → stream binary Perfetto proto</li>
-            <li>Buffer grows; iframe receives the full buffer every 3 s</li>
-            <li>Viewport scrolls to the live edge automatically</li>
-            <li>On stop: final buffer saved to <code class="text-violet-300">trace.perfetto-trace</code></li>
+            <li>Click <strong class="text-white">Start</strong> to deploy and begin tracing</li>
+            <li>Watch flame charts, counters, and rendezvous spans stream live in the embedded viewer</li>
+            <li>Take a heap snapshot at any point with one click</li>
+            <li>Click <strong class="text-white">Stop</strong> to save the session as a <code class="text-violet-300">.perfetto-trace</code> file</li>
+            <li>Replay any past session from the dropdown</li>
           </ol>
         </div>
       </div>
