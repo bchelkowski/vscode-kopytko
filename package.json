@@ -25,14 +25,15 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:perfetto-webview": "esbuild src/client/perfetto/webview/main.ts --bundle --outfile=out/perfetto-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:node-tree-webview": "esbuild src/client/nodes/webview/main.ts --bundle --outfile=out/node-tree-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:nav-webview": "esbuild src/client/nav/webview/main.ts --bundle --outfile=out/nav-webview/main.js --platform=browser --format=iife --sourcemap",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview",
+    "bundle:deep-linking-webview": "esbuild src/client/deepLinking/webview/main.ts --bundle --outfile=out/deep-linking-webview/main.js --platform=browser --format=iife --sourcemap",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview",
     "build:roku-device": "npm --prefix packages/roku-device install && npm --prefix packages/roku-device run build",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
@@ -1212,6 +1213,12 @@
         "command": "kopytko.nodes.open",
         "title": "Open Node Tree Explorer",
         "icon": "$(type-hierarchy)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.deepLinking.open",
+        "title": "Open Deep Linking",
+        "icon": "$(link)",
         "category": "Kopytko"
       },
       {

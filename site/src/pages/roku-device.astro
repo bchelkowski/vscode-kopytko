@@ -38,7 +38,14 @@ const dev = apps.find((a) => a.id === 'dev'); // sideloaded channel
 // Registry of the sideloaded channel (all channels sharing the dev key)
 const registryXml = await ecp.queryRegistry('192.168.1.20', 'dev');
 const registry = parseRegistryXml(registryXml);
-console.log(registry.plugins); // e.g. "158987,268970,dev"`;
+console.log(registry.plugins); // e.g. "158987,268970,dev"
+
+// Deep linking — relaunch with params, or roInput to the running channel
+await ecp.launchApp('192.168.1.20', '12', { contentId: 'movie-123', mediaType: 'movie' });
+await ecp.sendInput('192.168.1.20', { contentId: 'movie-123', mediaType: 'movie' });
+
+// Channel icon — raw bytes + content type (binary-safe)
+const { data, contentType } = await ecp.queryAppIcon('192.168.1.20', '12');`;
 
 const collectorExample = `import {
   DebugConsoleClient,
@@ -74,7 +81,7 @@ await commands.addBreakpoints([{ filePath: 'pkg:/source/main.brs', lineNumber: 4
 
 const subsystems = [
   { name: 'SSDP discovery', port: 'UDP 1900', api: 'SsdpClient', desc: 'Active M-SEARCH scans + passive NOTIFY alive/byebye monitoring with per-IP debounce.' },
-  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, registry, app state, chanperf, sgnodes, object counts, rendezvous + beacon tracking, dev-password validation (digest auth).' },
+  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, registry, app state, chanperf, sgnodes, object counts, rendezvous + beacon tracking, dev-password validation (digest auth).' },
   { name: 'Discovery orchestration', port: '—', api: 'DeviceManager', desc: 'Merges SSDP, ECP health checks, persistence, and network-change events into one device list. Storage and network signals are injected interfaces.' },
   { name: 'SceneGraph debug console', port: 'TCP 8080', api: 'DebugConsoleClient', desc: 'Idle-framed request/response console (chanperf, sgnodes, r2d2_bitmaps, free) with exponential-backoff auto-reconnect.' },
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },

@@ -444,6 +444,36 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Deep Linking -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Deep Linking</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Exercise your channel's deep links without hand-crafting <code class="text-violet-300">curl</code> commands. An editor-tab panel lists every channel installed on the active device — icons included — and lets you fire a <code class="text-violet-300">contentId</code> plus any key-value parameters at it via ECP <strong class="text-white">Launch</strong> (<code class="text-violet-300">POST /launch</code>, starts or relaunches the channel) or <strong class="text-white">Input</strong> (<code class="text-violet-300">POST /input</code>, delivered to the running channel as an <code class="text-violet-300">roInput</code> event — no relaunch).
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Channel grid with icons from the device (ECP /query/apps + /query/icon)',
+              'contentId field + free-form key-value parameters, with mediaType value suggestions',
+              'Launch and Input send modes with clear semantics for each',
+              'Named parameter sets — save, reuse, edit, and delete; persisted per workspace',
+              'Follows the active device; warns when a preset’s channel is not installed',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="Deep Linking panel"
+          placeholder="Editor tab with a channel grid (icons), a contentId + parameters form with Launch and Send Input buttons, and a saved parameter sets list"
+        />
+      </div>
+    </section>
+
     <!-- .kopytkorc -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">.kopytkorc configuration</h2>
@@ -482,6 +512,7 @@ const kopytkoRcExample = `// .kopytkorc
               ['Set password', '', 'Store device password in the OS keychain'],
               ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
               ['Read registry', '', 'View device registry sections in a virtual document'],
+              ['Open Deep Linking', '', 'Launch channels with contentId / roInput deep-link parameters'],
               ['Add / Remove favorite', '', 'Persist a device across restarts'],
             ].map(([cmd, kb, desc]) => (
               <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">

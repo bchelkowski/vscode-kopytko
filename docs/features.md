@@ -187,7 +187,7 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Bottom-panel webview with live D3 charts — memory/CPU/nodes/objects/textures, rendezvous + beacon overlays, app-state shading | ✅ | [diagnostics.md](./diagnostics.md) |
 | In-panel node / object / rendezvous / texture lists (click-to-open-file on the node & rendezvous rows) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Record any channel sharing the sideloaded dev key, not just "dev" | ✅ | [diagnostics.md](./diagnostics.md) |
-| Tools sidebar — quick-nav buttons to Diagnostics/Perfetto/Node Tree | ✅ | [diagnostics.md](./diagnostics.md) |
+| Tools sidebar — quick-nav buttons to Diagnostics/Perfetto/Node Tree/Deep Linking | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
 
@@ -205,6 +205,18 @@ Live Roku app tracing panel that embeds the official `ui.perfetto.dev` viewer di
 | Per-session binary `.perfetto-trace` storage (append-write, crash-safe) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay (load `.perfetto-trace` → send to Perfetto iframe) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Start / Stop / Restart / New-session session controls | ✅ | [diagnostics.md](./diagnostics.md) |
+
+## Deep Linking
+
+Editor-tab tool for exercising Roku deep links against the active device. See [deep-linking.md](./deep-linking.md).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Channel picker — all installed channels with icons (ECP `/query/apps` + `/query/icon`) | ✅ | [deep-linking.md](./deep-linking.md) |
+| contentId + free-form key-value parameters, `mediaType` value suggestions | ✅ | [deep-linking.md](./deep-linking.md) |
+| Send via Launch (`POST /launch/{appId}`) or Input (`POST /input`, roInput to running channel) | ✅ | [deep-linking.md](./deep-linking.md) |
+| Named parameter sets — save / use / edit / delete, persisted per workspace | ✅ | [deep-linking.md](./deep-linking.md) |
+| Tools-sidebar button + `Kopytko: Open Deep Linking` command | ✅ | [deep-linking.md](./deep-linking.md) |
 
 ## Performance & Caching
 

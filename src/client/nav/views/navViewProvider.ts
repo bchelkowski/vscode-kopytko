@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import type { WebMsg } from '../webview/protocol';
 
 /**
- * WebviewViewProvider for the "Kopytko Tools" sidebar panel — three buttons
- * that reveal the Diagnostics panel, the Perfetto tab, and the Node Tree tab.
- * Purely navigational: no data flows in, it only relays button clicks to the
- * corresponding reveal command.
+ * WebviewViewProvider for the "Kopytko Tools" sidebar panel — four buttons
+ * that reveal the Diagnostics panel, the Perfetto tab, the Node Tree tab,
+ * and the Deep Linking tab. Purely navigational: no data flows in, it only
+ * relays button clicks to the corresponding reveal command.
  */
 export class NavViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = 'kopytko.nav';
@@ -32,6 +32,9 @@ export class NavViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'nodes':
           void vscode.commands.executeCommand('kopytko.nodes.open');
+          break;
+        case 'deepLinking':
+          void vscode.commands.executeCommand('kopytko.deepLinking.open');
           break;
       }
     });

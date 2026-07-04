@@ -26,12 +26,18 @@ const ICONS: Record<NavTarget, string> = {
     <circle cx="12" cy="8" r="1.6"/>
     <path d="M5.4 4.1 10.7 7.2M5.4 11.9 10.7 8.8"/>
   </svg>`,
+  deepLinking: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.5 9.5 9.5 6.5"/>
+    <path d="M7.5 4.5 9 3a2.47 2.47 0 0 1 3.5 0L13 3.5A2.47 2.47 0 0 1 13 7l-1.5 1.5"/>
+    <path d="M8.5 11.5 7 13a2.47 2.47 0 0 1-3.5 0L3 12.5A2.47 2.47 0 0 1 3 9l1.5-1.5"/>
+  </svg>`,
 };
 
 const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
   { target: 'diagnostics', title: 'Diagnostics', desc: 'Live charts — memory, CPU, nodes, textures' },
   { target: 'perfetto', title: 'Perfetto', desc: 'App tracing timeline' },
   { target: 'nodes', title: 'Node Tree', desc: 'SceneGraph node chart' },
+  { target: 'deepLinking', title: 'Deep Linking', desc: 'Launch channels with contentId params' },
 ];
 
 function buildDom(): void {

@@ -91,12 +91,34 @@ package straight from the registry.
 
 Consequence: editing `packages/roku-device/src/` does **not** affect the root extension build.
 `node_modules/kopytko-roku-device` is the published tarball, not a symlink to `packages/roku-device`.
-To try out an in-progress `roku-device` change against the extension before publishing, use
-`npm link` (from `packages/roku-device`, then `npm link kopytko-roku-device` at the root) or pack
-a local tarball and point the root dependency at it temporarily — don't just edit sources and
-expect `npm run compile` to pick it up.
+To try out an in-progress `roku-device` change against the extension before publishing, build
+the package then copy its output into `node_modules/kopytko-roku-device` (see the gotcha below
+for why a symlink doesn't work here) — don't just edit sources and expect `npm run compile` to
+pick it up.
 
 Package tests still run independently: `cd packages/roku-device && npm test` (via WSL like the root).
+
+**Gotcha: `npm install ./packages/roku-device --no-save` (or `npm link`) creates a symlink that
+the F5 Extension Host cannot resolve (2026-07-04).** Both commands normally symlink a local-path
+dependency into `node_modules` instead of copying it — fine on a single-OS setup, but in this
+WSL2 + Windows-host setup the symlink is created *by WSL* on the `/mnt/c` DrvFs mount. `tsc`/
+`esbuild` (also run via WSL) resolve it fine at compile time, so `npm run compile` succeeds and
+gives no signal anything is wrong. But the Extension Development Host launched by F5 is a
+**native Windows** Node process, and it fails to resolve that WSL-created symlink at
+`require()` time — the observed symptom is `Activating extension ... failed: Cannot find module
+'kopytko-roku-device'` even though `ls node_modules/kopytko-roku-device` succeeds from WSL and
+the compiled `out/*.js` files are correct. **Fix: skip the symlink entirely — build the package,
+then plain-copy its output into place:**
+```bash
+wsl.exe bash -lic "cd /mnt/c/Projects/bchelkowski/vscode-kopytko/packages/roku-device && npm run build"
+wsl.exe bash -lic "cd /mnt/c/Projects/bchelkowski/vscode-kopytko && \
+  rm -rf node_modules/kopytko-roku-device && mkdir -p node_modules/kopytko-roku-device && \
+  cp -r packages/roku-device/dist packages/roku-device/package.json node_modules/kopytko-roku-device/"
+```
+Verify it's a real directory, not a link, before trusting an F5 run: `file node_modules/kopytko-roku-device`
+should say `directory`, not `symbolic link`. Re-copy after every package edit — there's no watch
+mode for this path. Revert to the registry version with a plain `npm install` before publishing
+(never commit a locally-copied `node_modules/kopytko-roku-device`).
 
 ---
 
