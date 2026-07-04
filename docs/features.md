@@ -156,6 +156,26 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 | Context-menu actions (copy IP, open web portal, set password) | ✅ | [device-discovery.md](./device-discovery.md) |
 | Registry viewer (read device registry via ECP) | ✅ | [device-discovery.md](./device-discovery.md) |
 
+## Web-Admin Automation (Installer / Utilities / Packager / Update)
+
+`kopytko-roku-device`'s `InstallerClient` drives the Roku developer web-admin page
+(`http://<device-ip>/`, HTTP Digest auth) the same way a developer would in a
+browser. **Package-layer only for now** — no VS Code command/UI wiring yet. See
+[roku-webadmin.md](./roku-webadmin.md).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Delete installed dev channel | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Install/replace dev channel from a local zip | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Rekey device from a signed `.pkg` + signing password | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Validate keyed developer ID against a target key (via ECP device-info) | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Screenshot capture + download | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Profiling data download | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Package (sign) a channel into a `.pkg` | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| OS update check | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Reboot | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| VS Code command/UI surface for the above | ⬜ | [roku-webadmin.md](./roku-webadmin.md) |
+
 ## Debugging
 
 | Feature | Status | Doc |
@@ -260,6 +280,6 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 |---|---|
 | Device info webview panel | Detailed device info in a dedicated panel. |
 | Remote control | Send key presses to the active Roku from a panel / command palette. |
-| Channel screenshot | Capture via ECP and open in VS Code. |
+| Web-admin automation commands | Wire `InstallerClient` (delete/install/rekey/screenshot/profiling/package/update/reboot — see [roku-webadmin.md](./roku-webadmin.md)) into VS Code commands/context menus; the package layer is done, only the extension surface is missing. |
 | Roku log streaming panel | Always-on syslog channel, independent of debug sessions. |
 | Debugger enhancements | Source maps, profiling, SceneGraph inspector, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |

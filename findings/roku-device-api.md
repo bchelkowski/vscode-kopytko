@@ -427,4 +427,108 @@ The WebSocket streams Perfetto protobuf to a VS Code webview. When posting the b
 - `{ perfetto: { buffer: ArrayBuffer, title: string, keepApiOpen: true, localOnly: true } }` — loads a trace. `keepApiOpen: true` keeps the listener alive for repeated loads (live refresh). `localOnly: true` disables share/download UI.
 - `{ perfetto: { timeStart: number, timeEnd: number } }` — scrolls to a time range in seconds (not nanoseconds — URL params use nanoseconds, postMessage uses seconds).
 - URL params: `?mode=embedded&hideSidebar=true` — hides sidebar and file-drop zone for a cleaner panel embed.
+
+---
+
+## Port 80 — Developer Web Admin (Installer / Utilities / Packager / Update tabs)
+
+Implemented as `InstallerClient` in `packages/roku-device/src/installer/installerClient.ts`, using new
+`httpPostMultipartDigest`/`httpGetBufferDigest`/`buildMultipartBody` primitives added to
+`net/httpClient.ts`. **This is port 80, not 8060** — an earlier research pass incorrectly assumed
+8060 for this surface; corrected 2026-07-04 by fetching the actual rendered admin pages
+(`js/common.js`'s `getAction()` builds each tab's nav link with no port, i.e. same-origin/port-80).
+
+Auth is HTTP Digest (RFC 7616), username always `rokudev`, reusing the existing
+`parseDigestChallenge`/`buildDigestAuthHeader` helpers (see `EcpClient.validatePassword` for the
+original port-80 digest-auth discovery).
+
+### Endpoint map (confirmed live, Roku Ultra 4850X, firmware 15.2.4.3442, 2026-07-04)
+
+| Action | Method | Path | Key multipart fields | Confirmed success/failure signal |
+|---|---|---|---|---|
+| Delete dev channel | POST | `/plugin_install` | `mysubmit=Delete` | HTTP 200; `params.messages` contains `{"text":"Delete Succeeded.","type":"success"}` + `{"text":"Uninstall Success.","type":"success"}` (see below) |
+| Install/replace dev channel | POST | `/plugin_install` | `mysubmit=Install`, `archive=<zip bytes>` | HTTP 200 in **all** cases — success/failure is only distinguishable via `params.messages` (see below). `mysubmit=Install` works identically for a fresh install AND replacing an already-installed channel — there is no separate `Replace` value on this firmware (contradicting the older `bchelkowski/roku-dev` reference, which is presumably an older firmware). |
+| Rekey | POST | `/plugin_inspect` | `mysubmit=Rekey`, `passwd=<signing password>`, `archive=<signed .pkg bytes>` | **Failure path confirmed live**, success path not (would require a real signed `.pkg` for this device's developer key — too risky to improvise). A garbage file + wrong password returned `<font color="red">Invalid file format.: iostream error</font>` — matches `REKEY_MESSAGE_PATTERN` and correctly fails the `=== 'Success.'` check, so `InstallerClient.rekey` throws as expected. The `bchelkowski/roku-dev`-derived pattern is confirmed correct for the failure branch; the literal `"Success."` text on a real successful rekey is unverified. |
+| Screenshot (trigger) | POST | `/plugin_inspect` | `mysubmit=Screenshot` | **Confirmed live end-to-end.** Trigger response body contains `<img src="pkgs/dev.jpg?time=1783170127">` (relative URI, double-quoted). `GET /pkgs/dev.jpg?time=...` (same digest auth) returned a real JPEG (200, 15027 bytes). |
+| Profiling data | POST | `/plugin_inspect` | `mysubmit=dloadProf` | **Confirmed live end-to-end** (previously fully unverified). See dedicated subsection below. |
+| Package (sign) | POST | `/plugin_package` | `mysubmit=Package`, `app_name=<Name/Version>`, `passwd=<signing password>`, `pkg_time=<ms timestamp>` | **Failure path confirmed live**, success path not (requires a real signing password). A wrong signing password returned HTTP 200 with `<font color="red">Failed: Invalid Password.</font>` **and** `params.messages: [{"text":"Failed: Invalid Password.","type":"error"}]` — both `PACKAGE_FAILURE_PATTERN` and `ensureOk`'s messages-array check independently catch this (the messages check runs first, so it's what actually throws). The `<a href="pkgs/....pkg">` success-link pattern is unverified but consistent with the confirmed screenshot/profiling `pkgs/...` link shape. |
+| Check for update | POST | `/plugin_swup` | `mysubmit=CheckUpdate` | **Confirmed live.** HTTP 200, `params.messages` is `null`. The response HTML is a **static template** — both the "Software update" and "Failed to check for software update" headline branches are always present in the returned script, gated client-side by a `swup_failed = false === true` literal that is always `false`; the actual update-availability result isn't observable from this HTTP response at all (surfaces only via the device's own System Update UI). `InstallerClient.checkForUpdate` correctly treats HTTP 200 as success — there's nothing else to parse. |
+| Reboot | POST | `/plugin_swup` | `mysubmit=Reboot` | **Confirmed live — the device actually reboots.** The POST completes normally with HTTP 200 (`params.messages: null`, same static template as CheckUpdate) — it does **not** drop the connection. Uptime (`GET /query/device-info` → `<uptime>`) read 203s and climbing ~30s later, confirming a real reboot completed within seconds of the trigger; the dev channel (`id="dev"`) survived and `/query/active-app` returned to the home screen (`id="562859"`, `ui-location="home"`) afterward. The reboot was fast enough that 10s-interval HTTP polling never observed a connection failure — `InstallerClient.reboot`'s connection-reset-tolerant catch is a defensive fallback for slower/older firmware, not something this device's reboot actually exercises. |
+| Device info / keyed dev ID | GET | `http://<ip>:8060/query/device-info` (no auth) | — | XML `<keyed-developer-id>` — confirmed live (`594b61af2a05f79e1d0f317f230970ea18693957`), already parsed by `EcpClient.queryDeviceInfo`. `InstallerClient.validateKey` is a thin comparison wrapper around this. |
+
+### The real success/failure signal is a JSON `messages` array, not the HTTP status
+
+**Critical, confirmed-live finding:** `/plugin_install` returns **HTTP 200 for both success and failure**. The
+actual result is reported in a `params.messages` array JSON-embedded in the page's inline script:
+
+```html
+<script>
+  var params = JSON.parse('{"messages":[{"text":"...","text_type":"text","type":"success"|"error"|"info"},...],"metadata":{...},"packages":[...]}');
+  ...
+</script>
+```
+
+Real examples captured live:
+- Successful delete: `{"text":"Delete Succeeded.","type":"success"}`, `{"text":"Uninstall Success.","type":"success"}`
+- Successful fresh install: `{"text":"Application Received: 278627 bytes stored.","type":"success"}`, `{"text":"Install Success.","type":"success"}`
+- Re-uploading byte-identical content: `{"text":"Application Received: Identical to previous version -- not replacing.","type":"info"}` — **not an error**, must not be treated as a failure.
+- Failed install (bad zip — entries used `\` path separators instead of `/`, produced by PowerShell's `Compress-Archive`/`ZipFile.CreateFromDirectory` on Windows, which is a known non-conformant-zip footgun): `{"text":"Application Received: 278627 bytes stored.","type":"success"}`, `{"text":"Install Failure: Script directory \"/source\" does not exist in plugin.","type":"error"}` — **HTTP status was still 200.**
+
+`InstallerClient` extracts this via `extractWebAdminMessages()` (regex over `JSON.parse('...')`, then
+`JSON.parse` the captured JSON text directly — it's valid JSON once un-wrapped from the surrounding
+single-quoted JS string) and throws if any message has `type: "error"`, as a check layered on top of
+(not instead of) each action's own status/pattern check.
+
+**Confirmed live which endpoints use the `params.messages` JSON mechanism vs. the legacy pattern:**
+`/plugin_install` and `/plugin_package` embed `params.messages` (both confirmed — see the endpoint
+table above). `/plugin_inspect` (rekey, screenshot, profiling) does **not** — a rekey failure test
+(garbage `.pkg` + wrong password) returned a response with zero `JSON.parse(...)` occurrences at all;
+instead the error is rendered directly via `Shell.create('Roku.Message').trigger('Set message type',
+'error').trigger('Set message content', '...').trigger('Render', node)`, with the same message text
+also duplicated into the legacy hidden `<font color="red">...</font>` div (which the page's HTML
+explicitly comments as `<!-- Keep it, so old scripts can continue to work -->` — confirming the
+legacy pattern is an intentionally-preserved backward-compat path, not a stale artifact). This means
+`ensureOk()`'s messages-array check is a genuine no-op (gracefully returns `undefined`) for
+`/plugin_inspect` responses — `rekey`/`takeScreenshot`/`downloadProfilingData` rely entirely on their
+own pattern matching, which is why confirming those patterns against `/plugin_inspect` specifically
+(done above for rekey's failure path, and for screenshot/profiling end-to-end) mattered.
+
+**Zip-building gotcha (verified live):** zip archives must use forward-slash path separators
+internally. PowerShell's `Compress-Archive` and `[System.IO.Compression.ZipFile]::CreateFromDirectory`
+both produce **backslash**-separated entry names on Windows (a known .NET/PowerShell bug), which the
+device's unzip step cannot interpret as directories, causing a silent-looking (HTTP 200) install
+failure ("Script directory \"/source\" does not exist"). Building the zip by iterating files and
+calling `ZipArchiveMode.Create` + `CreateEntryFromFile(..., relativePath.Replace('\\', '/'), ...)`
+directly produces a correct archive. This is a zip-*building* concern for whoever packages the
+`archive.zip`/`.pkg` before calling `installChannel`/`rekey` — `InstallerClient` itself just uploads
+whatever bytes it's given.
+
+### Profiling data (`mysubmit=dloadProf`) — confirmed live
+
+Not implemented by either reference repo (`bchelkowski/roku-dev`, `getndazn/kopytko-packager`).
+Confirmed live in two states:
+
+1. **No profiling data available** (default — the running channel's manifest doesn't opt in):
+   trigger response body contains `<font color="red">No profiling data available</font>`, HTTP 200,
+   `Content-Type: text/html`.
+2. **Profiling data ready** (channel manifest has `bsprof_enable=1` + `bsprof_data_dest=local` — see
+   https://developer.roku.com/dev/docs/brightscript-profiler#manifest-entries): trigger response
+   contains `<font color="red">Profiling data ready</font>` plus `'<a href="pkgs/channel.bsprof">Download Profile...'`.
+   `GET /pkgs/channel.bsprof` (same digest auth) returned HTTP 200 — though `Content-Length: 0` in
+   this test, since the profiled channel hadn't actually executed enough BrightScript to generate
+   profiler samples (installing it alone isn't enough; the app needs to run for a while, or be
+   exited, for the profiler to flush non-empty data). The download filename is a fixed
+   `channel.bsprof`, not per-timestamp like the screenshot's `dev.jpg?time=...`.
+
+`InstallerClient.downloadProfilingData()`'s "trigger, then scrape a `pkgs/...` link out of the HTML
+response, then GET it" implementation is confirmed correct end-to-end; only the *non-empty content*
+of a real profiling run was not exercised (would require driving the sample app through real playback
+to accumulate samples, out of scope for this pass).
+
+### Test fixture note
+
+`C:\Projects\rokudev\samples\<category>\<AppName>\` sample BrightScript apps are convenient
+`installChannel`/`packageChannel` test fixtures. To test profiling, copy the sample app to a scratch
+location first and edit the *copy's* `manifest` (add `bsprof_enable=1`) — do not edit the shared
+sample in place, since these are checked-in reference apps other tasks may reuse untouched.
 - No callbacks: the iframe fires no "loaded" or "ready" events back. The time-range scroll command retries internally (~20×/200 ms) until the trace is ready.

@@ -7,6 +7,7 @@
 //   - BrightScript remote debug protocol (TCP 8081 + dynamic IO port)
 //   - Diagnostics parsers + polling collectors (chanperf, sgnodes, textures, …)
 //   - Perfetto trace streaming (WebSocket on 8060)
+//   - Developer web-admin automation — install/rekey/package/screenshot/reboot (HTTP 80)
 //
 // Deliberately Kopytko-ecosystem-unaware: no CLI spawning, no .kopytkorc
 // knowledge — so kopytko packages themselves can depend on it.
@@ -19,10 +20,14 @@ export {
   httpGet,
   httpGetBuffer,
   httpPost,
+  httpPostMultipartDigest,
+  httpGetBufferDigest,
+  buildMultipartBody,
   parseDigestChallenge,
   buildDigestAuthHeader,
   type HttpGetResponse,
   type HttpBufferResponse,
+  type MultipartField,
 } from './net/httpClient';
 export { computeNetworkId } from './net/networkId';
 
@@ -48,6 +53,9 @@ export {
 } from './ecp/ecpClient';
 export { parseRegistryXml, type RegistryData, type RegistrySection } from './ecp/registry';
 export { enablePerfettoTracing, triggerHeapSnapshot } from './ecp/tracing';
+
+// Developer web-admin automation (Installer/Utilities/Packager/Update tabs, port 80)
+export { InstallerClient } from './installer/installerClient';
 
 // SceneGraph debug console (port 8080)
 export {

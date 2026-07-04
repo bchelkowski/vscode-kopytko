@@ -87,7 +87,29 @@ const subsystems = [
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
   { name: 'Remote debug protocol', port: 'TCP 8081', api: 'ProtocolClient, DebugCommands, IOClient', desc: 'Binary socket-based debugger: threads, stack traces, variables, breakpoints, step control, app output via the dynamic IO port.' },
   { name: 'Perfetto streaming', port: 'WS 8060', api: 'PerfettoWebSocketClient, enablePerfettoTracing', desc: 'Streams raw Perfetto TracePacket protobuf from ws://device:8060/perfetto-session with a quiet-window stop.' },
+  { name: 'Web-admin automation', port: 'HTTP 80', api: 'InstallerClient', desc: 'Digest-auth automation of the developer web-admin page: install/delete/rekey/package a channel, screenshot, profiling data, OS update check, reboot.' },
 ];
+
+const installerExample = `import { InstallerClient } from 'kopytko-roku-device';
+
+const installer = new InstallerClient();
+const password = 'my-dev-password'; // username is always 'rokudev'
+
+// Installer tab
+await installer.installChannel('192.168.1.20', password, './build/archive.zip');
+
+// Packager tab — installs, signs, and downloads the .pkg
+await installer.packageChannel(
+  '192.168.1.20', password, './build/archive.zip',
+  'MyApp/1.0', 'my-signing-password', './out/signed.pkg',
+);
+
+// Utilities tab
+await installer.takeScreenshot('192.168.1.20', password, './out/screenshot.jpg');
+await installer.downloadProfilingData('192.168.1.20', password, './out/channel.bsprof');
+
+// Update tab
+await installer.checkForUpdate('192.168.1.20', password);`;
 ---
 <Layout title="Roku Device" activePage="roku-device">
   <!-- Page header -->
@@ -171,6 +193,13 @@ const subsystems = [
       <CodePanel code={debugExample} lang="typescript" />
     </section>
 
+    <!-- Web-admin automation -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Web-admin automation</h2>
+      <p class="text-slate-400 text-sm mb-4">Drives the developer web-admin page (<code class="text-rose-300">http://&lt;device-ip&gt;/</code>) the same way a browser would — install/delete/rekey/package a channel, capture a screenshot, download profiling data, or check for updates and reboot. Package-layer only for now; no VS Code command surface yet.</p>
+      <CodePanel code={installerExample} lang="typescript" />
+    </section>
+
     <!-- Gotchas -->
     <section>
       <h2 class="text-xl font-bold text-white mb-4">Device behaviour notes</h2>
@@ -179,6 +208,7 @@ const subsystems = [
         <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span>chanperf / sgnodes / the port-8080 console report nothing while the channel is backgrounded — a Roku OS limitation, not an error. Rendezvous, beacons, and app-state keep working.</span></li>
         <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span>Port-8080 responses are idle-framed: <code class="text-slate-300">&gt;</code> appears inside XML output, so it can't be used as a terminator.</span></li>
         <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span>The port-8085 log stream accepts only one consumer at a time — beacons are collected via ECP instead.</span></li>
+        <li class="flex gap-3"><span class="text-rose-400 shrink-0">▸</span><span><code class="text-slate-300">/plugin_install</code> returns HTTP 200 for both success and failure — the real result is a <code class="text-slate-300">success</code>/<code class="text-slate-300">error</code>/<code class="text-slate-300">info</code> message embedded as JSON in the response page, which <code class="text-slate-300">InstallerClient</code> parses and throws on.</span></li>
       </ul>
     </section>
   </div>
