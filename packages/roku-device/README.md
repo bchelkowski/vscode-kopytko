@@ -54,6 +54,30 @@ const apps = await ecp.queryApps('192.168.1.20');
 const perf = await ecp.queryChanperf('192.168.1.20'); // per-channel CPU/memory XML
 ```
 
+### Deep-link into a channel
+
+```ts
+import { EcpClient } from 'kopytko-roku-device';
+
+const ecp = new EcpClient();
+
+// Relaunch the channel with deep-link params (POST /launch/{appId}?…)
+await ecp.launchApp('192.168.1.20', '12', { contentId: 'movie-123', mediaType: 'movie' });
+
+// Send params to the channel already running in the foreground as an
+// roInput event, without relaunching (POST /input?…)
+await ecp.sendInput('192.168.1.20', { contentId: 'movie-123', mediaType: 'movie' });
+
+// Fetch a channel's icon (GET /query/icon/{appId}) — raw bytes + content type
+const { data, contentType } = await ecp.queryAppIcon('192.168.1.20', '12');
+```
+
+Keys and values are `encodeURIComponent`-encoded (helper: `buildEcpQueryString`).
+Non-2xx responses throw with the device's status and response body — a `403`
+usually means ECP is restricted on-device ("Control by mobile apps"), a `404`
+that the channel is not installed. `sendInput` always targets the foreground
+channel; there is no app id parameter in the ECP `/input` endpoint.
+
 ### Poll runtime metrics
 
 ```ts

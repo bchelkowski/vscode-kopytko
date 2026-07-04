@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as http from 'http';
-import { EcpClient, parseAppsXml } from '../../src/ecp/ecpClient';
+import { EcpClient, buildEcpQueryString, parseAppsXml } from '../../src/ecp/ecpClient';
 import { AddressInfo } from 'net';
 
 /**
@@ -491,6 +491,193 @@ describe('EcpClient', () => {
         expect.fail('should have thrown');
       } catch (err) {
         expect((err as Error).message).to.include('status 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // launchApp
+  // ---------------------------------------------------------------------------
+
+  describe('launchApp', () => {
+    it('POSTs to /launch/{appId} with encoded query parameters', async () => {
+      let requestedUrl = '';
+      let requestedMethod = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        requestedMethod = req.method || '';
+        res.writeHead(200);
+        res.end();
+      });
+
+      try {
+        await client.launchApp('127.0.0.1', 'dev', { contentId: 'abc 123', mediaType: 'movie' }, port);
+        expect(requestedMethod).to.equal('POST');
+        expect(requestedUrl).to.equal('/launch/dev?contentId=abc%20123&mediaType=movie');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('omits the query string when no params are given', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end();
+      });
+
+      try {
+        await client.launchApp('127.0.0.1', '551012', {}, port);
+        expect(requestedUrl).to.equal('/launch/551012');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('resolves on HTTP 204', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(204);
+        res.end();
+      });
+
+      try {
+        await client.launchApp('127.0.0.1', 'dev', {}, port);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('rejects with status and response body on HTTP 404', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end('App not found');
+      });
+
+      try {
+        await client.launchApp('127.0.0.1', '999999', {}, port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 404');
+        expect((err as Error).message).to.include('App not found');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('rejects without a dangling separator when the error body is empty', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(503);
+        res.end();
+      });
+
+      try {
+        await client.launchApp('127.0.0.1', 'dev', {}, port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.equal('Launch failed: status 503');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // sendInput
+  // ---------------------------------------------------------------------------
+
+  describe('sendInput', () => {
+    it('POSTs to /input with encoded query parameters', async () => {
+      let requestedUrl = '';
+      let requestedMethod = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        requestedMethod = req.method || '';
+        res.writeHead(200);
+        res.end();
+      });
+
+      try {
+        await client.sendInput('127.0.0.1', { contentId: 'id-1', mediaType: 'live' }, port);
+        expect(requestedMethod).to.equal('POST');
+        expect(requestedUrl).to.equal('/input?contentId=id-1&mediaType=live');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('rejects with status and body on HTTP 403 (restricted ECP)', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(403);
+        res.end('ECP command not allowed in Limited mode.');
+      });
+
+      try {
+        await client.sendInput('127.0.0.1', { contentId: 'x' }, port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 403');
+        expect((err as Error).message).to.include('Limited mode');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryAppIcon
+  // ---------------------------------------------------------------------------
+
+  describe('queryAppIcon', () => {
+    // PNG magic bytes followed by a 0xFF byte that would be mangled by a
+    // string round-trip — proves the transport is binary-safe.
+    const ICON_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe]);
+
+    it('returns the raw image bytes and content type', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(ICON_BYTES);
+      });
+
+      try {
+        const icon = await client.queryAppIcon('127.0.0.1', 'dev', port);
+        expect(requestedUrl).to.equal('/query/icon/dev');
+        expect(icon.contentType).to.equal('image/png');
+        expect(icon.data.equals(ICON_BYTES)).to.equal(true);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('falls back to image/png when Content-Type is missing', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(ICON_BYTES);
+      });
+
+      try {
+        const icon = await client.queryAppIcon('127.0.0.1', 'dev', port);
+        expect(icon.contentType).to.equal('image/png');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('rejects on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end();
+      });
+
+      try {
+        await client.queryAppIcon('127.0.0.1', '999999', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 404');
       } finally {
         await closeServer(server);
       }
@@ -1049,5 +1236,39 @@ describe('parseAppsXml', () => {
     const xml = '<apps><app id="1" type="appl" version="1.0">  Spaced Name  </app></apps>';
     const apps = parseAppsXml(xml);
     expect(apps[0].name).to.equal('Spaced Name');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildEcpQueryString (standalone)
+// ---------------------------------------------------------------------------
+
+describe('buildEcpQueryString', () => {
+  it('returns an empty string for an empty map', () => {
+    expect(buildEcpQueryString({})).to.equal('');
+  });
+
+  it('joins multiple pairs with & and prefixes ?', () => {
+    expect(buildEcpQueryString({ contentId: 'abc', mediaType: 'movie' }))
+      .to.equal('?contentId=abc&mediaType=movie');
+  });
+
+  it('percent-encodes reserved characters in values', () => {
+    expect(buildEcpQueryString({ contentId: 'a b&c=d?e' }))
+      .to.equal('?contentId=a%20b%26c%3Dd%3Fe');
+  });
+
+  it('percent-encodes reserved characters in keys', () => {
+    expect(buildEcpQueryString({ 'weird key&': 'v' }))
+      .to.equal('?weird%20key%26=v');
+  });
+
+  it('percent-encodes non-ASCII characters as UTF-8', () => {
+    expect(buildEcpQueryString({ title: 'zażółć' }))
+      .to.equal('?title=za%C5%BC%C3%B3%C5%82%C4%87');
+  });
+
+  it('keeps empty values as bare key=', () => {
+    expect(buildEcpQueryString({ contentId: '' })).to.equal('?contentId=');
   });
 });

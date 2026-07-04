@@ -1,5 +1,5 @@
 import { RokuApp } from '../types';
-import { buildDigestAuthHeader, httpGet, httpPost, parseDigestChallenge } from '../net/httpClient';
+import { buildDigestAuthHeader, httpGet, httpGetBuffer, httpPost, parseDigestChallenge } from '../net/httpClient';
 
 export interface RendezvousEvent {
   id: string;
@@ -177,6 +177,19 @@ export function parseAppsXml(xml: string): RokuApp[] {
 }
 
 /**
+ * Builds an ECP query string (`?k=v&k2=v2`) from a key-value map.
+ *
+ * Keys and values are both `encodeURIComponent`-encoded. Returns an empty
+ * string for an empty map so the result can be appended to a path directly.
+ */
+export function buildEcpQueryString(params: Record<string, string>): string {
+  const pairs = Object.entries(params)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+
+  return pairs.length > 0 ? `?${pairs.join('&')}` : '';
+}
+
+/**
  * ECP (External Control Protocol) client for communicating with Roku devices.
  *
  * Uses the Roku ECP REST API over HTTP (default port 8060) to query device
@@ -254,6 +267,95 @@ export class EcpClient {
     }
 
     return parseAppsXml(body);
+  }
+
+  /**
+   * Launches (or relaunches) a channel, optionally with deep-link parameters.
+   *
+   * Sends `POST /launch/<appId>?contentId=…&mediaType=…`. Any 2xx status
+   * (devices return 200 or 204) is treated as success. Deep-link parameters
+   * reach the channel via its `main()` arguments / `roInput` on relaunch.
+   *
+   * @param ip - The IP address of the Roku device.
+   * @param appId - Channel id (store id, or `dev` for the sideloaded app).
+   * @param params - Query parameters, e.g. `{ contentId: '…', mediaType: 'movie' }`.
+   * @param port - ECP port (default: 8060).
+   * @param timeoutMs - Request timeout in milliseconds (default: 3000).
+   * @throws On network errors, timeouts, or non-2xx responses — a 403 usually
+   *   means ECP is restricted ("Control by mobile apps" disabled on-device),
+   *   a 404 means the channel is not installed. The response body is included
+   *   in the error message when present.
+   */
+  async launchApp(
+    ip: string,
+    appId: string,
+    params: Record<string, string> = {},
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    const url = `http://${ip}:${port}/launch/${encodeURIComponent(appId)}${buildEcpQueryString(params)}`;
+    const { statusCode, body } = await httpPost(url, timeoutMs);
+
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`Launch failed: status ${statusCode}${body.trim() ? ` — ${body.trim()}` : ''}`);
+    }
+  }
+
+  /**
+   * Sends deep-link parameters to the channel currently running in the foreground.
+   *
+   * Sends `POST /input?contentId=…&mediaType=…`. The device delivers the
+   * parameters to the running channel as an `roInput` event — the channel is
+   * NOT relaunched. There is no app id: ECP always routes to the foreground
+   * channel.
+   *
+   * @param ip - The IP address of the Roku device.
+   * @param params - Query parameters, e.g. `{ contentId: '…', mediaType: 'live' }`.
+   * @param port - ECP port (default: 8060).
+   * @param timeoutMs - Request timeout in milliseconds (default: 3000).
+   * @throws On network errors, timeouts, or non-2xx responses (see {@link launchApp}).
+   */
+  async sendInput(
+    ip: string,
+    params: Record<string, string>,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    const url = `http://${ip}:${port}/input${buildEcpQueryString(params)}`;
+    const { statusCode, body } = await httpPost(url, timeoutMs);
+
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`Input failed: status ${statusCode}${body.trim() ? ` — ${body.trim()}` : ''}`);
+    }
+  }
+
+  /**
+   * Fetches a channel's icon image.
+   *
+   * Sends `GET /query/icon/<appId>` and returns the raw image bytes plus the
+   * `Content-Type` reported by the device (falls back to `image/png` when the
+   * header is missing).
+   *
+   * @param ip - The IP address of the Roku device.
+   * @param appId - Channel id (store id, or `dev` for the sideloaded app).
+   * @param port - ECP port (default: 8060).
+   * @param timeoutMs - Request timeout in milliseconds (default: 3000).
+   * @throws On network errors, timeouts, or non-200 responses.
+   */
+  async queryAppIcon(
+    ip: string,
+    appId: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<{ data: Buffer; contentType: string }> {
+    const url = `http://${ip}:${port}/query/icon/${encodeURIComponent(appId)}`;
+    const { statusCode, body, headers } = await httpGetBuffer(url, timeoutMs);
+
+    if (statusCode !== 200) {
+      throw new Error(`Icon query failed: status ${statusCode}`);
+    }
+
+    return { data: body, contentType: headers['content-type'] ?? 'image/png' };
   }
 
   /**

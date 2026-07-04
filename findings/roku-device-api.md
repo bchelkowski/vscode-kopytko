@@ -38,6 +38,15 @@ Standard Roku HTTP API. All commands are `GET` or `POST`, no auth required for m
 | `/query/sgrendezvous` | GET | **Drains** the rendezvous event queue (see below) |
 | `/sgrendezvous/track` | POST | Enable rendezvous tracking; returns `<tracking-enabled>true</tracking-enabled>` |
 | `/sgrendezvous/untrack` | POST | Disable rendezvous tracking |
+| `/launch/<appId>?k=v&…` | POST | Launch/relaunch a channel with deep-link params (`contentId`, `mediaType`, …). 200/204 on success; 404 = not installed; 403 = ECP restricted ("Control by mobile apps" set to Limited). Implemented as `EcpClient.launchApp()`. |
+| `/input?k=v&…` | POST | Deliver deep-link params to the **foreground** channel as an `roInput` event — no relaunch, and no app-id parameter exists. Same 403 semantics. Implemented as `EcpClient.sendInput()`. |
+| `/query/icon/<appId>` | GET | Channel icon as raw image bytes (`Content-Type: image/png` or jpeg). Implemented as `EcpClient.queryAppIcon()` via `httpGetBuffer` — the string-accumulating `httpGet` corrupts binary bodies, so a `Buffer`-based variant was added to `net/httpClient.ts` (2026-07-03, Deep Linking panel). |
+
+**Live-verified against the Roku Ultra 4850X on 192.168.137.46 (2026-07-04):**
+- `POST /launch/dev?contentId=…&mediaType=episode` → `200`, DAZN transitioned to `<state>active</state>` per `/query/app-state/dev` within ~3s.
+- `POST /input?contentId=…&mediaType=series` while `dev` was already foreground → `200`.
+- `POST /launch/999999999` (unregistered app id) → `404` with an **empty body** — confirms `launchApp`'s error-message formatting must not append a dangling separator when the body is blank (already covered by a unit test, now also confirmed live).
+- `GET /query/icon/12` (Netflix) → `200`, `Content-Type: image/jpeg`, real JPEG magic bytes (`ffd8ffe0…`) — confirms icons are not uniformly PNG and `queryAppIcon()`'s header-derived `contentType` (rather than a hardcoded assumption) is required.
 
 ### Rendezvous via ECP
 

@@ -17,10 +17,12 @@ export * from './types';
 // Low-level networking
 export {
   httpGet,
+  httpGetBuffer,
   httpPost,
   parseDigestChallenge,
   buildDigestAuthHeader,
   type HttpGetResponse,
+  type HttpBufferResponse,
 } from './net/httpClient';
 export { computeNetworkId } from './net/networkId';
 
@@ -40,6 +42,7 @@ export {
 export {
   EcpClient,
   parseAppsXml,
+  buildEcpQueryString,
   type RendezvousEvent as EcpRendezvousEvent,
   type FwBeaconEcpEvent,
 } from './ecp/ecpClient';

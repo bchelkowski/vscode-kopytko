@@ -82,6 +82,42 @@ export function httpGet(
   });
 }
 
+export interface HttpBufferResponse {
+  statusCode: number;
+  body: Buffer;
+  headers: http.IncomingHttpHeaders;
+}
+
+/**
+ * Performs an HTTP GET request and resolves with the raw response bytes.
+ * Use instead of {@link httpGet} for binary payloads (e.g. channel icons) —
+ * string concatenation would corrupt multi-byte sequences.
+ */
+export function httpGetBuffer(
+  url: string,
+  timeoutMs: number,
+  headers?: Record<string, string>,
+): Promise<HttpBufferResponse> {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, { headers, timeout: timeoutMs }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => { chunks.push(chunk); });
+      res.on('end', () => {
+        resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks), headers: res.headers });
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Request to ${url} timed out after ${timeoutMs}ms`));
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
 function md5(data: string): string {
   return crypto.createHash('md5').update(data).digest('hex');
 }
