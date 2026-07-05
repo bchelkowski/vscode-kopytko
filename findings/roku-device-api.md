@@ -186,6 +186,43 @@ Key facts:
 
 ---
 
+### Remote-control key simulation via ECP (2026-07-06 — NOT yet verified live)
+
+`POST /keypress/{key}`, `POST /keydown/{key}`, `POST /keyup/{key}` — implemented as
+`EcpClient.keypress/keydown/keyup` plus `sendText` (sequential `Lit_` keypresses) and
+the `EcpKeys`/`textToLitKeys` helpers in `packages/roku-device/src/ecp/keys.ts`.
+
+- Named keys: `Home, Rev, Fwd, Play, Select, Left, Right, Down, Up, Back, InstantReplay,
+  Info, Backspace, Search, Enter, FindRemote` + Roku-TV-only `Volume*/Power*/Channel*/Input*`.
+- Literal characters: `Lit_` + URL-encoded UTF-8 of ONE code point (`Lit_r`, `Lit_%E2%82%AC`).
+  The client must NOT re-encode the key path segment — `textToLitKeys` output is pre-encoded.
+- `keydown` holds the key until a matching `keyup` — always pair them (the extension's
+  remote view sends a safety `keyup` on webview dispose).
+- Docs say all three require "Control by mobile apps" enabled (expect 403 in Limited mode,
+  same as `/launch`).
+
+**Verification gap:** the dev device was off-network when this was implemented (full
+192.168.0.x sweep found no ECP responder; old IPs 192.168.137.46 / 192.168.2.2 dead).
+Everything above is docs-derived. When the device is back, verify live: status codes for
+keypress/keydown/keyup, Lit_ typing with the on-screen keyboard open, volume/power
+behavior on the non-TV Ultra.
+
+### `GET /query/active-app` and `GET /query/media-player` (2026-07-06 — media-player NOT yet verified live)
+
+- `/query/active-app` → `EcpClient.queryActiveApp()`. `<active-app><app id="dev" type="appl"
+  version="…">DAZN</app></active-app>`; the home screen may report `<app>Roku</app>` with no
+  attributes (older firmware) — `id` is optional in `ActiveAppInfo`. An earlier live probe
+  (2026-07-04, reboot testing) saw `id="562859" ui-location="home"` for the home screen, so
+  the attribute set varies by state/firmware — parser only relies on `id/type/version`.
+- `/query/media-player` → `EcpClient.queryMediaPlayer()` + `parseMediaPlayerXml()`. Expected
+  (docs-derived) shape: `<player error="false" state="play">` wrapping `<plugin bandwidth id
+  name/>`, `<format audio captions container drm video/>`, `<position>N ms</position>`,
+  `<duration>N ms</duration>`, `<is_live>bool</is_live>`. Parser is deliberately lenient
+  (every field optional, `state` defaults `'none'`). **Must be verified against the live
+  device during playback before trusting `validate_streaming` assertions in the RASP runner**
+  — same lesson as the 2026-07-01 `queryAppState` `<channel-state>` bug: a docs-derived shape
+  is a hypothesis, not a fact.
+
 ## Port 8080 — SceneGraph Debug Server
 
 **Text-based request/response console.** Send `command\r\n`, read until the device stops sending (idle for ~250ms) — the response ends with a `>` prompt but since `>` appears inside XML responses it cannot be used as a terminator. Use idle-time detection instead.

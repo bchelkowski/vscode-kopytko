@@ -47,10 +47,22 @@ export {
 export {
   EcpClient,
   parseAppsXml,
+  parseActiveAppXml,
+  parseMediaPlayerXml,
   buildEcpQueryString,
+  type ActiveAppInfo,
+  type MediaPlayerInfo,
   type RendezvousEvent as EcpRendezvousEvent,
   type FwBeaconEcpEvent,
 } from './ecp/ecpClient';
+export {
+  EcpKeys,
+  LIT_PREFIX,
+  isValidEcpKey,
+  charToLitKey,
+  textToLitKeys,
+  type EcpKey,
+} from './ecp/keys';
 export { parseRegistryXml, type RegistryData, type RegistrySection } from './ecp/registry';
 export { enablePerfettoTracing, triggerHeapSnapshot } from './ecp/tracing';
 

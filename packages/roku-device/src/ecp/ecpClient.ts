@@ -1,5 +1,6 @@
 import { RokuApp } from '../types';
 import { buildDigestAuthHeader, httpGet, httpGetBuffer, httpPost, parseDigestChallenge } from '../net/httpClient';
+import { textToLitKeys } from './keys';
 
 export interface RendezvousEvent {
   id: string;
@@ -114,6 +115,116 @@ function parseFwBeaconsXml(xml: string): { events: FwBeaconEcpEvent[]; dropCount
   const dropCount = dropCountMatch ? parseInt(dropCountMatch[1], 10) : 0;
 
   return { events, dropCount };
+}
+
+/** The currently running (foreground) app as reported by `GET /query/active-app`. */
+export interface ActiveAppInfo {
+  /** Channel id. Absent on the plain home screen on some firmware versions. */
+  id?: string;
+  /** Channel display name (e.g. `Roku` for the home screen). */
+  name: string;
+  type?: string;
+  version?: string;
+}
+
+/**
+ * Parses a `GET /query/active-app` XML response.
+ *
+ * ```xml
+ * <active-app>
+ *   <app id="dev" type="appl" version="3.30.5">DAZN</app>
+ * </active-app>
+ * ```
+ * The home screen may report `<app>Roku</app>` with no attributes.
+ * Returns `undefined` when no `<app>` element is present.
+ */
+export function parseActiveAppXml(xml: string): ActiveAppInfo | undefined {
+  const match = /<app\b([^>]*)>([^<]*)<\/app>/.exec(xml);
+  if (!match) return undefined;
+
+  const [, attrs, name] = match;
+  return {
+    id: /id="([^"]*)"/.exec(attrs)?.[1],
+    name: name.trim(),
+    type: /type="([^"]*)"/.exec(attrs)?.[1],
+    version: /version="([^"]*)"/.exec(attrs)?.[1],
+  };
+}
+
+/** Parsed `GET /query/media-player` response. */
+export interface MediaPlayerInfo {
+  /** Player state: `none`, `open`, `play`, `pause`, `buffer`, `close`, `stop`, … */
+  state: string;
+  /** `true` when the player reports an error condition. */
+  error: boolean;
+  /** The channel that owns the player, when one is active. */
+  plugin?: { id?: string; name?: string; bandwidth?: string };
+  /** Stream format attributes; only present while media is loaded. */
+  format?: { audio?: string; video?: string; drm?: string; captions?: string; container?: string };
+  /** Playback position in milliseconds, when reported. */
+  positionMs?: number;
+  /** Stream duration in milliseconds, when reported (absent for live). */
+  durationMs?: number;
+  /** `true` when the device flags the stream as live. */
+  isLive?: boolean;
+}
+
+/**
+ * Parses a `GET /query/media-player` XML response.
+ *
+ * Representative shape (attributes vary by firmware — parse leniently):
+ * ```xml
+ * <player error="false" state="play">
+ *   <plugin bandwidth="…" id="dev" name="DAZN"/>
+ *   <format audio="aac" captions="none" container="…" drm="none" video="hevc"/>
+ *   <position>1198000 ms</position>
+ *   <duration>7422000 ms</duration>
+ *   <is_live>false</is_live>
+ * </player>
+ * ```
+ * `<position>`/`<duration>` values carry a ` ms` suffix.
+ */
+export function parseMediaPlayerXml(xml: string): MediaPlayerInfo {
+  const playerAttrs = /<player\b([^>]*)>/.exec(xml)?.[1] ?? '';
+  const attr = (attrs: string, name: string): string | undefined =>
+    new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1];
+
+  const info: MediaPlayerInfo = {
+    state: attr(playerAttrs, 'state')?.toLowerCase() ?? 'none',
+    error: attr(playerAttrs, 'error') === 'true',
+  };
+
+  const pluginAttrs = /<plugin\b([^>]*)\/?>/.exec(xml)?.[1];
+  if (pluginAttrs !== undefined) {
+    info.plugin = {
+      id: attr(pluginAttrs, 'id'),
+      name: attr(pluginAttrs, 'name'),
+      bandwidth: attr(pluginAttrs, 'bandwidth'),
+    };
+  }
+
+  const formatAttrs = /<format\b([^>]*)\/?>/.exec(xml)?.[1];
+  if (formatAttrs !== undefined) {
+    info.format = {
+      audio: attr(formatAttrs, 'audio'),
+      video: attr(formatAttrs, 'video'),
+      drm: attr(formatAttrs, 'drm'),
+      captions: attr(formatAttrs, 'captions'),
+      container: attr(formatAttrs, 'container'),
+    };
+  }
+
+  const ms = (tag: string): number | undefined => {
+    const raw = new RegExp(`<${tag}>\\s*(\\d+)\\s*ms\\s*</${tag}>`).exec(xml)?.[1];
+    return raw !== undefined ? parseInt(raw, 10) : undefined;
+  };
+  info.positionMs = ms('position');
+  info.durationMs = ms('duration');
+
+  const isLiveRaw = /<is_live>\s*(true|false)\s*<\/is_live>/.exec(xml)?.[1];
+  if (isLiveRaw !== undefined) info.isLive = isLiveRaw === 'true';
+
+  return info;
 }
 
 const DEFAULT_ECP_PORT = 8060;
@@ -327,6 +438,142 @@ export class EcpClient {
     if (statusCode < 200 || statusCode >= 300) {
       throw new Error(`Input failed: status ${statusCode}${body.trim() ? ` — ${body.trim()}` : ''}`);
     }
+  }
+
+  /**
+   * Simulates pressing and releasing a remote-control key.
+   *
+   * Sends `POST /keypress/{key}`. The key is either a named key (see
+   * {@link EcpKeys}) or a `Lit_`-prefixed literal character. Lit_ values must
+   * arrive already URL-encoded (`Lit_%E2%82%AC`) — this method does NOT
+   * re-encode the key, since named keys are URL-safe and Lit_ segments are
+   * pre-encoded by {@link textToLitKeys}.
+   *
+   * @throws On network errors, timeouts, or non-2xx responses — a 403 means
+   *   ECP is restricted ("Control by mobile apps" set to Limited on-device).
+   */
+  async keypress(
+    ip: string,
+    key: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    await this.sendKeyCommand(ip, 'keypress', key, port, timeoutMs);
+  }
+
+  /**
+   * Simulates pressing (and holding) a remote-control key.
+   *
+   * Sends `POST /keydown/{key}`. The device treats the key as held until a
+   * matching {@link keyup} arrives — callers are responsible for always
+   * sending the release. Same key encoding rules as {@link keypress}.
+   */
+  async keydown(
+    ip: string,
+    key: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    await this.sendKeyCommand(ip, 'keydown', key, port, timeoutMs);
+  }
+
+  /**
+   * Simulates releasing a remote-control key previously sent via {@link keydown}.
+   *
+   * Sends `POST /keyup/{key}`. Same key encoding rules as {@link keypress}.
+   */
+  async keyup(
+    ip: string,
+    key: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    await this.sendKeyCommand(ip, 'keyup', key, port, timeoutMs);
+  }
+
+  private async sendKeyCommand(
+    ip: string,
+    command: 'keypress' | 'keydown' | 'keyup',
+    key: string,
+    port: number,
+    timeoutMs: number,
+  ): Promise<void> {
+    const url = `http://${ip}:${port}/${command}/${key}`;
+    const { statusCode, body } = await httpPost(url, timeoutMs);
+
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`${command} ${key} failed: status ${statusCode}${body.trim() ? ` — ${body.trim()}` : ''}`);
+    }
+  }
+
+  /**
+   * Types a text string on the device's on-screen keyboard.
+   *
+   * Encodes the text as `Lit_` key values (one per Unicode code point) and
+   * sends them as strictly sequential `POST /keypress/Lit_…` requests — each
+   * request is awaited before the next is sent, so characters arrive in order.
+   * Stops at the first failure.
+   *
+   * @throws The first {@link keypress} error encountered; characters after the
+   *   failing one are not sent.
+   */
+  async sendText(
+    ip: string,
+    text: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    for (const key of textToLitKeys(text)) {
+      await this.keypress(ip, key, port, timeoutMs);
+    }
+  }
+
+  /**
+   * Queries the currently running (foreground) app.
+   *
+   * Sends `GET /query/active-app`. The home screen reports itself as an app
+   * (name `Roku`, possibly without an id on some firmware versions).
+   *
+   * @returns The active app, or `undefined` when the response has no `<app>`.
+   * @throws On network errors, timeouts, or non-200 responses.
+   */
+  async queryActiveApp(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<ActiveAppInfo | undefined> {
+    const url = `http://${ip}:${port}/query/active-app`;
+    const { statusCode, body } = await httpGet(url, timeoutMs);
+
+    if (statusCode !== 200) {
+      throw new Error(`Active app query failed: status ${statusCode}`);
+    }
+
+    return parseActiveAppXml(body);
+  }
+
+  /**
+   * Queries the state of the device's media player.
+   *
+   * Sends `GET /query/media-player` and parses the player state, owning
+   * channel, stream format (codecs/DRM), and position/duration. With no
+   * media loaded the device reports `state="none"`.
+   *
+   * @throws On network errors, timeouts, or non-200 responses.
+   */
+  async queryMediaPlayer(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<MediaPlayerInfo> {
+    const url = `http://${ip}:${port}/query/media-player`;
+    const { statusCode, body } = await httpGet(url, timeoutMs);
+
+    if (statusCode !== 200) {
+      throw new Error(`Media player query failed: status ${statusCode}`);
+    }
+
+    return parseMediaPlayerXml(body);
   }
 
   /**

@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as http from 'http';
-import { EcpClient, buildEcpQueryString, parseAppsXml } from '../../src/ecp/ecpClient';
+import { EcpClient, buildEcpQueryString, parseAppsXml, parseActiveAppXml, parseMediaPlayerXml } from '../../src/ecp/ecpClient';
 import { AddressInfo } from 'net';
 
 /**
@@ -1196,6 +1196,292 @@ describe('EcpClient', () => {
       }
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // keypress / keydown / keyup
+  // ---------------------------------------------------------------------------
+
+  describe('keypress / keydown / keyup', () => {
+    it('sends POST /keypress/{key} for a named key', async () => {
+      let requestPath: string | undefined;
+      let requestMethod: string | undefined;
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url;
+        requestMethod = req.method;
+        res.writeHead(200);
+        res.end('');
+      });
+
+      try {
+        await client.keypress('127.0.0.1', 'Home', port);
+        expect(requestMethod).to.equal('POST');
+        expect(requestPath).to.equal('/keypress/Home');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('sends POST /keydown/{key} and POST /keyup/{key}', async () => {
+      const paths: string[] = [];
+      const { server, port } = await createTestServer((req, res) => {
+        paths.push(`${req.method} ${req.url}`);
+        res.writeHead(200);
+        res.end('');
+      });
+
+      try {
+        await client.keydown('127.0.0.1', 'Right', port);
+        await client.keyup('127.0.0.1', 'Right', port);
+        expect(paths).to.deep.equal(['POST /keydown/Right', 'POST /keyup/Right']);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('does not re-encode pre-encoded Lit_ keys', async () => {
+      let requestPath: string | undefined;
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url;
+        res.writeHead(200);
+        res.end('');
+      });
+
+      try {
+        await client.keypress('127.0.0.1', 'Lit_%E2%82%AC', port);
+        // A re-encoded key would arrive as /keypress/Lit_%25E2%2582%25AC.
+        expect(requestPath).to.equal('/keypress/Lit_%E2%82%AC');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('accepts 204 responses as success', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(204);
+        res.end();
+      });
+
+      try {
+        await client.keypress('127.0.0.1', 'Select', port);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-2xx responses and includes the body', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(403);
+        res.end('ECP command not allowed in Limited mode.');
+      });
+
+      try {
+        await client.keypress('127.0.0.1', 'Home', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 403');
+        expect((err as Error).message).to.include('Limited mode');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('does not append a dangling separator when the error body is empty', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end('');
+      });
+
+      try {
+        await client.keyup('127.0.0.1', 'Home', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.equal('keyup Home failed: status 404');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // sendText
+  // ---------------------------------------------------------------------------
+
+  describe('sendText', () => {
+    it('sends one keypress per code point, strictly in order, awaiting each response', async () => {
+      const received: string[] = [];
+      let delay = 40;
+      const { server, port } = await createTestServer((req, res) => {
+        const url = req.url ?? '';
+        // Decreasing per-request delay: if requests were issued concurrently,
+        // later characters would finish first and arrive out of order.
+        const thisDelay = delay;
+        delay = Math.max(0, delay - 15);
+        setTimeout(() => {
+          received.push(url);
+          res.writeHead(200);
+          res.end('');
+        }, thisDelay);
+      });
+
+      try {
+        await client.sendText('127.0.0.1', 'ab€', port);
+        expect(received).to.deep.equal([
+          '/keypress/Lit_a',
+          '/keypress/Lit_b',
+          '/keypress/Lit_%E2%82%AC',
+        ]);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('stops at the first failure and does not send the remaining characters', async () => {
+      const received: string[] = [];
+      const { server, port } = await createTestServer((req, res) => {
+        received.push(req.url ?? '');
+        if (received.length === 2) {
+          res.writeHead(503);
+          res.end('');
+        } else {
+          res.writeHead(200);
+          res.end('');
+        }
+      });
+
+      try {
+        await client.sendText('127.0.0.1', 'abcd', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 503');
+        expect(received).to.deep.equal(['/keypress/Lit_a', '/keypress/Lit_b']);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('sends nothing for an empty string', async () => {
+      const received: string[] = [];
+      const { server, port } = await createTestServer((req, res) => {
+        received.push(req.url ?? '');
+        res.writeHead(200);
+        res.end('');
+      });
+
+      try {
+        await client.sendText('127.0.0.1', '', port);
+        expect(received).to.have.length(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryActiveApp
+  // ---------------------------------------------------------------------------
+
+  describe('queryActiveApp', () => {
+    it('parses the active app from GET /query/active-app', async () => {
+      let requestPath: string | undefined;
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url;
+        res.writeHead(200);
+        res.end('<active-app><app id="dev" type="appl" version="3.30.5">DAZN</app></active-app>');
+      });
+
+      try {
+        const app = await client.queryActiveApp('127.0.0.1', port);
+        expect(requestPath).to.equal('/query/active-app');
+        expect(app).to.deep.equal({ id: 'dev', name: 'DAZN', type: 'appl', version: '3.30.5' });
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('handles the home screen reporting an app with no attributes', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<active-app><app>Roku</app></active-app>');
+      });
+
+      try {
+        const app = await client.queryActiveApp('127.0.0.1', port);
+        expect(app?.name).to.equal('Roku');
+        expect(app?.id).to.be.undefined;
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 responses', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(503);
+        res.end('');
+      });
+
+      try {
+        await client.queryActiveApp('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 503');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryMediaPlayer
+  // ---------------------------------------------------------------------------
+
+  describe('queryMediaPlayer', () => {
+    it('parses a playing media-player response', async () => {
+      let requestPath: string | undefined;
+      const { server, port } = await createTestServer((req, res) => {
+        requestPath = req.url;
+        res.writeHead(200);
+        res.end(
+          '<player error="false" state="play">' +
+          '<plugin bandwidth="12000000 bps" id="dev" name="DAZN"/>' +
+          '<format audio="aac" captions="none" container="dash" drm="widevine" video="hevc"/>' +
+          '<position>1198000 ms</position><duration>7422000 ms</duration>' +
+          '<is_live>false</is_live></player>',
+        );
+      });
+
+      try {
+        const info = await client.queryMediaPlayer('127.0.0.1', port);
+        expect(requestPath).to.equal('/query/media-player');
+        expect(info.state).to.equal('play');
+        expect(info.error).to.equal(false);
+        expect(info.plugin).to.deep.equal({ id: 'dev', name: 'DAZN', bandwidth: '12000000 bps' });
+        expect(info.format).to.deep.equal({
+          audio: 'aac', video: 'hevc', drm: 'widevine', captions: 'none', container: 'dash',
+        });
+        expect(info.positionMs).to.equal(1198000);
+        expect(info.durationMs).to.equal(7422000);
+        expect(info.isLive).to.equal(false);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 responses', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(503);
+        res.end('');
+      });
+
+      try {
+        await client.queryMediaPlayer('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 503');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1270,5 +1556,70 @@ describe('buildEcpQueryString', () => {
 
   it('keeps empty values as bare key=', () => {
     expect(buildEcpQueryString({ contentId: '' })).to.equal('?contentId=');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseActiveAppXml (standalone)
+// ---------------------------------------------------------------------------
+
+describe('parseActiveAppXml', () => {
+  it('parses id, type, version and name', () => {
+    const app = parseActiveAppXml('<active-app><app id="562859" type="appl" version="1.0.0">Roku Home</app></active-app>');
+    expect(app).to.deep.equal({ id: '562859', name: 'Roku Home', type: 'appl', version: '1.0.0' });
+  });
+
+  it('returns undefined when there is no app element', () => {
+    expect(parseActiveAppXml('<active-app></active-app>')).to.be.undefined;
+  });
+
+  it('trims whitespace from the name', () => {
+    const app = parseActiveAppXml('<active-app><app id="dev">  My App  </app></active-app>');
+    expect(app?.name).to.equal('My App');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseMediaPlayerXml (standalone)
+// ---------------------------------------------------------------------------
+
+describe('parseMediaPlayerXml', () => {
+  it('reports state "none" with no plugin/format for an idle player', () => {
+    const info = parseMediaPlayerXml('<player error="false" state="none"></player>');
+    expect(info.state).to.equal('none');
+    expect(info.error).to.equal(false);
+    expect(info.plugin).to.be.undefined;
+    expect(info.format).to.be.undefined;
+    expect(info.positionMs).to.be.undefined;
+    expect(info.durationMs).to.be.undefined;
+    expect(info.isLive).to.be.undefined;
+  });
+
+  it('flags error="true"', () => {
+    const info = parseMediaPlayerXml('<player error="true" state="close"></player>');
+    expect(info.error).to.equal(true);
+    expect(info.state).to.equal('close');
+  });
+
+  it('lowercases the state value', () => {
+    expect(parseMediaPlayerXml('<player error="false" state="Play"></player>').state).to.equal('play');
+  });
+
+  it('tolerates missing attributes inside plugin/format elements', () => {
+    const info = parseMediaPlayerXml('<player error="false" state="play"><plugin id="dev"/><format video="hevc"/></player>');
+    expect(info.plugin?.id).to.equal('dev');
+    expect(info.plugin?.name).to.be.undefined;
+    expect(info.format?.video).to.equal('hevc');
+    expect(info.format?.drm).to.be.undefined;
+  });
+
+  it('returns state "none" for malformed input with no player element', () => {
+    const info = parseMediaPlayerXml('garbage');
+    expect(info.state).to.equal('none');
+    expect(info.error).to.equal(false);
+  });
+
+  it('parses is_live', () => {
+    expect(parseMediaPlayerXml('<player error="false" state="play"><is_live>true</is_live></player>').isLive).to.equal(true);
   });
 });

@@ -79,6 +79,45 @@ usually means ECP is restricted on-device ("Control by mobile apps"), a `404`
 that the channel is not installed. `sendInput` always targets the foreground
 channel; there is no app id parameter in the ECP `/input` endpoint.
 
+### Simulate the remote control
+
+```ts
+import { EcpClient, EcpKeys, textToLitKeys } from 'kopytko-roku-device';
+
+const ecp = new EcpClient();
+
+// Press-and-release a named key (POST /keypress/{key})
+await ecp.keypress('192.168.1.20', EcpKeys.Home);
+
+// Hold a key: keydown … keyup (always pair them — the device keeps the key
+// held until the matching keyup arrives)
+await ecp.keydown('192.168.1.20', EcpKeys.Right);
+await ecp.keyup('192.168.1.20', EcpKeys.Right);
+
+// Type on the on-screen keyboard — one strictly sequential keypress per
+// Unicode code point, encoded as Lit_ keys ('€' → 'Lit_%E2%82%AC')
+await ecp.sendText('192.168.1.20', 'my search term');
+
+// Lower-level: encode text yourself
+textToLitKeys('r€'); // → ['Lit_r', 'Lit_%E2%82%AC']
+```
+
+`EcpKeys` lists every named key (`Home`, `Select`, D-pad, media keys, and the
+Roku-TV-only volume/power/channel/input keys). `isValidEcpKey()` accepts named
+keys and `Lit_`-prefixed literals.
+
+### Query playback state
+
+```ts
+// Foreground channel (GET /query/active-app)
+const active = await ecp.queryActiveApp('192.168.1.20'); // { id, name, … } | undefined
+
+// Media player state (GET /query/media-player): state ('none'|'play'|'pause'|…),
+// owning channel, stream format (codecs/DRM), position/duration
+const player = await ecp.queryMediaPlayer('192.168.1.20');
+if (player.state === 'play') console.log(player.format?.video, player.positionMs);
+```
+
 ### Poll runtime metrics
 
 ```ts
