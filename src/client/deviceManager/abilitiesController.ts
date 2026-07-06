@@ -1,9 +1,8 @@
-import type { DeviceManager, EcpClient, InstallerClient, RokuDevice, ActiveAppInfo } from 'kopytko-roku-device';
+import type { DeviceManager, InstallerClient, RokuDevice } from 'kopytko-roku-device';
 import type { CredentialStore } from '../roku/persistence/credentialStore';
 
 export interface AbilitiesControllerDeps {
   deviceManager: DeviceManager;
-  ecp: EcpClient;
   installer: InstallerClient;
   credentials: CredentialStore;
   /**
@@ -23,9 +22,9 @@ export class PasswordPromptCancelled extends Error {
 }
 
 /**
- * Device abilities surfaced by the Device Manager: ECP quick actions
- * (device info, active app) and web-admin automation (screenshot, install,
- * delete, package, rekey, update check, reboot) via InstallerClient.
+ * Device abilities surfaced by the Device Manager: web-admin automation
+ * (screenshot, install, delete, package, rekey, update check, reboot) via
+ * InstallerClient.
  *
  * Web-admin calls need the device's developer password (HTTP digest, user
  * `rokudev`) — resolved from the shared CredentialStore, falling back to the
@@ -36,18 +35,6 @@ export class AbilitiesController {
 
   getActiveDevice(): RokuDevice | undefined {
     return this.deps.deviceManager.getActiveDevice();
-  }
-
-  // ── quick actions (no password) ───────────────────────────────────────────
-
-  async queryDeviceInfo(): Promise<Record<string, string>> {
-    const device = this.requireDevice();
-    return this.deps.ecp.queryDeviceInfo(device.ip, device.port);
-  }
-
-  async queryActiveApp(): Promise<ActiveAppInfo | undefined> {
-    const device = this.requireDevice();
-    return this.deps.ecp.queryActiveApp(device.ip, device.port);
   }
 
   // ── web-admin (developer password) ────────────────────────────────────────

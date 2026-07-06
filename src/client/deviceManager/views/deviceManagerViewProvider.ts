@@ -7,8 +7,8 @@ import type { DeviceScript, ScriptStore } from '../scriptStore';
 import { runAbilityAction } from './abilityActions';
 import type { ExtMsg, ScriptListItem, TextEntryView, WebMsg } from '../webview/protocol';
 
-/** Which of the four Device Manager sidebar views an instance backs. */
-export type DeviceManagerViewKind = 'remote' | 'entries' | 'scripts' | 'abilities';
+/** Which of the two Device Manager sidebar views an instance backs. */
+export type DeviceManagerViewKind = 'remote' | 'scripts';
 
 export interface DeviceManagerViewDeps {
   controller: DeviceManagerController;
@@ -27,9 +27,9 @@ export interface DeviceManagerViewDeps {
 const HINT_SHOWN_KEY = 'kopytko.deviceManager.sidebarHintShown';
 
 /**
- * One WebviewViewProvider class backing all four Device Manager sidebar views
- * (Remote Control / Saved Text / Scripts / Device) — a single webview bundle
- * dispatches on `<body data-view="…">`.
+ * One WebviewViewProvider class backing both Device Manager sidebar views
+ * (Remote Control — which also bundles Device actions and Saved Text — and
+ * Scripts) — a single webview bundle dispatches on `<body data-view="…">`.
  *
  * Sidebar webview views do NOT retain context when hidden, so all state is
  * re-pushed on `ready` and on every visibility change; anything long-running
@@ -39,9 +39,7 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
   static viewId(kind: DeviceManagerViewKind): string {
     switch (kind) {
       case 'remote': return 'kopytko.deviceManager.remote';
-      case 'entries': return 'kopytko.deviceManager.savedText';
       case 'scripts': return 'kopytko.deviceManager.scripts';
-      case 'abilities': return 'kopytko.deviceManager.abilities';
     }
   }
 
@@ -260,8 +258,8 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
       const holdThresholdMs = vscode.workspace.getConfiguration('kopytko').get<number>('deviceManager.holdThresholdMs', 1000);
       this.post({ kind: 'config', holdThresholdMs });
       this.post({ kind: 'remoteMode', on: this.deps.remoteMode.isOn });
+      void this.sendEntries();
     }
-    if (this.kind === 'entries') void this.sendEntries();
     if (this.kind === 'scripts') this.sendScripts();
   }
 

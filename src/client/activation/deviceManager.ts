@@ -23,7 +23,6 @@ export function registerDeviceManager(
   });
   const abilities = new AbilitiesController({
     deviceManager: services.deviceManager,
-    ecp: services.ecp,
     installer: new InstallerClient(services.ecp),
     credentials: services.credentials,
     promptPassword: async (device) => {
@@ -57,7 +56,7 @@ export function registerDeviceManager(
     recordPress: (key: string) => ScriptEditorPanel.recordRemotePress(key),
     recordText: (text: string) => ScriptEditorPanel.recordRemoteText(text),
   };
-  const kinds: DeviceManagerViewKind[] = ['remote', 'entries', 'scripts', 'abilities'];
+  const kinds: DeviceManagerViewKind[] = ['remote', 'scripts'];
 
   context.subscriptions.push(
     runner,

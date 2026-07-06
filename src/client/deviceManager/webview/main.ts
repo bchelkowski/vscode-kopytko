@@ -5,7 +5,7 @@ interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
 
-type ViewKind = 'remote' | 'entries' | 'scripts' | 'abilities';
+type ViewKind = 'remote' | 'scripts';
 const viewKind = (document.body.dataset.view ?? 'remote') as ViewKind;
 
 // ── shared state ─────────────────────────────────────────────────────────────
@@ -108,11 +108,28 @@ function buildRemoteDom(): void {
   <input type="checkbox" id="kb-toggle">
   <span>Keyboard remote mode</span>
 </label>
-<div id="kb-hint" class="hidden">Arrows/Enter/Esc/Backspace navigate the device from anywhere. Typing lands on the device while this view is focused. <b>Ctrl+K</b> exits.</div>`;
+<div id="kb-hint" class="hidden">Arrows/Enter/Esc/Backspace navigate the device from anywhere. Typing lands on the device while this view is focused. <b>Ctrl+K</b> exits.</div>
+
+<details id="device-actions">
+  <summary>Device actions</summary>
+  <div class="ability-group">
+    ${DEVICE_ACTIONS.map((b) => `
+      <button class="ability-btn ${b.danger ? 'danger' : ''}" data-action="${b.action}" title="${esc(b.title)}">
+        ${b.icon}
+      </button>`).join('')}
+  </div>
+</details>
+
+<h3>Saved Text</h3>
+<div id="entries-list"></div>
+<button id="btn-add-entry" class="secondary">+ Add entry</button>
+<div id="entry-form" class="hidden"></div>`;
 
   wireRemoteButtons();
   wireTextSend();
   wireKeyboardMode();
+  wireAbilityButtons();
+  wireEntriesAddButton();
 }
 
 /**
@@ -234,19 +251,9 @@ function applyRemoteDevice(): void {
   if (send) send.disabled = device === undefined;
 }
 
-// ── entries view ─────────────────────────────────────────────────────────────
+// ── saved text entries ───────────────────────────────────────────────────────
 
-function buildEntriesDom(): void {
-  document.body.innerHTML = `
-<div id="toolbar">
-  <span class="status-dot" id="status-dot"></span>
-  <span id="device-label">No active device</span>
-  <span id="status-line"></span>
-</div>
-<div id="entries-list"></div>
-<button id="btn-add-entry" class="secondary">+ Add entry</button>
-<div id="entry-form" class="hidden"></div>`;
-
+function wireEntriesAddButton(): void {
   el<HTMLButtonElement>('btn-add-entry').addEventListener('click', () => {
     editingEntryId = undefined;
     renderEntryForm({ type: 'text' });
@@ -458,43 +465,23 @@ function renderRunProgress(progress: RunProgress): void {
   renderScripts();
 }
 
-// ── abilities view ───────────────────────────────────────────────────────────
+// ── device actions ───────────────────────────────────────────────────────────
 
-interface AbilityButton { action: AbilityAction; label: string; title: string; danger?: boolean }
+interface AbilityButton { action: AbilityAction; icon: string; title: string; danger?: boolean }
 
-const QUICK_ACTIONS: AbilityButton[] = [
-  { action: 'deviceInfo', label: 'Device info', title: 'Open the full ECP device-info as a JSON document' },
-  { action: 'activeApp', label: 'Active app', title: 'Show which channel is currently in the foreground' },
-  { action: 'screenshot', label: 'Screenshot', title: 'Capture a screenshot of the running dev channel (requires developer password)' },
-  { action: 'checkUpdate', label: 'Check update', title: 'Trigger a system update check (result shows on the device)' },
-  { action: 'reboot', label: 'Reboot', title: 'Reboot the device', danger: true },
+// Icon-only pills, same stroke-icon family and .remote-btn shape as the
+// keypad above — the label lives only in the `title` tooltip.
+const DEVICE_ACTIONS: AbilityButton[] = [
+  { action: 'screenshot', icon: icon('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-2.5h5L16 7"/><circle cx="12" cy="13.5" r="3.5"/>'), title: 'Screenshot: capture the running dev channel (requires developer password)' },
+  { action: 'checkUpdate', icon: icon('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4"/><path d="M6 21v-4h4"/>'), title: 'Check update: trigger a system update check (result shows on the device)' },
+  { action: 'reboot', icon: icon('<path d="M12 3v6"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>'), title: 'Reboot the device', danger: true },
+  { action: 'installChannel', icon: icon('<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>'), title: 'Install channel…: sideload a channel zip (dev web-admin Installer)' },
+  { action: 'deleteChannel', icon: icon('<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/>'), title: 'Delete channel: remove the sideloaded dev channel', danger: true },
+  { action: 'packageChannel', icon: icon('<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>'), title: 'Package…: install a zip and sign it into a .pkg (Packager)' },
+  { action: 'rekey', icon: icon('<circle cx="8" cy="15" r="3.5"/><path d="M10.8 12.2L19 4"/><path d="M15.5 8.5l2.5 2.5"/><path d="M18 6l2.5 2.5"/>'), title: 'Rekey…: rekey the device with a signed .pkg' },
 ];
 
-const WEB_ADMIN_ACTIONS: AbilityButton[] = [
-  { action: 'installChannel', label: 'Install channel…', title: 'Sideload a channel zip (dev web-admin Installer)' },
-  { action: 'deleteChannel', label: 'Delete channel', title: 'Remove the sideloaded dev channel', danger: true },
-  { action: 'packageChannel', label: 'Package…', title: 'Install a zip and sign it into a .pkg (Packager)' },
-  { action: 'rekey', label: 'Rekey…', title: 'Rekey the device with a signed .pkg' },
-];
-
-function buildAbilitiesDom(): void {
-  const group = (title: string, buttons: AbilityButton[]): string => `
-<h3>${title}</h3>
-<div class="ability-group">
-  ${buttons.map((b) => `
-    <button class="ability-btn ${b.danger ? 'danger' : ''}" data-action="${b.action}" title="${esc(b.title)}">${esc(b.label)}</button>
-  `).join('')}
-</div>`;
-
-  document.body.innerHTML = `
-<div id="toolbar">
-  <span class="status-dot" id="status-dot"></span>
-  <span id="device-label">No active device</span>
-  <span id="status-line"></span>
-</div>
-${group('Quick actions', QUICK_ACTIONS)}
-${group('Web admin', WEB_ADMIN_ACTIONS)}`;
-
+function wireAbilityButtons(): void {
   for (const btn of document.querySelectorAll<HTMLButtonElement>('.ability-btn')) {
     btn.addEventListener('click', () => {
       post({ kind: 'ability', action: btn.dataset.action as AbilityAction });
@@ -520,9 +507,11 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
     case 'device':
       device = msg.device;
       renderDeviceBanner();
-      if (viewKind === 'remote') applyRemoteDevice();
+      if (viewKind === 'remote') {
+        applyRemoteDevice();
+        applyAbilitiesBusy(false);
+      }
       if (viewKind === 'scripts') renderScripts();
-      if (viewKind === 'abilities') applyAbilitiesBusy(false);
       return;
 
     case 'remoteMode':
@@ -568,7 +557,7 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
       return;
 
     case 'busy':
-      if (viewKind === 'abilities') applyAbilitiesBusy(msg.on);
+      if (viewKind === 'remote') applyAbilitiesBusy(msg.on);
       return;
   }
 });
@@ -577,9 +566,7 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
 
 switch (viewKind) {
   case 'remote': buildRemoteDom(); break;
-  case 'entries': buildEntriesDom(); break;
   case 'scripts': buildScriptsDom(); break;
-  case 'abilities': buildAbilitiesDom(); break;
 }
 renderDeviceBanner();
 post({ kind: 'ready' });

@@ -1133,23 +1133,9 @@
         },
         {
           "type": "webview",
-          "id": "kopytko.deviceManager.savedText",
-          "icon": "images/roku-device.svg",
-          "name": "Saved Text",
-          "collapsed": true
-        },
-        {
-          "type": "webview",
           "id": "kopytko.deviceManager.scripts",
           "icon": "images/roku-device.svg",
           "name": "Scripts",
-          "collapsed": true
-        },
-        {
-          "type": "webview",
-          "id": "kopytko.deviceManager.abilities",
-          "icon": "images/roku-device.svg",
-          "name": "Device",
           "collapsed": true
         }
       ]

@@ -162,8 +162,8 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 
 `kopytko-roku-device`'s `InstallerClient` drives the Roku developer web-admin page
 (`http://<device-ip>/`, HTTP Digest auth) the same way a developer would in a
-browser. Surfaced in the extension through the Device Manager's Device view. See
-[roku-webadmin.md](./roku-webadmin.md).
+browser. Surfaced in the extension through the Device Manager's Device actions
+section (inside the Remote Control view). See [roku-webadmin.md](./roku-webadmin.md).
 
 | Feature | Status | Doc |
 |---|---|---|
@@ -176,7 +176,7 @@ browser. Surfaced in the extension through the Device Manager's Device view. See
 | Package (sign) a channel into a `.pkg` | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | OS update check | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Reboot | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
-| VS Code UI surface for the above (Device Manager → Device view) | ✅ | [device-manager.md](./device-manager.md) |
+| VS Code UI surface for the above (Device Manager → Remote Control → Device actions) | ✅ | [device-manager.md](./device-manager.md) |
 
 ## Debugging
 
@@ -258,7 +258,7 @@ Roku remote control with everything else `kopytko-roku-device` can do. See
 | Remote-to-script recording — remote presses / sent text append steps to the open editor | ✅ | [device-manager.md](./device-manager.md) |
 | Full RASP runner — press/text/pause/launch/loop/anchors/wait_for_player_state/validate_streaming | ✅ | [device-manager.md](./device-manager.md) |
 | Script library — save/edit/delete/run/cancel + import/export `.rasp` (Roku Remote Tool compatible) | ✅ | [device-manager.md](./device-manager.md) |
-| Device view — quick actions (info/active app/screenshot/update/reboot) + web-admin (install/delete/package/rekey) | ✅ | [device-manager.md](./device-manager.md) |
+| Device actions section (collapsed by default, icon-only pill buttons matching the remote keypad) — screenshot/update/reboot + web-admin (install/delete/package/rekey) | ✅ | [device-manager.md](./device-manager.md) |
 | `kopytko` custom automation script format (second editor mode) | ⬜ | [device-manager.md](./device-manager.md) |
 
 ## Performance & Caching
@@ -301,8 +301,8 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 
 | Feature | Notes |
 |---|---|
-| Device info webview panel | ~~Implemented~~ — Device Manager → Device view opens full device-info as JSON ([device-manager.md](./device-manager.md)). |
+| Device info webview panel | Deliberately dropped from the Device actions section — not needed for a remote-control-first workflow. Still reachable via the [`kopytko-roku` CLI](./roku-device-cli.md) or a raw ECP `device-info` request. |
 | Remote control | ~~Implemented~~ — Device Manager Remote Control view + keyboard remote mode ([device-manager.md](./device-manager.md)). |
-| Web-admin automation commands | ~~Implemented~~ — Device Manager → Device view wires `InstallerClient` (install/delete/package/rekey/screenshot/update/reboot) into the UI ([device-manager.md](./device-manager.md)). Profiling-data download remains package-only. |
+| Web-admin automation commands | ~~Implemented~~ — Device Manager → Device actions section wires `InstallerClient` (install/delete/package/rekey/screenshot/update/reboot) into the UI ([device-manager.md](./device-manager.md)). Profiling-data download remains package-only. |
 | Roku log streaming panel | Always-on syslog channel, independent of debug sessions. |
 | Debugger enhancements | Source maps, profiling, SceneGraph inspector, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |

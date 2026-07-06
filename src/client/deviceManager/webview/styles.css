@@ -5,6 +5,12 @@
    the input fields (entry forms, the Send field). Non-selectability is scoped
    to buttons/labels below instead. */
 body {
+  /* Shared with .remote-btn and .ability-btn (device actions), so both button
+     families move in lockstep if the palette changes. */
+  --roku-purple: #662d91;
+  --roku-purple-hover: #7b3fae;
+  --roku-purple-active: #4e2270;
+
   margin: 0;
   padding: 6px 8px;
   color: var(--vscode-foreground);
@@ -80,11 +86,12 @@ button {
   padding: 4px 10px;
   font-size: 12px;
   font-family: var(--vscode-font-family);
-  background: var(--vscode-button-background);
+  background: var(--roku-purple);
   color: var(--vscode-button-foreground);
   cursor: pointer;
 }
-button:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+button:hover:not(:disabled) { background: var(--roku-purple-hover); }
+button:active:not(:disabled) { background: var(--roku-purple-active); }
 button:disabled { opacity: 0.45; cursor: default; }
 
 button.secondary {
@@ -114,10 +121,6 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
    Replay/Options, Rev/Play/Fwd). */
 
 #remote {
-  --roku-purple: #662d91;
-  --roku-purple-hover: #7b3fae;
-  --roku-purple-active: #4e2270;
-
   display: grid;
   grid-template-areas:
     "back   back   back   home  home  home"
@@ -179,7 +182,7 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 }
 #kb-toggle-row input {
   cursor: pointer;
-  accent-color: var(--vscode-button-background, #0e639c);
+  accent-color: var(--roku-purple);
 }
 
 #kb-hint {
@@ -303,19 +306,48 @@ input[type="checkbox"] { margin: 0; }
   white-space: normal;
 }
 
-/* ── abilities ── */
+/* ── device actions ── */
 
+/* Collapsible disclosure, closed by default — styled like the h3 section
+   headers above but clickable, with a rotating chevron. */
+#device-actions {
+  margin: 10px 0;
+}
+#device-actions > summary {
+  cursor: pointer;
+  list-style: none;
+  margin: 10px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+#device-actions > summary::-webkit-details-marker { display: none; }
+#device-actions > summary::before { content: '▸'; display: inline-block; margin-right: 4px; }
+#device-actions[open] > summary::before { content: '▾'; }
+
+/* Icon-only pills, same shape/palette as .remote-btn — labels live in the
+   title tooltip, matching how the D-pad buttons work. */
 .ability-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-width: 280px;
+  margin: 0 auto;
 }
 
 .ability-btn {
-  text-align: left;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--roku-purple);
+  color: #ffffff;
 }
-.ability-btn:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
-.ability-btn.danger { color: var(--vscode-errorForeground); }
+.ability-btn:hover:not(:disabled) { background: var(--roku-purple-hover); }
+.ability-btn:active:not(:disabled) { background: var(--roku-purple-active); }
+.ability-btn.danger { outline: 2px solid var(--vscode-errorForeground); outline-offset: 1px; }
+.ability-btn svg { display: block; }

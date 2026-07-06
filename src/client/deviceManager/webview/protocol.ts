@@ -56,10 +56,8 @@ export type ExtMsg =
 
 // ── webview → extension ─────────────────────────────────────────────────────
 
-/** Web-admin / quick actions triggered from the Device view. */
+/** Device actions triggered from the merged Remote Control view. */
 export type AbilityAction =
-  | 'deviceInfo'
-  | 'activeApp'
   | 'screenshot'
   | 'checkUpdate'
   | 'reboot'

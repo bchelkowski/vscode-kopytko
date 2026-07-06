@@ -1,10 +1,12 @@
 # Device Manager
 
 A dedicated Activity Bar container (`Kopytko Device Manager`) bundling everything
-needed to drive a Roku device by hand or by script: an on-screen **Remote
-Control**, reusable **Saved Text** entries (including credentials), a **RASP
-script** library with an editor tab and runner, and a **Device** abilities view
-surfacing ECP quick actions and the full developer web-admin automation.
+needed to drive a Roku device by hand or by script, across two sidebar views:
+
+- **Remote Control** — the on-screen remote, a collapsed **Device actions**
+  disclosure (icon-only web-admin buttons), and **Saved Text** entries
+  (including credentials), stacked in that order.
+- **Scripts** — a **RASP script** library with an editor tab and runner.
 
 All views target the **active device** selected in the Roku Devices view and
 react live to device changes.
@@ -90,10 +92,11 @@ register it (VSCodeVim and rokucommunity's BrightScript extension already do,
 and both are likely co-installed), and it only fires while a text editor has
 focus anyway.
 
-## Saved Text view
+## Saved Text section
 
-Reusable entries for text you type on devices often — search terms, deep-link
-IDs, and test-account credentials:
+Part of the Remote Control view, below Device actions. Reusable entries for
+text you type on devices often — search terms, deep-link IDs, and
+test-account credentials:
 
 - **Text** entries hold one string and one **Send** button.
 - **Credentials** entries hold an email/login and a password — two independent
@@ -192,15 +195,19 @@ time — scripts drive the device's single remote-control input.
 Settings: `kopytko.deviceManager.runner.pollIntervalMs` (default 500),
 `kopytko.deviceManager.runner.waitTimeoutSec` (default 30).
 
-## Device view (abilities hub)
+## Device actions section
 
-Two button groups; anything that needs input uses native VS Code dialogs
-instead of sidebar forms:
+Part of the Remote Control view, between the remote and Saved Text — a
+collapsed `<details>` disclosure ("▸ Device actions") that expands into a
+2-column grid of icon-only pill buttons, styled identically to the remote
+keypad buttons above (same purple pill shape, tooltip-only labels, no
+visible text). Anything that needs input uses native VS Code dialogs instead
+of sidebar forms:
 
-- **Quick actions** — Device info (full ECP `device-info` opened as JSON),
-  Active app, Screenshot (captured via the web-admin; a save dialog asks where
-  to write the `.jpg`, then it opens), Check update, Reboot (confirm modal).
-- **Web admin** — Install channel (zip picker), Delete channel (confirm),
+- Screenshot (captured via the web-admin; a save dialog asks where to write
+  the `.jpg`, then it opens), Check update, Reboot (confirm modal, red
+  outline).
+- Install channel (zip picker), Delete channel (confirm, red outline),
   Package (zip picker → app name/version → signing password → save `.pkg`),
   Rekey (pkg picker → signing password). See [roku-webadmin.md](./roku-webadmin.md)
   for the underlying endpoint behavior.
@@ -208,6 +215,12 @@ instead of sidebar forms:
 Web-admin actions authenticate with the device's developer password (HTTP
 Digest, user `rokudev`) from the shared device-password store; if none is
 saved you're prompted once with an option to save it.
+
+The Device info / Active app quick actions (which just opened raw ECP
+`device-info` JSON or queried the foreground app) were removed — they
+weren't needed for a remote-control-first tool. Reach for the
+[`kopytko-roku` CLI](./roku-device-cli.md) or a raw ECP `device-info` request
+if you need that data.
 
 ## Storage summary
 
@@ -232,7 +245,8 @@ saved you're prompted once with an option to save it.
   package (`EcpClient.keypress/keydown/keyup/sendText/queryMediaPlayer/queryActiveApp`,
   `EcpKeys`, `textToLitKeys`); the RASP parser/runner and all UI live in the
   extension (`src/client/deviceManager/`) — the package stays script-format-agnostic.
-- One webview bundle serves all four sidebar views, dispatched on
+- One webview bundle serves both sidebar views (Remote Control — which also
+  renders Device actions and Saved Text — and Scripts), dispatched on
   `<body data-view>`; the script editor is a second bundle (it includes js-yaml
   for live validation). Sidebar views don't retain context when hidden — all
   state re-pushes on `ready`/visibility, and runs live host-side.

@@ -17,25 +17,6 @@ export async function runAbilityAction(
 ): Promise<{ ok: boolean; message?: string }> {
   try {
     switch (action) {
-      case 'deviceInfo': {
-        const info = await abilities.queryDeviceInfo();
-        const doc = await vscode.workspace.openTextDocument({
-          content: JSON.stringify(info, null, 2),
-          language: 'json',
-        });
-        await vscode.window.showTextDocument(doc, { preview: true });
-        return { ok: true };
-      }
-
-      case 'activeApp': {
-        const app = await abilities.queryActiveApp();
-        const label = app
-          ? `${app.name}${app.id ? ` (id: ${app.id})` : ''}${app.version ? ` v${app.version}` : ''}`
-          : 'No active app reported.';
-        void vscode.window.showInformationMessage(`Active app: ${label}`);
-        return { ok: true, message: label };
-      }
-
       case 'screenshot': {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         const dest = await vscode.window.showSaveDialog({
@@ -151,8 +132,6 @@ export async function runAbilityAction(
 
 function actionLabel(action: AbilityAction): string {
   switch (action) {
-    case 'deviceInfo': return 'Device info';
-    case 'activeApp': return 'Active app';
     case 'screenshot': return 'Screenshot';
     case 'checkUpdate': return 'Update check';
     case 'reboot': return 'Reboot';
