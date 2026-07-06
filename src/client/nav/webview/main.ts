@@ -31,10 +31,14 @@ const ICONS: Record<NavTarget, string> = {
     <path d="M7.5 4.5 9 3a2.47 2.47 0 0 1 3.5 0L13 3.5A2.47 2.47 0 0 1 13 7l-1.5 1.5"/>
     <path d="M8.5 11.5 7 13a2.47 2.47 0 0 1-3.5 0L3 12.5A2.47 2.47 0 0 1 3 9l1.5-1.5"/>
   </svg>`,
-  deviceManager: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="5" y="1.5" width="6" height="13" rx="2"/>
-    <circle cx="8" cy="6" r="1.4"/>
-    <path d="M6.8 10.5h2.4M6.8 12.3h2.4"/>
+  deviceManager: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.25" y="0.75" width="7.5" height="14.5" rx="2.6"/>
+    <circle cx="6.1" cy="3.1" r="0.15" fill="currentColor" stroke="none"/>
+    <circle cx="9.9" cy="3.1" r="0.15" fill="currentColor" stroke="none"/>
+    <circle cx="8" cy="7.3" r="2.15"/>
+    <circle cx="8" cy="7.3" r="0.15" fill="currentColor" stroke="none"/>
+    <path d="M5.6 11.65h1.9M8.5 11.65h1.9"/>
+    <path d="M6.3 13.5h3.4"/>
   </svg>`,
 };
 

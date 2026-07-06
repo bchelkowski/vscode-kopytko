@@ -1092,7 +1092,7 @@
         {
           "id": "kopytko-device-manager",
           "title": "Kopytko Device Manager",
-          "icon": "images/roku-device.svg"
+          "icon": "images/remote-control.svg"
         }
       ],
       "panel": [
@@ -1128,7 +1128,7 @@
         {
           "type": "webview",
           "id": "kopytko.deviceManager.remote",
-          "icon": "images/roku-device.svg",
+          "icon": "images/remote-control.svg",
           "name": "Remote Control"
         },
         {
