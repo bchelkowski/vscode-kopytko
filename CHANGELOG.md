@@ -1,6 +1,29 @@
 # Changelog
 
 
+## [1.7.0] - 2026-07-06
+
+### Added
+- Add a dedicated remote-control icon for Device Manager
+- Remote-to-script recording + keyboard-mode UX fixes
+- Match Remote Control layout to Roku remote-tool keypad
+- Add Device Manager tool
+- Add Deep Linking tool
+
+### Fixed
+- Let the user choose the screenshot save location
+- Allow selecting and copy/pasting text in Device Manager inputs
+- Drop unsupported 'warn' from observeFieldStyle type
+- Correct stale formatter/casing counts and Perfetto docs on site
+
+### Changed
+- Consume kopytko-roku-device from npm
+- Consume kopytko-roku-device for all device communication
+
+### Maintenance
+- Bump kopytko-roku-device to v1.1.0
+- Bump kopytko-roku-device to v1.0.0
+
 ## [1.6.0] - 2026-07-02
 
 ### Added
