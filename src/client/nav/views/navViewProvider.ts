@@ -36,6 +36,9 @@ export class NavViewProvider implements vscode.WebviewViewProvider {
         case 'deepLinking':
           void vscode.commands.executeCommand('kopytko.deepLinking.open');
           break;
+        case 'deviceManager':
+          void vscode.commands.executeCommand('kopytko.deviceManager.open');
+          break;
       }
     });
   }

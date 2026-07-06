@@ -5,9 +5,12 @@ Installer, Utilities, Packager, and Update tabs a developer normally drives by h
 browser to install a dev channel, rekey a device, grab a screenshot, package a signed
 `.pkg`, or check for/trigger a system update and reboot.
 
-**Package-layer only for now** — this is implemented in
-[`kopytko-roku-device`](../packages/roku-device/README.md)'s `InstallerClient`. There is
-no VS Code command or UI surface for it yet (see `docs/features.md`'s roadmap).
+Implemented in [`kopytko-roku-device`](../packages/roku-device/README.md)'s
+`InstallerClient`, and surfaced in the extension through the **Device Manager's Device
+view** (install/delete/package/rekey/screenshot/update-check/reboot — see
+[device-manager.md](./device-manager.md)). Profiling-data download remains
+package-layer-only. Passwords come from the shared device credential store (OS
+keychain), prompting once when missing.
 
 ---
 

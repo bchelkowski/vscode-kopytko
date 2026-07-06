@@ -47,6 +47,27 @@ await ecp.sendInput('192.168.1.20', { contentId: 'movie-123', mediaType: 'movie'
 // Channel icon — raw bytes + content type (binary-safe)
 const { data, contentType } = await ecp.queryAppIcon('192.168.1.20', '12');`;
 
+const remoteExample = `import { EcpClient, EcpKeys, textToLitKeys } from 'kopytko-roku-device';
+
+const ecp = new EcpClient();
+
+// Press-and-release a named key (POST /keypress/{key})
+await ecp.keypress('192.168.1.20', EcpKeys.Home);
+
+// Hold a key — the device keeps it pressed until the matching keyup
+await ecp.keydown('192.168.1.20', EcpKeys.Right);
+await ecp.keyup('192.168.1.20', EcpKeys.Right);
+
+// Type on the on-screen keyboard: one strictly sequential keypress per
+// Unicode code point, Lit_-encoded ('€' → 'Lit_%E2%82%AC')
+await ecp.sendText('192.168.1.20', 'my search term');
+textToLitKeys('r€'); // → ['Lit_r', 'Lit_%E2%82%AC']
+
+// Playback state — foreground app + media player (state, codecs, DRM)
+const active = await ecp.queryActiveApp('192.168.1.20');
+const player = await ecp.queryMediaPlayer('192.168.1.20');
+if (player.state === 'play') console.log(player.format?.video, player.format?.drm);`;
+
 const collectorExample = `import {
   DebugConsoleClient,
   ChanperfCollector,
@@ -81,7 +102,7 @@ await commands.addBreakpoints([{ filePath: 'pkg:/source/main.brs', lineNumber: 4
 
 const subsystems = [
   { name: 'SSDP discovery', port: 'UDP 1900', api: 'SsdpClient', desc: 'Active M-SEARCH scans + passive NOTIFY alive/byebye monitoring with per-IP debounce.' },
-  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, registry, app state, chanperf, sgnodes, object counts, rendezvous + beacon tracking, dev-password validation (digest auth).' },
+  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, remote-control keys (keypress/keydown/keyup + Lit_ text entry), active app, media-player state, registry, app state, chanperf, sgnodes, object counts, rendezvous + beacon tracking, dev-password validation (digest auth).' },
   { name: 'Discovery orchestration', port: '—', api: 'DeviceManager', desc: 'Merges SSDP, ECP health checks, persistence, and network-change events into one device list. Storage and network signals are injected interfaces.' },
   { name: 'SceneGraph debug console', port: 'TCP 8080', api: 'DebugConsoleClient', desc: 'Idle-framed request/response console (chanperf, sgnodes, r2d2_bitmaps, free) with exponential-backoff auto-reconnect.' },
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
@@ -179,6 +200,13 @@ await installer.checkForUpdate('192.168.1.20', password);`;
       <CodePanel code={ecpExample} lang="typescript" />
     </section>
 
+    <!-- Remote control -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Remote control & playback state</h2>
+      <p class="text-slate-400 text-sm mb-4">Simulate the remote (<code class="text-rose-300">/keypress</code>, <code class="text-rose-300">/keydown</code>, <code class="text-rose-300">/keyup</code>), type on the on-screen keyboard with ordered <code class="text-rose-300">Lit_</code> keypresses, and query the foreground app and media-player state — the primitives under the extension's Device Manager remote and RASP script runner.</p>
+      <CodePanel code={remoteExample} lang="typescript" />
+    </section>
+
     <!-- Diagnostics -->
     <section>
       <h2 class="text-xl font-bold text-white mb-2">Runtime metrics</h2>
@@ -196,7 +224,7 @@ await installer.checkForUpdate('192.168.1.20', password);`;
     <!-- Web-admin automation -->
     <section>
       <h2 class="text-xl font-bold text-white mb-2">Web-admin automation</h2>
-      <p class="text-slate-400 text-sm mb-4">Drives the developer web-admin page (<code class="text-rose-300">http://&lt;device-ip&gt;/</code>) the same way a browser would — install/delete/rekey/package a channel, capture a screenshot, download profiling data, or check for updates and reboot. Package-layer only for now; no VS Code command surface yet.</p>
+      <p class="text-slate-400 text-sm mb-4">Drives the developer web-admin page (<code class="text-rose-300">http://&lt;device-ip&gt;/</code>) the same way a browser would — install/delete/rekey/package a channel, capture a screenshot, download profiling data, or check for updates and reboot. Surfaced in the extension through the Device Manager's Device view.</p>
       <CodePanel code={installerExample} lang="typescript" />
     </section>
 

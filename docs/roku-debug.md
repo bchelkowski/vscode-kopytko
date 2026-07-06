@@ -237,6 +237,6 @@ These features could be built on top of the socket-based debug protocol and Roku
 | **Deep link debugging** | Sideload, set breakpoints, then trigger a deep link via ECP `launch`. | Medium |
 | **Watch expressions** | Persistent watch panel with auto-refresh on stop (via `EXECUTE` command). | Low |
 | **RALE integration** | Inject Roku Advanced Layout Editor's `TrackerTask.xml` at deploy time. | Medium |
-| **Remote control webview** | Send key presses via ECP `/keypress/` from a VS Code webview. | Low |
+| **Remote control webview** | ~~Implemented~~ — see the Device Manager's Remote Control view ([device-manager.md](./device-manager.md)). | — |
 | **Inline variable values** | Show variable values inline in the editor (VS Code `InlineValueProvider` API). | Medium |
 | **Debug visualizers** | Custom renderers for Roku types (node trees, AA tables). | Medium |

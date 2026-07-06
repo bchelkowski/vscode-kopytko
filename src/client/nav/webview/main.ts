@@ -31,6 +31,11 @@ const ICONS: Record<NavTarget, string> = {
     <path d="M7.5 4.5 9 3a2.47 2.47 0 0 1 3.5 0L13 3.5A2.47 2.47 0 0 1 13 7l-1.5 1.5"/>
     <path d="M8.5 11.5 7 13a2.47 2.47 0 0 1-3.5 0L3 12.5A2.47 2.47 0 0 1 3 9l1.5-1.5"/>
   </svg>`,
+  deviceManager: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5" y="1.5" width="6" height="13" rx="2"/>
+    <circle cx="8" cy="6" r="1.4"/>
+    <path d="M6.8 10.5h2.4M6.8 12.3h2.4"/>
+  </svg>`,
 };
 
 const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
@@ -38,6 +43,7 @@ const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
   { target: 'perfetto', title: 'Perfetto', desc: 'App tracing timeline' },
   { target: 'nodes', title: 'Node Tree', desc: 'SceneGraph node chart' },
   { target: 'deepLinking', title: 'Deep Linking', desc: 'Launch channels with contentId params' },
+  { target: 'deviceManager', title: 'Device Manager', desc: 'Remote control, scripts, web admin' },
 ];
 
 function buildDom(): void {

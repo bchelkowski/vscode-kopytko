@@ -747,6 +747,38 @@ before assuming a regression** — `retainContextWhenHidden` keeps the webview's
 JS execution alive across hide/show, which also means it can carry forward into
 a bad state after the host process suspends/resumes, unlike a normal page reload.
 
+## Device Manager webviews (2026-07-06) — patterns that differ from the panels above
+
+The Device Manager (`src/client/deviceManager/`) introduced two webview patterns
+not used by the Diagnostics/Perfetto/Deep Linking tools; recorded here because
+this file is the de-facto webview-architecture reference:
+
+- **One bundle, four sidebar views.** All four `kopytko.deviceManager.*` webview
+  views load the same `out/device-manager-webview/main.js`; the provider stamps
+  `<body data-view="remote|entries|scripts|abilities">` and `main.ts` dispatches
+  on it. One `DeviceManagerViewProvider` class is instantiated 4× with a `kind`
+  param. Saves three esbuild entries + three `compile`/`bundle` chain slots.
+- **Sidebar `WebviewView`s do NOT support `retainContextWhenHidden`** (that's a
+  `WebviewPanel` option; for views VS Code decides). Collapsing a Device Manager
+  view destroys its JS state — so every view re-posts `{kind:'ready'}` on load,
+  the provider re-pushes ALL state on `ready` AND `onDidChangeVisibility(visible)`,
+  and anything long-running lives host-side (`ScriptRunnerService` owns runs;
+  a held remote key gets a safety `keyup` from `onDidDispose`).
+- **VS Code re-dispatches webview keyboard events to the workbench**, so
+  extension keybindings (`when: kopytko.deviceManager.remoteMode`) fire even
+  while the webview has focus. Consequence: the remote view's keydown listener
+  must capture ONLY printable characters (→ `Lit_` keypresses) and leave
+  arrows/Enter/Escape to the package.json keybindings — handling both in the
+  webview would double-send every navigation key.
+- **`type`-command override rejected for remote mode**: `registerCommand('type')`
+  is exclusive per window (VSCodeVim and rokucommunity's extension already
+  register it — a second registration throws) and only fires with a text editor
+  focused. setContext + keybindings + webview char capture covers the same need
+  without the conflict.
+- **JS default-param gotcha in tests**: `makeController(activeDevice = DEVICE)`
+  called with an explicit `undefined` still gets the DEFAULT — "no device" test
+  fixtures must pass `null`, not `undefined`.
+
 ## Directory layout
 
 **Since 2026-07-03 the transport/parsers/collectors layers live in `packages/roku-device/`

@@ -160,7 +160,7 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 
 `kopytko-roku-device`'s `InstallerClient` drives the Roku developer web-admin page
 (`http://<device-ip>/`, HTTP Digest auth) the same way a developer would in a
-browser. **Package-layer only for now** — no VS Code command/UI wiring yet. See
+browser. Surfaced in the extension through the Device Manager's Device view. See
 [roku-webadmin.md](./roku-webadmin.md).
 
 | Feature | Status | Doc |
@@ -174,7 +174,7 @@ browser. **Package-layer only for now** — no VS Code command/UI wiring yet. Se
 | Package (sign) a channel into a `.pkg` | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | OS update check | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Reboot | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
-| VS Code command/UI surface for the above | ⬜ | [roku-webadmin.md](./roku-webadmin.md) |
+| VS Code UI surface for the above (Device Manager → Device view) | ✅ | [device-manager.md](./device-manager.md) |
 
 ## Debugging
 
@@ -207,7 +207,7 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Bottom-panel webview with live D3 charts — memory/CPU/nodes/objects/textures, rendezvous + beacon overlays, app-state shading | ✅ | [diagnostics.md](./diagnostics.md) |
 | In-panel node / object / rendezvous / texture lists (click-to-open-file on the node & rendezvous rows) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Record any channel sharing the sideloaded dev key, not just "dev" | ✅ | [diagnostics.md](./diagnostics.md) |
-| Tools sidebar — quick-nav buttons to Diagnostics/Perfetto/Node Tree/Deep Linking | ✅ | [diagnostics.md](./diagnostics.md) |
+| Tools sidebar — quick-nav buttons to Diagnostics/Perfetto/Node Tree/Deep Linking/Device Manager | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
 
@@ -237,6 +237,26 @@ Editor-tab tool for exercising Roku deep links against the active device. See [d
 | Send via Launch (`POST /launch/{appId}`) or Input (`POST /input`, roInput to running channel) | ✅ | [deep-linking.md](./deep-linking.md) |
 | Named parameter sets — save / use / edit / delete, persisted per workspace | ✅ | [deep-linking.md](./deep-linking.md) |
 | Tools-sidebar button + `Kopytko: Open Deep Linking` command | ✅ | [deep-linking.md](./deep-linking.md) |
+
+## Device Manager
+
+Activity-bar container (drag it to the right-hand Secondary Side Bar) joining a
+Roku remote control with everything else `kopytko-roku-device` can do. See
+[device-manager.md](./device-manager.md).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Remote Control view — physical-remote button layout (ECP `/keypress`) | ✅ | [device-manager.md](./device-manager.md) |
+| Press-and-hold → `keydown`/`keyup` after a configurable threshold (default 1 s) | ✅ | [device-manager.md](./device-manager.md) |
+| Text input — ordered, sequential `Lit_` keypresses (UTF-8 safe) | ✅ | [device-manager.md](./device-manager.md) |
+| Keyboard remote mode — keybindings drive the device from anywhere; typing with the view focused | ✅ | [device-manager.md](./device-manager.md) |
+| Saved Text entries — `text` and `credentials` types, per-field Send buttons | ✅ | [device-manager.md](./device-manager.md) |
+| Credential passwords in SecretStorage (OS keychain), never in Memento or the webview | ✅ | [device-manager.md](./device-manager.md) |
+| RASP script editor tab — live validation, snippets, format switcher | ✅ | [device-manager.md](./device-manager.md) |
+| Full RASP runner — press/text/pause/launch/loop/anchors/wait_for_player_state/validate_streaming | ✅ | [device-manager.md](./device-manager.md) |
+| Script library — save/edit/delete/run/cancel + import/export `.rasp` (Roku Remote Tool compatible) | ✅ | [device-manager.md](./device-manager.md) |
+| Device view — quick actions (info/active app/screenshot/update/reboot) + web-admin (install/delete/package/rekey) | ✅ | [device-manager.md](./device-manager.md) |
+| `kopytko` custom automation script format (second editor mode) | ⬜ | [device-manager.md](./device-manager.md) |
 
 ## Performance & Caching
 
@@ -278,8 +298,8 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 
 | Feature | Notes |
 |---|---|
-| Device info webview panel | Detailed device info in a dedicated panel. |
-| Remote control | Send key presses to the active Roku from a panel / command palette. |
-| Web-admin automation commands | Wire `InstallerClient` (delete/install/rekey/screenshot/profiling/package/update/reboot — see [roku-webadmin.md](./roku-webadmin.md)) into VS Code commands/context menus; the package layer is done, only the extension surface is missing. |
+| Device info webview panel | ~~Implemented~~ — Device Manager → Device view opens full device-info as JSON ([device-manager.md](./device-manager.md)). |
+| Remote control | ~~Implemented~~ — Device Manager Remote Control view + keyboard remote mode ([device-manager.md](./device-manager.md)). |
+| Web-admin automation commands | ~~Implemented~~ — Device Manager → Device view wires `InstallerClient` (install/delete/package/rekey/screenshot/update/reboot) into the UI ([device-manager.md](./device-manager.md)). Profiling-data download remains package-only. |
 | Roku log streaming panel | Always-on syslog channel, independent of debug sessions. |
 | Debugger enhancements | Source maps, profiling, SceneGraph inspector, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |

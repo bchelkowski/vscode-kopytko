@@ -30,6 +30,10 @@ const allSettings = [
   { key: 'kopytko.deviceDiscovery.enabled', type: 'boolean', default: 'true', desc: 'Enable SSDP-based automatic Roku device discovery.' },
   { key: 'kopytko.deviceDiscovery.scanTimeout', type: 'number', default: '5000', desc: 'SSDP scan timeout in milliseconds.' },
   { key: 'kopytko.deviceDiscovery.showNotifications', type: 'boolean', default: 'true', desc: 'Show notification when a device goes online or offline.' },
+  // Device Manager
+  { key: 'kopytko.deviceManager.holdThresholdMs', type: 'number', default: '1000', desc: 'Remote Control: hold time (ms) before a press becomes a keydown/keyup hold.' },
+  { key: 'kopytko.deviceManager.runner.pollIntervalMs', type: 'number', default: '500', desc: 'Script runner: device poll interval for launch / player-state / validation steps.' },
+  { key: 'kopytko.deviceManager.runner.waitTimeoutSec', type: 'number', default: '30', desc: 'Script runner: timeout for wait_for_player_state and validate_streaming.' },
   // Lint rule overrides
   { key: 'kopytko.lint.rules.type/missing-return-type', type: 'enum', default: 'warning', desc: 'Severity for missing return-type annotations.' },
   { key: 'kopytko.lint.rules.type/missing-param-type', type: 'enum', default: 'warning', desc: 'Severity for missing parameter-type annotations.' },
@@ -474,6 +478,39 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Device Manager -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Device Manager</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            A dedicated sidebar container — drag it to the right-hand Secondary Side Bar to keep it next to your code — joining an on-screen <strong class="text-white">Remote Control</strong> with everything else the device can do: reusable text/credentials entries, a <strong class="text-white">RASP automation-script</strong> library compatible with Roku's official Remote Tool, and one-click access to the developer web-admin (install, delete, package, rekey, screenshot, update, reboot).
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Remote laid out like a physical Roku remote — click for keypress, hold ≥1 s for keydown/keyup (scrubbing works)',
+              'Text field types on the device keyboard — ordered, sequential Lit_ keypresses, UTF-8 safe',
+              'Keyboard remote mode — arrows/Enter/Escape drive the device from anywhere; status-bar indicator, Ctrl+K exits',
+              'Saved Text entries: text and credentials types with a Send button per field; passwords in the OS keychain, never in settings or the webview',
+              'RASP script editor tab — live validation, snippet toolbar, per-step run progress with cancel',
+              'Full RASP runner: press, text, pause, launch, loops, reusable blocks, wait_for_player_state, validate_streaming',
+              'Import/export .rasp files — scripts round-trip with the Roku Remote Tool',
+              'Device view: device info, active app, screenshot, update check, reboot + full web-admin automation',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="Device Manager sidebar"
+          placeholder="Secondary sidebar with a Roku-style remote control (D-pad, media keys, text field), saved credentials entries with Send buttons, and a script list with run progress"
+        />
+      </div>
+    </section>
+
     <!-- .kopytkorc -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">.kopytkorc configuration</h2>
@@ -513,6 +550,9 @@ const kopytkoRcExample = `// .kopytkorc
               ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
               ['Read registry', '', 'View device registry sections in a virtual document'],
               ['Open Deep Linking', '', 'Launch channels with contentId / roInput deep-link parameters'],
+              ['Open Device Manager', '', 'Reveal the Remote Control view (remote, saved text, scripts, device actions)'],
+              ['Toggle Remote Control Keyboard Mode', 'Ctrl+K (exit)', 'Drive the Roku with the keyboard — arrows, Enter, Escape, media keys'],
+              ['New Device Script', '', 'Open the RASP automation-script editor tab'],
               ['Add / Remove favorite', '', 'Persist a device across restarts'],
             ].map(([cmd, kb, desc]) => (
               <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">

@@ -11,6 +11,7 @@ import { registerDiagnostics } from './client/activation/diagnostics';
 import { registerPerfetto } from './client/activation/perfetto';
 import { registerNodes } from './client/activation/nodes';
 import { registerDeepLinking } from './client/activation/deepLinking';
+import { registerDeviceManager } from './client/activation/deviceManager';
 import { registerDebug } from './client/activation/debug';
 import { registerNav } from './client/activation/nav';
 
@@ -32,6 +33,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerPerfetto(context, discovery);
   registerNodes(context, discovery);
   registerDeepLinking(context, discovery);
+  registerDeviceManager(context, discovery);
   registerNav(context);
   debugFactory = registerDebug(context, discovery);
 }

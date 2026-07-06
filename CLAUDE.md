@@ -96,6 +96,7 @@ For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or 
 | [docs/roku-debug.md](docs/roku-debug.md) | Debugger, launch config |
 | [docs/diagnostics.md](docs/diagnostics.md) | Runtime diagnostics panel — data sources, collectors, NDJSON, settings |
 | [docs/roku-webadmin.md](docs/roku-webadmin.md) | Developer web-admin automation (install/rekey/package/screenshot/update/reboot) |
+| [docs/device-manager.md](docs/device-manager.md) | Device Manager — remote control, keyboard mode, saved text entries, RASP scripts, abilities hub |
 | [packages/formatter/README.md](packages/formatter/README.md) | Formatter CLI, library API, CI integration |
 | [packages/roku-device/README.md](packages/roku-device/README.md) | Device communication package — SSDP, ECP, debug console/protocol, collectors, Perfetto |
 | [docs/publishing.md](docs/publishing.md) | npm and VS Code Marketplace publishing |
