@@ -177,13 +177,14 @@ function wireTextSend(): void {
   };
 
   send.addEventListener('click', doSend);
+  // Typing here stays local by design — the remote-mode capture skips this
+  // input by id. No stopPropagation: it would hide the event from VS Code's
+  // webview keyboard handling (clipboard shortcuts, keybinding re-dispatch).
   input.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
       doSend();
     }
-    // Keep typing in the input local — never captured by remote mode.
-    ev.stopPropagation();
   });
 }
 

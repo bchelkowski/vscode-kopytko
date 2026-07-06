@@ -1,13 +1,23 @@
 /* Device Manager sidebar views — styles matching the Diagnostics/Deep Linking
    panels for consistency. Narrow-sidebar-first: everything works at ~250px. */
 
+/* NOTE: no user-select: none on body — it breaks selecting/copying text in
+   the input fields (entry forms, the Send field). Non-selectability is scoped
+   to buttons/labels below instead. */
 body {
   margin: 0;
   padding: 6px 8px;
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
   font-size: 12px;
+}
+
+button, #toolbar, h3, .badge {
   user-select: none;
+}
+
+input, textarea {
+  user-select: text;
 }
 
 h3 {

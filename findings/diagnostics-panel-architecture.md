@@ -778,6 +778,14 @@ this file is the de-facto webview-architecture reference:
 - **JS default-param gotcha in tests**: `makeController(activeDevice = DEVICE)`
   called with an explicit `undefined` still gets the DEFAULT — "no device" test
   fixtures must pass `null`, not `undefined`.
+- **Never put `user-select: none` on a webview's `body`** — it propagates into
+  the input fields and breaks selecting/copying their text (user-reported on
+  the Saved Text entry form, 2026-07-06). Scope it to `button`/labels/toolbar
+  elements and explicitly set `input, textarea { user-select: text }`. Note
+  the Deep Linking webview never needed `user-select` at all. Related: don't
+  `stopPropagation()` keydown events inside webview inputs either — it hides
+  them from VS Code's webview keyboard handling (clipboard shortcuts /
+  workbench re-dispatch); prefer target checks in the document-level handler.
 
 ## Directory layout
 
