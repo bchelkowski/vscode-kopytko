@@ -1,6 +1,6 @@
 {
   "name": "kopytko-roku-device",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Roku device communication toolkit: SSDP discovery, ECP client, SceneGraph debug console, BrightScript debug protocol, diagnostics collectors, and Perfetto tracing.",
   "license": "MIT",
   "author": "bchelkowski",
