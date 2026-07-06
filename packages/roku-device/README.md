@@ -13,6 +13,9 @@ themselves can depend on it without circularity.
 npm install kopytko-roku-device
 ```
 
+Also ships a `kopytko-roku` terminal CLI covering ECP + web-admin operations —
+see [CLI](#cli) below.
+
 Requires Node.js >= 24. No runtime dependencies beyond `ws` (Perfetto streaming).
 
 ## What's inside
@@ -106,6 +109,64 @@ textToLitKeys('r€'); // → ['Lit_r', 'Lit_%E2%82%AC']
 Roku-TV-only volume/power/channel/input keys). `isValidEcpKey()` accepts named
 keys and `Lit_`-prefixed literals.
 
+### ECP method reference
+
+Every `EcpClient` method, mapped to its endpoint (default port 8060 unless noted):
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `queryDeviceInfo` | `GET /query/device-info` | Device model/serial/software-version/etc. |
+| `checkDeviceAlive` | `GET /query/device-info` | Reachability check (swallows errors) |
+| `queryApps` | `GET /query/apps` | Installed channel list |
+| `queryActiveApp` | `GET /query/active-app` | Foreground channel |
+| `queryMediaPlayer` | `GET /query/media-player` | Playback state/position/duration |
+| `queryAppIcon` | `GET /query/icon/{appId}` | Channel icon bytes |
+| `queryRegistry` | `GET /query/registry/{channelId}` | Channel registry dump (dev mode) |
+| `queryChanperf` | `GET /query/chanperf` | Per-channel CPU/memory (raw XML) |
+| `querySgNodes` | `GET /query/sgnodes/{all\|roots}` | SceneGraph node tree, all nodes or only un-parented roots (raw XML) |
+| `querySgNodesById` | `GET /query/sgnodes/nodes?node-id=` | SceneGraph nodes matching one node id (raw XML) |
+| `queryR2d2Bitmaps` | `GET /query/r2d2-bitmaps` | GPU texture/bitmap memory (raw XML, dev mode) |
+| `queryGraphicsFrameRate` | `GET /query/graphics-frame-rate` | Recent rendered FPS, Roku OS 12.0+ (raw XML, dev mode) |
+| `queryAppObjectCounts` | `GET /query/app-object-counts/{appId}` | BrightScript object counts/memory (raw XML) |
+| `queryAppState` | `GET /query/app-state/{appId}` | `'active'\|'background'\|'inactive'\|'unknown'` |
+| `queryTvChannels` | `GET /query/tv-channels` | TV tuner channel list — **Roku TV only** |
+| `queryTvActiveChannel` | `GET /query/tv-active-channel` | Current TV channel/signal — **Roku TV only** |
+| `queryRendezvousEvents` | `GET /query/sgrendezvous` | Drains queued rendezvous events |
+| `enableRendezvousTracking` / `disableRendezvousTracking` | `POST /sgrendezvous/track` / `/untrack` | Toggle rendezvous logging |
+| `queryFwBeacons` | `GET /query/fwbeacons` | Drains queued framework-beacon events |
+| `enableFwBeaconTracking` / `disableFwBeaconTracking` | `POST /fwbeacons/track/{appId}` / `/untrack/{appId}` | Toggle beacon tracking for a channel |
+| `launchApp` | `POST /launch/{appId}` | Launch/relaunch with optional deep-link params |
+| `sendInput` | `POST /input` | Deep-link params to the foreground channel (no relaunch) |
+| `keypress` / `keydown` / `keyup` | `POST /keypress\|keydown\|keyup/{key}` | Remote-control key simulation |
+| `sendText` | `POST /keypress/Lit_…` (sequential) | Types a string via `Lit_` keys |
+| `exitApp` | `POST /exit-app/{appId}[/true]` | Suspend/terminate a running channel |
+| `validatePassword` | Digest auth on port 80 | Validates the developer password |
+| `enablePerfettoTracing` (free fn) | `POST /perfetto/enable/{channelId}` | Starts Perfetto tracing, Roku OS 15.2+ |
+| `triggerHeapSnapshot` (free fn) | `POST /perfetto/heapgraph/trigger/{channelId}` | Captures a heap snapshot |
+
+**Deliberately not implemented** — confirmed absent from or removed from the
+[official ECP docs](https://developer.roku.com/dev/docs/external-control-api):
+`/search/*` (removed Roku OS 12.0+), `/query/screensaver`, `/query/textedit-state`,
+`/query/audio-device` (not documented anywhere on the current official page), and
+ECP-2 WebSocket session/subscription endpoints. See `findings/roku-device-api.md`
+in the extension repo for the full rationale.
+
+```ts
+// New in this release: TV queries, exit-app, sgnodes scope/by-id, r2d2-bitmaps, graphics-frame-rate
+await ecp.exitApp('192.168.1.20', 'dev');            // suspend (or terminate if unsupported)
+await ecp.exitApp('192.168.1.20', 'dev', true);       // force-terminate, bypassing Instant Resume
+
+const roots = await ecp.querySgNodes('192.168.1.20', 8060, 'roots'); // un-parented nodes only
+const byId = await ecp.querySgNodesById('192.168.1.20', '42');
+
+const textures = await ecp.queryR2d2Bitmaps('192.168.1.20');    // GPU texture memory, raw XML
+const fps = await ecp.queryGraphicsFrameRate('192.168.1.20');   // raw XML, Roku OS 12.0+
+
+// Roku TV models only
+const channels = await ecp.queryTvChannels('192.168.1.20');
+const tuned = await ecp.queryTvActiveChannel('192.168.1.20');
+```
+
 ### Query playback state
 
 ```ts
@@ -130,7 +191,20 @@ collector.start();
 ```
 
 Collectors never throw into callers — a failed poll skips that interval and the
-collector self-heals when the device answers again.
+collector self-heals when the device answers again. All 10 concrete collectors:
+
+| Collector | Data source | Metric |
+|---|---|---|
+| `ChanperfCollector` | port 8080 console | Per-channel CPU/memory |
+| `EcpChanperfCollector` | ECP `/query/chanperf` | Per-channel CPU/memory (no telnet console needed) |
+| `NodeCountsCollector` | port 8080 console | SceneGraph node counts |
+| `EcpNodeCountsCollector` | ECP `/query/sgnodes/all` | SceneGraph node counts |
+| `EcpObjectCountsCollector` | ECP `/query/app-object-counts` | BrightScript object counts/memory |
+| `TextureCollector` | port 8080 console | GPU texture/bitmap memory |
+| `SystemMemCollector` | port 8080 console | System-wide free memory |
+| `RendezvousCollector` | ECP `/query/sgrendezvous` | Render-thread rendezvous events |
+| `FwBeaconCollector` | ECP `/query/fwbeacons` | App/media lifecycle beacon events |
+| `AppStateCollector` | ECP `/query/app-state` | Foreground/background/inactive polling |
 
 ### Drive the BrightScript debugger
 
@@ -164,6 +238,54 @@ Drives the same Installer/Utilities/Packager/Update tabs a developer would use i
 browser at `http://<device-ip>/`. Digest-auth handshake reuses the same
 `parseDigestChallenge`/`buildDigestAuthHeader` helpers as `EcpClient.validatePassword`.
 
+## CLI
+
+`kopytko-roku` is a zero-dependency terminal client for everything `EcpClient` and
+`InstallerClient` can do — useful for scripting, CI smoke tests, or quick manual
+checks without opening the extension.
+
+```bash
+npm install -g kopytko-roku-device
+kopytko-roku --help
+
+# or without installing globally
+npx kopytko-roku-device ecp device-info --host 192.168.1.20
+```
+
+```
+kopytko-roku discover [--timeout <ms>] [--json]
+kopytko-roku ecp <op> --host <ip> [--port <n>] [--json] [op flags...]
+kopytko-roku installer <op> --host <ip> --password <pw> [op flags...]
+```
+
+Every `ecp` op maps 1:1 to an `EcpClient` method (`device-info`, `apps`,
+`active-app`, `media-player`, `icon`, `launch`, `input`, `keypress`/`keydown`/`keyup`,
+`text`, `exit-app`, `tv-channels`, `tv-active-channel`, `registry`, `chanperf`,
+`sgnodes`, `app-object-counts`, `app-state`, `rendezvous-track`/`-untrack`/`-query`,
+`fwbeacons-track`/`-untrack`/`-query`, `graphics-frame-rate`, `r2d2-bitmaps`,
+`perfetto-enable`, `perfetto-trigger-heap-snapshot`); every `installer` op maps to
+`InstallerClient` (`screenshot`, `install`, `delete`, `rekey`, `package`, `update`,
+`reboot`). Run `kopytko-roku --help` for the full flag reference, or see
+`docs/roku-device-cli.md` in the extension repo.
+
+```bash
+kopytko-roku ecp keypress --host 192.168.1.20 --key Home
+kopytko-roku ecp launch --host 192.168.1.20 --app dev --param contentId=42
+kopytko-roku installer screenshot --host 192.168.1.20 --password secret --out shot.jpg
+```
+
+**Config resolution** (highest priority first): CLI flags → `--config <path>`
+(a JSON file with `{ "host", "password", "port" }`) → `ROKU_HOST`/`ROKU_PASSWORD`
+environment variables. The CLI intentionally does **not** read `.vscode/settings.json`
+or any `.kopytkorc` — unlike `kopytko-format`/`kopytko-lint`, this package stays
+Kopytko-ecosystem- and editor-unaware even at the CLI layer.
+
+**Output**: ops returning a device's raw XML body (`chanperf`, `sgnodes`,
+`r2d2-bitmaps`, `graphics-frame-rate`, `registry`, `tv-channels`, `tv-active-channel`)
+always print that XML as-is — `--json` is a deliberate no-op there, since
+JSON-escaping an XML document just produces an unreadable quoted blob. Everything else
+pretty-prints as JSON. See `docs/roku-device-cli.md` in the extension repo.
+
 ## Device behaviour notes
 
 - `GET /query/sgrendezvous` and `GET /query/fwbeacons` **drain** the device-side
@@ -184,6 +306,17 @@ browser at `http://<device-ip>/`. Digest-auth handshake reuses the same
   `findings/roku-device-api.md` for the confirmed details, plus which of the 9
   actions are live-verified vs. best-effort (rekey/package/update/reboot were not
   live-tested — see that file).
+- `exitApp`, `queryTvChannels`/`queryTvActiveChannel`, `queryGraphicsFrameRate`,
+  `queryR2d2Bitmaps`, and `querySgNodes`'s `roots` scope / `querySgNodesById` are all
+  live-verified (Roku Ultra 4850X, 2026-07-06). The `tv-*` endpoints were only
+  confirmed as an expected 404 on this non-TV hardware — their success response shape
+  on an actual Roku TV remains unverified. `exitApp` (non-forced) suspends via Instant
+  Resume rather than killing the app, confirmed via `queryAppState` reporting
+  `background` afterward. See `findings/roku-device-api.md` for the exact response
+  shapes captured, including the surprising discovery that `sgnodes/all`, `/roots`,
+  and `/nodes` each wrap results in a **different** tag name
+  (`All_Nodes`/`Root_Nodes`/`Nodes_Nodes`) — a naive shared parser will not work
+  across all three.
 
 ## License
 

@@ -710,19 +710,129 @@ export class EcpClient {
   }
 
   /**
-   * Queries the SceneGraph node tree via ECP (`/query/sgnodes/all`).
-   * Returns the raw XML body for the caller to parse.
+   * Queries the SceneGraph node tree via ECP.
+   *
+   * `scope: 'all'` sends `GET /query/sgnodes/all` (every node created by the
+   * app); `scope: 'roots'` sends `GET /query/sgnodes/roots` (only un-parented
+   * nodes). Returns the raw XML body for the caller to parse.
    */
   async querySgNodes(
     ip: string,
     port: number = DEFAULT_ECP_PORT,
+    scope: 'all' | 'roots' = 'all',
   ): Promise<string> {
     const { statusCode, body } = await httpGet(
-      `http://${ip}:${port}/query/sgnodes/all`,
+      `http://${ip}:${port}/query/sgnodes/${scope}`,
       DEFAULT_TIMEOUT_MS,
     );
     if (statusCode !== 200) throw new Error(`sgnodes: HTTP ${statusCode}`);
     return body;
+  }
+
+  /**
+   * Queries SceneGraph nodes matching a specific node id via ECP
+   * (`/query/sgnodes/nodes?node-id=<id>`). Returns the raw XML body for the
+   * caller to parse.
+   */
+  async querySgNodesById(
+    ip: string,
+    nodeId: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const url = `http://${ip}:${port}/query/sgnodes/nodes${buildEcpQueryString({ 'node-id': nodeId })}`;
+    const { statusCode, body } = await httpGet(url, DEFAULT_TIMEOUT_MS);
+    if (statusCode !== 200) throw new Error(`sgnodes/nodes: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
+   * Queries texture/bitmap memory usage via ECP (`/query/r2d2-bitmaps`).
+   * Returns the raw XML body for the caller to parse. Requires developer
+   * mode + "Control by mobile apps" enabled.
+   */
+  async queryR2d2Bitmaps(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(
+      `http://${ip}:${port}/query/r2d2-bitmaps`,
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (statusCode !== 200) throw new Error(`r2d2-bitmaps: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
+   * Queries recent rendered graphics frame rate via ECP
+   * (`/query/graphics-frame-rate`, Roku OS 12.0+). Returns the raw XML body
+   * for the caller to parse. Requires developer mode + "Control by mobile
+   * apps" enabled.
+   */
+  async queryGraphicsFrameRate(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(
+      `http://${ip}:${port}/query/graphics-frame-rate`,
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (statusCode !== 200) throw new Error(`graphics-frame-rate: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
+   * Queries the TV tuner channel list via ECP (`/query/tv-channels`).
+   * Roku TV models only — returns the raw XML body for the caller to parse.
+   * Requires "Control by mobile apps" enabled.
+   */
+  async queryTvChannels(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(`http://${ip}:${port}/query/tv-channels`, timeoutMs);
+    if (statusCode !== 200) throw new Error(`tv-channels: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
+   * Queries the currently tuned TV channel and signal info via ECP
+   * (`/query/tv-active-channel`). Roku TV models only — returns the raw XML
+   * body for the caller to parse. Requires "Control by mobile apps" enabled.
+   */
+  async queryTvActiveChannel(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(`http://${ip}:${port}/query/tv-active-channel`, timeoutMs);
+    if (statusCode !== 200) throw new Error(`tv-active-channel: HTTP ${statusCode}`);
+    return body;
+  }
+
+  /**
+   * Suspends or terminates a running channel via ECP.
+   *
+   * Sends `POST /exit-app/<appId>` (suspends via Instant Resume if the
+   * channel supports it, otherwise terminates), or `POST /exit-app/<appId>/true`
+   * when `force` is set (bypasses Instant Resume and always terminates).
+   *
+   * @throws On network errors, timeouts, or non-2xx responses — a 404 means
+   *   the channel is not currently running.
+   */
+  async exitApp(
+    ip: string,
+    appId: string,
+    force: boolean = false,
+    port: number = DEFAULT_ECP_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    const path = `/exit-app/${encodeURIComponent(appId)}${force ? '/true' : ''}`;
+    const { statusCode, body } = await httpPost(`http://${ip}:${port}${path}`, timeoutMs);
+
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`Exit app failed: status ${statusCode}${body.trim() ? ` — ${body.trim()}` : ''}`);
+    }
   }
 
   /**

@@ -99,6 +99,7 @@ For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or 
 | [docs/device-manager.md](docs/device-manager.md) | Device Manager — remote control, keyboard mode, saved text entries, RASP scripts, abilities hub |
 | [packages/formatter/README.md](packages/formatter/README.md) | Formatter CLI, library API, CI integration |
 | [packages/roku-device/README.md](packages/roku-device/README.md) | Device communication package — SSDP, ECP, debug console/protocol, collectors, Perfetto |
+| [docs/roku-device-cli.md](docs/roku-device-cli.md) | `kopytko-roku` terminal CLI — ECP + web-admin ops, config resolution, exit codes |
 | [docs/publishing.md](docs/publishing.md) | npm and VS Code Marketplace publishing |
 
 **Every change that adds, modifies, or removes a feature must update `docs/features.md`, the relevant topic doc, and the corresponding site page.**
@@ -116,6 +117,7 @@ Lives in `site/` (Astro 5 + Tailwind v4 + React islands). Run via WSL: `cd site 
 | New/changed linter rule | `site/src/pages/linter.astro` — `RuleCard` entry |
 | New/changed formatter option | `site/src/pages/formatter.astro` — `OptionCard` + `FormatterPlayground.tsx` JSONC comment if enum |
 | New parser export | `site/src/pages/parser.astro` — API reference groups |
+| New `roku-device` ECP/collector/CLI feature | `site/src/pages/roku-device.astro` — subsystems table, examples, CLI section |
 | New extension feature/command/setting | `site/src/pages/extension.astro` |
 | New `TokenKind` or `SyntaxKind` | `tokenKindTable` in `parser.astro` + `brightscript-colors.tsx` + `TokenVisualizer.tsx` |
 | New screenshot | Drop `.png` into `site/public/screenshots/` |

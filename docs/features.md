@@ -155,6 +155,8 @@ Multi-pass engine (27 CST passes + text passes, 60+ configurable rules), shared 
 | Package upload from sidebar (`Ctrl+Shift+F5`) and start-debug per device | ✅ | [device-discovery.md](./device-discovery.md) |
 | Context-menu actions (copy IP, open web portal, set password) | ✅ | [device-discovery.md](./device-discovery.md) |
 | Registry viewer (read device registry via ECP) | ✅ | [device-discovery.md](./device-discovery.md) |
+| ECP `exit-app`, `tv-channels`/`tv-active-channel` (Roku TV), `sgnodes` roots/by-id scope, `graphics-frame-rate`, `r2d2-bitmaps` | ✅ | [packages/roku-device/README.md](../packages/roku-device/README.md#ecp-method-reference) |
+| `kopytko-roku` terminal CLI — ECP + web-admin operations from the shell, independent of VS Code | ✅ | [roku-device-cli.md](./roku-device-cli.md) |
 
 ## Web-Admin Automation (Installer / Utilities / Packager / Update)
 

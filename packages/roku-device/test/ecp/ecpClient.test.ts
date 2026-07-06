@@ -738,6 +738,309 @@ describe('EcpClient', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // querySgNodes / querySgNodesById
+  // ---------------------------------------------------------------------------
+
+  describe('querySgNodes', () => {
+    it('defaults to GET /query/sgnodes/all', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end('<All_Nodes node-count="1"/>');
+      });
+
+      try {
+        await client.querySgNodes('127.0.0.1', port);
+        expect(requestedUrl).to.equal('/query/sgnodes/all');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('sends GET /query/sgnodes/roots when scope is "roots"', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end('<Root_Nodes node-count="1"/>');
+      });
+
+      try {
+        await client.querySgNodes('127.0.0.1', port, 'roots');
+        expect(requestedUrl).to.equal('/query/sgnodes/roots');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(500);
+        res.end();
+      });
+
+      try {
+        await client.querySgNodes('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  describe('querySgNodesById', () => {
+    it('sends GET /query/sgnodes/nodes?node-id=<id>', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end('<Nodes/>');
+      });
+
+      try {
+        await client.querySgNodesById('127.0.0.1', '42', port);
+        expect(requestedUrl).to.equal('/query/sgnodes/nodes?node-id=42');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end();
+      });
+
+      try {
+        await client.querySgNodesById('127.0.0.1', '42', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 404');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryR2d2Bitmaps
+  // ---------------------------------------------------------------------------
+
+  describe('queryR2d2Bitmaps', () => {
+    it('returns the raw XML body on HTTP 200', async () => {
+      const xml = '<r2d2_bitmaps><textures usedbytes="1024"/></r2d2_bitmaps>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryR2d2Bitmaps('127.0.0.1', port);
+        expect(body).to.equal(xml);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(500);
+        res.end();
+      });
+
+      try {
+        await client.queryR2d2Bitmaps('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryGraphicsFrameRate
+  // ---------------------------------------------------------------------------
+
+  describe('queryGraphicsFrameRate', () => {
+    it('returns the raw XML body on HTTP 200', async () => {
+      const xml = '<graphics-frame-rate><fps>60</fps></graphics-frame-rate>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryGraphicsFrameRate('127.0.0.1', port);
+        expect(body).to.equal(xml);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end();
+      });
+
+      try {
+        await client.queryGraphicsFrameRate('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 404');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // queryTvChannels / queryTvActiveChannel
+  // ---------------------------------------------------------------------------
+
+  describe('queryTvChannels', () => {
+    it('returns the raw XML body on HTTP 200', async () => {
+      const xml = '<tv-channels><channel/></tv-channels>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryTvChannels('127.0.0.1', port);
+        expect(body).to.equal(xml);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end();
+      });
+
+      try {
+        await client.queryTvChannels('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 404');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  describe('queryTvActiveChannel', () => {
+    it('returns the raw XML body on HTTP 200', async () => {
+      const xml = '<tv-active-channel><channel/></tv-active-channel>';
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryTvActiveChannel('127.0.0.1', port);
+        expect(body).to.equal(xml);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end();
+      });
+
+      try {
+        await client.queryTvActiveChannel('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 404');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // exitApp
+  // ---------------------------------------------------------------------------
+
+  describe('exitApp', () => {
+    it('POSTs to /exit-app/{appId} by default', async () => {
+      let requestedUrl = '';
+      let requestedMethod = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        requestedMethod = req.method || '';
+        res.writeHead(200);
+        res.end();
+      });
+
+      try {
+        await client.exitApp('127.0.0.1', 'dev', false, port);
+        expect(requestedMethod).to.equal('POST');
+        expect(requestedUrl).to.equal('/exit-app/dev');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('POSTs to /exit-app/{appId}/true when force is set', async () => {
+      let requestedUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end();
+      });
+
+      try {
+        await client.exitApp('127.0.0.1', 'dev', true, port);
+        expect(requestedUrl).to.equal('/exit-app/dev/true');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('resolves on HTTP 204', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(204);
+        res.end();
+      });
+
+      try {
+        await client.exitApp('127.0.0.1', 'dev', false, port);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('rejects with status and response body on HTTP 404 (app not running)', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(404);
+        res.end('App not running');
+      });
+
+      try {
+        await client.exitApp('127.0.0.1', 'dev', false, port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('status 404');
+        expect((err as Error).message).to.include('App not running');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // enableRendezvousTracking
   // ---------------------------------------------------------------------------
 

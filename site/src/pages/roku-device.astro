@@ -102,7 +102,7 @@ await commands.addBreakpoints([{ filePath: 'pkg:/source/main.brs', lineNumber: 4
 
 const subsystems = [
   { name: 'SSDP discovery', port: 'UDP 1900', api: 'SsdpClient', desc: 'Active M-SEARCH scans + passive NOTIFY alive/byebye monitoring with per-IP debounce.' },
-  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, remote-control keys (keypress/keydown/keyup + Lit_ text entry), active app, media-player state, registry, app state, chanperf, sgnodes, object counts, rendezvous + beacon tracking, dev-password validation (digest auth).' },
+  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, remote-control keys (keypress/keydown/keyup + Lit_ text entry), exit-app, active app, media-player state, registry, app state, chanperf, sgnodes (all/roots/by-id), object counts, r2d2-bitmaps, graphics-frame-rate, TV channel queries, rendezvous + beacon tracking, dev-password validation (digest auth).' },
   { name: 'Discovery orchestration', port: '—', api: 'DeviceManager', desc: 'Merges SSDP, ECP health checks, persistence, and network-change events into one device list. Storage and network signals are injected interfaces.' },
   { name: 'SceneGraph debug console', port: 'TCP 8080', api: 'DebugConsoleClient', desc: 'Idle-framed request/response console (chanperf, sgnodes, r2d2_bitmaps, free) with exponential-backoff auto-reconnect.' },
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
@@ -110,6 +110,20 @@ const subsystems = [
   { name: 'Perfetto streaming', port: 'WS 8060', api: 'PerfettoWebSocketClient, enablePerfettoTracing', desc: 'Streams raw Perfetto TracePacket protobuf from ws://device:8060/perfetto-session with a quiet-window stop.' },
   { name: 'Web-admin automation', port: 'HTTP 80', api: 'InstallerClient', desc: 'Digest-auth automation of the developer web-admin page: install/delete/rekey/package a channel, screenshot, profiling data, OS update check, reboot.' },
 ];
+
+const cliExample = `npm install -g kopytko-roku-device
+kopytko-roku --help
+
+# ECP
+kopytko-roku ecp device-info --host 192.168.1.20
+kopytko-roku ecp keypress --host 192.168.1.20 --key Home
+kopytko-roku ecp launch --host 192.168.1.20 --app dev --param contentId=42
+
+# Developer web-admin
+kopytko-roku installer screenshot --host 192.168.1.20 --password secret --out shot.jpg
+
+# Discovery
+kopytko-roku discover --json`;
 
 const installerExample = `import { InstallerClient } from 'kopytko-roku-device';
 
@@ -154,6 +168,9 @@ await installer.checkForUpdate('192.168.1.20', password);`;
         <a href="https://github.com/bchelkowski/vscode-kopytko/tree/main/packages/roku-device" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
           Source
+        </a>
+        <a href="https://github.com/bchelkowski/vscode-kopytko/blob/main/packages/roku-device/README.md" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition-colors">
+          Full README
         </a>
       </div>
     </div>
@@ -226,6 +243,13 @@ await installer.checkForUpdate('192.168.1.20', password);`;
       <h2 class="text-xl font-bold text-white mb-2">Web-admin automation</h2>
       <p class="text-slate-400 text-sm mb-4">Drives the developer web-admin page (<code class="text-rose-300">http://&lt;device-ip&gt;/</code>) the same way a browser would — install/delete/rekey/package a channel, capture a screenshot, download profiling data, or check for updates and reboot. Surfaced in the extension through the Device Manager's Device view.</p>
       <CodePanel code={installerExample} lang="typescript" />
+    </section>
+
+    <!-- CLI -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">Terminal CLI</h2>
+      <p class="text-slate-400 text-sm mb-4"><code class="text-rose-300">kopytko-roku</code> exposes every ECP and web-admin operation above from the shell — no VS Code required. Config resolves from flags → <code class="text-slate-300">--config</code> file → <code class="text-slate-300">ROKU_HOST</code>/<code class="text-slate-300">ROKU_PASSWORD</code> env vars; it deliberately never reads <code class="text-slate-300">.vscode/settings.json</code> or <code class="text-slate-300">.kopytkorc</code>. See <a href="https://github.com/bchelkowski/vscode-kopytko/blob/main/docs/roku-device-cli.md" target="_blank" class="text-rose-300 hover:underline">the full CLI reference</a> for every subcommand and flag.</p>
+      <CodePanel code={cliExample} lang="bash" />
     </section>
 
     <!-- Gotchas -->

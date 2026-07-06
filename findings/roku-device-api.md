@@ -568,4 +568,36 @@ to accumulate samples, out of scope for this pass).
 `installChannel`/`packageChannel` test fixtures. To test profiling, copy the sample app to a scratch
 location first and edit the *copy's* `manifest` (add `bsprof_enable=1`) — do not edit the shared
 sample in place, since these are checked-in reference apps other tasks may reuse untouched.
+
+---
+
+## ECP coverage audit against the official docs (2026-07-06)
+
+Compared the full `EcpClient` surface against
+https://developer.roku.com/dev/docs/external-control-api. Six methods added to close real gaps;
+three endpoints from older third-party writeups were deliberately **not** implemented because they
+do not appear anywhere on the current official page — don't re-add them from stale training-data
+memory without a fresh check of that page.
+
+### New methods — live-verified 2026-07-06 (Roku Ultra 4850X, 192.168.137.46, firmware 15.2.4.3442)
+
+All six were confirmed against the real device the same day they were added (curl from native
+Git Bash — WSL2 still cannot reach this hotspot range, see the network topology note above).
+
+| Method | Endpoint | Verification status |
+|---|---|---|
+| `exitApp(ip, appId, force?)` | `POST /exit-app/<appId>[/true]` | **Live-verified.** `POST /exit-app/dev` (no force) with DAZN foregrounded → `200`, `<exit-app><status>OK</status></exit-app>`. Device switched to the home screen (`/query/active-app` then reported `Roku Dynamic Menu`), and `/query/app-state/dev` afterward reported `<state>background</state>` — confirms this is an Instant Resume suspend, not a kill, matching the docs. Force (`/true`) variant not exercised (no reason to test destructively once the non-force path was confirmed). |
+| `queryTvChannels` | `GET /query/tv-channels` | **Live-verified as expected-404.** Returns HTTP 404 on this Roku Ultra (not a TV model) — confirms `EcpClient`'s throw-on-non-200 behavior fires correctly on real (not just mocked) TV-only-endpoint rejection. The success response shape remains unverified since a Roku TV isn't available to test against. |
+| `queryTvActiveChannel` | `GET /query/tv-active-channel` | Same as above — live-verified 404 on non-TV hardware; success shape still unverified, needs a Roku TV. |
+| `queryGraphicsFrameRate` | `GET /query/graphics-frame-rate` | **Live-verified**, HTTP 200: `<graphics-frame-rate><fps>59.473724</fps><timestamp>…</timestamp><status>OK</status></graphics-frame-rate>`. Simple enough that a parser could be added later if a consumer needs it (not added — no current caller). |
+| `queryR2d2Bitmaps` (ECP) | `GET /query/r2d2-bitmaps` | **Live-verified**, HTTP 200: `<r2d2-bitmaps><timestamp>…</timestamp><channel-id>dev</channel-id><graphics-instances /><status>OK</status></r2d2-bitmaps>` (empty `<graphics-instances />` since DAZN wasn't rendering custom bitmaps at query time). Confirms this is **distinct from** `TextureCollector`'s `r2d2_bitmaps` **telnet console command** (port 8080) — same conceptual data, completely different response format (this is XML with a `<graphics-instances>` wrapper; the console command is plain text parsed by `parseR2d2Bitmaps`). Do not reuse that parser against this endpoint's output. |
+| `querySgNodes(ip, port, scope)` scope param + `querySgNodesById` | `GET /query/sgnodes/{all\|roots}` and `GET /query/sgnodes/nodes?node-id=` | **Live-verified.** `roots` scope, HTTP 200: wraps nodes in `<Root_Nodes node-count="30">…</Root_Nodes>` — note the tag name differs from the `all` scope's `<All_Nodes>`, so `parseEcpSgNodes` (which specifically looks for `<All_Nodes>`) **cannot** be reused as-is for `roots`; a caller wanting typed roots data needs its own parser keyed on `<Root_Nodes>`. `querySgNodesById('192.168.1.20', '2')` → HTTP 200, wraps the match in `<Nodes_Nodes node-id="2" node-count="1">…</Nodes_Nodes>` — yet another distinct wrapper tag. Also confirms `test/diagnostics/fixtures/sgnodes-roots.raw.xml` is an **unrelated, still-unused** fixture — it's a port-8080 telnet `sgnodes roots` console dump (plain text, different shape entirely from this ECP endpoint's `<Root_Nodes>` XML). Wiring that fixture up is a separate, still-open gap in the 8080 console path, not something this ECP work touched. |
+
+### Deliberately not implemented — confirmed absent from the current official docs
+
+Checked the full page structure (all H2/H3 headings) on 2026-07-06; none of these appear anywhere:
+
+- **`/search/browse`, `/search/query`** — Roku's own docs state `/search` was **removed as of Roku OS 12.0**. Don't re-add.
+- **`/query/screensaver`, `/query/textedit-state`, `/query/audio-device`** — these show up in older third-party/community ECP writeups but are **not present anywhere** on the current official developer.roku.com ECP page (checked both the endpoint tables and every section heading). Do not implement these from memory/training data alone — if a future task wants them, re-fetch the official page first to confirm they've been (re-)documented, or get a live device response sample.
+- **ECP-2 WebSocket session/subscription endpoints** (`ecp-session-id` header, subscribe-style session negotiation) — not documented on the official page at all.
 - No callbacks: the iframe fires no "loaded" or "ready" events back. The time-range scroll command retries internally (~20×/200 ms) until the trace is ready.

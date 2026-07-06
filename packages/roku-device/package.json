@@ -30,6 +30,9 @@
       "default": "./dist/src/index.js"
     }
   },
+  "bin": {
+    "kopytko-roku": "./dist/bin/kopytko-roku.js"
+  },
   "files": [
     "dist",
     "README.md"
