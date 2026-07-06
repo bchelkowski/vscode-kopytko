@@ -53,7 +53,7 @@
     "kopytko-brightscript-parser": "^1.2.0",
     "kopytko-formatter": "^1.1.13",
     "kopytko-linter": "^1.6.7",
-    "kopytko-roku-device": "^0.1.0",
+    "kopytko-roku-device": "^1.0.0",
     "vscode-languageclient": "^10.0.0",
     "vscode-languageserver": "^10.0.0",
     "vscode-languageserver-textdocument": "^1.0.13",
@@ -1439,105 +1439,137 @@
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "up",
-        "args": { "key": "Up" },
+        "args": {
+          "key": "Up"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "down",
-        "args": { "key": "Down" },
+        "args": {
+          "key": "Down"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "left",
-        "args": { "key": "Left" },
+        "args": {
+          "key": "Left"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "right",
-        "args": { "key": "Right" },
+        "args": {
+          "key": "Right"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "enter",
-        "args": { "key": "Select" },
+        "args": {
+          "key": "Select"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "escape",
-        "args": { "key": "Back" },
+        "args": {
+          "key": "Back"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "backspace",
-        "args": { "key": "Backspace" },
+        "args": {
+          "key": "Backspace"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "home",
-        "args": { "key": "Home" },
+        "args": {
+          "key": "Home"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+enter",
         "mac": "cmd+enter",
-        "args": { "key": "Play" },
+        "args": {
+          "key": "Play"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+left",
         "mac": "cmd+left",
-        "args": { "key": "Rev" },
+        "args": {
+          "key": "Rev"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+right",
         "mac": "cmd+right",
-        "args": { "key": "Fwd" },
+        "args": {
+          "key": "Fwd"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+backspace",
         "mac": "cmd+backspace",
-        "args": { "key": "InstantReplay" },
+        "args": {
+          "key": "InstantReplay"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+8",
         "mac": "cmd+8",
-        "args": { "key": "Info" },
+        "args": {
+          "key": "Info"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+up",
         "mac": "cmd+up",
-        "args": { "key": "VolumeUp" },
+        "args": {
+          "key": "VolumeUp"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+down",
         "mac": "cmd+down",
-        "args": { "key": "VolumeDown" },
+        "args": {
+          "key": "VolumeDown"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
         "command": "kopytko.deviceManager.pressKey",
         "key": "ctrl+m",
         "mac": "cmd+m",
-        "args": { "key": "VolumeMute" },
+        "args": {
+          "key": "VolumeMute"
+        },
         "when": "kopytko.deviceManager.remoteMode"
       },
       {
