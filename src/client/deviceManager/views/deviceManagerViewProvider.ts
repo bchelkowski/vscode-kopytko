@@ -201,7 +201,7 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
 
       case 'ability': {
         this.post({ kind: 'busy', on: true, label: msg.action });
-        const result = await runAbilityAction(msg.action, this.deps.abilities, this.context);
+        const result = await runAbilityAction(msg.action, this.deps.abilities);
         this.post({ kind: 'busy', on: false });
         this.post({ kind: 'actionResult', action: msg.action, ok: result.ok, message: result.message });
         return;

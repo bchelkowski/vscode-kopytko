@@ -198,8 +198,8 @@ Two button groups; anything that needs input uses native VS Code dialogs
 instead of sidebar forms:
 
 - **Quick actions** — Device info (full ECP `device-info` opened as JSON),
-  Active app, Screenshot (captured via the web-admin, saved to extension
-  storage and opened), Check update, Reboot (confirm modal).
+  Active app, Screenshot (captured via the web-admin; a save dialog asks where
+  to write the `.jpg`, then it opens), Check update, Reboot (confirm modal).
 - **Web admin** — Install channel (zip picker), Delete channel (confirm),
   Package (zip picker → app name/version → signing password → save `.pkg`),
   Rekey (pkg picker → signing password). See [roku-webadmin.md](./roku-webadmin.md)

@@ -14,7 +14,6 @@ import type { AbilityAction } from '../webview/protocol';
 export async function runAbilityAction(
   action: AbilityAction,
   abilities: AbilitiesController,
-  context: vscode.ExtensionContext,
 ): Promise<{ ok: boolean; message?: string }> {
   try {
     switch (action) {
@@ -38,10 +37,14 @@ export async function runAbilityAction(
       }
 
       case 'screenshot': {
-        const dir = vscode.Uri.joinPath(context.globalStorageUri, 'screenshots');
-        await vscode.workspace.fs.createDirectory(dir);
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const dest = vscode.Uri.joinPath(dir, `screenshot-${stamp}.jpg`);
+        const dest = await vscode.window.showSaveDialog({
+          title: 'Save device screenshot',
+          defaultUri: vscode.Uri.file(`screenshot-${stamp}.jpg`),
+          filters: { 'JPEG image': ['jpg', 'jpeg'] },
+        });
+        if (!dest) return { ok: true };
+
         await abilities.takeScreenshot(dest.fsPath);
         await vscode.commands.executeCommand('vscode.open', dest);
         return { ok: true, message: 'Screenshot captured.' };
