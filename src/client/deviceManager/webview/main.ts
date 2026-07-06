@@ -60,27 +60,30 @@ interface RemoteButton {
   key: string;
   label: string;
   title: string;
-  cls?: string;
   area: string;
 }
 
+// Stroke-icon helper matching the official Roku remote-tool keypad glyphs.
+const icon = (paths: string, filled = false): string =>
+  `<svg viewBox="0 0 24 24" width="18" height="18" ${filled
+    ? 'fill="currentColor" stroke="none"'
+    : 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'}>${paths}</svg>`;
+
+// Layout mirrors Roku's remote-tool keypad: Back/Home, then the D-pad
+// (Up / Left-OK-Right / Down), then Instant Replay/Options, then Rev/Play/Fwd.
 const REMOTE_BUTTONS: RemoteButton[] = [
-  { key: 'Power',         label: '⏻',  title: 'Power (Roku TV only)', cls: 'power', area: 'power' },
-  { key: 'Back',          label: '←',  title: 'Back',                 area: 'back' },
-  { key: 'Home',          label: '⌂',  title: 'Home',                 area: 'home' },
-  { key: 'Up',            label: '▲',  title: 'Up',                   cls: 'dpad', area: 'up' },
-  { key: 'Left',          label: '◀',  title: 'Left',                 cls: 'dpad', area: 'left' },
-  { key: 'Select',        label: 'OK', title: 'OK / Select',          cls: 'dpad ok', area: 'ok' },
-  { key: 'Right',         label: '▶',  title: 'Right',                cls: 'dpad', area: 'right' },
-  { key: 'Down',          label: '▼',  title: 'Down',                 cls: 'dpad', area: 'down' },
-  { key: 'InstantReplay', label: '↻',  title: 'Instant replay',       area: 'replay' },
-  { key: 'Info',          label: '✱',  title: 'Options / Info (*)',   area: 'info' },
-  { key: 'Rev',           label: '⏪', title: 'Rewind',               area: 'rev' },
-  { key: 'Play',          label: '⏯',  title: 'Play / Pause',         area: 'play' },
-  { key: 'Fwd',           label: '⏩', title: 'Fast forward',         area: 'fwd' },
-  { key: 'VolumeDown',    label: '🔉', title: 'Volume down (Roku TV only)', cls: 'volume', area: 'voldown' },
-  { key: 'VolumeMute',    label: '🔇', title: 'Mute (Roku TV only)',        cls: 'volume', area: 'mute' },
-  { key: 'VolumeUp',      label: '🔊', title: 'Volume up (Roku TV only)',   cls: 'volume', area: 'volup' },
+  { key: 'Back',          label: icon('<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>'),                       title: 'Back',               area: 'back' },
+  { key: 'Home',          label: icon('<path d="M4 11l8-7 8 7"/><path d="M6.5 9.5V20h11V9.5"/>'),             title: 'Home',               area: 'home' },
+  { key: 'Up',            label: icon('<path d="M6 14.5l6-6 6 6"/>'),                                         title: 'Up',                 area: 'up' },
+  { key: 'Left',          label: icon('<path d="M14.5 6l-6 6 6 6"/>'),                                        title: 'Left',               area: 'left' },
+  { key: 'Select',        label: '<span class="ok-label">OK</span>',                                          title: 'OK / Select',        area: 'ok' },
+  { key: 'Right',         label: icon('<path d="M9.5 6l6 6-6 6"/>'),                                          title: 'Right',              area: 'right' },
+  { key: 'Down',          label: icon('<path d="M6 9.5l6 6 6-6"/>'),                                          title: 'Down',               area: 'down' },
+  { key: 'InstantReplay', label: icon('<path d="M5.5 9a8 8 0 1 1-1.3 6.5"/><path d="M5.5 4v5h5"/>'),          title: 'Instant replay',     area: 'replay' },
+  { key: 'Info',          label: icon('<path d="M12 5v14"/><path d="M6 8.5l12 7"/><path d="M18 8.5l-12 7"/>'), title: 'Options / Info (*)', area: 'info' },
+  { key: 'Rev',           label: icon('<path d="M12 6v12l-9-6zM21 6v12l-9-6z"/>', true),                      title: 'Rewind',             area: 'rev' },
+  { key: 'Play',          label: icon('<path d="M8 5v14l12-7z"/>', true),                                     title: 'Play / Pause',       area: 'play' },
+  { key: 'Fwd',           label: icon('<path d="M3 6l9 6-9 6zM12 6l9 6-9 6z"/>', true),                       title: 'Fast forward',       area: 'fwd' },
 ];
 
 function buildRemoteDom(): void {
@@ -92,7 +95,7 @@ function buildRemoteDom(): void {
 </div>
 <div id="remote">
   ${REMOTE_BUTTONS.map((b) => `
-    <button class="remote-btn ${b.cls ?? ''}" data-key="${b.key}" title="${esc(b.title)}" style="grid-area: ${b.area}">
+    <button class="remote-btn" data-key="${b.key}" title="${esc(b.title)}" style="grid-area: ${b.area}">
       ${b.label}
     </button>`).join('')}
 </div>
@@ -213,10 +216,8 @@ function applyRemoteMode(): void {
 
 function applyRemoteDevice(): void {
   renderDeviceBanner();
-  const isTV = device?.isTV === true;
   for (const btn of document.querySelectorAll<HTMLButtonElement>('.remote-btn')) {
     btn.disabled = device === undefined;
-    if (btn.dataset.key === 'Power') btn.classList.toggle('hidden', !isTV);
   }
   const input = el<HTMLInputElement>('text-input');
   const send = el<HTMLButtonElement>('btn-send');

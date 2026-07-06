@@ -99,50 +99,56 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 
 /* ── remote view ── */
 
+/* Layout + colors mirror the official Roku remote-tool keypad: purple pill
+   buttons on a light card, six rows (Back/Home, Up, Left-OK-Right, Down,
+   Replay/Options, Rev/Play/Fwd). */
+
 #remote {
+  --roku-purple: #662d91;
+  --roku-purple-hover: #7b3fae;
+  --roku-purple-active: #4e2270;
+
   display: grid;
   grid-template-areas:
-    "power power power"
-    "back  .     home"
-    ".     up    ."
-    "left  ok    right"
-    ".     down  ."
-    "replay .    info"
-    "rev   play  fwd"
-    "voldown mute volup";
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+    "back   back   back   home  home  home"
+    ".      .      up     up    .     ."
+    "left   left   ok     ok    right right"
+    ".      .      down   down  .     ."
+    "replay replay replay info  info  info"
+    "rev    rev    play   play  fwd   fwd";
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px 8px;
   max-width: 280px;
   margin: 0 auto;
+  padding: 16px 14px;
+  border-radius: 12px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.06));
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
 }
 
 .remote-btn {
-  min-height: 34px;
-  font-size: 14px;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--roku-purple);
+  color: #ffffff;
   touch-action: none;
 }
-.remote-btn:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+.remote-btn:hover:not(:disabled) { background: var(--roku-purple-hover); }
 .remote-btn:active:not(:disabled),
-.remote-btn.held {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-.remote-btn.held { outline: 1px solid var(--vscode-focusBorder); }
+.remote-btn.held { background: var(--roku-purple-active); }
+.remote-btn.held { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
 
-.remote-btn.dpad { min-height: 44px; }
-.remote-btn.ok {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border-radius: 50%;
-  min-height: 52px;
-  font-weight: 600;
-}
-.remote-btn.ok:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+.remote-btn svg { display: block; }
 
-.remote-btn.power { color: var(--vscode-errorForeground); }
+.ok-label {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
 
 #text-send {
   display: flex;

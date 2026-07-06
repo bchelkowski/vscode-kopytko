@@ -22,11 +22,12 @@ Open it from the Activity Bar icon, the Tools sidebar button, or
 
 ## Remote Control view
 
-An on-screen remote laid out like a physical Roku remote (no app-shortcut
-buttons): optional Power row (shown only for Roku TVs), Back + Home, a
-directional pad with OK, Instant Replay + Options (`*`), Rev / Play / Fwd, and
-a volume row (Roku-TV-only keys; other devices typically accept and ignore
-them).
+An on-screen remote that mirrors the official [Roku Remote Tool](https://developer.roku.com/dev/docs/roku-remote-tool)
+keypad — purple pill buttons in six rows: Back + Home, a directional pad
+(Up / Left–OK–Right / Down), Instant Replay + Options (`*`), and
+Rev / Play / Fwd. No app-shortcut, volume, or power buttons; the Roku-TV-only
+volume keys are still reachable through keyboard remote mode
+(`Ctrl+↑` / `Ctrl+↓` / `Ctrl+M`) and in scripts.
 
 ### Press-and-hold
 
