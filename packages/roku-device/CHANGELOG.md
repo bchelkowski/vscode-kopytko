@@ -1,5 +1,10 @@
 # Changelog
 
+
+## [1.1.0] - 2026-07-06
+
+### Added
+- Complete ECP coverage and add kopytko-roku CLI
 ## [1.0.0] - 2026-07-06
 
 ### Added
