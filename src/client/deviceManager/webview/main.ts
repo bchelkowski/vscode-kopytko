@@ -87,6 +87,7 @@ const REMOTE_BUTTONS: RemoteButton[] = [
 ];
 
 function buildRemoteDom(): void {
+  document.body.tabIndex = -1; // focusable so keyboard mode works right away
   document.body.innerHTML = `
 <div id="toolbar">
   <span class="status-dot" id="status-dot"></span>
@@ -192,15 +193,17 @@ function wireKeyboardMode(): void {
   });
 
   // While remote mode is ON and this view is focused, printable characters go
-  // to the device keyboard as Lit_ keys. Navigation keys (arrows/Enter/…) are
-  // deliberately NOT handled here: VS Code re-dispatches webview keyboard
-  // events to the workbench, so the extension's remote-mode keybindings fire
-  // for them even with this view focused — handling them here too would
-  // double-send every navigation key.
+  // to the device keyboard as Lit_ keys — no matter which element inside the
+  // view has focus (a remote button, the checkbox, the view background), with
+  // one exception: the Send text field keeps typing local, it has its own
+  // buffered-send purpose. Navigation keys (arrows/Enter/…) are deliberately
+  // NOT handled here: VS Code re-dispatches webview keyboard events to the
+  // workbench, so the extension's remote-mode keybindings fire for them even
+  // with this view focused — handling them here too would double-send.
   document.addEventListener('keydown', (ev) => {
     if (!remoteModeOn || device === undefined) return;
     const target = ev.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+    if (target?.id === 'text-input') return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.key.length !== 1) return;
     ev.preventDefault();
@@ -212,6 +215,11 @@ function applyRemoteMode(): void {
   const toggle = el<HTMLInputElement>('kb-toggle');
   if (toggle) toggle.checked = remoteModeOn;
   el<HTMLDivElement>('kb-hint')?.classList.toggle('hidden', !remoteModeOn);
+  // Typing should work the moment the mode turns on — don't make the user
+  // hunt for a focusable spot first.
+  if (remoteModeOn && document.activeElement?.id !== 'text-input') {
+    document.body.focus();
+  }
 }
 
 function applyRemoteDevice(): void {

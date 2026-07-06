@@ -120,10 +120,6 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
   gap: 10px 8px;
   max-width: 280px;
   margin: 0 auto;
-  padding: 16px 14px;
-  border-radius: 12px;
-  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.06));
-  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
 }
 
 .remote-btn {
@@ -158,13 +154,22 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 }
 #text-send input { flex: 1; min-width: 0; }
 
+/* Same checkbox convention as the Diagnostics panel's .toolbar-check. */
 #kb-toggle-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   max-width: 280px;
   margin: 10px auto 0;
+  font-size: 11px;
+  opacity: 0.85;
   cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+#kb-toggle-row input {
+  cursor: pointer;
+  accent-color: var(--vscode-button-background, #0e639c);
 }
 
 #kb-hint {

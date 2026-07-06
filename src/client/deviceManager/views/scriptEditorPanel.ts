@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { ecpKeyToRaspKey, raspQuote } from '../rasp/raspParser';
 import type { ScriptRunnerService } from '../scriptRunnerService';
 import type { DeviceScript, ScriptStore } from '../scriptStore';
 import type { DeviceManagerController } from '../deviceManagerController';
@@ -43,6 +44,31 @@ export class ScriptEditorPanel {
     }
   }
 
+  // ── remote-to-script recording ────────────────────────────────────────────
+
+  /** The panel remote actions record into: the most recently active editor. */
+  private static lastActive: ScriptEditorPanel | undefined;
+
+  /**
+   * Records a remote-control key press as a `- press:` step in the most
+   * recently active script editor (its webview ignores the message while its
+   * "Record remote" toggle is off). `Lit_*` character presses are skipped —
+   * free typing is recorded as whole `- text:` steps instead, keeping scripts
+   * readable and Roku-Remote-Tool-shaped.
+   */
+  static recordRemotePress(ecpKey: string): void {
+    if (ecpKey.startsWith('Lit_')) return;
+    const raspKey = ecpKeyToRaspKey(ecpKey);
+    if (raspKey === undefined) return;
+    ScriptEditorPanel.lastActive?.post({ kind: 'recordStep', line: `- press: ${raspKey}` });
+  }
+
+  /** Records a sent text as a `- text:` step in the most recently active editor. */
+  static recordRemoteText(text: string): void {
+    if (text === '') return;
+    ScriptEditorPanel.lastActive?.post({ kind: 'recordStep', line: `- text: ${raspQuote(text)}` });
+  }
+
   // ── instance ──────────────────────────────────────────────────────────────
 
   readonly panel: vscode.WebviewPanel;
@@ -83,13 +109,22 @@ export class ScriptEditorPanel {
       }
     });
 
+    const viewStateSub = this.panel.onDidChangeViewState(() => {
+      if (this.panel.active) ScriptEditorPanel.lastActive = this;
+    });
+
     this.panel.onDidDispose(() => {
       this.deps.controller.offDevicesChanged(onDevicesChanged);
       progressSub.dispose();
+      viewStateSub.dispose();
       ScriptEditorPanel.panels.delete(this.key);
+      if (ScriptEditorPanel.lastActive === this) {
+        ScriptEditorPanel.lastActive = undefined;
+      }
     });
 
     ScriptEditorPanel.panels.set(this.key, this);
+    ScriptEditorPanel.lastActive = this;
   }
 
   /** Runner scriptId of this panel's runs: the store id, or a synthetic editor id. */

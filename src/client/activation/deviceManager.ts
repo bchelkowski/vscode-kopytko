@@ -52,7 +52,11 @@ export function registerDeviceManager(
     ScriptEditorPanel.open(context, editorDeps, script, imported);
   };
 
-  const viewDeps = { controller, abilities, scripts, runner, remoteMode, openScriptEditor };
+  const viewDeps = {
+    controller, abilities, scripts, runner, remoteMode, openScriptEditor,
+    recordPress: (key: string) => ScriptEditorPanel.recordRemotePress(key),
+    recordText: (text: string) => ScriptEditorPanel.recordRemoteText(text),
+  };
   const kinds: DeviceManagerViewKind[] = ['remote', 'entries', 'scripts', 'abilities'];
 
   context.subscriptions.push(
@@ -83,6 +87,7 @@ export function registerDeviceManager(
     vscode.commands.registerCommand('kopytko.deviceManager.pressKey', (args: { key?: string } | undefined) => {
       const key = args?.key;
       if (typeof key !== 'string' || key === '') return;
+      ScriptEditorPanel.recordRemotePress(key);
       controller.pressKey(key).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         void vscode.window.showErrorMessage(`Remote key ${key} failed: ${message}`);

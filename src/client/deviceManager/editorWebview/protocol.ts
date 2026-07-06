@@ -27,7 +27,9 @@ export type ExtMsg =
   | { kind: 'load'; script: EditorScript }
   | { kind: 'saved'; id: string; title: string }
   | { kind: 'runProgress'; progress: EditorRunProgress }
-  | { kind: 'device'; name?: string };
+  | { kind: 'device'; name?: string }
+  /** A remote-control action to append as a script step (when recording is on). */
+  | { kind: 'recordStep'; line: string };
 
 // ── webview → extension ─────────────────────────────────────────────────────
 

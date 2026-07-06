@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { parseRasp, raspKeyToEcpKey } from '../../src/client/deviceManager/rasp/raspParser';
+import { ecpKeyToRaspKey, parseRasp, raspKeyToEcpKey, raspQuote } from '../../src/client/deviceManager/rasp/raspParser';
 import type { RaspStep } from '../../src/client/deviceManager/rasp/raspTypes';
 
 describe('parseRasp', () => {
@@ -180,5 +180,56 @@ describe('raspKeyToEcpKey', () => {
 
   it('returns undefined for unknown keys', () => {
     expect(raspKeyToEcpKey('warp')).to.be.undefined;
+  });
+});
+
+describe('ecpKeyToRaspKey (remote-to-script recording)', () => {
+  it('maps ECP keys to canonical RASP press names', () => {
+    expect(ecpKeyToRaspKey('Home')).to.equal('home');
+    expect(ecpKeyToRaspKey('InstantReplay')).to.equal('replay');
+    expect(ecpKeyToRaspKey('Select')).to.equal('select');
+    expect(ecpKeyToRaspKey('Rev')).to.equal('rev');
+    expect(ecpKeyToRaspKey('Fwd')).to.equal('fwd');
+  });
+
+  it('round-trips through the RASP parser', () => {
+    for (const ecpKey of ['Home', 'Up', 'Down', 'Left', 'Right', 'Select', 'Back', 'InstantReplay', 'Info', 'Play', 'Rev', 'Fwd']) {
+      const rasp = ecpKeyToRaspKey(ecpKey);
+      expect(rasp, ecpKey).to.be.a('string');
+      expect(raspKeyToEcpKey(rasp!), `${ecpKey} → ${rasp}`).to.equal(ecpKey);
+    }
+  });
+
+  it('passes Lit_ keys through and returns undefined for unknowns', () => {
+    expect(ecpKeyToRaspKey('Lit_a')).to.equal('Lit_a');
+    expect(ecpKeyToRaspKey('NotAKey')).to.be.undefined;
+  });
+});
+
+describe('raspQuote', () => {
+  it('leaves plain text unquoted and parseable back to itself', () => {
+    expect(raspQuote('developer')).to.equal('developer');
+    expect(raspQuote('two words')).to.equal('two words');
+  });
+
+  it('quotes values YAML would misinterpret', () => {
+    expect(raspQuote('a: b')).to.equal("'a: b'");
+    expect(raspQuote('true')).to.equal("'true'");
+    expect(raspQuote('1234')).to.equal("'1234'");
+    expect(raspQuote('- dash')).to.equal("'- dash'");
+    expect(raspQuote(' padded ')).to.equal("' padded '");
+    expect(raspQuote('')).to.equal("''");
+  });
+
+  it('escapes embedded single quotes', () => {
+    expect(raspQuote("it's")).to.equal("'it''s'");
+  });
+
+  it('every quoted value parses back to the original through a text step', () => {
+    for (const text of ['plain', 'a: b', "it's", '1234', ' padded ', 'true', '- dash', 'zażółć €']) {
+      const { script, errors } = parseRasp(`steps:\n    - text: ${raspQuote(text)}`);
+      expect(errors, text).to.deep.equal([]);
+      expect(script!.steps[0]).to.deep.equal({ kind: 'text', text });
+    }
   });
 });

@@ -38,6 +38,10 @@ function buildDom(): void {
     <option value="rasp">RASP (Roku Remote Tool)</option>
     <option value="kopytko" disabled>kopytko (coming soon)</option>
   </select>
+  <label id="record-toggle-row" title="While on, presses on the Device Manager remote (and its Send text field) are appended here as script steps">
+    <input type="checkbox" id="record-toggle" checked>
+    <span>Record remote</span>
+  </label>
   <span id="device-label" class="muted"></span>
   <button id="btn-save" title="Save to the Device Manager script library">Save</button>
   <button id="btn-run" title="Run on the active device">Run</button>
@@ -161,6 +165,21 @@ function validate(): void {
   }
 }
 
+// ── remote recording ─────────────────────────────────────────────────────────
+
+/** Appends a recorded remote action to the end of the script (Roku-remote-tool style). */
+function appendRecordedLine(line: string): void {
+  const source = el<HTMLTextAreaElement>('source');
+  let value = source.value;
+  if (value !== '' && !value.endsWith('\n')) value += '\n';
+  value += `    ${line}\n`;
+  source.value = value;
+  script.source = value;
+  source.scrollTop = source.scrollHeight;
+  scheduleValidate();
+  updateDirty();
+}
+
 // ── dirty tracking ───────────────────────────────────────────────────────────
 
 function updateDirty(): void {
@@ -229,6 +248,12 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
 
     case 'device':
       el<HTMLSpanElement>('device-label').textContent = msg.name ? `→ ${msg.name}` : 'no active device';
+      return;
+
+    case 'recordStep':
+      if (el<HTMLInputElement>('record-toggle').checked) {
+        appendRecordedLine(msg.line);
+      }
       return;
   }
 });

@@ -18,6 +18,10 @@ export interface DeviceManagerViewDeps {
   remoteMode: RemoteModeService;
   /** Opens the script editor tab: existing script by id, or a new/imported one. */
   openScriptEditor: (script?: DeviceScript, imported?: { title: string; source: string }) => void;
+  /** Records a remote key press into the active script editor (if recording). */
+  recordPress?: (key: string) => void;
+  /** Records a sent text into the active script editor (if recording). */
+  recordText?: (text: string) => void;
 }
 
 const HINT_SHOWN_KEY = 'kopytko.deviceManager.sidebarHintShown';
@@ -105,6 +109,7 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
         return;
 
       case 'keyPress':
+        this.deps.recordPress?.(msg.key);
         await this.relayKey(() => this.deps.controller.pressKey(msg.key), `keypress ${msg.key}`);
         return;
       case 'keyHoldStart':
@@ -115,6 +120,7 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
         return;
 
       case 'sendText':
+        this.deps.recordText?.(msg.text);
         try {
           await this.deps.controller.sendText(msg.text);
           this.post({ kind: 'sendTextResult', ok: true });

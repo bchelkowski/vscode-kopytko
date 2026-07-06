@@ -75,12 +75,14 @@ While the mode is on:
   (same trade-off as Roku's own remote tool). A warning-colored
   **`$(broadcast)` Roku Remote** status-bar item is the always-visible
   indicator; click it (or `Ctrl+K`) to exit.
-- **Typing printable characters works while the Remote Control view is
-  focused** — the webview converts them to `Lit_` keypresses. Only printable
-  characters are captured in the webview: VS Code re-dispatches webview
-  keyboard events to the workbench, so the navigation keybindings above fire
-  even with the view focused, and handling them in the webview too would
-  double-send every key.
+- **Typing printable characters works whenever focus is anywhere inside the
+  Remote Control view** — the view background, a remote button, or the toggle
+  checkbox; the mode grabs focus on activation so typing works immediately.
+  The one exception is the Send text field, whose typing stays local (it has
+  its own buffered-send purpose). Only printable characters are captured in
+  the webview: VS Code re-dispatches webview keyboard events to the
+  workbench, so the navigation keybindings above fire even with the view
+  focused, and handling them in the webview too would double-send every key.
 
 Design note: the `type`-command override (used by some extensions to capture
 editor typing) was rejected on purpose — only one extension per window can
@@ -127,6 +129,17 @@ storage schema), a monospace source editor with snippet buttons for every
 command, **live validation** (parse errors with line numbers / step paths as
 you type), and Save / Run / Export. Scripts are stored as raw text, so YAML
 comments and anchors survive round-trips.
+
+**Record remote** (toolbar toggle, on by default): while a script editor is
+open, actions on the Remote Control view write themselves into the script —
+the same authoring flow as Roku's remote tool. Button presses append
+`- press: <key>` and the Send text field appends `- text: <value>`
+(YAML-quoted when needed) to the end of the most recently active editor;
+keyboard-remote-mode navigation keys record too. Everything still reaches the
+device as usual — recording is a tap, not a mode. Free typing (`Lit_`
+characters) and press-and-hold gestures are not recorded: RASP has no
+keydown/keyup commands, and per-character presses would drown the script —
+use the Send field for text you want scripted.
 
 ### RASP support
 

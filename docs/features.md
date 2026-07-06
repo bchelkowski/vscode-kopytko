@@ -253,6 +253,7 @@ Roku remote control with everything else `kopytko-roku-device` can do. See
 | Saved Text entries — `text` and `credentials` types, per-field Send buttons | ✅ | [device-manager.md](./device-manager.md) |
 | Credential passwords in SecretStorage (OS keychain), never in Memento or the webview | ✅ | [device-manager.md](./device-manager.md) |
 | RASP script editor tab — live validation, snippets, format switcher | ✅ | [device-manager.md](./device-manager.md) |
+| Remote-to-script recording — remote presses / sent text append steps to the open editor | ✅ | [device-manager.md](./device-manager.md) |
 | Full RASP runner — press/text/pause/launch/loop/anchors/wait_for_player_state/validate_streaming | ✅ | [device-manager.md](./device-manager.md) |
 | Script library — save/edit/delete/run/cancel + import/export `.rasp` (Roku Remote Tool compatible) | ✅ | [device-manager.md](./device-manager.md) |
 | Device view — quick actions (info/active app/screenshot/update/reboot) + web-admin (install/delete/package/rekey) | ✅ | [device-manager.md](./device-manager.md) |

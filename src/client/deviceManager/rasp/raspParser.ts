@@ -57,6 +57,68 @@ export function raspKeyToEcpKey(raw: string): string | undefined {
   return RASP_KEY_MAP[raw.toLowerCase().trim()];
 }
 
+/** Canonical RASP name per ECP key — used when recording remote presses into a script. */
+const ECP_TO_RASP: Record<string, string> = {
+  Home: 'home',
+  Up: 'up',
+  Down: 'down',
+  Left: 'left',
+  Right: 'right',
+  Select: 'select',
+  Back: 'back',
+  InstantReplay: 'replay',
+  Info: 'info',
+  Play: 'play',
+  Rev: 'rev',
+  Fwd: 'fwd',
+  Backspace: 'backspace',
+  Search: 'search',
+  Enter: 'enter',
+  FindRemote: 'find_remote',
+  VolumeUp: 'volume_up',
+  VolumeDown: 'volume_down',
+  VolumeMute: 'mute',
+  Power: 'power',
+  PowerOn: 'power_on',
+  PowerOff: 'power_off',
+  ChannelUp: 'channel_up',
+  ChannelDown: 'channel_down',
+};
+
+/**
+ * Maps an ECP key back to its canonical RASP press name (`Home` → `home`,
+ * `InstantReplay` → `replay`). `Lit_*` keys pass through unchanged; unknown
+ * keys return undefined.
+ */
+export function ecpKeyToRaspKey(key: string): string | undefined {
+  if (key.startsWith('Lit_')) return key;
+  return ECP_TO_RASP[key];
+}
+
+/**
+ * Formats a value for a RASP `text:` command — single-quoted YAML when the
+ * plain scalar would be ambiguous (quotes, `:`/`#`, flow chars, leading or
+ * trailing whitespace, or a value YAML would parse as a non-string).
+ */
+export function raspQuote(text: string): string {
+  let roundTrips: boolean;
+  try {
+    const loaded: unknown = yaml.load(text);
+    // Must come back as the SAME string — numbers/booleans/null need quoting
+    // to stay text (`- text: true` would otherwise parse as a boolean).
+    roundTrips = typeof loaded === 'string' && loaded === text;
+  } catch {
+    roundTrips = false;
+  }
+  const needsQuoting =
+    text === '' ||
+    /[:#'"{}[\]&*!|>%@`,]/.test(text) ||
+    /^\s|\s$/.test(text) ||
+    text.startsWith('-') ||
+    !roundTrips;
+  return needsQuoting ? `'${text.replace(/'/g, "''")}'` : text;
+}
+
 const DEFAULT_KEYPRESS_WAIT_SEC = 2;
 const SUPPORTED_RASP_VERSION = 1;
 
