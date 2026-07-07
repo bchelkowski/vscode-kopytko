@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.8.0] - 2026-07-07
+
+### Added
+- Add custom labels + filter/sort to Saved Text, Scripts, Deep Link sets
+
 ## [1.7.1] - 2026-07-07
 
 ### Added
