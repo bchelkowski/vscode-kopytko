@@ -13,7 +13,7 @@
 ## Features
 
 - **Syntax highlighting** — full TextMate grammar for `.brs` files including `@import`/`@mock` annotations, `as <type>`, and `m` variable scopes
-- **IntelliSense** — completions for 60+ `ro*` components, 78 interfaces, ~700 methods, built-in functions, keywords, and user-defined functions
+- **IntelliSense** — completions for 62+ `ro*` components, 80 interfaces, ~700 methods, built-in functions, keywords, and user-defined functions
 - **`CreateObject` type inference** — member completions appear automatically after typing `.` on a variable created via `CreateObject`
 - **`m.top` member completion** — auto-completes fields from your XML interface, parent components, and the SceneGraph node catalog
 - **Kopytko module support** — module export completions with auto-insert `@import`, `@import`/`@mock` path completions and snippets
@@ -103,6 +103,39 @@ Casing settings control identifier casing in completions and formatting. Values:
 | `kopytko.deviceDiscovery.enabled` | `boolean` | `true` | Enable automatic Roku device discovery via SSDP |
 | `kopytko.deviceDiscovery.scanTimeout` | `number` | `5000` | Timeout in milliseconds for active SSDP device scans |
 | `kopytko.deviceDiscovery.showNotifications` | `boolean` | `true` | Show notifications when devices come online or go offline |
+
+### Device Manager
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.deviceManager.holdThresholdMs` | `number` | `1000` | Remote Control: hold time before a press becomes a keydown/keyup hold |
+| `kopytko.deviceManager.runner.pollIntervalMs` | `number` | `500` | Script runner: device poll interval for launch/player-state/validation steps |
+| `kopytko.deviceManager.runner.waitTimeoutSec` | `number` | `30` | Script runner: timeout for `wait_for_player_state` and `validate_streaming` |
+
+See [docs/device-manager.md](docs/device-manager.md) for the full Device Manager feature set.
+
+### Diagnostics (Runtime Telemetry)
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.diagnostics.outputDir` | `string` | `"debug"` | Folder where diagnostics sessions are saved, each in its own timestamped subfolder |
+| `kopytko.diagnostics.maxLivePoints` | `number` | `3600` | Max in-memory samples per stream for the live view; older points stay on disk |
+| `kopytko.diagnostics.debugConsolePort` | `number` | `8080` | TCP port of the Roku debug server used for chanperf/sgnodes/texture metrics |
+| `kopytko.diagnostics.collectors.<name>.enabled` | `boolean` | varies | Enable a specific collector (`memCpu`, `nodeCounts`, `objectCounts`, `rendezvous`, `systemMem`, `textures`, `appState`, `fwBeacon`) |
+| `kopytko.diagnostics.collectors.<name>.intervalMs` | `number` | varies | Polling interval for that collector |
+| `kopytko.diagnostics.defaultVisibleCharts` | `array` | `["memory","cpu","nodes"]` | Which charts are visible by default |
+| `kopytko.diagnostics.defaultVisibleTables` | `array` | `["nodes","rendezvous"]` | Which tables are visible by default |
+| `kopytko.diagnostics.memoryLimits.backgroundMB` | `number` | `100` | Reference line on the Memory chart for the published background-app DRAM guidance |
+
+See [docs/diagnostics.md](docs/diagnostics.md) for the full settings reference and architecture.
+
+### Perfetto (App Tracing)
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.perfetto.ecpPort` | `number` | `8060` | ECP port used for Perfetto tracing control and the WebSocket connection |
+| `kopytko.perfetto.refreshIntervalMs` | `number` | `3000` | How often the live trace buffer pushed to the webview is coalesced and flushed; the on-disk trace file is written per-chunk regardless |
+| `kopytko.perfetto.startCommand` | `string` | `""` | Build and deploy command for Perfetto sessions; defaults to `npx kopytko start` when empty |
 
 ---
 

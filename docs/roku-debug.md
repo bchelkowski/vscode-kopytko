@@ -160,7 +160,7 @@ Roku SceneGraph apps synchronize Task threads with the render thread at **rendez
 
 Rendezvous tracking is now exclusively part of the **Runtime Diagnostics** recorder (per-channel CPU/memory, node counts, textures, rendezvous, …) — see [diagnostics.md](./diagnostics.md). The standalone "Rendezvous Log" sidebar tree view has been removed; everything it did (live events grouped by file:line, click-to-open-file) is covered by the Diagnostics panel's Rendezvous table and chart overlay, with no separate enable/disable step required.
 
-`src/client/roku/rendezvous/rendezvousManager.ts` still exists internally — it's what the diagnostics session calls `suspend()`/`resume()` on so a future re-introduction of a second rendezvous consumer can't split the device's shared ECP event queue, but it has no visible UI of its own anymore.
+`src/client/roku/rendezvous/rendezvousManager.ts` still exists internally, but it no longer does any polling of its own — it's reduced to a `suspend()`/`resume()` coordination point so a future re-introduction of a second rendezvous consumer can't split the device's shared ECP event queue with the diagnostics session's own `RendezvousCollector`. Its `setEnabled(true)` polling path is still present in the code but has no caller anywhere in the extension (the UI that used to call it was removed), so it is permanently dormant.
 
 ---
 
@@ -191,18 +191,25 @@ BrightScriptDebugAdapter (inline DAP)
 
 ### Component files
 
+> The binary debug protocol itself lives in the standalone [`kopytko-roku-device`](../packages/roku-device/README.md) package, not in the extension — `src/client/debug/sessionController.ts` imports `DebugCommands`, `ProtocolClient`, `IOClient`, and `ErrorCode` from it.
+
 | Component | File | Responsibility |
 |---|---|---|
-| Protocol client | `src/client/debug/protocol/protocolClient.ts` | TCP connection, binary handshake, packet framing, request/response tracking |
-| Protocol commands | `src/client/debug/protocol/commands.ts` | High-level command builders and response parsers |
-| Binary IO | `src/client/debug/protocol/binaryIO.ts` | Little-endian binary reader/writer |
-| Constants | `src/client/debug/protocol/constants.ts` | Protocol enums, magic values, command codes |
-| Types | `src/client/debug/protocol/types.ts` | TypeScript interfaces for protocol data |
-| IO client | `src/client/debug/protocol/ioClient.ts` | App stdout channel (dynamic port) |
+| Protocol client | `packages/roku-device/src/debug-protocol/protocolClient.ts` | TCP connection, binary handshake, packet framing, request/response tracking |
+| Protocol commands | `packages/roku-device/src/debug-protocol/commands.ts` | High-level command builders and response parsers |
+| Binary IO | `packages/roku-device/src/debug-protocol/binaryIO.ts` | Little-endian binary reader/writer |
+| Constants | `packages/roku-device/src/debug-protocol/constants.ts` | Protocol enums, magic values, command codes |
+| Types | `packages/roku-device/src/debug-protocol/types.ts` | TypeScript interfaces for protocol data |
+| IO client | `packages/roku-device/src/debug-protocol/ioClient.ts` | App stdout channel (dynamic port) |
+| Session controller | `src/client/debug/sessionController.ts` | Owns the `ProtocolClient`/`IOClient` pair for one session, drives the connect → breakpoints → continue lifecycle |
+| Protocol event mapper | `src/client/debug/protocolEventMapper.ts` | Translates protocol events/responses into DAP-shaped data |
+| Breakpoint service | `src/client/debug/services/breakpointService.ts` | Tracks and diffs VS Code breakpoints, sends `ADD_BREAKPOINTS`/removals |
+| Path mapping | `src/client/debug/services/pathMapping.ts` | Maps between local file paths and device `pkg:/` paths |
+| Variable service | `src/client/debug/services/variableService.ts` | Resolves variable references for the Variables panel (locals, containers, SceneGraph nodes) |
 | Debug adapter | `src/client/debug/brightScriptDebugAdapter.ts` | Inline VS Code DAP implementation |
 | Factory | `src/client/debug/debugAdapterFactory.ts` | Creates one adapter instance per debug session |
 | Deployer | `src/client/roku/rokuDeployer.ts` | Inject debug manifest, run kopytko start, restore manifest |
-| Rendezvous manager | `src/client/roku/rendezvous/rendezvousManager.ts` | ECP-based rendezvous tracking, live polling, per-device state |
+| Rendezvous manager | `src/client/roku/rendezvous/rendezvousManager.ts` | `suspend()`/`resume()` coordination so the diagnostics session doesn't share the ECP rendezvous queue with a second poller; no polling of its own anymore |
 
 ---
 

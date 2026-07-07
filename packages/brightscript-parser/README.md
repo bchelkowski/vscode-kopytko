@@ -7,13 +7,13 @@ Used as the shared foundation for `kopytko-formatter`, `kopytko-linter`, and the
 ## Installation
 
 ```bash
-npm install brightscript-parser
+npm install kopytko-brightscript-parser
 ```
 
 ## Quick Start
 
 ```typescript
-import { parse, walk, buildScopes, resolve, getSymbolInfo } from 'brightscript-parser';
+import { parse, walk, buildScopes, resolve, getSymbolInfo } from 'kopytko-brightscript-parser';
 
 // Parse BrightScript source → lossless CST
 const result = parse(`
@@ -115,6 +115,7 @@ Reconstructing: `"" + "x" + " " + "" + "=" + " " + "" + "42" + " " + "' my comme
 | **Optional chaining** | `?.`, `?[`, `?(`, `?@` |
 | **Punctuation** | `(`, `)`, `[`, `]`, `{`, `}`, `.`, `,`, `:`, `;`, `@` |
 | **Preprocessor** | `#if`, `#else`, `#else if`, `#end if`, `#const`, `#error` |
+| **TypeName** | `boolean`, `integer`, `string`, ... — the parser re-classifies whatever token follows `as` in a type annotation to `TypeName`, regardless of its original kind, so formatters/linters can target type positions precisely |
 
 ### Type Designator Variables
 
@@ -229,9 +230,17 @@ fn.syntax;      // escape hatch to the raw SyntaxNode
 | `getWordAtPosition(line, col)` | Extract identifier word at position |
 | `escapeRegex(str)` | Escape regex special characters |
 | `matchesGlob(str, pattern)` | Glob pattern matching (`*`, `**`) |
+| `findMatchingGlob(str, patterns)` | Return the first pattern in a list that matches `str`, or `undefined` |
 | `parseXmlScriptUris(xml)` | Extract `<script>` URIs from XML |
 | `parseXmlInterface(xml)` | Parse `<interface>` fields/functions |
 | `parseXmlExtends(xml)` | Get `extends` attribute from `<component>` |
+| `parseXmlComponentName(xml)` | Get the `name` attribute from a `<component>` element |
+| `isNumericLiteral(str)` | Check whether a string is a BrightScript numeric literal |
+| `stripNumericLiterals(text)` | Strip numeric-literal substrings from text (used to avoid false-positive identifier matches) |
+| `NUMERIC_LITERAL_GLOBAL_RE` | The global `RegExp` `stripNumericLiterals`/`isNumericLiteral` match against |
+| `KEYWORD_MAP` | Lowercase keyword text → `TokenKind` lookup map, used by the lexer |
+| `isKeyword(kind)` | Check whether a `TokenKind` is a language keyword |
+| `isTypeKeyword(kind)` | Check whether a `TokenKind` is a primitive type name (i.e. `TypeName`) |
 
 ### Catalogs
 
@@ -239,12 +248,43 @@ fn.syntax;      // escape hatch to the raw SyntaxNode
 |---|---|
 | `BRIGHTSCRIPT_BUILTINS` | 58 built-in functions with signatures and docs |
 | `BRIGHTSCRIPT_KEYWORDS` | 47 reserved words |
-| `BRIGHTSCRIPT_COMPONENTS` | 60 ro* components with interfaces and methods |
+| `BRIGHTSCRIPT_COMPONENTS` | 62 ro* components with interfaces and methods |
+| `BRIGHTSCRIPT_INTERFACES` | 80 `if*` interfaces backing the components above, each with its method signatures |
 | `findBuiltin(name)` | Look up a built-in function |
+| `builtinNames` | Lowercase `Set` of every built-in function name, for fast membership checks |
+| `builtinArity(name)` | Get a built-in's `{ min, max }` parameter count |
+| `keywordNames` | Lowercase `Set` of every reserved word |
+| `getKeywordCategory(name)` | Classify a keyword as `type` / `literal` / `logicOperator` / `mathOperator` / other, for casing rules |
 | `findComponent(name)` | Look up a ro* component |
-| `getComponentMethods(name)` | Get all methods for a component |
-| `applyCasing(text, option)` | Apply casing transform to identifier |
+| `findInterface(name)` | Look up an `if*` interface by name |
+| `getComponentMethods(name)` | Get all methods for a component (resolved across its interfaces) |
+| `findMethodInterface(componentName, methodName)` | Find which interface on a component declares a given method |
+| `CATALOG_LAST_VERIFIED` | Date string the component/interface catalog was last checked against Roku's docs |
+| `applyCasing(text, option)` | Apply a casing transform (`upper-case`, `pascal-case`, ...) to an identifier |
+| `applyCasingWithOverrides(text, option, exact?)` | Same as `applyCasing`, but checks a per-identifier `exact` override map first |
+| `resolveKeywordCasing(category, config)` | Resolve the effective `CasingOption` for a keyword category, falling back to `config.keyword` |
+| `CasingOption` | Union type of the supported casing transforms |
+| `CasingConfig` | Per-category casing configuration shape consumed by `applyCasingWithOverrides`/`resolveKeywordCasing` |
+| `DEFAULT_CASING_CONFIG` | `CasingConfig` with every category set to `'preserve'` |
 | `inferNumericLiteralType(str)` | Infer type from numeric literal string |
+
+### SceneGraph node catalog
+
+`SG_NODES` catalogs every Roku SceneGraph node type (`Node`, `Group`, `Task`, `ContentNode`, `LayoutGroup`, ...) with its own fields, methods, and `extends` parent — sourced from the [official SceneGraph reference](https://developer.roku.com/docs/references/scenegraph/node-classes/node.md). Inherited members are **not** duplicated on each entry; use the two helper functions below to walk the `extends` chain.
+
+| Export | Description |
+|---|---|
+| `SG_NODES` | `Record<string, SgNodeDefinition>` — the full node catalog, keyed by node name |
+| `findSgNode(name)` | Look up a single node's own (non-inherited) definition |
+| `getAllSgNodeFields(name)` | Get every field for a node, including those inherited via `extends` |
+| `getAllSgNodeMethods(name)` | Get every method for a node, including those inherited via `extends` |
+
+```typescript
+import { SG_NODES, findSgNode, getAllSgNodeFields } from 'kopytko-brightscript-parser';
+
+findSgNode('LayoutGroup');       // → { name: 'LayoutGroup', extends: 'Group', fields: [...], ... }
+getAllSgNodeFields('LayoutGroup'); // → fields declared on LayoutGroup + inherited from Group + Node
+```
 
 ## BrightScript Syntax Rules
 

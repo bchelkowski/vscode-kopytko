@@ -4,7 +4,7 @@ BrightScript linter for the [Kopytko ecosystem](https://github.com/bchelkowski/v
 
 ## Features
 
-- **25 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, and callbacks
+- **31 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, callbacks, and `m.top` field access
 - **Configurable severity** per rule (`error`, `warning`, `info`, `hint`, `off`)
 - **Three output formats**: text (terminal), JSON, [SARIF](https://sarifweb.azurewebsites.net/) (GitHub Code Scanning)
 - **Config file support**: `kopytko-linter.json` or `.vscode/settings.json`
@@ -170,6 +170,22 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `identifier/shadows-function` | error | Variable or parameter shadows a user-defined function (local or `@import`-ed) |
 | `identifier/unused-parameter` | warning | Function parameter never used in body (prefix `_` to suppress) |
 | `identifier/unused-variable` | warning | Local variable defined but never read (prefix `_` to suppress) |
+| `identifier/unused-function` | **off** | Top-level function never called anywhere in the workspace (requires the extension's workspace-wide call index — always a no-op outside the editor, e.g. in the CLI). `init`, `onKeyEvent`, and names starting with `_` are exempt |
+| `identifier/duplicate-function` | error | A function name is declared twice in the same file, or collides with a function already reachable via `@import`/sibling files/`source/` (excluding an intentional override of an ancestor component's function) |
+| `identifier/loop-variable-leak` | warning | A variable first assigned inside a loop body is read after the loop ends, without an intervening write — undefined if the loop never executes |
+
+### Callback Rules
+
+| Rule | Default | Description |
+|---|---|---|
+| `callback/undefined-observer-callback` | error | `.observeField(...)`/`.observeFieldScoped(...)` is called with a string callback name that isn't a known function |
+| `callback/undefined-event-callback` | error | A Kopytko `events: { key: "funcName" }` block references a `funcName` that isn't a known function |
+
+### `m.top` Rules
+
+| Rule | Default | Description |
+|---|---|---|
+| `mtop/undefined-field` | warning | `m.top.fieldName` accesses a field not declared in the component's XML `<interface>` or any ancestor component/SG node. Only active when the field catalog is populated (extension mode) |
 
 ### Syntax Rules
 
@@ -180,6 +196,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `createobject/unknown-component` | warning | `CreateObject("...")` with unrecognized component name |
 | `syntax/trailing-comma` | error | Trailing comma after `return` value |
 | `syntax/flow-outside-loop` | error | `continue for`/`exit while` outside matching loop |
+| `syntax/unreachable-code` | warning | A statement follows a terminating statement (`return`, `throw`, `stop`, `goto`, `exit for`/`while`, ...) in the same linear block. Reports only the first unreachable statement per block; does not perform cross-branch control-flow analysis |
 
 ### Test Rules
 
@@ -260,6 +277,28 @@ const diagnostics: LintDiagnostic[] = lintFile(
   DEFAULT_LINTER_CONFIG,
 );
 ```
+
+### Full export surface
+
+The CLI itself (`bin/kopytko-lint.ts`) lints projects via `lintProjectAsync`, not `lintProject` — prefer it for anything beyond quick scripting, since it doesn't block the event loop while walking the project's files.
+
+| Export | Description |
+|---|---|
+| `lintProject(root, configOverride?)` | Synchronously walk and lint an entire project. Returns a `LintResult` |
+| `lintProjectAsync(root, configOverride?)` | Same as `lintProject`, but async — what the CLI uses in production |
+| `lintFile(path, content, context, config)` | Lint a single file given a pre-built `LintContext` |
+| `createFileContext(baseContext, filePath)` | Derive a per-file `LintContext` from a shared project-wide base context (scopes `knownFuncNames` to what's reachable from that file) |
+| `applyFixes(content, fixes)` | Apply a list of `LintFix` edits to file content (used by `--fix`) |
+| `formatText(result)` / `formatJson(result)` / `formatSarif(result)` | Render a `LintResult` in the CLI's three output formats |
+| `parseLinterConfig(raw)` | Parse/validate a raw `kopytko-linter.json` (or `.vscode/settings.json` `kopytko.lint.*`) object into a `LinterConfig` |
+| `resolveConfig(...)` | Resolve the effective `LinterConfig` following the CLI's config-file → VS Code settings → defaults precedence |
+| `DEFAULT_LINTER_CONFIG` / `DEFAULT_RULE_CONFIG` | The full default config / default per-rule severity map |
+| `parseImports(text)` / `ImportResolver` | Parse `@import`/`@mock` annotations from source text; resolve import paths |
+| `parseFunctionDefs(text, path)` / `parseInnerMethodDefs(text, path)` | Parse top-level function/sub definitions, or AA-literal inner methods, from source text |
+| `isTestFile(path)` / `isMockFile(path)` / `isTestRelatedFile(path)` | Classify a file path as a test file, a `_mocks/*.mock.brs` file, or either |
+| `getTestBaseName(path)` / `findTestSiblings(path)` | Resolve a test file's base component name, or find its split-suite sibling test files |
+| `stripStringLiterals(text)` | Replace string-literal contents with placeholders, to avoid false-positive identifier matches inside strings |
+| `matchesGlob`, `findMatchingGlob`, `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `findComponent`, `escapeRegex`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE` | Re-exported from `kopytko-brightscript-parser` for convenience — see [that package's README](../brightscript-parser/README.md) for details |
 
 ## CI Integration
 

@@ -3,7 +3,7 @@
 > **Last verified against Roku documentation:** 2026-06-04
 >
 > This date must be updated whenever the component catalog in
-> `src/server/brightscript/components.ts` is refreshed.
+> `packages/brightscript-parser/src/catalog/components.ts` is refreshed.
 > Rotate it after checking https://developer.roku.com/dev/docs/brightscript
 > for new components, new interface methods, deprecations, or firmware version gates.
 >
@@ -19,7 +19,7 @@
    - New methods added since the last verification date
    - Methods marked deprecated (add `deprecated: true` + `deprecationNote`)
    - `since` firmware version tags on new methods
-3. Edit `src/server/brightscript/components.ts`:
+3. Edit `packages/brightscript-parser/src/catalog/components.ts` (npm package `kopytko-brightscript-parser`):
    - Add/modify entries in `BRIGHTSCRIPT_INTERFACES`
    - Add/modify entries in `BRIGHTSCRIPT_COMPONENTS`
    - Update `CATALOG_LAST_VERIFIED` to today's date (`YYYY-MM-DD`)
@@ -33,6 +33,7 @@
 | Date | Author | Summary |
 |---|---|---|
 | 2026-06-04 | Initial | Catalog created: 60 components, 78 interfaces, ~700 methods |
+| 2026-07-07 | Docs sync | Catalog now at 62 components, 80 interfaces — added `roUtils`/`ifUtils` (firmware 15.0+) and documented `ifRenderThreadQueue` in the interfaces quick-reference |
 
 ---
 
@@ -54,6 +55,7 @@
 | `roByteArray` | ifByteArray, ifArray, ifEnum, ifToStr | Binary buffer; supports file I/O, Base64, hex, CRC |
 | `roFunction` | ifFunction, ifToStr | First-class function reference for callbacks |
 | `roRegex` | ifRegex | POSIX regular expression matching, replacement, splitting |
+| `roUtils` | ifUtils | Deep copy and object-identity comparison utilities *(since 15.0)* |
 
 ### XML
 
@@ -187,6 +189,7 @@
 | `ifSetMessagePort` | SetMessagePort |
 | `ifGetMessagePort` | GetMessagePort |
 | `ifMessagePort` | WaitMessage, GetMessage, PeekMessage |
+| `ifRenderThreadQueue` | AddMessageHandler, PostMessage, CopyMessage, NumCopies *(since 15.0)* |
 | `ifFileSystem` | GetVolumeList, GetDirectoryListing, CreateDirectory, Delete, CopyFile, MoveFile, Rename, Exists, Stat, GetFreeSpace, MatchFiles, Find, FindRecurse |
 | `ifPath` | Change, IsValid, Split, GetPath, GetParentPath, GetFilename, GetBasename, GetExtension |
 | `ifDeviceInfo` | GetModel, GetModelDisplayName, GetFirmwareVersion, GetVersion, GetOSVersion, GetRIDA, IsRIDADisabled, GetChannelClientId, GetUserCountryCode, GetCurrentLocale, GetMemoryLevel, GetLinkStatus, GetInternetStatus, GetConnectionType, GetIPAddrs, GetConnectionInfo, GetDisplayType, GetDisplayMode, GetVideoMode, GetUIResolution, GetAudioOutputChannel, HasFeature, GetRandomUUID, GetCaptionsMode, SetCaptionsMode, GetClockFormat |
@@ -224,6 +227,7 @@
 | `ifCompositor` | SetDrawTo, Draw, DrawAll, NewSprite, NewAnimatedSprite, AnimationTick, ChangeMatchingRegions |
 | `ifSprite` | MoveTo, MoveOffset, GetX, GetY, SetZ, GetZ, SetDrawableFlag, GetDrawableFlag, SetMemberFlags, GetMemberFlags, SetCollidableFlags, GetCollidableFlags, SetRegion, GetRegion, OffsetRegion, SetData, GetData, CheckCollision, CheckMultipleCollisions, Remove |
 | `ifRegex` | IsMatch, Match, MatchAll, Replace, ReplaceAll, Split |
+| `ifUtils` | DeepCopy, IsSameObject, IsComponentRegistered *(since 15.2)* |
 | `ifLocalization` | GetLocalizedAsset, GetPluralString |
 | `ifSystemLog` | EnableType |
 | `ifAppManager` | GetUptime, GetScreensaverTimeout, SetUserSignedIn, SetAutomaticAudioGuideEnabled, IsAppInstalled, SetNowPlayingContentMetaData, StartVoiceActionSelectionRequest, SetVoiceActionStrings, GetLastExitInfo |

@@ -1474,6 +1474,16 @@ m.top.setField("title", "Hello")
 
 ---
 
+**`kopytko.format.verifySyntax`**
+
+| Type | Values | Default |
+|---|---|---|
+| `boolean` | `true`, `false` | `true` |
+
+Verifies that formatted output re-parses to an equivalent AST before applying it, catching formatter bugs. Disable only to debug or skip that safety check.
+
+---
+
 ## CLI & CI Usage
 
 The formatting engine is available as a standalone CLI tool via the `kopytko-formatter` npm package, independent of VS Code.

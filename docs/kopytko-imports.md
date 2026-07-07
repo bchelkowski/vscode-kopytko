@@ -88,18 +88,19 @@ Lookup is case-insensitive to match BrightScript's case-insensitive semantics.
 
 | Code | Severity | Description |
 |---|---|---|
-| `import/duplicate` | Error | The same `@import` path (and `from` package, if present) appears more than once in the file |
+| `import/duplicate` | Warning | The same `@import` path (and `from` package, if present) appears more than once in the file |
 | `import/missing-path` | Error | `@import` annotation has no path |
 | `import/path-not-absolute` | Warning | Import path does not start with `/` |
 | `import/wrong-comment-style` | Error | `@import` written with `"` instead of `'` |
 | `import/build-generated` | Information | Path matches a configured generated-file pattern — file is expected to be created during the build |
-| `import/unresolved` | Warning | File could not be found at any candidate location |
+| `import/unresolved` | Error | File could not be found at any candidate location |
 | `import/unused` | Warning | Import resolves successfully, but none of the functions it exports are referenced anywhere in the current file |
+| `import/missing-promise-deps` | Warning | In a test file, `.resolvedValue(...)` is used without an `@import` of `PromiseResolve.brs`, or `.rejectedValue(...)` is used without an `@import` of `PromiseReject.brs` (checked against the current file and its split-suite/sibling test files) |
 | `test/missing-mock-annotation` | Warning | `mockFunction("X")` references a function not defined in any `@mock`'ed file |
 
 `import/build-generated` is emitted only when the file does not exist **and** the path matches a `kopytko.imports.generatedPaths` pattern. If the file already exists (the build has run), no diagnostic is shown at all.
 
-`import/duplicate` is always an error — the second and any further occurrence of the same `@import` line are flagged. The first occurrence is validated normally. Two imports with the same path but different `from` packages are distinct and are not considered duplicates.
+`import/duplicate` — the second and any further occurrence of the same `@import` line are flagged (default severity `warning`). The first occurrence is validated normally. Two imports with the same path but different `from` packages are distinct and are not considered duplicates.
 
 `import/unused` is emitted when the imported file **resolves** but a scan of the current file finds no word-boundary match for any of the function or sub names defined in the imported file. References inside comment lines or string literals are excluded. If the imported file defines no functions at all (e.g. it only defines constants), the check is skipped.
 

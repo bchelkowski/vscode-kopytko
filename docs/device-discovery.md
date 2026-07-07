@@ -76,6 +76,7 @@ CredentialStore (SecretStorage)
 | Unset Active Device | `kopytko.unselectDevice` | Clear the active device selection |
 | Set Environment | `kopytko.setDeviceEnvironment` | Choose a Kopytko environment for a device |
 | Upload to Device | `kopytko.uploadToDevice` | Build and upload the project to a device |
+| Start Debugging (F5) | `kopytko.debugDevice` | Start a debug session against a device |
 | Add Device | `kopytko.addDevice` | Add a device manually by IP address |
 | Add to Favorites | `kopytko.addFavorite` | Mark a device as a favorite (persists across networks) |
 | Remove from Favorites | `kopytko.removeFavorite` | Unmark a device as a favorite |

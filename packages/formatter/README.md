@@ -82,11 +82,11 @@ The config file can contain both formatting rules and casing settings:
   "emptyLineAfterImports": true,
   "maxEmptyLines": 1,
   "emptyLinesBetweenFunctions": 1,
-  "keywordCasing": "lower-case",
-  "builtinCasing": "pascal-case",
-  "typeCasing": "pascal-case",
-  "literalCasing": "lower-case",
-  "logicOperatorCasing": "upper-case",
+  "keyword": "lower-case",
+  "builtin": "pascal-case",
+  "type": "pascal-case",
+  "literal": "lower-case",
+  "logicOperator": "upper-case",
   "ignore": [
     "**/node_modules/**",
     "**/dist/**",
@@ -95,7 +95,7 @@ The config file can contain both formatting rules and casing settings:
 }
 ```
 
-> **Note:** `keywordCasing`, `builtinCasing`, `typeCasing`, `literalCasing`, and `logicOperatorCasing` are casing settings (see `CasingConfig`). All other keys are formatting rules (see `FormattingConfig`). Casing values use kebab-case: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
+> **Note:** `keyword`, `builtin`, `type`, `literal`, `logicOperator`, `mathOperator`, `userFunction`, `userMethod`, and `exact` are casing settings (see `CasingConfig`) — the same key names as in `kopytko.casing.*`, just without the prefix. All other keys are formatting rules (see `FormattingConfig`). Casing values use kebab-case: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-case`, `camel-case`.
 
 If your project already has formatting settings in `.vscode/settings.json`, no extra config file is needed — the CLI reads them directly.
 
@@ -112,6 +112,21 @@ kopytko-format --check --ignore "**/_tests/**" --ignore "**/dist/**" app
 ```
 
 Patterns use glob syntax: `*` matches within a path segment, `**` matches any depth.
+
+### Read-only paths
+
+Separately from `ignore`, the CLI also respects `readOnlyPaths` — the same mechanism the VS Code extension uses to protect generated/vendored files from formatting. Format-specific `kopytko.format.readOnlyPaths` takes priority; if unset, the CLI falls back to the shared `kopytko.readOnlyPaths`. Both are supported in `kopytko-formatter.json` (as a top-level `readOnlyPaths` key) and in `.vscode/settings.json`:
+
+```json
+{
+  "kopytko.format.readOnlyPaths": [
+    "**/node_modules/**",
+    "**/generated/**"
+  ]
+}
+```
+
+Matched files are skipped entirely, the same as `ignore`.
 
 ## VS Code Settings Reference
 
@@ -213,7 +228,7 @@ When used inside the [Kopytko extension](https://github.com/bchelkowski/vscode-k
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `kopytko.format.observeFieldStyle` | `"always-scoped" \| "warn" \| "preserve"` | `"preserve"` | Enforce `observeFieldScoped` over `observeField` |
+| `kopytko.format.observeFieldStyle` | `"always-scoped" \| "preserve"` | `"preserve"` | Enforce `observeFieldScoped` over `observeField` |
 | `kopytko.format.mPrefixStyle` | `"dot" \| "bracket" \| "preserve"` | `"preserve"` | Normalize `m`-prefix field access style |
 | `kopytko.format.alignAssignments` | `boolean` | `false` | Align `=` signs in consecutive assignment lines |
 | `kopytko.format.fieldAccessConsistency` | `"dot" \| "method" \| "preserve"` | `"preserve"` | Field access consistency on nodes (dot vs `getField`/`setField`) |
@@ -224,6 +239,7 @@ When used inside the [Kopytko extension](https://github.com/bchelkowski/vscode-k
 |---|---|---|---|
 | `kopytko.format.printStatement` | `"warn" \| "remove" \| "preserve"` | `"preserve"` | Flag or remove `print` debug statements |
 | `kopytko.format.lineCommentPosition` | `"above" \| "inline" \| "preserve"` | `"preserve"` | Move trailing comments: `above` puts them on the line above |
+| `kopytko.format.verifySyntax` | `boolean` | `true` | Verify that formatted output re-parses to an equivalent AST before applying it, catching formatter bugs. Disable only to debug or skip that safety check |
 
 ### Casing
 
@@ -264,7 +280,7 @@ const isClean = checkFormatting(source, DEFAULT_FORMATTING_CONFIG);
 
 #### `formatText(source, config, casing?, userFunctions?): string`
 
-Formats BrightScript source code using a multi-pass engine (16 pass functions in 11 logical stages).
+Formats BrightScript source code by running it through a fixed pipeline of roughly 25 numbered sub-passes (labeled 1 through 14, with several stages split further into lettered sub-passes, e.g. `4b`/`4c`, `6b`/`6c`, `7b`/`7c`, `8b`/`8c`/`8d`, `9b`, `10a`) — a mix of CST-based passes (structural rewrites like casing and print-statement handling) and regex-based passes (spacing, indentation, blank lines, comment style, ...).
 
 - `source` — raw BrightScript source text
 - `config` — `FormattingConfig` object
@@ -274,6 +290,21 @@ Formats BrightScript source code using a multi-pass engine (16 pass functions in
 #### `checkFormatting(source, config, casing?, userFunctions?): boolean`
 
 Returns `true` if the source text is already formatted (no changes needed).
+
+### Full export surface
+
+| Export | Description |
+|---|---|
+| `formatText(source, config, casing?, userFunctions?)` | Format BrightScript source; returns the formatted string |
+| `checkFormatting(source, config, casing?, userFunctions?)` | Returns `true` if the source is already formatted |
+| `FormattingConfig` | The full formatting-options type (49 fields — everything under `kopytko.format.*`) |
+| `DEFAULT_FORMATTING_CONFIG` | A `FormattingConfig` with every option at its VS Code default |
+| `parseFormattingConfig(raw)` | Parse/validate a raw settings object (e.g. from `kopytko-formatter.json` or `.vscode/settings.json`) into a `FormattingConfig` |
+| `FunctionDefinition` | Shape of a parsed function/sub definition, used for the `userFunctions` casing parameter |
+| `CasingConfig`, `CasingOption`, `DEFAULT_CASING_CONFIG` | Re-exported from `kopytko-brightscript-parser` — the casing configuration shape, its option union, and its all-`preserve` default |
+| `applyCasing(name, option)` / `applyCasingWithOverrides(name, option, exact?)` | Re-exported casing transforms — apply a `CasingOption` to an identifier, optionally checking a per-identifier `exact` override map first |
+| `resolveKeywordCasing(category, config)` | Re-exported — resolve the effective `CasingOption` for a keyword category, falling back to `config.keyword` |
+| `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin(name)`, `getKeywordCategory(name)` | Re-exported catalog lookups used internally for casing and built-in-aware passes — see [`kopytko-brightscript-parser`'s README](../brightscript-parser/README.md) for details |
 
 ## GitHub Actions
 

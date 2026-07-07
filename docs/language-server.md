@@ -272,6 +272,22 @@ Note: in BrightScript, `=` serves as both assignment and comparison. The checker
 
 No quick-fix is offered — the user decides whether to remove the variable, prefix it with `_`, or restructure the code.
 
+#### Shadows built-in diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `identifier/shadows-builtin` | Error | A local variable or parameter declaration reuses the name of a BrightScript built-in global function. |
+
+Checked against every scope in the file (root and nested function/sub bodies). Function declarations themselves are exempt — only variable and parameter declarations can trigger it, since redeclaring a built-in as a local hides it for the rest of that scope.
+
+#### Shadows user-defined function diagnostic
+
+| Code | Severity | Description |
+|---|---|---|
+| `identifier/shadows-function` | Error | A local variable or parameter declaration reuses the name of a function defined in the current file, or reachable via `@import`/sibling patterns. |
+
+Checked against the same function-name scope as `identifier/undefined-function`: functions declared in the file plus everything in `knownFuncNames` (imports, siblings, source/ directory). Function declarations themselves are exempt from the check.
+
 #### Unused function diagnostic
 
 | Code | Severity | Description |

@@ -14,7 +14,12 @@ const allSettings = [
   { key: 'kopytko.imports.resolveModules', type: 'boolean', default: 'true', desc: 'Resolve @import paths from installed Kopytko npm packages.' },
   { key: 'kopytko.imports.sourceDir', type: 'string', default: '"app"', desc: 'Root directory where .brs source files live.' },
   { key: 'kopytko.imports.generatedPaths', type: 'array', default: '[]', desc: 'Glob patterns for build-generated import paths (suppresses unresolved diagnostics).' },
+  { key: 'kopytko.imports.generatedModules', type: 'array', default: '[]', desc: 'Declares function names exported by specific build-generated files, so calls to them are not flagged as undefined.' },
   { key: 'kopytko.imports.siblingPatterns', type: 'array', default: '[]', desc: 'File patterns that share import scope with the active file.' },
+  // Read-only paths
+  { key: 'kopytko.readOnlyPaths', type: 'array', default: '[]', desc: 'Glob patterns for files to treat as read-only. Shared fallback for both formatting and linting.' },
+  { key: 'kopytko.format.readOnlyPaths', type: 'array', default: '[]', desc: 'Formatter-specific read-only paths. Overrides kopytko.readOnlyPaths for formatting when set.' },
+  { key: 'kopytko.lint.readOnlyPaths', type: 'array', default: '[]', desc: 'Linter-specific read-only paths. Overrides kopytko.readOnlyPaths for linting when set.' },
   // Casing
   { key: 'kopytko.casing.builtin', type: 'enum', default: 'preserve', desc: 'Casing applied to built-in function names in completions and formatting.' },
   { key: 'kopytko.casing.keyword', type: 'enum', default: 'preserve', desc: 'Casing for keywords — fallback for type/literal/logicOperator/mathOperator.' },
@@ -35,11 +40,39 @@ const allSettings = [
   { key: 'kopytko.deviceManager.runner.pollIntervalMs', type: 'number', default: '500', desc: 'Script runner: device poll interval for launch / player-state / validation steps.' },
   { key: 'kopytko.deviceManager.runner.waitTimeoutSec', type: 'number', default: '30', desc: 'Script runner: timeout for wait_for_player_state and validate_streaming.' },
   // Lint rule overrides
-  { key: 'kopytko.lint.rules.type/missing-return-type', type: 'enum', default: 'warning', desc: 'Severity for missing return-type annotations.' },
-  { key: 'kopytko.lint.rules.type/missing-param-type', type: 'enum', default: 'warning', desc: 'Severity for missing parameter-type annotations.' },
+  { key: 'kopytko.lint.rules.type/missing-return-type', type: 'enum', default: 'warning', desc: 'Severity override for missing return-type annotations.' },
+  { key: 'kopytko.lint.rules.type/missing-param-type', type: 'enum', default: 'warning', desc: 'Severity override for missing parameter-type annotations.' },
   // Formatting passthrough
   { key: 'kopytko.format.indentSize', type: 'number', default: '4', desc: 'Formatter: spaces per indent level.' },
+  { key: 'kopytko.format.verifySyntax', type: 'boolean', default: 'true', desc: 'Verify formatted output re-parses to an equivalent AST before applying it, catching formatter bugs.' },
   { key: 'kopytko.format.*', type: '...', default: '...', desc: 'All kopytko-formatter options available — see the Formatter page.' },
+  // Diagnostics (Runtime Telemetry)
+  { key: 'kopytko.diagnostics.outputDir', type: 'string', default: '"debug"', desc: 'Folder where diagnostics sessions are saved, each in its own timestamped subfolder.' },
+  { key: 'kopytko.diagnostics.maxLivePoints', type: 'number', default: '3600', desc: 'Max in-memory samples per stream for the live view; older points stay on disk.' },
+  { key: 'kopytko.diagnostics.debugConsolePort', type: 'number', default: '8080', desc: 'TCP port of the Roku debug server used for chanperf / sgnodes / texture metrics.' },
+  { key: 'kopytko.diagnostics.collectors.memCpu.enabled', type: 'boolean', default: 'true', desc: 'Collect per-channel CPU and memory usage (chanperf).' },
+  { key: 'kopytko.diagnostics.collectors.memCpu.intervalMs', type: 'number', default: '1000', desc: 'Polling interval for per-channel CPU/memory.' },
+  { key: 'kopytko.diagnostics.collectors.nodeCounts.enabled', type: 'boolean', default: 'true', desc: 'Collect SceneGraph node counts by type.' },
+  { key: 'kopytko.diagnostics.collectors.nodeCounts.intervalMs', type: 'number', default: '2000', desc: 'Polling interval for node counts.' },
+  { key: 'kopytko.diagnostics.collectors.objectCounts.enabled', type: 'boolean', default: 'true', desc: 'Collect BrightScript object counts by type. Only polled while the Objects chart/table is visible (hidden by default).' },
+  { key: 'kopytko.diagnostics.collectors.objectCounts.intervalMs', type: 'number', default: '2000', desc: 'Polling interval for object counts.' },
+  { key: 'kopytko.diagnostics.collectors.rendezvous.enabled', type: 'boolean', default: 'true', desc: 'Collect render-thread rendezvous via ECP.' },
+  { key: 'kopytko.diagnostics.collectors.rendezvous.intervalMs', type: 'number', default: '1000', desc: 'Polling interval for rendezvous events.' },
+  { key: 'kopytko.diagnostics.collectors.systemMem.enabled', type: 'boolean', default: 'false', desc: 'Collect device-wide memory. Off by default; per-channel memory is usually more useful.' },
+  { key: 'kopytko.diagnostics.collectors.systemMem.intervalMs', type: 'number', default: '5000', desc: 'Polling interval for device-wide memory.' },
+  { key: 'kopytko.diagnostics.collectors.textures.enabled', type: 'boolean', default: 'true', desc: 'Collect GPU texture/bitmap memory. The Textures chart/table only shows when selected in the dropdowns.' },
+  { key: 'kopytko.diagnostics.collectors.textures.intervalMs', type: 'number', default: '5000', desc: 'Polling interval for texture memory.' },
+  { key: 'kopytko.diagnostics.collectors.appState.enabled', type: 'boolean', default: 'true', desc: 'Track app foreground/background state, shown as background shading on charts. Requires "Control by mobile apps" on the device.' },
+  { key: 'kopytko.diagnostics.collectors.appState.intervalMs', type: 'number', default: '2000', desc: 'Polling interval for app state.' },
+  { key: 'kopytko.diagnostics.collectors.fwBeacon.enabled', type: 'boolean', default: 'true', desc: 'Track framework beacon markers (AppLaunch/AppResume/VODStart) via ECP /fwbeacons.' },
+  { key: 'kopytko.diagnostics.collectors.fwBeacon.intervalMs', type: 'number', default: '1000', desc: 'Polling interval for framework beacon events.' },
+  { key: 'kopytko.diagnostics.defaultVisibleCharts', type: 'array', default: '["memory","cpu","nodes"]', desc: 'Which charts are visible by default (memory / cpu / nodes / objects / textures).' },
+  { key: 'kopytko.diagnostics.defaultVisibleTables', type: 'array', default: '["nodes","rendezvous"]', desc: 'Which tables are visible by default (nodes / objects / rendezvous / textures).' },
+  { key: 'kopytko.diagnostics.memoryLimits.backgroundMB', type: 'number', default: '100', desc: 'Reference line on the Memory chart for the published background-app DRAM guidance.' },
+  // Perfetto (App Tracing)
+  { key: 'kopytko.perfetto.ecpPort', type: 'number', default: '8060', desc: 'ECP port used for Perfetto tracing control and the WebSocket connection.' },
+  { key: 'kopytko.perfetto.refreshIntervalMs', type: 'number', default: '3000', desc: 'How often the live trace buffer pushed to the webview is coalesced and flushed. The on-disk trace file is written per-chunk regardless.' },
+  { key: 'kopytko.perfetto.startCommand', type: 'string', default: '""', desc: 'Build and deploy command for Perfetto sessions. Defaults to npx kopytko start when empty.' },
 ];
 
 const importExample = `' @import /components/VideoPlayer.brs
@@ -448,6 +481,35 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- SceneGraph Node Tree Explorer -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">SceneGraph Node Tree Explorer</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            An editor-tab panel that fetches <code class="text-violet-300">/query/sgnodes/all</code> from the active Roku device and renders the live scene tree as a D3 icicle chart — every node, its type, and its depth in the hierarchy, at a glance.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Click a node to focus its subtree; double-click to go back up',
+              'Hover any node for a tooltip with its type, id, and field count',
+              'Refresh button re-queries the device for the current tree without reopening the tab',
+              'Reads the same ECP endpoint the Diagnostics panel\'s Node Counts chart summarizes, but shows the full live tree instead of counts',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="SceneGraph Node Tree Explorer"
+          placeholder="Editor tab showing a D3 icicle chart of the live SceneGraph node tree, with a tooltip open on a hovered node showing its type and id"
+        />
+      </div>
+    </section>
+
     <!-- Deep Linking -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">Deep Linking</h2>
@@ -548,15 +610,26 @@ const kopytkoRcExample = `// .kopytkorc
               ['Debug device', 'F5', 'Deploy with remotedebug=1 and start the debug session'],
               ['Refresh devices', '', 'Trigger a new SSDP scan'],
               ['Select device', '', 'Set the active Roku from the discovered list'],
+              ['Unset active device', '', 'Clear the active device selection'],
               ['Add device', '', 'Add a device manually by IP address'],
               ['Set password', '', 'Store device password in the OS keychain'],
+              ['Clear password', '', 'Remove the stored password for a device'],
+              ['Copy IP address', '', 'Copy the device IP address to the clipboard'],
+              ['Copy to clipboard', '', 'Copy selected text or device info to the clipboard'],
+              ['Set environment', '', 'Choose a .kopytkorc environment for a device'],
               ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
               ['Read registry', '', 'View device registry sections in a virtual document'],
+              ['Remove device', '', 'Remove a manually-added or stale device from the list'],
+              ['Open Node Tree Explorer', '', 'Fetch /query/sgnodes/all and render the live SceneGraph node tree'],
               ['Open Deep Linking', '', 'Launch channels with contentId / roInput deep-link parameters'],
               ['Open Device Manager', '', 'Reveal the Remote Control view (remote, device actions, saved text)'],
               ['Toggle Remote Control Keyboard Mode', 'Ctrl+K (exit)', 'Drive the Roku with the keyboard — arrows, Enter, Escape, media keys'],
               ['New Device Script', '', 'Open the RASP automation-script editor tab'],
               ['Add / Remove favorite', '', 'Persist a device across restarts'],
+              ['Start / Stop Diagnostics Session', '', 'Start or stop a runtime telemetry recording session'],
+              ['Open Kopytko Perfetto', '', 'Open the Perfetto app-tracing tab'],
+              ['Start / Stop Perfetto Tracing Session', '', 'Deploy and begin, or end, a live Perfetto trace'],
+              ['Capture Heap Snapshot (Perfetto)', '', 'Trigger a heap snapshot during an active Perfetto session'],
             ].map(([cmd, kb, desc]) => (
               <tr class="bg-[#070b14] hover:bg-[#0f1923] transition-colors">
                 <td class="px-4 py-2.5 text-white text-xs font-medium">{cmd}</td>

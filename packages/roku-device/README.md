@@ -232,6 +232,12 @@ await installer.packageChannel(
 );
 await installer.takeScreenshot('192.168.1.20', password, './out/screenshot.jpg');
 await installer.checkForUpdate('192.168.1.20', password);
+
+// Confirm the device is keyed for the target app before packaging
+const { matches } = await installer.validateKey('192.168.1.20', 'abcd1234efgh');
+
+// Pull a profiling data dump down to disk
+await installer.downloadProfilingData('192.168.1.20', password, './out/profiling-data.zip');
 ```
 
 Drives the same Installer/Utilities/Packager/Update tabs a developer would use in a

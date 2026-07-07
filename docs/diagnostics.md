@@ -71,19 +71,25 @@ the device answers `<status>FAILED</status>` while the channel is backgrounded.
 
 ## Architecture
 
-All code is client-side (`src/client/diagnostics/`) — it needs raw TCP/HTTP to the
-device, like the debug adapter. The modules are intentionally free of any `vscode`
-import so they can run (and be tested) headless.
+The transport and device-data code (raw TCP/HTTP to port 8080/8060, parsers,
+polling collectors) lives in the standalone [`kopytko-roku-device`](../packages/roku-device/README.md)
+package, free of any `vscode` import so it can run (and be tested) headless.
+The extension (`src/client/diagnostics/`) keeps session orchestration, NDJSON
+storage, and the webview.
 
 ```
-transport/debugConsoleClient.ts   Resilient TCP client for port 8080
-parsers/                          Pure parsers: chanperf, sgNodesCounts, free, r2d2Bitmaps (+ consoleResponse)
-collectors/                       Independent, self-healing pollers (one per metric)
-session/eventModel.ts             Open event registry + envelope { t, wall, type, … }
-session/diagnosticsSession.ts     Orchestrates collectors → timestamp → storage + live ring buffers
-storage/                          Injectable sink, NdjsonWriter, sessionStore (manifest), sessionReader
-diagnosticsController.ts          Builds the session for the active device from config; suspends legacy rendezvous
-activation/diagnostics.ts         Registers the Start/Stop commands
+packages/roku-device/src/console/debugConsoleClient.ts   Resilient TCP client for port 8080
+packages/roku-device/src/diagnostics/parsers/            Pure parsers: chanperf, sgNodesCounts, free, r2d2Bitmaps (+ consoleResponse, ECP variants)
+packages/roku-device/src/diagnostics/collectors/         Independent, self-healing pollers (one per metric)
+
+src/client/diagnostics/session/eventModel.ts             Re-exports the package's event types + local STREAM_FILE map
+src/client/diagnostics/session/diagnosticsSession.ts     Orchestrates collectors → timestamp → storage + live ring buffers
+src/client/diagnostics/storage/                          Injectable sink, NdjsonWriter, sessionStore (manifest), sessionReader
+src/client/diagnostics/diagnosticsController.ts          Builds the session for the active device from config; suspends legacy rendezvous
+src/client/diagnostics/diagnosticsLock.ts                Mutual-exclusion lock shared with the Perfetto panel
+src/client/diagnostics/views/diagnosticsViewProvider.ts  Bridges controller ↔ webview
+src/client/diagnostics/webview/                          protocol.ts (message types), main.ts (D3 charts + DOM), styles.css
+src/client/activation/diagnostics.ts                     Registers the Start/Stop commands
 ```
 
 ### Transport — `DebugConsoleClient`
@@ -165,13 +171,15 @@ into a new folder, and stops/finalizes on the stop command.
 ## Tools sidebar
 
 A small panel in the Kopytko activity-bar sidebar (labeled "Tools", alongside
-Roku Devices) with three buttons for quick navigation:
+Roku Devices) with five buttons for quick navigation:
 
 | Button | Opens |
 |---|---|
 | **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
 | **Perfetto** | Opens the Perfetto tracing tab (`kopytko.perfetto.open`) |
 | **Node Tree** | Opens the SceneGraph Node Tree Explorer (`kopytko.nodes.open`) |
+| **Deep Linking** | Opens the Deep Linking tab |
+| **Device Manager** | Opens the Device Manager (remote control, scripts, web admin) — see [device-manager.md](./device-manager.md) |
 
 It's a plain navigation aid — no data flows through it, it just executes the
 corresponding reveal command. Styled to match this panel's toolbar (same
@@ -445,11 +453,15 @@ Webview → extension:
 ## Testing
 
 - **Parsers** are tested against captured real-device fixtures in
-  `test/diagnostics/fixtures/`.
-- **Transport** is tested with an injected mock socket (connect/framing/timeout/
-  reconnect) under fake timers.
-- **Collectors, session, storage, and controller** use stubbed transports/ECP and
-  an in-memory sink, so tests never touch real disk or the network.
+  `packages/roku-device/test/diagnostics/fixtures/`.
+- **Transport** (`DebugConsoleClient`) is tested with an injected mock socket
+  (connect/framing/timeout/reconnect) under fake timers, in
+  `packages/roku-device/test/console/debugConsoleClient.test.ts`.
+- **Collectors** are tested in `packages/roku-device/test/diagnostics/collectors.test.ts`
+  with stubbed transports/ECP.
+- **Session, storage, and controller** (`test/diagnostics/diagnosticsController.test.ts`,
+  `diagnosticsLock.test.ts`, `storage.test.ts`) use stubbed transports/ECP and an
+  in-memory sink, so tests never touch real disk or the network.
 
 ---
 

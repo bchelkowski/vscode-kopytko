@@ -61,7 +61,7 @@ Backed by the standalone linter's 31 rules (shared by the editor and CI). Full r
 
 | Group | Rules | Status | Doc |
 |---|---|---|---|
-| Imports | unresolved · duplicate · unused · missing-path · path-not-absolute · build-generated · missing-promise-deps | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
+| Imports | unresolved · duplicate · unused · missing-path · path-not-absolute · wrong-comment-style · build-generated · missing-promise-deps | ✅ | [kopytko-imports.md](./kopytko-imports.md) |
 | Identifiers | undefined-function · undefined-variable · shadows-builtin · shadows-function · unused-parameter · unused-variable · wrong-arg-count · **unused-function** (off by default) · **loop-variable-leak** · **duplicate-function** | ✅ | [language-server.md](./language-server.md) |
 | Syntax | trailing-comma · flow-outside-loop · **unreachable-code** | ✅ | [language-server.md](./language-server.md) |
 | Type annotations | missing-return-type · missing-param-type | ✅ | [language-server.md](./language-server.md) |
