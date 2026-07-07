@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.7.1] - 2026-07-07
+
+### Added
+- Merge Remote/Device/Saved Text into one sidebar view
+
 ## [1.7.0] - 2026-07-06
 
 ### Added
