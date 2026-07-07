@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.8.1] - 2026-07-07
+
+### Fixed
+- Wire up lint rule overrides, perfetto refresh interval, and expose format.verifySyntax
+
 ## [1.8.0] - 2026-07-07
 
 ### Added
