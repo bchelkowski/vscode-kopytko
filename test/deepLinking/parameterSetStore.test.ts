@@ -72,6 +72,37 @@ describe('ParameterSetStore', () => {
     expect(store.get(created.id)?.name).to.equal('Renamed');
   });
 
+  it('normalizes labels on save: trims, drops empty, dedupes case-insensitively', async () => {
+    const saved = await store.save({ ...BASE_INPUT, labels: [' Bug ', 'bug', '', 'Feature'] });
+
+    expect(saved.labels).to.deep.equal(['Bug', 'Feature']);
+  });
+
+  it('defaults to an empty labels array when omitted', async () => {
+    const saved = await store.save({ ...BASE_INPUT });
+
+    expect(saved.labels).to.deep.equal([]);
+  });
+
+  it('preserves labels on edit when not resent, replaces when resent', async () => {
+    const created = await store.save({ ...BASE_INPUT, labels: ['Keep'] });
+
+    const unchanged = await store.save({ ...BASE_INPUT, id: created.id, name: 'renamed' });
+    expect(unchanged.labels).to.deep.equal(['Keep']);
+
+    const replaced = await store.save({ ...BASE_INPUT, id: created.id, labels: ['New'] });
+    expect(replaced.labels).to.deep.equal(['New']);
+  });
+
+  it('backfills labels to [] for sets persisted before custom labels existed', async () => {
+    await memento.update('kopytko.deepLinking.sets', {
+      legacy: { id: 'legacy', ...BASE_INPUT, createdAt: 1, updatedAt: 1 },
+    });
+
+    expect(store.getAll()[0].labels).to.deep.equal([]);
+    expect(store.get('legacy')?.labels).to.deep.equal([]);
+  });
+
   it('sorts getAll by name case-insensitively', async () => {
     await store.save({ ...BASE_INPUT, name: 'zebra' });
     await store.save({ ...BASE_INPUT, name: 'Apple' });

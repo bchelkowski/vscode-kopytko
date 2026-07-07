@@ -126,6 +126,7 @@ export class DeepLinkingPanel {
       channelName: s.channelName,
       contentId: s.contentId,
       params: s.params,
+      labels: s.labels,
       updatedAt: s.updatedAt,
     }));
     this._post({ kind: 'sets', sets });

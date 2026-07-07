@@ -134,8 +134,8 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
       case 'saveEntry':
         try {
           await this.deps.controller.saveEntry(msg.entry.type === 'text'
-            ? { id: msg.entry.id, type: 'text', title: msg.entry.title, text: msg.entry.text ?? '' }
-            : { id: msg.entry.id, type: 'credentials', title: msg.entry.title, login: msg.entry.login ?? '', password: msg.entry.password });
+            ? { id: msg.entry.id, type: 'text', title: msg.entry.title, labels: msg.entry.labels, text: msg.entry.text ?? '' }
+            : { id: msg.entry.id, type: 'credentials', title: msg.entry.title, labels: msg.entry.labels, login: msg.entry.login ?? '', password: msg.entry.password });
           this.post({ kind: 'entryResult', ok: true });
         } catch (err) {
           this.post({ kind: 'entryResult', ok: false, message: errorMessage(err) });
@@ -277,10 +277,10 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
     const entries: TextEntryView[] = [];
     for (const entry of this.deps.controller.getEntries()) {
       if (entry.type === 'text') {
-        entries.push({ id: entry.id, type: 'text', title: entry.title, text: entry.text, updatedAt: entry.updatedAt });
+        entries.push({ id: entry.id, type: 'text', title: entry.title, labels: entry.labels ?? [], text: entry.text, updatedAt: entry.updatedAt });
       } else {
         entries.push({
-          id: entry.id, type: 'credentials', title: entry.title, login: entry.login,
+          id: entry.id, type: 'credentials', title: entry.title, labels: entry.labels ?? [], login: entry.login,
           hasPassword: await this.deps.controller.hasEntryPassword(entry.id),
           updatedAt: entry.updatedAt,
         });
@@ -291,7 +291,7 @@ export class DeviceManagerViewProvider implements vscode.WebviewViewProvider {
 
   private sendScripts(): void {
     const scripts: ScriptListItem[] = this.deps.scripts.getAll().map((s) => ({
-      id: s.id, title: s.title || 'Untitled script', format: s.format, updatedAt: s.updatedAt,
+      id: s.id, title: s.title, format: s.format, labels: s.labels, updatedAt: s.updatedAt,
     }));
     this.post({ kind: 'scripts', scripts });
   }

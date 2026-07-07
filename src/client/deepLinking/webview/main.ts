@@ -18,6 +18,144 @@ let selectedChannelId: string | undefined;
 let editingSetId: string | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
+// Transient filter/sort state — resets on reload, never persisted.
+let setsCheckedLabels: Set<string> | undefined;
+const setsKnownLabels = new Set<string>();
+let setsSortLabel = '';
+
+// ── label filter/sort helpers ───────────────────────────────────────────────
+
+function labelKey(label: string): string {
+  return label.toLowerCase();
+}
+
+/** Splits comma-separated raw input into trimmed, case-insensitively-deduped labels. */
+function parseLabels(raw: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of raw.split(',')) {
+    const label = part.trim();
+    if (label === '') continue;
+    const key = labelKey(label);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(label);
+  }
+  return result;
+}
+
+/**
+ * Wires a labels `<input>` so picking a `<datalist>` suggestion appends the
+ * picked value after the last comma instead of the browser's native
+ * behavior of replacing the entire field content with just the suggestion.
+ */
+function wireLabelsAutocomplete(input: HTMLInputElement): void {
+  let previousValue = input.value;
+  input.addEventListener('input', (ev) => {
+    if ((ev as InputEvent).inputType === 'insertReplacementText') {
+      const picked = input.value.trim();
+      const rawParts = previousValue.split(',');
+      rawParts.pop(); // drop the in-progress segment the suggestion completed
+      const kept = rawParts.map((p) => p.trim()).filter((p) => p !== '');
+      const newValue = `${[...kept, picked].join(', ')}, `;
+      input.value = newValue;
+      previousValue = newValue;
+      input.setSelectionRange(newValue.length, newValue.length);
+    } else {
+      previousValue = input.value;
+    }
+  });
+}
+
+/** Distinct labels across every item's label list, case-insensitively deduped, alphabetically sorted. */
+function distinctLabels(labelLists: string[][]): string[] {
+  const seen = new Map<string, string>();
+  for (const labels of labelLists) {
+    for (const label of labels) {
+      const key = labelKey(label);
+      if (!seen.has(key)) seen.set(key, label);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * Reconciles the checked-labels filter against the current distinct-label list: a label seen
+ * for the first time (not in `known`) is auto-checked (so freshly-labeled/created items stay
+ * visible by default), while labels the user has manually unchecked before stay unchecked.
+ * `known` is updated in place to the current label set.
+ */
+function syncCheckedLabels(checked: Set<string> | undefined, known: Set<string>, labels: string[]): Set<string> {
+  const keys = labels.map(labelKey);
+  const result = checked ?? new Set<string>();
+  for (const key of keys) {
+    if (!known.has(key)) result.add(key);
+  }
+  known.clear();
+  for (const key of keys) known.add(key);
+  return result;
+}
+
+/** Keeps items with no labels always visible; otherwise requires at least one checked label. */
+function applyLabelFilter<T>(items: T[], labelsOf: (item: T) => string[], checked: Set<string>): T[] {
+  return items.filter((item) => {
+    const labels = labelsOf(item);
+    if (labels.length === 0) return true;
+    return labels.some((l) => checked.has(labelKey(l)));
+  });
+}
+
+/** '' sorts by title; a specific label groups matching items first (each group alphabetical by title). */
+function applyLabelSort<T>(items: T[], labelsOf: (item: T) => string[], titleOf: (item: T) => string, sortLabel: string): T[] {
+  const byTitle = (a: T, b: T): number => titleOf(a).localeCompare(titleOf(b), undefined, { sensitivity: 'base' });
+  if (sortLabel === '') return [...items].sort(byTitle);
+  const key = labelKey(sortLabel);
+  const withLabel: T[] = [];
+  const withoutLabel: T[] = [];
+  for (const item of items) {
+    (labelsOf(item).some((l) => labelKey(l) === key) ? withLabel : withoutLabel).push(item);
+  }
+  withLabel.sort(byTitle);
+  withoutLabel.sort(byTitle);
+  return [...withLabel, ...withoutLabel];
+}
+
+/** A facet of labels shown in the filter/sort toolbar, optionally under its own heading. */
+interface LabelGroup { heading?: string; labels: string[] }
+
+/** Builds the checkbox items + sort <option>s for a filter/sort toolbar; preserves current selections. */
+function renderFilterSortToolbar(
+  menuId: string, sortSelectId: string, groups: LabelGroup[], checked: Set<string>, sortLabel: string,
+): void {
+  const nonEmpty = groups.filter((g) => g.labels.length > 0);
+  const menu = el<HTMLDivElement>(menuId);
+  if (menu) {
+    const groupsHtml = nonEmpty.map((g) => {
+      const heading = g.heading ? `<div class="dropdown-group-label">${esc(g.heading)}</div>` : '';
+      const items = g.labels.map((l) => {
+        const key = labelKey(l);
+        return `<label class="dropdown-item"><input type="checkbox" class="label-filter-item" value="${esc(key)}" ${checked.has(key) ? 'checked' : ''}> ${esc(l)}</label>`;
+      }).join('');
+      return heading + items;
+    }).join('');
+    menu.innerHTML = `
+      <div class="dropdown-actions">
+        <button type="button" class="link-btn filter-all">All</button>
+        <span>·</span>
+        <button type="button" class="link-btn filter-none">Clear</button>
+      </div>
+      ${groupsHtml}`;
+  }
+  const select = el<HTMLSelectElement>(sortSelectId);
+  if (select) {
+    const optionsHtml = nonEmpty.map((g) => {
+      const opts = g.labels.map((l) => `<option value="${esc(l)}" ${l === sortLabel ? 'selected' : ''}>Sort: ${esc(l)}</option>`).join('');
+      return g.heading ? `<optgroup label="${esc(g.heading)}">${opts}</optgroup>` : opts;
+    }).join('');
+    select.innerHTML = `<option value="" ${sortLabel === '' ? 'selected' : ''}>Sort: Title</option>${optionsHtml}`;
+  }
+}
+
 // ── DOM scaffold ─────────────────────────────────────────────────────────────
 
 const PLACEHOLDER_ICON = `<svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
@@ -58,15 +196,24 @@ function buildDom(): void {
       <h3>Saved Parameter Sets</h3>
       <div id="save-row">
         <input id="set-name" type="text" placeholder="Preset name" spellcheck="false">
+        <input id="set-labels" type="text" list="set-label-suggestions" placeholder="Labels (comma-separated)" spellcheck="false">
         <button id="btn-save-set">Save</button>
         <button id="btn-cancel-edit" class="secondary hidden">Cancel</button>
+      </div>
+      <div id="sets-toolbar" class="list-toolbar">
+        <details class="dropdown" id="sets-filter-dd">
+          <summary>Filter ▾</summary>
+          <div class="dropdown-menu" id="sets-filter-menu"></div>
+        </details>
+        <select id="sets-sort"><option value="">Sort: Title</option></select>
       </div>
       <div id="sets-list"></div>
     </div>
   </div>
 </div>
 <datalist id="key-suggestions">${KEY_SUGGESTIONS.map((k) => `<option value="${k}">`).join('')}</datalist>
-<datalist id="mediatype-values">${MEDIA_TYPES.map((v) => `<option value="${v}">`).join('')}</datalist>`;
+<datalist id="mediatype-values">${MEDIA_TYPES.map((v) => `<option value="${v}">`).join('')}</datalist>
+<datalist id="set-label-suggestions"></datalist>`;
 }
 
 function esc(text: string): string {
@@ -165,6 +312,43 @@ function setParams(params: DeepLinkParam[]): void {
 
 // ── saved sets ───────────────────────────────────────────────────────────────
 
+function setLabels(s: SavedSet): string[] {
+  return s.labels;
+}
+
+function renderSetsToolbar(): void {
+  const labels = distinctLabels(sets.map(setLabels));
+  setsCheckedLabels = syncCheckedLabels(setsCheckedLabels, setsKnownLabels, labels);
+  renderFilterSortToolbar('sets-filter-menu', 'sets-sort', [{ labels }], setsCheckedLabels, setsSortLabel);
+  el<HTMLDataListElement>('set-label-suggestions').innerHTML = labels.map((l) => `<option value="${esc(l)}">`).join('');
+}
+
+function wireSetsToolbar(): void {
+  el<HTMLDivElement>('sets-filter-menu').addEventListener('click', (ev) => {
+    const target = ev.target as HTMLElement;
+    if (target.classList.contains('filter-all')) {
+      setsCheckedLabels = new Set(distinctLabels(sets.map(setLabels)).map(labelKey));
+      renderSetsToolbar();
+      renderSets();
+    } else if (target.classList.contains('filter-none')) {
+      setsCheckedLabels = new Set();
+      renderSetsToolbar();
+      renderSets();
+    }
+  });
+  el<HTMLDivElement>('sets-filter-menu').addEventListener('change', (ev) => {
+    const cb = ev.target as HTMLInputElement;
+    if (!cb.classList.contains('label-filter-item')) return;
+    setsCheckedLabels ??= new Set();
+    if (cb.checked) setsCheckedLabels.add(cb.value); else setsCheckedLabels.delete(cb.value);
+    renderSets();
+  });
+  el<HTMLSelectElement>('sets-sort').addEventListener('change', (ev) => {
+    setsSortLabel = (ev.target as HTMLSelectElement).value;
+    renderSets();
+  });
+}
+
 function renderSets(): void {
   const list = el<HTMLDivElement>('sets-list');
   if (sets.length === 0) {
@@ -172,16 +356,29 @@ function renderSets(): void {
     return;
   }
 
-  list.innerHTML = sets.map((s) => {
+  const visible = applyLabelSort(
+    applyLabelFilter(sets, setLabels, setsCheckedLabels ?? new Set(distinctLabels(sets.map(setLabels)).map(labelKey))),
+    setLabels, (s) => s.name, setsSortLabel,
+  );
+  if (visible.length === 0) {
+    list.innerHTML = '<div class="empty">No sets match the current filter.</div>';
+    return;
+  }
+
+  list.innerHTML = visible.map((s) => {
     const missing = channels.length > 0 && !channels.some((c) => c.id === s.channelId);
     const summary = [s.contentId ? `contentId=${s.contentId}` : '', ...s.params.map((p) => `${p.key}=${p.value}`)]
       .filter(Boolean).join(' · ');
+    const chips = s.labels.length > 0
+      ? `<div class="chip-row">${s.labels.map((l) => `<span class="chip">${esc(l)}</span>`).join('')}</div>`
+      : '';
     return `
     <div class="set-row" data-id="${esc(s.id)}">
       <div class="set-info">
         <span class="set-name">${esc(s.name)}</span>
         <span class="set-meta">${esc(s.channelName)} (${esc(s.channelId)})${missing ? ' <span class="warn">⚠ not installed</span>' : ''}</span>
         <span class="set-meta summary" title="${esc(summary)}">${esc(summary)}</span>
+        ${chips}
       </div>
       <div class="set-actions">
         <button class="set-use" title="Load into the form and select the channel">Use</button>
@@ -201,9 +398,12 @@ function loadSetIntoForm(set: SavedSet, forEdit: boolean): void {
   if (forEdit) {
     editingSetId = set.id;
     el<HTMLInputElement>('set-name').value = set.name;
+    el<HTMLInputElement>('set-labels').value = set.labels.join(', ');
+    el<HTMLInputElement>('set-name').focus();
   } else {
     editingSetId = undefined;
     el<HTMLInputElement>('set-name').value = '';
+    el<HTMLInputElement>('set-labels').value = '';
   }
   syncSaveButton();
 }
@@ -280,10 +480,12 @@ function wireEvents(): void {
         channelName: channel?.name ?? sets.find((s) => s.id === editingSetId)?.channelName ?? selectedChannelId,
         contentId: el<HTMLInputElement>('content-id').value.trim(),
         params: readParams(),
+        labels: parseLabels(el<HTMLInputElement>('set-labels').value),
       },
     });
     editingSetId = undefined;
     el<HTMLInputElement>('set-name').value = '';
+    el<HTMLInputElement>('set-labels').value = '';
     syncSaveButton();
     showToast('Saved', true);
   });
@@ -291,6 +493,7 @@ function wireEvents(): void {
   el('btn-cancel-edit').addEventListener('click', () => {
     editingSetId = undefined;
     el<HTMLInputElement>('set-name').value = '';
+    el<HTMLInputElement>('set-labels').value = '';
     syncSaveButton();
   });
 
@@ -348,6 +551,7 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
 
     case 'sets':
       sets = msg.sets;
+      renderSetsToolbar();
       renderSets();
       break;
 
@@ -372,5 +576,14 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
 
 buildDom();
 wireEvents();
+wireSetsToolbar();
+wireLabelsAutocomplete(el<HTMLInputElement>('set-labels'));
 addParamRow('mediaType', '');
 syncSaveButton();
+
+// Close any open filter/sort dropdown when clicking outside it.
+document.addEventListener('click', (ev) => {
+  for (const dd of document.querySelectorAll<HTMLDetailsElement>('.dropdown[open]')) {
+    if (!dd.contains(ev.target as Node)) dd.open = false;
+  }
+});

@@ -142,8 +142,8 @@ export class ScriptEditorPanel {
         this.post({
           kind: 'load',
           script: script
-            ? { id: script.id, title: script.title, format: script.format, source: script.source }
-            : { title: imported?.title ?? '', format: 'rasp', source: imported?.source ?? NEW_SCRIPT_TEMPLATE },
+            ? { id: script.id, title: script.title, format: script.format, source: script.source, labels: script.labels }
+            : { title: imported?.title ?? '', format: 'rasp', source: imported?.source ?? NEW_SCRIPT_TEMPLATE, labels: [] },
         });
         this.sendDevice();
         return;
@@ -151,9 +151,10 @@ export class ScriptEditorPanel {
       case 'save': {
         const saved = await this.deps.scripts.save({
           id: this.scriptId,
-          title: msg.title.trim() || 'Untitled script',
+          title: msg.title.trim(),
           format: msg.format,
           source: msg.source,
+          labels: msg.labels,
         });
         // First save of a new panel: adopt the real store id as the panel key.
         if (this.scriptId === undefined) {

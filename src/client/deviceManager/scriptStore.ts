@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { normalizeLabels } from '../textLabels';
 
 const KEY = 'kopytko.deviceManager.scripts';
 
@@ -12,7 +13,7 @@ export type ScriptFormat = 'rasp' | 'kopytko';
 
 export interface DeviceScript {
   id: string;
-  /** Display title; defaults to "Untitled script" in the UI when empty. */
+  /** Optional display title; stored as-is (possibly empty) — the list hides it entirely when empty. */
   title: string;
   format: ScriptFormat;
   /**
@@ -20,13 +21,15 @@ export interface DeviceScript {
    * and comments so exported files stay compatible with Roku's own tool.
    */
   source: string;
+  /** Custom free-form tags for filtering/sorting the scripts list. */
+  labels: string[];
   createdAt: number;
   updatedAt: number;
 }
 
-/** Input for {@link ScriptStore.save} — id optional (created when absent). */
+/** Input for {@link ScriptStore.save} — id and labels optional (created/defaulted when absent). */
 export type DeviceScriptInput =
-  Omit<DeviceScript, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+  Omit<DeviceScript, 'id' | 'createdAt' | 'updatedAt' | 'labels'> & { id?: string; labels?: string[] };
 
 /**
  * Persists automation scripts in the GLOBAL Memento — scripts drive devices
@@ -45,14 +48,15 @@ export class ScriptStore {
   /** Returns all saved scripts, sorted by title (case-insensitive). */
   getAll(): DeviceScript[] {
     const scripts = this.globalState.get<Record<string, DeviceScript>>(KEY, {});
-    return Object.values(scripts).sort((a, b) =>
+    return Object.values(scripts).map(withLabels).sort((a, b) =>
       a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
   }
 
   /** Retrieves a single script by id. */
   get(id: string): DeviceScript | undefined {
     const scripts = this.globalState.get<Record<string, DeviceScript>>(KEY, {});
-    return scripts[id];
+    const script = scripts[id];
+    return script ? withLabels(script) : undefined;
   }
 
   /**
@@ -68,6 +72,7 @@ export class ScriptStore {
     const script: DeviceScript = {
       ...input,
       id: input.id ?? crypto.randomUUID(),
+      labels: normalizeLabels(input.labels ?? existing?.labels),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -86,4 +91,9 @@ export class ScriptStore {
     await this.globalState.update(KEY, scripts);
     this.changeEmitter.fire();
   }
+}
+
+/** Backfills `labels` for scripts persisted before custom labels existed. */
+function withLabels(script: DeviceScript): DeviceScript {
+  return script.labels ? script : { ...script, labels: [] };
 }

@@ -102,7 +102,8 @@ test-account credentials:
 - **Credentials** entries hold an email/login and a password — two independent
   **Send** buttons, so a login screen is two clicks (plus navigating between
   the fields on-device).
-- Every entry has an optional title for the list.
+- Every entry has an optional title for the list — entries without one show
+  their labels (see below) in the title's place instead of an empty space.
 
 Entries are stored **globally** (they follow you across workspaces).
 **Passwords never touch the Memento** — they live in VS Code SecretStorage
@@ -111,6 +112,26 @@ same mechanism as device passwords. The webview never receives the password:
 sending it resolves the secret host-side and pipes it straight into the
 sequential Lit_ typing path. Editing an entry with a blank password keeps the
 stored one; deleting an entry deletes its secret.
+
+### Custom labels, filter and sort
+
+Every entry can carry custom free-form labels (comma-separated in the
+"Labels" field, with autocomplete from labels already used in the list —
+picking a suggestion appends it after the last comma instead of replacing
+what's already typed). The entry's `type` (`text`/`credentials`) also acts as
+an implicit label, so it participates in filter/sort without needing to be
+typed — and it's rendered as an ordinary chip alongside custom labels (no
+separate badge), with **Edit**/**Delete** always pinned to the card's top
+right regardless of whether the entry has a title. The **Filter** dropdown
+and **Sort** dropdown both group entries under a **Type** heading (the
+`text`/`credentials` values) separate from a **Labels** heading (custom
+tags) — Filter checkboxes default to all checked, with "All"/"Clear"
+shortcuts; entries with no custom labels of their own are always shown
+regardless of the Labels checkboxes. **Sort** defaults to Title
+(alphabetical); picking a Type or Label option instead brings entries
+carrying that value to the top (alphabetical among themselves), followed by
+the rest. Clicking outside an open dropdown closes it. Filter/sort selections
+are session-only — they reset the next time the view reloads.
 
 ## Scripts view + Script Editor
 
@@ -123,6 +144,11 @@ The Scripts view lists saved scripts (global storage, optional title) with
 **Run / Edit / Export / Delete** per row plus an inline progress line with
 **Cancel** while a run is active. `Kopytko: New Device Script` or **+ New
 script** opens the editor tab.
+
+Scripts can carry the same custom labels as Saved Text (set in the editor
+tab's toolbar), and the Scripts view has the same Filter/Sort-by-label
+dropdowns described under [Saved Text](#saved-text-section) — minus the
+implicit type label, which only applies to Saved Text entries.
 
 ### Editor tab
 
@@ -226,9 +252,9 @@ if you need that data.
 
 | What | Where |
 |---|---|
-| Text/credentials entries | `globalState` (`kopytko.deviceManager.textEntries`) |
+| Text/credentials entries (incl. custom labels) | `globalState` (`kopytko.deviceManager.textEntries`) |
 | Credential passwords | `SecretStorage` (`kopytko.deviceManager.entry.<id>`) |
-| Scripts | `globalState` (`kopytko.deviceManager.scripts`), raw source text |
+| Scripts (incl. custom labels) | `globalState` (`kopytko.deviceManager.scripts`), raw source text |
 | Device developer passwords | `SecretStorage` (shared with debug/deploy) |
 
 ## Settings

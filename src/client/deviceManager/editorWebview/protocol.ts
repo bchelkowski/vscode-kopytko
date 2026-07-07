@@ -11,6 +11,8 @@ export interface EditorScript {
   /** `kopytko` is reserved for the future custom format — v1 ships RASP only. */
   format: 'rasp' | 'kopytko';
   source: string;
+  /** Custom free-form tags for filtering/sorting the scripts list. */
+  labels: string[];
 }
 
 export interface EditorRunProgress {
@@ -35,7 +37,7 @@ export type ExtMsg =
 
 export type WebMsg =
   | { kind: 'ready' }
-  | { kind: 'save'; title: string; format: 'rasp' | 'kopytko'; source: string }
+  | { kind: 'save'; title: string; format: 'rasp' | 'kopytko'; source: string; labels: string[] }
   | { kind: 'run'; title: string; format: 'rasp' | 'kopytko'; source: string }
   | { kind: 'cancelRun' }
   | { kind: 'export'; title: string; source: string }

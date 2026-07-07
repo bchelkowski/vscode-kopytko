@@ -20,6 +20,7 @@ export interface SavedSet {
   channelName: string;
   contentId: string;
   params: DeepLinkParam[];
+  labels: string[];
   updatedAt: number;
 }
 
@@ -38,5 +39,5 @@ export type ExtMsg =
 export type WebMsg =
   | { kind: 'refresh' }
   | { kind: 'send'; mode: SendMode; channelId: string; contentId: string; params: DeepLinkParam[] }
-  | { kind: 'saveSet'; set: { id?: string; name: string; channelId: string; channelName: string; contentId: string; params: DeepLinkParam[] } }
+  | { kind: 'saveSet'; set: { id?: string; name: string; channelId: string; channelName: string; contentId: string; params: DeepLinkParam[]; labels: string[] } }
   | { kind: 'deleteSet'; id: string };

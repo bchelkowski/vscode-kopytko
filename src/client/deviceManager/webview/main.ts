@@ -19,6 +19,147 @@ let editingEntryId: string | undefined;
 let runningScriptId: string | undefined;
 let statusTimer: ReturnType<typeof setTimeout> | undefined;
 
+// Transient filter/sort state (per list) — resets on reload, never persisted.
+let entriesCheckedLabels: Set<string> | undefined;
+const entriesKnownLabels = new Set<string>();
+let entriesSortLabel = '';
+let scriptsCheckedLabels: Set<string> | undefined;
+const scriptsKnownLabels = new Set<string>();
+let scriptsSortLabel = '';
+
+// ── label filter/sort helpers ───────────────────────────────────────────────
+
+function labelKey(label: string): string {
+  return label.toLowerCase();
+}
+
+/** Splits comma-separated raw input into trimmed, case-insensitively-deduped labels. */
+function parseLabels(raw: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of raw.split(',')) {
+    const label = part.trim();
+    if (label === '') continue;
+    const key = labelKey(label);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(label);
+  }
+  return result;
+}
+
+/**
+ * Wires a labels `<input>` so picking a `<datalist>` suggestion appends the
+ * picked value after the last comma instead of the browser's native
+ * behavior of replacing the entire field content with just the suggestion.
+ */
+function wireLabelsAutocomplete(input: HTMLInputElement): void {
+  let previousValue = input.value;
+  input.addEventListener('input', (ev) => {
+    if ((ev as InputEvent).inputType === 'insertReplacementText') {
+      const picked = input.value.trim();
+      const rawParts = previousValue.split(',');
+      rawParts.pop(); // drop the in-progress segment the suggestion completed
+      const kept = rawParts.map((p) => p.trim()).filter((p) => p !== '');
+      const newValue = `${[...kept, picked].join(', ')}, `;
+      input.value = newValue;
+      previousValue = newValue;
+      input.setSelectionRange(newValue.length, newValue.length);
+    } else {
+      previousValue = input.value;
+    }
+  });
+}
+
+/** Distinct labels across every item's label list, case-insensitively deduped, alphabetically sorted. */
+function distinctLabels(labelLists: string[][]): string[] {
+  const seen = new Map<string, string>();
+  for (const labels of labelLists) {
+    for (const label of labels) {
+      const key = labelKey(label);
+      if (!seen.has(key)) seen.set(key, label);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * Reconciles the checked-labels filter against the current distinct-label list: a label seen
+ * for the first time (not in `known`) is auto-checked (so freshly-labeled/created items stay
+ * visible by default), while labels the user has manually unchecked before stay unchecked.
+ * `known` is updated in place to the current label set.
+ */
+function syncCheckedLabels(checked: Set<string> | undefined, known: Set<string>, labels: string[]): Set<string> {
+  const keys = labels.map(labelKey);
+  const result = checked ?? new Set<string>();
+  for (const key of keys) {
+    if (!known.has(key)) result.add(key);
+  }
+  known.clear();
+  for (const key of keys) known.add(key);
+  return result;
+}
+
+/** Keeps items with no labels always visible; otherwise requires at least one checked label. */
+function applyLabelFilter<T>(items: T[], labelsOf: (item: T) => string[], checked: Set<string>): T[] {
+  return items.filter((item) => {
+    const labels = labelsOf(item);
+    if (labels.length === 0) return true;
+    return labels.some((l) => checked.has(labelKey(l)));
+  });
+}
+
+/** '' sorts by title; a specific label groups matching items first (each group alphabetical by title). */
+function applyLabelSort<T>(items: T[], labelsOf: (item: T) => string[], titleOf: (item: T) => string, sortLabel: string): T[] {
+  const byTitle = (a: T, b: T): number => titleOf(a).localeCompare(titleOf(b), undefined, { sensitivity: 'base' });
+  if (sortLabel === '') return [...items].sort(byTitle);
+  const key = labelKey(sortLabel);
+  const withLabel: T[] = [];
+  const withoutLabel: T[] = [];
+  for (const item of items) {
+    (labelsOf(item).some((l) => labelKey(l) === key) ? withLabel : withoutLabel).push(item);
+  }
+  withLabel.sort(byTitle);
+  withoutLabel.sort(byTitle);
+  return [...withLabel, ...withoutLabel];
+}
+
+/** A facet of labels shown in the filter/sort toolbar, optionally under its own heading (e.g. "Type" vs "Labels"). */
+interface LabelGroup { heading?: string; labels: string[] }
+
+/** Builds the checkbox items + sort <option>s for a filter/sort toolbar; preserves current selections. */
+function renderFilterSortToolbar(
+  menuId: string, sortSelectId: string, groups: LabelGroup[], checked: Set<string>, sortLabel: string,
+): void {
+  const nonEmpty = groups.filter((g) => g.labels.length > 0);
+  const menu = el<HTMLDivElement>(menuId);
+  if (menu) {
+    const groupsHtml = nonEmpty.map((g) => {
+      const heading = g.heading ? `<div class="dropdown-group-label">${esc(g.heading)}</div>` : '';
+      const items = g.labels.map((l) => {
+        const key = labelKey(l);
+        return `<label class="dropdown-item"><input type="checkbox" class="label-filter-item" value="${esc(key)}" ${checked.has(key) ? 'checked' : ''}> ${esc(l)}</label>`;
+      }).join('');
+      return heading + items;
+    }).join('');
+    menu.innerHTML = `
+      <div class="dropdown-actions">
+        <button type="button" class="link-btn filter-all">All</button>
+        <span>·</span>
+        <button type="button" class="link-btn filter-none">Clear</button>
+      </div>
+      ${groupsHtml}`;
+  }
+  const select = el<HTMLSelectElement>(sortSelectId);
+  if (select) {
+    const optionsHtml = nonEmpty.map((g) => {
+      const opts = g.labels.map((l) => `<option value="${esc(l)}" ${l === sortLabel ? 'selected' : ''}>Sort: ${esc(l)}</option>`).join('');
+      return g.heading ? `<optgroup label="${esc(g.heading)}">${opts}</optgroup>` : opts;
+    }).join('');
+    select.innerHTML = `<option value="" ${sortLabel === '' ? 'selected' : ''}>Sort: Title</option>${optionsHtml}`;
+  }
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function esc(text: string): string {
@@ -121,6 +262,13 @@ function buildRemoteDom(): void {
 </details>
 
 <h3>Saved Text</h3>
+<div id="entries-toolbar" class="list-toolbar">
+  <details class="dropdown" id="entries-filter-dd">
+    <summary>Filter ▾</summary>
+    <div class="dropdown-menu" id="entries-filter-menu"></div>
+  </details>
+  <select id="entries-sort"><option value="">Sort: Title</option></select>
+</div>
 <div id="entries-list"></div>
 <button id="btn-add-entry" class="secondary">+ Add entry</button>
 <div id="entry-form" class="hidden"></div>`;
@@ -130,6 +278,7 @@ function buildRemoteDom(): void {
   wireKeyboardMode();
   wireAbilityButtons();
   wireEntriesAddButton();
+  wireEntriesToolbar();
 }
 
 /**
@@ -253,11 +402,63 @@ function applyRemoteDevice(): void {
 
 // ── saved text entries ───────────────────────────────────────────────────────
 
+function entryTitle(entry: TextEntryView): string {
+  return entry.title ?? '';
+}
+
+/** The implicit `type` label plus custom labels — used for filter/sort/autocomplete. */
+function entryLabels(entry: TextEntryView): string[] {
+  return [entry.type, ...entry.labels];
+}
+
+function focusEntryForm(): void {
+  el<HTMLDivElement>('entry-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el<HTMLInputElement>('entry-title')?.focus();
+}
+
 function wireEntriesAddButton(): void {
   el<HTMLButtonElement>('btn-add-entry').addEventListener('click', () => {
     editingEntryId = undefined;
     renderEntryForm({ type: 'text' });
+    focusEntryForm();
   });
+}
+
+function wireEntriesToolbar(): void {
+  el<HTMLDivElement>('entries-filter-menu').addEventListener('click', (ev) => {
+    const target = ev.target as HTMLElement;
+    if (target.classList.contains('filter-all')) {
+      entriesCheckedLabels = new Set(distinctLabels(entries.map(entryLabels)).map(labelKey));
+      renderEntriesToolbar();
+      renderEntries();
+    } else if (target.classList.contains('filter-none')) {
+      entriesCheckedLabels = new Set();
+      renderEntriesToolbar();
+      renderEntries();
+    }
+  });
+  el<HTMLDivElement>('entries-filter-menu').addEventListener('change', (ev) => {
+    const cb = ev.target as HTMLInputElement;
+    if (!cb.classList.contains('label-filter-item')) return;
+    entriesCheckedLabels ??= new Set();
+    if (cb.checked) entriesCheckedLabels.add(cb.value); else entriesCheckedLabels.delete(cb.value);
+    renderEntries();
+  });
+  el<HTMLSelectElement>('entries-sort').addEventListener('change', (ev) => {
+    entriesSortLabel = (ev.target as HTMLSelectElement).value;
+    renderEntries();
+  });
+}
+
+function renderEntriesToolbar(): void {
+  const typeLabels = distinctLabels(entries.map((e) => [e.type]));
+  const customLabels = distinctLabels(entries.map((e) => e.labels));
+  entriesCheckedLabels = syncCheckedLabels(entriesCheckedLabels, entriesKnownLabels, [...typeLabels, ...customLabels]);
+  renderFilterSortToolbar(
+    'entries-filter-menu', 'entries-sort',
+    [{ heading: 'Type', labels: typeLabels }, { heading: 'Labels', labels: customLabels }],
+    entriesCheckedLabels, entriesSortLabel,
+  );
 }
 
 function renderEntries(): void {
@@ -269,8 +470,27 @@ function renderEntries(): void {
     return;
   }
 
-  list.innerHTML = entries.map((entry) => {
-    const title = entry.title || (entry.type === 'text' ? entry.text ?? '' : entry.login ?? '');
+  const visible = applyLabelSort(
+    applyLabelFilter(entries, entryLabels, entriesCheckedLabels ?? new Set(distinctLabels(entries.map(entryLabels)).map(labelKey))),
+    entryLabels, entryTitle, entriesSortLabel,
+  );
+  if (visible.length === 0) {
+    list.innerHTML = '<div class="empty">No entries match the current filter.</div>';
+    return;
+  }
+
+  list.innerHTML = visible.map((entry) => {
+    const title = entryTitle(entry);
+    // The implicit `type` value is rendered as a regular chip alongside custom labels —
+    // no separate badge — so it always shows the same way whether it's the only "label"
+    // an entry has or one of several.
+    const chipsHtml = entryLabels(entry).map((l) => `<span class="chip">${esc(l)}</span>`).join('');
+    // With a title, chips get their own row below the head. Without one, the chips take
+    // over the head's title slot instead of leaving it empty.
+    const headContent = title
+      ? `<span class="card-title" title="${esc(title)}">${esc(title)}</span>`
+      : `<div class="chip-row inline">${chipsHtml}</div>`;
+    const belowHeadChips = title ? `<div class="chip-row">${chipsHtml}</div>` : '';
     const fields = entry.type === 'text'
       ? `<div class="entry-field">
            <span class="entry-value" title="${esc(entry.text ?? '')}">${esc(entry.text ?? '')}</span>
@@ -288,11 +508,11 @@ function renderEntries(): void {
     return `
 <div class="card" data-id="${entry.id}">
   <div class="card-head">
-    <span class="card-title" title="${esc(title)}">${esc(title)}</span>
-    <span class="badge">${entry.type === 'text' ? 'text' : 'credentials'}</span>
+    ${headContent}
     <button class="icon-btn entry-edit" data-id="${entry.id}" title="Edit">✎</button>
     <button class="icon-btn entry-delete" data-id="${entry.id}" title="Delete">✕</button>
   </div>
+  ${belowHeadChips}
   ${fields}
 </div>`;
   }).join('');
@@ -310,6 +530,7 @@ function renderEntries(): void {
       if (!entry) return;
       editingEntryId = entry.id;
       renderEntryForm(entry);
+      focusEntryForm();
     });
   }
   for (const btn of list.querySelectorAll<HTMLButtonElement>('.entry-delete')) {
@@ -321,6 +542,7 @@ function renderEntryForm(entry: Partial<TextEntryView>): void {
   const form = el<HTMLDivElement>('entry-form');
   const isEdit = editingEntryId !== undefined;
   const type = entry.type ?? 'text';
+  const suggestions = distinctLabels(entries.map((e) => e.labels));
 
   form.classList.remove('hidden');
   form.innerHTML = `
@@ -333,10 +555,15 @@ function renderEntryForm(entry: Partial<TextEntryView>): void {
 <label class="field-label" for="entry-title">Title (optional)</label>
 <input id="entry-title" type="text" value="${esc(entry.title ?? '')}" spellcheck="false">
 <div id="entry-type-fields"></div>
+<label class="field-label" for="entry-labels">Labels (comma-separated)</label>
+<input id="entry-labels" type="text" list="entry-label-suggestions" value="${esc((entry.labels ?? []).join(', '))}" spellcheck="false">
+<datalist id="entry-label-suggestions">${suggestions.map((l) => `<option value="${esc(l)}">`).join('')}</datalist>
 <div class="action-row">
   <button id="btn-entry-save">Save</button>
   <button id="btn-entry-cancel" class="secondary">Cancel</button>
 </div>`;
+
+  wireLabelsAutocomplete(el<HTMLInputElement>('entry-labels'));
 
   const renderTypeFields = (t: string): void => {
     el<HTMLDivElement>('entry-type-fields').innerHTML = t === 'text'
@@ -356,16 +583,17 @@ function renderEntryForm(entry: Partial<TextEntryView>): void {
   el<HTMLButtonElement>('btn-entry-save').addEventListener('click', () => {
     const selectedType = el<HTMLSelectElement>('entry-type').value as 'text' | 'credentials';
     const title = el<HTMLInputElement>('entry-title').value.trim() || undefined;
+    const labels = parseLabels(el<HTMLInputElement>('entry-labels').value);
 
     if (selectedType === 'text') {
       const text = el<HTMLInputElement>('entry-text').value;
       if (text === '') { showStatus('Text is required.', true); return; }
-      post({ kind: 'saveEntry', entry: { id: editingEntryId, type: 'text', title, text } });
+      post({ kind: 'saveEntry', entry: { id: editingEntryId, type: 'text', title, labels, text } });
     } else {
       const login = el<HTMLInputElement>('entry-login').value;
       const password = el<HTMLInputElement>('entry-password').value;
       if (login === '') { showStatus('Login is required.', true); return; }
-      post({ kind: 'saveEntry', entry: { id: editingEntryId, type: 'credentials', title, login, password } });
+      post({ kind: 'saveEntry', entry: { id: editingEntryId, type: 'credentials', title, labels, login, password } });
     }
     closeEntryForm();
   });
@@ -393,11 +621,55 @@ function buildScriptsDom(): void {
   <button id="btn-new-script">+ New script</button>
   <button id="btn-import-script" class="secondary" title="Import a .rasp file (Roku Remote Tool format)">Import</button>
 </div>
+<div id="scripts-toolbar" class="list-toolbar">
+  <details class="dropdown" id="scripts-filter-dd">
+    <summary>Filter ▾</summary>
+    <div class="dropdown-menu" id="scripts-filter-menu"></div>
+  </details>
+  <select id="scripts-sort"><option value="">Sort: Title</option></select>
+</div>
 <div id="scripts-list"></div>
 <div id="run-progress" class="hidden"></div>`;
 
   el<HTMLButtonElement>('btn-new-script').addEventListener('click', () => post({ kind: 'newScript' }));
   el<HTMLButtonElement>('btn-import-script').addEventListener('click', () => post({ kind: 'importScript' }));
+  wireScriptsToolbar();
+}
+
+function scriptLabels(s: ScriptListItem): string[] {
+  return s.labels;
+}
+
+function wireScriptsToolbar(): void {
+  el<HTMLDivElement>('scripts-filter-menu').addEventListener('click', (ev) => {
+    const target = ev.target as HTMLElement;
+    if (target.classList.contains('filter-all')) {
+      scriptsCheckedLabels = new Set(distinctLabels(scripts.map(scriptLabels)).map(labelKey));
+      renderScriptsToolbar();
+      renderScripts();
+    } else if (target.classList.contains('filter-none')) {
+      scriptsCheckedLabels = new Set();
+      renderScriptsToolbar();
+      renderScripts();
+    }
+  });
+  el<HTMLDivElement>('scripts-filter-menu').addEventListener('change', (ev) => {
+    const cb = ev.target as HTMLInputElement;
+    if (!cb.classList.contains('label-filter-item')) return;
+    scriptsCheckedLabels ??= new Set();
+    if (cb.checked) scriptsCheckedLabels.add(cb.value); else scriptsCheckedLabels.delete(cb.value);
+    renderScripts();
+  });
+  el<HTMLSelectElement>('scripts-sort').addEventListener('change', (ev) => {
+    scriptsSortLabel = (ev.target as HTMLSelectElement).value;
+    renderScripts();
+  });
+}
+
+function renderScriptsToolbar(): void {
+  const labels = distinctLabels(scripts.map(scriptLabels));
+  scriptsCheckedLabels = syncCheckedLabels(scriptsCheckedLabels, scriptsKnownLabels, labels);
+  renderFilterSortToolbar('scripts-filter-menu', 'scripts-sort', [{ labels }], scriptsCheckedLabels, scriptsSortLabel);
 }
 
 function renderScripts(): void {
@@ -409,12 +681,22 @@ function renderScripts(): void {
     return;
   }
 
-  list.innerHTML = scripts.map((s) => `
+  const visible = applyLabelSort(
+    applyLabelFilter(scripts, scriptLabels, scriptsCheckedLabels ?? new Set(distinctLabels(scripts.map(scriptLabels)).map(labelKey))),
+    scriptLabels, (s) => s.title, scriptsSortLabel,
+  );
+  if (visible.length === 0) {
+    list.innerHTML = '<div class="empty">No scripts match the current filter.</div>';
+    return;
+  }
+
+  list.innerHTML = visible.map((s) => `
 <div class="card" data-id="${s.id}">
   <div class="card-head">
-    <span class="card-title" title="${esc(s.title)}">${esc(s.title)}</span>
+    ${s.title ? `<span class="card-title" title="${esc(s.title)}">${esc(s.title)}</span>` : ''}
     <span class="badge">${s.format}</span>
   </div>
+  ${s.labels.length > 0 ? `<div class="chip-row">${s.labels.map((l) => `<span class="chip">${esc(l)}</span>`).join('')}</div>` : ''}
   <div class="action-row">
     ${runningScriptId === s.id
       ? `<button class="script-cancel" data-id="${s.id}" title="Cancel the running script">Cancel</button>`
@@ -534,6 +816,7 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
 
     case 'entries':
       entries = msg.entries;
+      renderEntriesToolbar();
       renderEntries();
       return;
 
@@ -544,6 +827,7 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
 
     case 'scripts':
       scripts = msg.scripts;
+      renderScriptsToolbar();
       renderScripts();
       return;
 
@@ -559,6 +843,13 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
     case 'busy':
       if (viewKind === 'remote') applyAbilitiesBusy(msg.on);
       return;
+  }
+});
+
+// Close any open filter/sort dropdown when clicking outside it.
+document.addEventListener('click', (ev) => {
+  for (const dd of document.querySelectorAll<HTMLDetailsElement>('.dropdown[open]')) {
+    if (!dd.contains(ev.target as Node)) dd.open = false;
   }
 });
 

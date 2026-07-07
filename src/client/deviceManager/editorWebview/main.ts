@@ -8,7 +8,7 @@ const vscode = acquireVsCodeApi();
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-let script: EditorScript = { title: '', format: 'rasp', source: '' };
+let script: EditorScript = { title: '', format: 'rasp', source: '', labels: [] };
 let savedSource = '';
 let savedTitle = '';
 let isDirty = false;
@@ -34,6 +34,7 @@ function buildDom(): void {
   document.body.innerHTML = `
 <div id="toolbar">
   <input id="title-input" type="text" placeholder="Script title" spellcheck="false">
+  <input id="labels-input" type="text" placeholder="Labels (comma-separated)" spellcheck="false">
   <select id="format-select" title="Script format — the kopytko automation format is coming in a future release">
     <option value="rasp">RASP (Roku Remote Tool)</option>
     <option value="kopytko" disabled>kopytko (coming soon)</option>
@@ -69,6 +70,10 @@ function buildDom(): void {
     script.title = title.value;
     updateDirty();
   });
+  el<HTMLInputElement>('labels-input').addEventListener('input', (ev) => {
+    script.labels = parseLabels((ev.target as HTMLInputElement).value);
+    updateDirty();
+  });
 
   // Tab inserts indentation instead of leaving the textarea.
   source.addEventListener('keydown', (ev) => {
@@ -83,7 +88,7 @@ function buildDom(): void {
   });
 
   el<HTMLButtonElement>('btn-save').addEventListener('click', () => {
-    post({ kind: 'save', title: script.title, format: script.format, source: script.source });
+    post({ kind: 'save', title: script.title, format: script.format, source: script.source, labels: script.labels });
   });
   el<HTMLButtonElement>('btn-run').addEventListener('click', () => {
     post({ kind: 'run', title: script.title, format: script.format, source: script.source });
@@ -113,6 +118,21 @@ function el<T extends HTMLElement>(id: string): T {
 
 function post(msg: WebMsg): void {
   vscode.postMessage(msg);
+}
+
+/** Splits comma-separated raw input into trimmed, case-insensitively-deduped labels. */
+function parseLabels(raw: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of raw.split(',')) {
+    const label = part.trim();
+    if (label === '') continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(label);
+  }
+  return result;
 }
 
 /** Inserts a step snippet on a fresh line at the caret, matching indentation. */
@@ -230,10 +250,14 @@ window.addEventListener('message', (event: MessageEvent<ExtMsg>) => {
       savedSource = msg.script.id !== undefined ? msg.script.source : '';
       savedTitle = msg.script.id !== undefined ? msg.script.title : '';
       el<HTMLInputElement>('title-input').value = script.title;
+      el<HTMLInputElement>('labels-input').value = script.labels.join(', ');
       el<HTMLSelectElement>('format-select').value = script.format;
       el<HTMLTextAreaElement>('source').value = script.source;
       validate();
       updateDirty();
+      // Auto-focus only for a brand-new script — don't steal focus when
+      // opening an existing one for editing.
+      if (msg.script.id === undefined) el<HTMLInputElement>('title-input').focus();
       return;
 
     case 'saved':

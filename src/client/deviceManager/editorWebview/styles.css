@@ -33,6 +33,11 @@ body {
   min-width: 140px;
 }
 
+#labels-input {
+  flex: 1;
+  min-width: 140px;
+}
+
 #device-label {
   overflow: hidden;
   text-overflow: ellipsis;

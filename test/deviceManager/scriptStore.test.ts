@@ -42,6 +42,37 @@ describe('ScriptStore', () => {
     expect(store.getAll()).to.have.length(0);
   });
 
+  it('normalizes labels on save: trims, drops empty, dedupes case-insensitively', async () => {
+    const script = await store.save({ title: 'a', format: 'rasp', source: '', labels: [' Bug ', 'bug', '', 'Feature'] });
+
+    expect(script.labels).to.deep.equal(['Bug', 'Feature']);
+  });
+
+  it('defaults to an empty labels array when omitted', async () => {
+    const script = await store.save({ title: 'a', format: 'rasp', source: '' });
+
+    expect(script.labels).to.deep.equal([]);
+  });
+
+  it('preserves labels on edit when not resent, replaces when resent', async () => {
+    const script = await store.save({ title: 'a', format: 'rasp', source: '', labels: ['Keep'] });
+
+    const unchanged = await store.save({ id: script.id, title: 'a2', format: 'rasp', source: '' });
+    expect(unchanged.labels).to.deep.equal(['Keep']);
+
+    const replaced = await store.save({ id: script.id, title: 'a3', format: 'rasp', source: '', labels: ['New'] });
+    expect(replaced.labels).to.deep.equal(['New']);
+  });
+
+  it('backfills labels to [] for scripts persisted before custom labels existed', async () => {
+    await memento.update('kopytko.deviceManager.scripts', {
+      legacy: { id: 'legacy', title: 'old script', format: 'rasp', source: '', createdAt: 1, updatedAt: 1 },
+    });
+
+    expect(store.getAll()[0].labels).to.deep.equal([]);
+    expect(store.get('legacy')?.labels).to.deep.equal([]);
+  });
+
   it('sorts scripts by title, case-insensitively', async () => {
     await store.save({ title: 'zeta', format: 'rasp', source: '' });
     await store.save({ title: 'Alpha', format: 'rasp', source: '' });

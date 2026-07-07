@@ -39,10 +39,15 @@ panel explains the semantics instead of gating the action.
   All keys and values are URL-encoded automatically. Blank keys are skipped; a blank
   `contentId` is omitted from the request.
 - **Saved Parameter Sets** — name the current form and **Save**. Each set stores the
-  channel, `contentId`, and parameters. **Use** loads a set into the form (with a warning
-  if its channel is no longer installed on the current device), **Edit** additionally
-  prefills the name so Save becomes Update, **✕** deletes. Sets are persisted in the
-  workspace state — each project keeps its own library.
+  channel, `contentId`, parameters, and an optional list of custom labels (comma-separated,
+  with autocomplete from labels already used in the list — picking a suggestion appends it
+  after the last comma rather than replacing what's already typed). **Use** loads a set into
+  the form (with a warning if its channel is no longer installed on the current device),
+  **Edit** additionally prefills the name and labels so Save becomes Update, **✕** deletes.
+  Sets are persisted in the workspace state — each project keeps its own library. A **Filter**
+  dropdown (checkboxes, default all checked, with "All"/"Clear" shortcuts, closes when you
+  click outside it) and a **Sort** dropdown (Title by default, or a specific label to bring
+  matching sets to the top) narrow and order the list; both reset when the panel reloads.
 
 The panel follows the active device from the Roku Devices view and reloads channels when
 it changes. With no active device it shows an empty state instead of the channel grid.

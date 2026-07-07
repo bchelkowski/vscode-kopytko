@@ -238,6 +238,7 @@ Editor-tab tool for exercising Roku deep links against the active device. See [d
 | contentId + free-form key-value parameters, `mediaType` value suggestions | ✅ | [deep-linking.md](./deep-linking.md) |
 | Send via Launch (`POST /launch/{appId}`) or Input (`POST /input`, roInput to running channel) | ✅ | [deep-linking.md](./deep-linking.md) |
 | Named parameter sets — save / use / edit / delete, persisted per workspace | ✅ | [deep-linking.md](./deep-linking.md) |
+| Custom labels on saved sets — Filter (multi-select, default all) and Sort-by-label dropdowns | ✅ | [deep-linking.md](./deep-linking.md) |
 | Tools-sidebar button + `Kopytko: Open Deep Linking` command | ✅ | [deep-linking.md](./deep-linking.md) |
 
 ## Device Manager
@@ -253,6 +254,7 @@ Roku remote control with everything else `kopytko-roku-device` can do. See
 | Text input — ordered, sequential `Lit_` keypresses (UTF-8 safe) | ✅ | [device-manager.md](./device-manager.md) |
 | Keyboard remote mode — keybindings drive the device from anywhere; typing with the view focused | ✅ | [device-manager.md](./device-manager.md) |
 | Saved Text entries — `text` and `credentials` types, per-field Send buttons | ✅ | [device-manager.md](./device-manager.md) |
+| Custom labels on Saved Text (type doubles as an implicit label) and Scripts — Filter (multi-select, default all) and Sort-by-label dropdowns | ✅ | [device-manager.md](./device-manager.md) |
 | Credential passwords in SecretStorage (OS keychain), never in Memento or the webview | ✅ | [device-manager.md](./device-manager.md) |
 | RASP script editor tab — live validation, snippets, format switcher | ✅ | [device-manager.md](./device-manager.md) |
 | Remote-to-script recording — remote presses / sent text append steps to the open editor | ✅ | [device-manager.md](./device-manager.md) |

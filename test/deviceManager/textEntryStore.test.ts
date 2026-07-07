@@ -93,6 +93,28 @@ describe('TextEntryStore', () => {
     expect(store.getAll()).to.have.length(1);
   });
 
+  it('normalizes labels on save: trims, drops empty, dedupes case-insensitively', async () => {
+    const entry = await store.save({ type: 'text', text: 'x', labels: [' Bug ', 'bug', '', 'Feature'] });
+
+    expect(entry.labels).to.deep.equal(['Bug', 'Feature']);
+  });
+
+  it('defaults to an empty labels array when omitted', async () => {
+    const entry = await store.save({ type: 'text', text: 'x' });
+
+    expect(entry.labels).to.deep.equal([]);
+  });
+
+  it('preserves labels on edit when not resent, replaces when resent', async () => {
+    const entry = await store.save({ type: 'text', text: 'x', labels: ['Keep'] });
+
+    const unchanged = await store.save({ id: entry.id, type: 'text', text: 'y' });
+    expect(unchanged.labels).to.deep.equal(['Keep']);
+
+    const replaced = await store.save({ id: entry.id, type: 'text', text: 'z', labels: ['New'] });
+    expect(replaced.labels).to.deep.equal(['New']);
+  });
+
   it('sorts entries by title (falling back to value/login), case-insensitively', async () => {
     await store.save({ type: 'text', text: 'zebra' });
     await store.save({ type: 'credentials', title: 'Alpha', login: 'x@y.z' });

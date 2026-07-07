@@ -13,6 +13,8 @@ export interface TextEntryView {
   id: string;
   type: 'text' | 'credentials';
   title?: string;
+  /** Custom free-form tags; `type` also acts as an implicit label in the UI. */
+  labels: string[];
   /** Present for type 'text'. */
   text?: string;
   /** Present for type 'credentials'. */
@@ -27,6 +29,7 @@ export interface ScriptListItem {
   id: string;
   title: string;
   format: 'rasp' | 'kopytko';
+  labels: string[];
   updatedAt: number;
 }
 
@@ -79,6 +82,7 @@ export type WebMsg =
         id?: string;
         type: 'text' | 'credentials';
         title?: string;
+        labels: string[];
         text?: string;
         login?: string;
         /** Only travels webview→host on save; empty string means "keep existing". */

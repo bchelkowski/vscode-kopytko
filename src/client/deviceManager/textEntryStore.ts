@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { normalizeLabels } from '../textLabels';
 
 const KEY = 'kopytko.deviceManager.textEntries';
 const SECRET_PREFIX = 'kopytko.deviceManager.entry';
@@ -8,6 +9,8 @@ interface TextEntryBase {
   id: string;
   /** Optional display title; the UI falls back to the value/login. */
   title?: string;
+  /** Custom free-form tags; the entry's `type` also acts as an implicit label in the UI. */
+  labels?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -25,8 +28,8 @@ export type TextEntry = PlainTextEntry | CredentialsEntry;
 
 /** Input for {@link TextEntryStore.save} — id optional (created when absent). */
 export type TextEntryInput =
-  | { id?: string; type: 'text'; title?: string; text: string }
-  | { id?: string; type: 'credentials'; title?: string; login: string; password?: string };
+  | { id?: string; type: 'text'; title?: string; labels?: string[]; text: string }
+  | { id?: string; type: 'credentials'; title?: string; labels?: string[]; login: string; password?: string };
 
 /**
  * Persists quick-typing text entries in the GLOBAL Memento (they describe
@@ -73,15 +76,17 @@ export class TextEntryStore {
       await this.secrets.delete(this.secretKey(id));
     }
 
+    const labels = normalizeLabels(input.labels ?? existing?.labels);
+
     let entry: TextEntry;
     if (input.type === 'text') {
       entry = {
-        id, type: 'text', title: input.title, text: input.text,
+        id, type: 'text', title: input.title, labels, text: input.text,
         createdAt: existing?.createdAt ?? now, updatedAt: now,
       };
     } else {
       entry = {
-        id, type: 'credentials', title: input.title, login: input.login,
+        id, type: 'credentials', title: input.title, labels, login: input.login,
         createdAt: existing?.createdAt ?? now, updatedAt: now,
       };
       if (input.password !== undefined && input.password !== '') {

@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { normalizeLabels } from '../textLabels';
 
 const KEY = 'kopytko.deepLinking.sets';
 
@@ -15,13 +16,15 @@ export interface DeepLinkParameterSet {
   channelName: string;
   contentId: string;
   params: DeepLinkParam[];
+  /** Custom free-form tags for filtering/sorting the saved sets list. */
+  labels: string[];
   createdAt: number;
   updatedAt: number;
 }
 
-/** Input for {@link ParameterSetStore.save} — id optional (created when absent). */
+/** Input for {@link ParameterSetStore.save} — id and labels optional (created/defaulted when absent). */
 export type DeepLinkParameterSetInput =
-  Omit<DeepLinkParameterSet, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+  Omit<DeepLinkParameterSet, 'id' | 'createdAt' | 'updatedAt' | 'labels'> & { id?: string; labels?: string[] };
 
 /**
  * Persists named deep-link parameter sets in the workspace-scoped Memento,
@@ -36,13 +39,14 @@ export class ParameterSetStore {
   /** Returns all saved sets, sorted by name (case-insensitive). */
   getAll(): DeepLinkParameterSet[] {
     const sets = this.workspaceState.get<Record<string, DeepLinkParameterSet>>(KEY, {});
-    return Object.values(sets).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    return Object.values(sets).map(withLabels).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }
 
   /** Retrieves a single set by id. */
   get(id: string): DeepLinkParameterSet | undefined {
     const sets = this.workspaceState.get<Record<string, DeepLinkParameterSet>>(KEY, {});
-    return sets[id];
+    const set = sets[id];
+    return set ? withLabels(set) : undefined;
   }
 
   /**
@@ -58,6 +62,7 @@ export class ParameterSetStore {
     const set: DeepLinkParameterSet = {
       ...input,
       id: input.id ?? crypto.randomUUID(),
+      labels: normalizeLabels(input.labels ?? existing?.labels),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -74,4 +79,9 @@ export class ParameterSetStore {
     delete sets[id];
     await this.workspaceState.update(KEY, sets);
   }
+}
+
+/** Backfills `labels` for sets persisted before custom labels existed. */
+function withLabels(set: DeepLinkParameterSet): DeepLinkParameterSet {
+  return set.labels ? set : { ...set, labels: [] };
 }
