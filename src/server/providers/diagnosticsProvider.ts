@@ -19,6 +19,7 @@ import {
   type LintSeverity,
   type LinterConfig,
   type KopytkoImport,
+  type RuleConfig,
 } from 'kopytko-linter';
 import { collectFunctionsFromExtends } from '../brightscript/functionIndex';
 import { collectMtopItems } from '../brightscript/mtopResolver';
@@ -72,6 +73,7 @@ export class BrightScriptDiagnosticsProvider {
     generatedPaths: string[] = [],
     generatedModules: GeneratedModuleConfig[] = [],
     siblingPatterns: string[][] = [],
+    lintRuleOverrides: Partial<RuleConfig> = {},
   ): Diagnostic[] {
     const documentPath = getDocumentPath(document);
     const content = document.getText();
@@ -207,7 +209,13 @@ export class BrightScriptDiagnosticsProvider {
       siblingPatterns,
     };
 
-    const config: LinterConfig = { ...DEFAULT_LINTER_CONFIG, generatedPaths, generatedModules, siblingPatterns };
+    const config: LinterConfig = {
+      ...DEFAULT_LINTER_CONFIG,
+      rules: { ...DEFAULT_LINTER_CONFIG.rules, ...lintRuleOverrides },
+      generatedPaths,
+      generatedModules,
+      siblingPatterns,
+    };
 
     // Pass cached lines (avoid re-splitting) and the extension's cached CST
     // (avoid a redundant parse) into the linter. `content === document.getText()`,

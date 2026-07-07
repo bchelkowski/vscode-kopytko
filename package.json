@@ -17,7 +17,9 @@
     "linter",
     "lint",
     "debugger",
-    "debug"
+    "debug",
+    "remote",
+    "perfetto"
   ],
   "engines": {
     "vscode": "^1.120.0",
@@ -819,6 +821,11 @@
           ],
           "default": "preserve",
           "markdownDescription": "Field access consistency on nodes.\n\n```brightscript\n' \"dot\": prefers dot notation\nm.top.visible = true\nvalue = m.top.id\n\n' \"method\": prefers getField/setField\nm.top.setField(\"visible\", true)\nvalue = m.top.getField(\"id\")\n```"
+        },
+        "kopytko.format.verifySyntax": {
+          "type": "boolean",
+          "default": true,
+          "description": "Verify that formatted output re-parses to an equivalent AST before applying it, catching formatter bugs. Disable only to debug or skip that safety check."
         },
         "kopytko.deviceDiscovery.enabled": {
           "type": "boolean",

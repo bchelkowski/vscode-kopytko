@@ -2667,4 +2667,51 @@ describe('BrightScriptDiagnosticsProvider', () => {
       expect(diags).to.be.an('array');
     });
   });
+
+  // ── kopytko.lint.rules.* severity overrides ──────────────────────────────
+
+  describe('lint rule severity overrides', () => {
+    beforeEach(() => {
+      sinon.stub(fsWrapper, 'readdirSync').returns([]);
+    });
+
+    it('defaults to warning severity for a missing return type annotation', async () => {
+      const doc = makeDocument('function greet(name as String)\n  return "hi"\nend function');
+      const diags = await provider.provideDiagnostics(doc, [], [], []);
+      const missing = diags.find((d) => d.code === 'type/missing-return-type');
+      expect(missing).to.not.be.undefined;
+      expect(missing!.severity).to.equal(DiagnosticSeverity.Warning);
+    });
+
+    it('escalates missing return type to Error when overridden via kopytko.lint.rules', async () => {
+      const doc = makeDocument('function greet(name as String)\n  return "hi"\nend function');
+      const diags = await provider.provideDiagnostics(doc, [], [], [], {
+        'type/missing-return-type': 'error',
+      });
+      const missing = diags.find((d) => d.code === 'type/missing-return-type');
+      expect(missing).to.not.be.undefined;
+      expect(missing!.severity).to.equal(DiagnosticSeverity.Error);
+    });
+
+    it('suppresses missing param type diagnostics when overridden to off', async () => {
+      const doc = makeDocument('function greet(name)\n  return "hi"\nend function');
+      const withDefault = await provider.provideDiagnostics(doc, [], [], []);
+      expect(withDefault.filter((d) => d.code === 'type/missing-param-type')).to.have.length(1);
+
+      const withOverride = await provider.provideDiagnostics(doc, [], [], [], {
+        'type/missing-param-type': 'off',
+      });
+      expect(withOverride.filter((d) => d.code === 'type/missing-param-type')).to.be.empty;
+    });
+
+    it('leaves the other rule at its default when only one override is provided', async () => {
+      const doc = makeDocument('function greet(name)\n  return "hi"\nend function');
+      const diags = await provider.provideDiagnostics(doc, [], [], [], {
+        'type/missing-return-type': 'error',
+      });
+      const paramDiag = diags.find((d) => d.code === 'type/missing-param-type');
+      expect(paramDiag).to.not.be.undefined;
+      expect(paramDiag!.severity).to.equal(DiagnosticSeverity.Warning);
+    });
+  });
 });

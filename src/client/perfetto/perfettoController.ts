@@ -46,6 +46,9 @@ export class PerfettoController extends EventEmitter {
   private writeStream: fs.WriteStream | null = null;
   private _session: ActivePerfettoSession | null = null;
   private _manifest: PerfettoManifest | null = null;
+  private _pendingChunks: Buffer[] = [];
+  private _flushTimer: ReturnType<typeof setInterval> | null = null;
+  private _refreshIntervalMs = 3000;
 
   constructor(private readonly deps: PerfettoControllerDeps) {
     super();
@@ -94,6 +97,7 @@ export class PerfettoController extends EventEmitter {
     const outputDir = cfg.get<string>('diagnostics.outputDir', 'debug');
     const ecpPort = cfg.get<number>('perfetto.ecpPort', 8060);
     const startCommand = cfg.get<string>('perfetto.startCommand', '');
+    this._refreshIntervalMs = cfg.get<number>('perfetto.refreshIntervalMs', 3000);
     const { workspaceRoot } = this.deps;
 
     const root = path.isAbsolute(outputDir)
@@ -171,8 +175,16 @@ export class PerfettoController extends EventEmitter {
     this.ws = earlyWs;
 
     earlyWs.on('data', (chunk: Buffer) => {
+      // The trace file must stay complete, so write every chunk immediately —
+      // only the live push to the webview (via 'data' listeners) is throttled below.
       this.writeStream?.write(chunk);
-      this.emit('data', chunk);
+      this._pendingChunks.push(chunk);
+      if (!this._flushTimer) {
+        // Leading edge: emit the first chunk right away instead of waiting a
+        // full interval, then coalesce everything after into periodic flushes.
+        this._flushPendingChunks();
+        this._flushTimer = setInterval(() => this._flushPendingChunks(), this._refreshIntervalMs);
+      }
     });
 
     earlyWs.on('error', (err: Error) => this.emit('error', err));
@@ -187,11 +199,25 @@ export class PerfettoController extends EventEmitter {
     return this._session;
   }
 
+  /** Coalesces buffered chunks from the current interval into a single 'data' emit. */
+  private _flushPendingChunks(): void {
+    if (this._pendingChunks.length === 0) return;
+    const combined = Buffer.concat(this._pendingChunks);
+    this._pendingChunks = [];
+    this.emit('data', combined);
+  }
+
   async stopSession(): Promise<void> {
     const session = this._session;
     if (!session) return;
 
     this._session = null;
+
+    if (this._flushTimer) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = null;
+    }
+    this._flushPendingChunks();
 
     // Release immediately so the Diagnostics panel becomes available
     // without waiting for WS drain + file flush to complete.

@@ -33,6 +33,7 @@ import { BrightScriptFoldingRangeProvider } from './providers/foldingRangeProvid
 import { BrightScriptSelectionRangeProvider } from './providers/selectionRangeProvider';
 import { BrightScriptCallHierarchyProvider } from './providers/callHierarchyProvider';
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
+import type { RuleConfig } from 'kopytko-linter';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
 import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
 import { invalidateAllCaches } from './utils/documentCache';
@@ -73,6 +74,7 @@ let generatedModules: GeneratedModuleConfig[] = [];
 let siblingPatterns: string[][] = [];
 let readOnlyPaths: string[] = [];
 let lintReadOnlyPaths: string[] = [];
+let lintRuleOverrides: Partial<RuleConfig> = {};
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const initOptions = params.initializationOptions ?? {};
   const workspaceFolders: string[] = initOptions.workspaceFolders ?? [];
@@ -203,6 +205,7 @@ async function refreshConfiguration(rescanPackages: boolean): Promise<void> {
   siblingPatterns = importCfg.siblingPatterns;
   readOnlyPaths = await fetchReadOnlyPaths();
   lintReadOnlyPaths = await fetchLintReadOnlyPaths();
+  lintRuleOverrides = await fetchLintRuleOverrides();
   formattingProvider.setReadOnlyCheck(isReadOnlyPath);
   invalidateAllCaches();
   // The installed Kopytko package list and the module catalog depend on
@@ -279,6 +282,24 @@ async function fetchLintReadOnlyPaths(): Promise<string[]> {
   }
 }
 
+const VALID_RULE_SEVERITIES = new Set(['error', 'warning', 'info', 'hint', 'off']);
+
+async function fetchLintRuleOverrides(): Promise<Partial<RuleConfig>> {
+  try {
+    const cfg = await connection.workspace.getConfiguration('kopytko.lint.rules');
+    const overrides: Partial<RuleConfig> = {};
+    for (const rule of ['type/missing-return-type', 'type/missing-param-type'] as const) {
+      const value = cfg?.[rule];
+      if (typeof value === 'string' && VALID_RULE_SEVERITIES.has(value)) {
+        overrides[rule] = value as RuleConfig[string];
+      }
+    }
+    return overrides;
+  } catch {
+    return {};
+  }
+}
+
 async function fetchCasingConfig(): Promise<CasingConfig> {
   try {
     const cfg = await connection.workspace.getConfiguration('kopytko.casing');
@@ -346,7 +367,7 @@ function validateDocument(document: TextDocument): void {
   }
 
   try {
-    const diagnostics: Diagnostic[] = diagnosticsProvider.provideDiagnostics(document, generatedPaths, generatedModules, siblingPatterns);
+    const diagnostics: Diagnostic[] = diagnosticsProvider.provideDiagnostics(document, generatedPaths, generatedModules, siblingPatterns, lintRuleOverrides);
     connection.sendDiagnostics({ uri: document.uri, diagnostics });
   } catch (err) {
     connection.console.error(`[kopytko] Error validating ${document.uri}: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
