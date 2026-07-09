@@ -209,9 +209,17 @@ export class BrightScriptDiagnosticsProvider {
       siblingPatterns,
     };
 
+    // Partial<RuleConfig> re-adds `| undefined` to the index-signature values,
+    // which cannot be spread back into RuleConfig — and an explicit undefined
+    // override would clobber a default anyway, so drop those entries.
+    const rules = { ...DEFAULT_LINTER_CONFIG.rules };
+    for (const [rule, severity] of Object.entries(lintRuleOverrides)) {
+      if (severity !== undefined) rules[rule] = severity;
+    }
+
     const config: LinterConfig = {
       ...DEFAULT_LINTER_CONFIG,
-      rules: { ...DEFAULT_LINTER_CONFIG.rules, ...lintRuleOverrides },
+      rules,
       generatedPaths,
       generatedModules,
       siblingPatterns,
