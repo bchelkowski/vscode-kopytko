@@ -576,6 +576,37 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Roku Pay Web Services -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Roku Pay Web Services</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Call <strong class="text-white">Roku Pay's cloud API</strong> (<code class="text-violet-300">apipub.roku.com</code>) from an editor tab — no device needed. Every transaction-service endpoint (validate, cancel, refund, billing cycle, service credit) plus the four <strong class="text-white">subscription-recovery test transitions</strong> (in-grace, on-hold, passively cancel, recover), each rendered as a typed form with a live URL preview and a full response viewer.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Named credential profiles — the partner API key lives in the OS keychain, never in settings, logs, or the webview',
+              'Endpoint-driven forms: typed fields (text, number, checkbox, date), required markers, endpoint descriptions and rate-limit warnings',
+              'Accept header switch — pretty-printed JSON or raw XML responses',
+              'Full response viewer: status, duration, headers, request and response bodies',
+              'Persistent request/response history (last 200) with per-entry delete and clear-all — the API key is always masked as ****',
+              'Subscription-recovery testing per Roku’s guide: walk a test subscription through in-grace → on-hold → cancel → recover',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="Roku Pay Web Services panel"
+          placeholder="Editor tab with a credential profile picker, an endpoint dropdown with a generated form and masked URL preview, a response viewer with status and JSON body, and a request history list"
+        />
+      </div>
+    </section>
+
     <!-- .kopytkorc -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">.kopytkorc configuration</h2>
@@ -623,6 +654,7 @@ const kopytkoRcExample = `// .kopytkorc
               ['Open Node Tree Explorer', '', 'Fetch /query/sgnodes/all and render the live SceneGraph node tree'],
               ['Open Deep Linking', '', 'Launch channels with contentId / roInput deep-link parameters'],
               ['Open Device Manager', '', 'Reveal the Remote Control view (remote, device actions, saved text)'],
+              ['Open Roku Pay Web Services', '', 'Call Roku Pay cloud endpoints with saved credential profiles and a request history'],
               ['Toggle Remote Control Keyboard Mode', 'Ctrl+K (exit)', 'Drive the Roku with the keyboard — arrows, Enter, Escape, media keys'],
               ['New Device Script', '', 'Open the RASP automation-script editor tab'],
               ['Add / Remove favorite', '', 'Persist a device across restarts'],

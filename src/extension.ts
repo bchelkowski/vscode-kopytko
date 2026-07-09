@@ -14,6 +14,7 @@ import { registerDeepLinking } from './client/activation/deepLinking';
 import { registerDeviceManager } from './client/activation/deviceManager';
 import { registerDebug } from './client/activation/debug';
 import { registerNav } from './client/activation/nav';
+import { registerRokuPay } from './client/activation/rokuPay';
 
 let client: KopytkoLanguageClient | undefined;
 let deviceManager: DeviceManager | undefined;
@@ -35,6 +36,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerDeepLinking(context, discovery);
   registerDeviceManager(context, discovery);
   registerNav(context);
+  registerRokuPay(context);
   debugFactory = registerDebug(context, discovery);
 }
 

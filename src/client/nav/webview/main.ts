@@ -40,6 +40,11 @@ const ICONS: Record<NavTarget, string> = {
     <path d="M5.6 11.65h1.9M8.5 11.65h1.9"/>
     <path d="M6.3 13.5h3.4"/>
   </svg>`,
+  rokuPay: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1.5" y="3" width="13" height="10" rx="1.5"/>
+    <path d="M1.5 6h13"/>
+    <path d="M4 10.5h3"/>
+  </svg>`,
 };
 
 const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
@@ -48,6 +53,7 @@ const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
   { target: 'nodes', title: 'Node Tree', desc: 'SceneGraph node chart' },
   { target: 'deepLinking', title: 'Deep Linking', desc: 'Launch channels with contentId params' },
   { target: 'deviceManager', title: 'Device Manager', desc: 'Remote control, scripts, web admin' },
+  { target: 'rokuPay', title: 'Roku Pay Web Services', desc: 'Validate, cancel, refund — cloud API' },
 ];
 
 function buildDom(): void {

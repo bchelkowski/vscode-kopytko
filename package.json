@@ -27,7 +27,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
@@ -37,7 +37,8 @@
     "bundle:deep-linking-webview": "esbuild src/client/deepLinking/webview/main.ts --bundle --outfile=out/deep-linking-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:device-manager-webview": "esbuild src/client/deviceManager/webview/main.ts --bundle --outfile=out/device-manager-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:script-editor-webview": "esbuild src/client/deviceManager/editorWebview/main.ts --bundle --outfile=out/script-editor-webview/main.js --platform=browser --format=iife --sourcemap",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview",
+    "bundle:roku-pay-webview": "esbuild src/client/rokuPay/webview/main.ts --bundle --outfile=out/roku-pay-webview/main.js --platform=browser --format=iife --sourcemap",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview",
     "build:roku-device": "npm --prefix packages/roku-device install && npm --prefix packages/roku-device run build",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
@@ -1283,6 +1284,12 @@
         "command": "kopytko.deepLinking.open",
         "title": "Open Deep Linking",
         "icon": "$(link)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.rokuPay.open",
+        "title": "Open Roku Pay Web Services",
+        "icon": "$(credit-card)",
         "category": "Kopytko"
       },
       {

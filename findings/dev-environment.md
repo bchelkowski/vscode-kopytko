@@ -131,6 +131,19 @@ There are **3 tsconfig files**:
 
 The webview directory is excluded from the main tsconfig because it imports browser globals (`window`, `document`, `ResizeObserver`, `requestAnimationFrame`) which don't exist in the Node.js type environment. esbuild compiles it without type-checking.
 
+**Every new webview needs its own `exclude` entry in `tsconfig.json`** (all of them are listed there: diagnostics, perfetto, nodes, nav, deepLinking, deviceManager webview + editorWebview, and `src/client/rokuPay/webview/main.ts`). Forgetting it fails `npm run compile` with dozens of `Cannot find name 'HTMLInputElement'` errors. Excluding only `main.ts` (rokuPay style) is enough when the folder's `protocol.ts` is import-free — excluded files that host code imports still get compiled as part of the program, so either granularity works.
+
+### TypeScript 6 broke `{ ...T, ...Partial<T> }` with index signatures (2026-07-10)
+
+With TS 6.0 installed (dev dependency range picked it up), spreading a `Partial<T>` into a
+target typed `T` no longer type-checks when `T` has a string index signature — `Partial`
+re-adds `| undefined` to the index-signature value type and the spread result keeps it.
+This broke `src/server/providers/diagnosticsProvider.ts`'s
+`rules: { ...DEFAULT_LINTER_CONFIG.rules, ...lintRuleOverrides }` (where `lintRuleOverrides:
+Partial<RuleConfig>`), failing `npm run compile` on an untouched file. Fix: copy the defaults
+and assign only the entries whose value `!== undefined` (which is also the correct runtime
+semantics — an explicit `undefined` override would have clobbered a default).
+
 ---
 
 ## Git conventions
@@ -154,6 +167,19 @@ default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp}; img-src
 
 ### retainContextWhenHidden
 The diagnostics panel uses `retainContextWhenHidden: true`. This keeps the webview's JS execution context alive when the panel is hidden (user switches to another bottom tab). Without it, every time the panel is shown it would reload and re-request all data. The tradeoff is higher memory usage.
+
+### Cloud HTTPS from a tool: use host-side global fetch, not roku-device's httpClient (2026-07-10)
+
+The Roku Pay tool (`src/client/rokuPay/`) calls `https://apipub.roku.com`. Two dead ends to avoid:
+- `kopytko-roku-device`'s `httpClient` is **plain-HTTP only** (Node `http` module, built for LAN
+  device traffic) — it will not do TLS.
+- The webview cannot fetch either: the strict CSP has no `connect-src`, and adding one would leak
+  requests through the webview origin.
+
+So the request runs on the **extension host** with Node's global `fetch` (Node >= 24 per
+`engines`), injected as `fetchFn: typeof fetch = fetch` for sinon-stubbed tests
+(`src/client/rokuPay/rokuPayClient.ts`). Known limitation: undici's fetch ignores VS Code's
+`http.proxy` settings — documented in `docs/roku-pay.md`.
 
 ### TypeScript __importStar and testing
 When testing modules that `import * as vscode from 'vscode'`, TypeScript compiles this to `const vscode = __importStar(require('vscode'))`. The `__importStar` wrapper creates a **new object** each time the module is loaded. This means mutating the mock object AFTER the module is first imported won't affect what the module's `vscode` reference sees (it holds a reference to the old wrapper).
