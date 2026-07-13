@@ -394,6 +394,190 @@ PowerShell window stayed open for the whole session.
   lingering terminal. **Fix**: `-WindowStyle Hidden`; the UAC prompt remains
   the real confirmation gate, everything still logged to `companion.log`.
 
+## Bundling WinDivert instead of requiring a manual download (2026-07-13)
+
+User feedback after WinDivert was confirmed working live: requiring every
+Windows user to download the WinDivert SDK themselves and point a setting
+at it is real friction for what should be a one-click "just works" feature
+— this was always flagged as deferred "Phase 2d — distribution" in the
+original plan, never implemented until now. Also raised: VS Code settings
+default to `window` scope, which is settable at the *workspace* level — a
+path to a local driver checked into a shared `.vscode/settings.json` would
+apply to (and get fought over by) every teammate, which is exactly wrong
+for something inherently per-machine.
+
+**Fix — bundle the driver, make the setting an escape hatch, scope it
+correctly:**
+
+1. Copied the official WinDivert 2.2.2 x64 redistributable
+   (`WinDivert.dll` + `WinDivert64.sys`, ~140 KB total) into
+   `resources/win/x64/`, plus its LGPLv3/GPLv2 license text and a `README.md`
+   documenting provenance — unmodified binaries from the official release,
+   which is exactly the redistribution WinDivert's own licensing exists to
+   allow. No `.vscodeignore` change needed; the packaging script already
+   default-includes anything not explicitly excluded, and neither `resources/`
+   nor `.dll`/`.sys` extensions were previously ignored.
+2. New `redirect/windows/resolveWinDivertDir.ts` — pure, unit-tested:
+   prefers an explicit `kopytko.network.winDivertDir` override if set (and
+   validates the files actually exist there); otherwise checks
+   `process.arch === 'x64'` and falls back to the bundled directory. Each
+   failure mode gets its own specific, actionable reason string (wrong
+   override path / wrong architecture / bundled files missing) rather than
+   one generic "not configured" message — this now flows straight through
+   to the panel's existing `unsupported`-state notice with no webview
+   changes needed, since that already renders `NetworkController`'s
+   `message` field verbatim.
+3. `kopytko.network.winDivertDir` gained `"scope": "machine"` in
+   `package.json` — VS Code's setting scopes are `application` / `machine`
+   / `machine-overridable` / `window` (default) / `resource` /
+   `language-overridable`; `machine` is settable only in User Settings, never
+   in workspace/folder settings, so it simply cannot appear in a committed
+   `.vscode/settings.json` and can't be pushed onto a team. This is the
+   correct fix for "don't want this visible/overridable by everyone," not
+   just a description-text warning — VS Code enforces it structurally.
+
+**Net effect**: zero setup on 64-bit Windows (the overwhelming majority of
+installs) — the toggle just works, same one-flip experience as macOS/Linux.
+The setting still exists for the real edge cases (a different WinDivert
+build/version, non-x64 architectures the bundled driver doesn't cover) but
+is no longer part of the default path at all.
+
+**Deliberately not done**: auto-downloading WinDivert from within the
+extension at runtime (e.g. on first Windows use) instead of bundling it at
+build/package time. Bundling was chosen over on-demand download because (a)
+the binaries are tiny (~140 KB) so bundling costs nothing meaningful in VSIX
+size, (b) it avoids the extension ever fetching and running a kernel-driver
+binary from the network at runtime, which is a meaningfully different trust
+posture than shipping the exact bytes reviewed and committed at build time,
+and (c) it works fully offline. If ARM64 support is ever needed, the same
+pattern (bundle a second `resources/win/arm64/` and branch on
+`process.arch` in `resolveWinDivertDir`) extends cleanly — no design change,
+just another prebuilt binary to add once one exists.
+
+## Detail pane redesign: collapsible sections, lazy body tabs, original-vs-rewritten (2026-07-13)
+
+User ask: collapsible request/response headers+bodies, bodies not
+computed/formatted until visible, per-body Raw/Formatted/Tree tabs, and a
+checkbox to see original vs. rewritten body data (default: original).
+
+**Real gap found first**: the data model only ever tracked the pre-rewrite
+*response* body (`originalResponseBody`). Request-body rewrites
+(`direction: 'request'` rules) discarded the original entirely —
+`captureProxy.ts`'s `handleRequest` ran `applyBodyRewrites` on the full
+request body, but only the rewritten result (`reqBodyToSend`) ever made it
+into the `FlowRecord`; the original was a local variable that fell out of
+scope. Fixed by threading it through `RequestMeta` (`originalRequestBody`,
+`requestRewritten`) into `handleUpstreamResponse`, mirroring the existing
+response-side pattern exactly. Also fixed `rewrittenBody` (used for the
+list-row `rw` tag) to be `true` when *either* direction rewrote — it
+previously only reflected the response side, silently misreporting rows
+where only the request body changed.
+
+**Lazy computation via native `<details>`, not hand-rolled state.** Body
+sections render their `<details>` shell (summary + tab buttons + empty
+`.body-content`) eagerly — cheap, just presence/size checks — but the
+actual body text is only read from `state` and formatted the first time the
+section's native `toggle` event fires with `.open === true`. A
+`data-rendered` flag on `.body-content` makes this genuinely one-shot: an
+already-rendered section that's collapsed and reopened doesn't reformat.
+Switching tabs or the rewritten checkbox re-renders on demand too — only
+ever the one (tab × original/rewritten) combination currently selected, via
+a shared `renderBodyTab()` that reads the active tab and checkbox state
+directly off the DOM rather than a parallel JS state object. Headers stay
+open by default (cheap, no formatting) so triage information is still
+visible at a glance; bodies start collapsed since they're the expensive
+part.
+
+**Checkbox semantics, confirmed against the user's exact wording**:
+unchecked (default) = original, pre-rewrite body; checked = what the rule
+actually produced. The checkbox is omitted entirely for a body direction
+that wasn't rewritten — nothing to compare, and showing a disabled/no-op
+checkbox would be confusing.
+
+**JSON tree view uses nested `<details>` too** — zero hand-rolled
+expand/collapse JS for arbitrary depth, the browser handles it natively.
+Defaults every node open (matches typical JSON-viewer UX; still fully
+collapsible node-by-node). Non-JSON content falls back to raw text with an
+explanatory note for both Formatted and Tree tabs rather than hiding the
+tab or showing an error — keeps the three-tab layout predictable regardless
+of content type. XML gets a best-effort regex-based reindent for
+Formatted (not a real parser — deliberately just a readability aid).
+
+**Verified live in a real browser**, not just unit tests — this is pure
+webview DOM/event logic with no `vscode` API surface, so it runs unmodified
+outside the extension host. Built a throwaway static-file harness
+(loopback-only Node server, explicit file allowlist — the sandbox's
+auto-classifier blocks ad-hoc HTTP servers without both of those) loading
+the real bundled `out/network-webview/main.js`, fed it fake `init`/
+`flow-detail` messages via `window.postMessage`, and drove it with the
+Browser tool: confirmed body sections start collapsed with literally no
+content in the DOM until opened, confirmed the default-unchecked state
+shows original data and checking the box swaps to the rewritten text,
+confirmed nested JSON tree rendering (object/array counts, correct types),
+and confirmed Formatted pretty-prints correctly. `file://` URLs are blocked
+by the browser tool's sandbox — needed the local static server instead.
+
+## Detail pane follow-up: fold-by-default tree, syntax highlighting, find (2026-07-13)
+
+Three refinements to the detail pane redesign above, same session.
+
+**Tree tab now only expands the root by default.** `jsonNodeHtml` gained a
+`depth` parameter (default 0, incremented on every recursive call); only
+`depth === 0` gets the `open` attribute on its `<details class="jt-node">`.
+Every nested node still renders as a real, individually-collapsible
+`<details>` — this only changes the *default* state, not the mechanism.
+
+**Formatted tab is now syntax-highlighted**, reusing the exact `.jt-key`/
+`.jt-string`/`.jt-number`/`.jt-bool`/`.jt-null` classes the Tree view
+already defined — one shared color vocabulary across both tabs rather than
+a second palette. Implemented as a regex tokenizer
+(`highlightJson`/`highlightXml`) that walks the already-pretty-printed text
+once, escaping and wrapping each token as it goes — deliberately *not*
+"escape first, then regex the escaped string," since escaping turns `"`
+into `&quot;` and breaks a regex written against raw JSON syntax. The XML
+highlighter is the same shape (tag names, attribute values, comments) and
+inherits the existing "best-effort reindent, not a real parser" caveat.
+
+**Find is per-body-section, not per-tab, and survives tab switches.**
+Deliberately implemented as a `TreeWalker(NodeFilter.SHOW_TEXT)` over the
+*rendered* `.body-content` DOM rather than a search over the raw source
+string — this is what makes one find box work identically across Raw
+(plain text), Formatted (text inside syntax-highlighting `<span>`s), and
+Tree (text inside nested `<details>`) with zero tab-specific logic: matches
+are found and wrapped in `<mark>` at the text-node level, so they naturally
+end up inside whatever element the browser already rendered around that
+text, spans and all. Trade-off accepted deliberately: a match can't span
+across two adjacent text nodes (e.g. a search term split by syntax-highlight
+tag boundaries) — vanishingly rare for realistic search terms like a token
+name or header value, and correctness-over-completeness felt right for a
+find feature.
+
+Query + current-match-index state lives in a module-level
+`WeakMap<HTMLDetailsElement, {matches, index}>` rather than being bolted
+onto the shared `state` object — it's transient, DOM-derived UI state with
+a natural lifetime tied to the DOM node itself (WeakMap entries are GC'd
+once the `<details>` is replaced by the next flow selection's re-render, no
+manual cleanup needed). The query string itself is additionally mirrored
+onto `details.dataset.findQuery` so `renderBodyTab()` — called on every tab
+switch and rewritten-toggle change, which fully replaces `.body-content`
+and would otherwise silently drop all highlights — can reapply it after
+re-rendering without needing a reference to the WeakMap entry.
+
+**Verified live** in the same browser harness used for the detail-pane
+redesign above (the browser tool's safety classifier had a temporary
+outage mid-session — waited it out rather than skipping the check).
+Confirmed via the rendered DOM directly (`getComputedStyle` on the
+highlighted spans, not just visual inspection): `jt-key`/`jt-string`/
+`jt-number` spans resolve to three distinct colors matching the VS Code
+dark-theme fallbacks. Confirmed the Tree tab's root shows its immediate
+children while a nested object (`"nested": {4}`) stays collapsed — its own
+keys don't appear until expanded. Confirmed find end-to-end: a 3-match
+query showed `1/3`, cycling Next twice landed on `3/3`, and switching tabs
+mid-search kept the query in the input, re-highlighted all 3 matches
+against the newly-rendered content, and reset to the first match (`1/3`) —
+matching the documented "re-apply, don't try to preserve exact position
+across a full content swap" behavior.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**
@@ -416,3 +600,10 @@ PowerShell window stayed open for the whole session.
   companion** (Task Manager "End Task" during an active capture, confirming
   Windows recovers instantly with zero lingering redirect) still has not
   been explicitly re-run against the current production companion build.
+- **The bundled-driver path resolution (`resources/win/x64/` via
+  `context.extensionUri`) has not been re-verified live** — all the prior
+  live hardware runs used the `kopytko.network.winDivertDir` override
+  pointed at a Downloads-folder SDK, not the new zero-config bundled path.
+  `resolveWinDivertDir.ts` itself is unit-tested, but the real
+  `context.extensionUri`-based path (different between F5 Extension Dev Host
+  and an installed VSIX) has not been exercised on real hardware yet.

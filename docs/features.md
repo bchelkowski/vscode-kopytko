@@ -209,7 +209,7 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Bottom-panel webview with live D3 charts — memory/CPU/nodes/objects/textures, rendezvous + beacon overlays, app-state shading | ✅ | [diagnostics.md](./diagnostics.md) |
 | In-panel node / object / rendezvous / texture lists (click-to-open-file on the node & rendezvous rows) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Record any channel sharing the sideloaded dev key, not just "dev" | ✅ | [diagnostics.md](./diagnostics.md) |
-| Tools sidebar — quick-nav buttons to Diagnostics/Perfetto/Node Tree/Deep Linking/Device Manager | ✅ | [diagnostics.md](./diagnostics.md) |
+| Tools sidebar — quick-nav buttons, top to bottom: Device Manager, Diagnostics, Network Inspector, Deep Linking, Node Tree, Perfetto, Roku Pay Web Services | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
 
@@ -286,8 +286,9 @@ redirected through, showing HTTP requests/responses grouped by origin/path
 with metrics. Uses a protocol-bridging model (device speaks HTTP, proxy
 bridges to HTTPS, response bodies rewritten `https://`→`http://`) so **no CA
 is installed on the device**. Real transparent redirect works on all three
-platforms — macOS/Linux via `iptables`/`pf`, Windows via an elevated
-WinDivert companion process (requires `kopytko.network.winDivertDir` — see
+platforms out of the box — macOS/Linux via `iptables`/`pf`, Windows via an
+elevated WinDivert companion process using the driver bundled with the
+extension, no setup required (see
 [network-inspector.md](./network-inspector.md#windows-transparent-redirect-windivert)).
 
 | Feature | Status | Doc |
@@ -298,9 +299,12 @@ WinDivert companion process (requires `kopytko.network.winDivertDir` — see
 | Body rewrite rules — built-in `https://`→`http://` + user find/replace, live-editable | ✅ | [network-inspector.md](./network-inspector.md) |
 | Per-host upstream-scheme bridging (https/http/auto) with content-encoding + header handling | ✅ | [network-inspector.md](./network-inspector.md) |
 | Request list grouped by origin → path, detail pane (headers/bodies/metrics), device filter | ✅ | [network-inspector.md](./network-inspector.md) |
+| Detail pane: collapsible header/body sections, per-body Raw/Formatted/Tree tabs computed on demand, original-vs-rewritten toggle per body | ✅ | [network-inspector.md](./network-inspector.md) |
+| Formatted tab: JSON/XML syntax highlighting; Tree tab: only root expanded by default | ✅ | [network-inspector.md](./network-inspector.md) |
+| Per-body Find with match count + prev/next, works across Raw/Formatted/Tree | ✅ | [network-inspector.md](./network-inspector.md) |
 | Export capture to HAR | ✅ | [network-inspector.md](./network-inspector.md) |
 | Tools-sidebar button + `Kopytko: Open Network Inspector` / `Toggle Network Capture` commands | ✅ | [network-inspector.md](./network-inspector.md) |
-| Windows transparent redirect via WinDivert companion (`kopytko.network.winDivertDir`) — packet-level, any port/protocol, hidden elevated process, self-terminates if the extension host goes silent | ✅ verified against real hardware | [network-inspector.md](./network-inspector.md#windows-transparent-redirect-windivert) |
+| Windows transparent redirect via a bundled WinDivert companion — zero setup on x64, packet-level, any port/protocol, hidden elevated process, self-terminates if the extension host goes silent; `kopytko.network.winDivertDir` (machine-scoped) as an escape hatch | ✅ verified against real hardware | [network-inspector.md](./network-inspector.md#windows-transparent-redirect-windivert) |
 
 ## Performance & Caching
 

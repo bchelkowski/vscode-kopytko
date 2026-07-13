@@ -81,7 +81,7 @@ const allSettings = [
   { key: 'kopytko.network.defaultUpstreamScheme', type: 'enum', default: '"https"', desc: 'Scheme the proxy uses to reach an origin the device called over HTTP. https bridges to a secure upstream connection.' },
   { key: 'kopytko.network.rewriteRules', type: 'object[]', default: '[]', desc: 'Body rewrite rules for text bodies. When empty, the built-in https:// → http:// response rule is used.' },
   { key: 'kopytko.network.upstreamSchemes', type: 'object[]', default: '[]', desc: 'Per-host upstream scheme overrides ({ hostPattern, scheme }).' },
-  { key: 'kopytko.network.winDivertDir', type: 'string', default: '""', desc: 'Windows only. Folder with WinDivert.dll and WinDivert64.sys — required to enable traffic capture on Windows.' },
+  { key: 'kopytko.network.winDivertDir', type: 'string', default: '""', desc: 'Windows only, usually unnecessary — a working WinDivert driver ships with the extension. Override folder with WinDivert.dll/WinDivert64.sys; machine-scoped, cannot be set via workspace settings.' },
 ];
 
 const importExample = `' @import /components/VideoPlayer.brs
@@ -425,131 +425,6 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
-    <!-- Kopytko Diagnostics -->
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Diagnostics (Runtime Telemetry)</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <div>
-          <p class="text-slate-400 leading-relaxed mb-4">
-            A bottom-panel recorder that captures live runtime telemetry from the running channel into replayable per-session NDJSON files, charted live with D3. Every chart and table is individually toggleable — data is only polled while something visible needs it.
-          </p>
-          <ul class="space-y-2 text-sm">
-            {[
-              'Memory chart — total/anon/file/shared/swap MB with FG/BG limit lines (chanperf)',
-              'CPU chart — total/user/sys % (chanperf)',
-              'SceneGraph Nodes chart — stacked by node type, top 8 + Other (sgnodes counts)',
-              'Objects chart — BrightScript object counts stacked by type via ECP app-object-counts (hidden by default)',
-              'Texture memory chart with max reference line (r2d2_bitmaps)',
-              'Node / Object / Rendezvous / Texture tables — the Objects table splits roSGNode rows per component subtype',
-              'Rendezvous + framework-beacon markers overlaid on every chart',
-              'App foreground/background shading + live state badge',
-              'Record any channel sharing the sideloaded dev key, with past-session replay',
-            ].map(f => (
-              <li class="flex items-start gap-2.5 text-slate-300">
-                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <Screenshot
-          alt="Kopytko Diagnostics panel"
-          placeholder="Bottom panel with live D3 charts: Memory, CPU, stacked SceneGraph Nodes and Objects charts, navigator strip, and node/object/rendezvous tables below"
-        />
-      </div>
-    </section>
-
-    <!-- Kopytko Perfetto -->
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Perfetto (App Tracing)</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div>
-          <p class="text-slate-400 leading-relaxed mb-4">
-            Live Roku app tracing — right inside VS Code. Click <strong class="text-white">Start</strong> and the extension deploys your channel with <code class="text-violet-300">run_as_process=1</code>, connects to the device's Perfetto WebSocket stream, and feeds the native binary trace into an embedded <a href="https://ui.perfetto.dev" class="prose-link" target="_blank" rel="noopener">ui.perfetto.dev</a> viewer. The trace refreshes live every few seconds.
-          </p>
-          <p class="text-slate-400 leading-relaxed mb-4">
-            No more record → export → import → guess. See flame charts, counter tracks, heap graphs, and rendezvous spans updating as you navigate your app. Sessions are saved as <code class="text-violet-300">.perfetto-trace</code> files and can be replayed later.
-          </p>
-          <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
-            <li>Requires Roku firmware 15.2+</li>
-            <li>Mutual exclusion with the Diagnostics panel — only one panel holds the device at a time</li>
-            <li>Heap snapshot capture with one click</li>
-            <li>Past-session replay from the dropdown</li>
-          </ul>
-        </div>
-        <div class="bg-slate-800 rounded-lg p-4 flex flex-col gap-2 text-sm text-slate-300">
-          <p class="text-slate-400 font-semibold mb-1">Using it</p>
-          <ol class="list-decimal list-inside space-y-1 text-slate-400">
-            <li>Click <strong class="text-white">Start</strong> to deploy and begin tracing</li>
-            <li>Watch flame charts, counters, and rendezvous spans stream live in the embedded viewer</li>
-            <li>Take a heap snapshot at any point with one click</li>
-            <li>Click <strong class="text-white">Stop</strong> to save the session as a <code class="text-violet-300">.perfetto-trace</code> file</li>
-            <li>Replay any past session from the dropdown</li>
-          </ol>
-        </div>
-      </div>
-    </section>
-
-    <!-- SceneGraph Node Tree Explorer -->
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-3">SceneGraph Node Tree Explorer</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <div>
-          <p class="text-slate-400 leading-relaxed mb-4">
-            An editor-tab panel that fetches <code class="text-violet-300">/query/sgnodes/all</code> from the active Roku device and renders the live scene tree as a D3 icicle chart — every node, its type, and its depth in the hierarchy, at a glance.
-          </p>
-          <ul class="space-y-2 text-sm">
-            {[
-              'Click a node to focus its subtree; double-click to go back up',
-              'Hover any node for a tooltip with its type, id, and field count',
-              'Refresh button re-queries the device for the current tree without reopening the tab',
-              'Reads the same ECP endpoint the Diagnostics panel\'s Node Counts chart summarizes, but shows the full live tree instead of counts',
-            ].map(f => (
-              <li class="flex items-start gap-2.5 text-slate-300">
-                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <Screenshot
-          alt="SceneGraph Node Tree Explorer"
-          placeholder="Editor tab showing a D3 icicle chart of the live SceneGraph node tree, with a tooltip open on a hovered node showing its type and id"
-        />
-      </div>
-    </section>
-
-    <!-- Deep Linking -->
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-3">Deep Linking</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <div>
-          <p class="text-slate-400 leading-relaxed mb-4">
-            Exercise your channel's deep links without hand-crafting <code class="text-violet-300">curl</code> commands. An editor-tab panel lists every channel installed on the active device — icons included — and lets you fire a <code class="text-violet-300">contentId</code> plus any key-value parameters at it via ECP <strong class="text-white">Launch</strong> (<code class="text-violet-300">POST /launch</code>, starts or relaunches the channel) or <strong class="text-white">Input</strong> (<code class="text-violet-300">POST /input</code>, delivered to the running channel as an <code class="text-violet-300">roInput</code> event — no relaunch).
-          </p>
-          <ul class="space-y-2 text-sm">
-            {[
-              'Channel grid with icons from the device (ECP /query/apps + /query/icon)',
-              'contentId field + free-form key-value parameters, with mediaType value suggestions',
-              'Launch and Input send modes with clear semantics for each',
-              'Named parameter sets — save, reuse, edit, and delete; persisted per workspace',
-              'Custom labels on saved sets, plus Filter (multi-select) and Sort-by-label dropdowns',
-              'Follows the active device; warns when a preset’s channel is not installed',
-            ].map(f => (
-              <li class="flex items-start gap-2.5 text-slate-300">
-                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <Screenshot
-          alt="Deep Linking panel"
-          placeholder="Editor tab with a channel grid (icons), a contentId + parameters form with Launch and Send Input buttons, and a saved parameter sets list"
-        />
-      </div>
-    </section>
-
     <!-- Device Manager -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">Device Manager</h2>
@@ -585,6 +460,165 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Kopytko Diagnostics -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Diagnostics (Runtime Telemetry)</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            A bottom-panel recorder that captures live runtime telemetry from the running channel into replayable per-session NDJSON files, charted live with D3. Every chart and table is individually toggleable — data is only polled while something visible needs it.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Memory chart — total/anon/file/shared/swap MB with FG/BG limit lines (chanperf)',
+              'CPU chart — total/user/sys % (chanperf)',
+              'SceneGraph Nodes chart — stacked by node type, top 8 + Other (sgnodes counts)',
+              'Objects chart — BrightScript object counts stacked by type via ECP app-object-counts (hidden by default)',
+              'Texture memory chart with max reference line (r2d2_bitmaps)',
+              'Node / Object / Rendezvous / Texture tables — the Objects table splits roSGNode rows per component subtype',
+              'Rendezvous + framework-beacon markers overlaid on every chart',
+              'App foreground/background shading + live state badge',
+              'Record any channel sharing the sideloaded dev key, with past-session replay',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="Kopytko Diagnostics panel"
+          placeholder="Bottom panel with live D3 charts: Memory, CPU, stacked SceneGraph Nodes and Objects charts, navigator strip, and node/object/rendezvous tables below"
+        />
+      </div>
+    </section>
+
+    <!-- Network Inspector -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Network Inspector</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            A <strong class="text-white">Charles-style HTTP inspector</strong> for a running channel — an intercepting proxy the device's traffic is redirected through, showing every request and response <strong class="text-white">grouped by origin and path</strong> with per-request metrics. The clever part: it sees <strong class="text-white">HTTPS backends decrypted without installing any CA on the Roku</strong>. The device stays on plaintext HTTP, the proxy bridges to HTTPS upstream, and response bodies are rewritten <code class="text-violet-300">https://</code> → <code class="text-violet-300">http://</code> so the app keeps talking HTTP.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Pure-Node proxy — no external tools, no mitmproxy, no certificates',
+              'One master toggle (off by default): flip on to start the proxy and apply the OS traffic redirect; flip off to fully revert',
+              'Fully automatic transparent redirect on all three platforms out of the box — a scoped iptables chain (Linux), pf anchor (macOS), or a bundled WinDivert companion (Windows, zero setup) redirecting all of the device\'s traffic by source IP under one elevated prompt; teardown never touches your other firewall rules and reverts on close/crash, and the Windows companion also self-terminates if VS Code disappears without saying goodbye',
+              'Live-editable rewrite rules — built-in https→http plus your own find/replace, per-host, applied without restart',
+              'Per-host upstream scheme (https / http / auto); gzip/deflate/br decoded, Set-Cookie Secure stripped, redirects downgraded',
+              'Requests grouped by origin, detail pane with headers, bodies and original-vs-rewritten view, filter, and Export HAR',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+          <p class="text-slate-500 text-xs mt-4">
+            The dev machine must be the device's gateway (macOS Internet Sharing, a Linux gateway, or Windows ICS). On 64-bit Windows there's nothing to install — the extension bundles a working <a href="https://reqrypt.org/windivert.html" class="text-violet-300 hover:underline">WinDivert</a> driver and drives it via an elevated companion process (window hidden, everything logged for auditability). <code class="text-violet-300">kopytko.network.winDivertDir</code> exists only to override that with a different build, or on architectures the bundled driver doesn't cover — it's machine-scoped, so it can't be pushed onto a team via a shared workspace settings.json.
+          </p>
+        </div>
+        <Screenshot
+          alt="Network Inspector panel"
+          placeholder="Editor tab with a capture toggle, a request list grouped by origin with method/status/duration/size columns, a detail pane showing request and response headers and JSON body, and a rewrite-rules editor"
+        />
+      </div>
+    </section>
+
+    <!-- Deep Linking -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Deep Linking</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Exercise your channel's deep links without hand-crafting <code class="text-violet-300">curl</code> commands. An editor-tab panel lists every channel installed on the active device — icons included — and lets you fire a <code class="text-violet-300">contentId</code> plus any key-value parameters at it via ECP <strong class="text-white">Launch</strong> (<code class="text-violet-300">POST /launch</code>, starts or relaunches the channel) or <strong class="text-white">Input</strong> (<code class="text-violet-300">POST /input</code>, delivered to the running channel as an <code class="text-violet-300">roInput</code> event — no relaunch).
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Channel grid with icons from the device (ECP /query/apps + /query/icon)',
+              'contentId field + free-form key-value parameters, with mediaType value suggestions',
+              'Launch and Input send modes with clear semantics for each',
+              'Named parameter sets — save, reuse, edit, and delete; persisted per workspace',
+              'Custom labels on saved sets, plus Filter (multi-select) and Sort-by-label dropdowns',
+              'Follows the active device; warns when a preset’s channel is not installed',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="Deep Linking panel"
+          placeholder="Editor tab with a channel grid (icons), a contentId + parameters form with Launch and Send Input buttons, and a saved parameter sets list"
+        />
+      </div>
+    </section>
+
+    <!-- SceneGraph Node Tree Explorer -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">SceneGraph Node Tree Explorer</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            An editor-tab panel that fetches <code class="text-violet-300">/query/sgnodes/all</code> from the active Roku device and renders the live scene tree as a D3 icicle chart — every node, its type, and its depth in the hierarchy, at a glance.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Click a node to focus its subtree; double-click to go back up',
+              'Hover any node for a tooltip with its type, id, and field count',
+              'Refresh button re-queries the device for the current tree without reopening the tab',
+              'Reads the same ECP endpoint the Diagnostics panel\'s Node Counts chart summarizes, but shows the full live tree instead of counts',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Screenshot
+          alt="SceneGraph Node Tree Explorer"
+          placeholder="Editor tab showing a D3 icicle chart of the live SceneGraph node tree, with a tooltip open on a hovered node showing its type and id"
+        />
+      </div>
+    </section>
+
+    <!-- Kopytko Perfetto -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Perfetto (App Tracing)</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            Live Roku app tracing — right inside VS Code. Click <strong class="text-white">Start</strong> and the extension deploys your channel with <code class="text-violet-300">run_as_process=1</code>, connects to the device's Perfetto WebSocket stream, and feeds the native binary trace into an embedded <a href="https://ui.perfetto.dev" class="prose-link" target="_blank" rel="noopener">ui.perfetto.dev</a> viewer. The trace refreshes live every few seconds.
+          </p>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            No more record → export → import → guess. See flame charts, counter tracks, heap graphs, and rendezvous spans updating as you navigate your app. Sessions are saved as <code class="text-violet-300">.perfetto-trace</code> files and can be replayed later.
+          </p>
+          <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+            <li>Requires Roku firmware 15.2+</li>
+            <li>Mutual exclusion with the Diagnostics panel — only one panel holds the device at a time</li>
+            <li>Heap snapshot capture with one click</li>
+            <li>Past-session replay from the dropdown</li>
+          </ul>
+        </div>
+        <div class="bg-slate-800 rounded-lg p-4 flex flex-col gap-2 text-sm text-slate-300">
+          <p class="text-slate-400 font-semibold mb-1">Using it</p>
+          <ol class="list-decimal list-inside space-y-1 text-slate-400">
+            <li>Click <strong class="text-white">Start</strong> to deploy and begin tracing</li>
+            <li>Watch flame charts, counters, and rendezvous spans stream live in the embedded viewer</li>
+            <li>Take a heap snapshot at any point with one click</li>
+            <li>Click <strong class="text-white">Stop</strong> to save the session as a <code class="text-violet-300">.perfetto-trace</code> file</li>
+            <li>Replay any past session from the dropdown</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
     <!-- Roku Pay Web Services -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">Roku Pay Web Services</h2>
@@ -612,40 +646,6 @@ const kopytkoRcExample = `// .kopytkorc
         <Screenshot
           alt="Roku Pay Web Services panel"
           placeholder="Editor tab with a credential profile picker, an endpoint dropdown with a generated form and masked URL preview, a response viewer with status and JSON body, and a request history list"
-        />
-      </div>
-    </section>
-
-    <!-- Network Inspector -->
-    <section>
-      <h2 class="text-2xl font-bold text-white mb-3">Network Inspector</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <div>
-          <p class="text-slate-400 leading-relaxed mb-4">
-            A <strong class="text-white">Charles-style HTTP inspector</strong> for a running channel — an intercepting proxy the device's traffic is redirected through, showing every request and response <strong class="text-white">grouped by origin and path</strong> with per-request metrics. The clever part: it sees <strong class="text-white">HTTPS backends decrypted without installing any CA on the Roku</strong>. The device stays on plaintext HTTP, the proxy bridges to HTTPS upstream, and response bodies are rewritten <code class="text-violet-300">https://</code> → <code class="text-violet-300">http://</code> so the app keeps talking HTTP.
-          </p>
-          <ul class="space-y-2 text-sm">
-            {[
-              'Pure-Node proxy — no external tools, no mitmproxy, no certificates',
-              'One master toggle (off by default): flip on to start the proxy and apply the OS traffic redirect; flip off to fully revert',
-              'Fully automatic transparent redirect — a scoped iptables chain (Linux), pf anchor (macOS), or an optional WinDivert companion (Windows) redirecting all of the device\'s traffic by source IP under one elevated prompt; teardown never touches your other firewall rules and reverts on close/crash, and the Windows companion also self-terminates if VS Code disappears without saying goodbye',
-              'Live-editable rewrite rules — built-in https→http plus your own find/replace, per-host, applied without restart',
-              'Per-host upstream scheme (https / http / auto); gzip/deflate/br decoded, Set-Cookie Secure stripped, redirects downgraded',
-              'Requests grouped by origin, detail pane with headers, bodies and original-vs-rewritten view, filter, and Export HAR',
-            ].map(f => (
-              <li class="flex items-start gap-2.5 text-slate-300">
-                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
-                {f}
-              </li>
-            ))}
-          </ul>
-          <p class="text-slate-500 text-xs mt-4">
-            The dev machine must be the device's gateway (macOS Internet Sharing, a Linux gateway, or Windows ICS). On Windows, transparent capture needs <code class="text-violet-300">kopytko.network.winDivertDir</code> pointed at a <a href="https://reqrypt.org/windivert.html" class="text-violet-300 hover:underline">WinDivert</a> install — the extension drives it via an elevated companion process (window hidden, everything logged for auditability), never bundling or auto-installing the driver itself. Without that set, the toggle still starts the proxy but reports redirect as not configured.
-          </p>
-        </div>
-        <Screenshot
-          alt="Network Inspector panel"
-          placeholder="Editor tab with a capture toggle, a request list grouped by origin with method/status/duration/size columns, a detail pane showing request and response headers and JSON body, and a rewrite-rules editor"
         />
       </div>
     </section>

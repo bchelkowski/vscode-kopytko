@@ -8,8 +8,8 @@ origin/path with per-request metrics — plus a live-editable rewrite engine.
 All three platforms redirect a device's traffic transparently at the packet
 level, with no hostname foreknowledge needed: **macOS/Linux** via
 `iptables`/`pf`, **Windows** via an elevated [WinDivert](https://reqrypt.org/windivert.html)
-companion process (requires `kopytko.network.winDivertDir` to be configured —
-see [Windows: transparent redirect (WinDivert)](#windows-transparent-redirect-windivert)).
+companion process, bundled with the extension — no setup required on 64-bit
+Windows (see [Windows: transparent redirect (WinDivert)](#windows-transparent-redirect-windivert)).
 
 Open it from the **Kopytko Tools** sidebar → **Network Inspector**, or run
 `Kopytko: Open Network Inspector`.
@@ -99,17 +99,23 @@ device's `https://` calls the way `iptables`/`pf` do on port 80.
 
 To get the same real, blanket, any-port transparent redirect Windows has on
 macOS/Linux, this tool drives [WinDivert](https://reqrypt.org/windivert.html)
-(LGPLv3/GPLv2, Microsoft-signed) — a packet-driver library, not something this
-extension builds or ships a kernel driver of itself.
+(LGPLv3/GPLv2) — a packet-driver library.
 
-**Setup:** download the WinDivert SDK/redistributable from
-[reqrypt.org/windivert.html](https://reqrypt.org/windivert.html), unpack it
-somewhere permanent, and set `kopytko.network.winDivertDir` to the folder
-containing `WinDivert.dll` and `WinDivert64.sys` (the `x64` folder of the
-download). Without this set, the toggle still starts the proxy but reports
-`unsupported` — nothing is routed into it.
+**Setup: none, on 64-bit Windows.** The extension bundles the official x64
+WinDivert redistributable (`resources/win/x64/` — see its `README.md` for
+provenance/license) and uses it automatically. There's nothing to download
+and no setting to configure for the common case.
 
-Once configured, flipping the panel's toggle on Windows:
+`kopytko.network.winDivertDir` exists only as an escape hatch — point it at
+a folder containing `WinDivert.dll`/`WinDivert64.sys` to override the
+bundled driver with a different build/version, or to supply one on a
+non-x64 architecture the bundled driver doesn't cover (e.g. ARM64). It's
+scoped `machine` — it can only be set in your own User Settings, never in a
+workspace/team `settings.json`, since a local driver path is inherently
+per-machine and shouldn't be something a shared workspace config could push
+onto every teammate.
+
+Flipping the panel's toggle on Windows:
 
 1. Generates a companion script (`redirect/windows/companionScript.ts`) — a
    PowerShell script with the WinDivert P/Invoke bindings embedded via
@@ -145,9 +151,10 @@ Windows networking must never be left broken):
 - The companion also **self-terminates if it stops hearing from the extension
   host** (a repeating heartbeat over the pipe) — so a crashed or force-quit
   VS Code can never leave an orphaned elevated redirect process running.
-- If `winDivertDir` isn't configured, or this machine's IP on the device's
-  subnet can't be determined, the panel shows `unsupported` — the proxy still
-  runs, nothing is routed into it.
+- If this machine isn't x64, the bundled driver is missing/unreadable, a
+  `winDivertDir` override is misconfigured, or this machine's IP on the
+  device's subnet can't be determined, the panel shows `unsupported` with
+  the specific reason — the proxy still runs, nothing is routed into it.
 - If the companion never signals readiness in time (blocked driver load,
   antivirus/EDR quarantine, a dismissed UAC prompt), that's reported as a
   distinct, actionable error rather than a silent hang, with the real reason
@@ -187,11 +194,40 @@ otherwise drop them), and drops `Strict-Transport-Security`.
 
 Requests are grouped by **origin** (`host:port`), each row showing method,
 status, path, duration, size, plus tags for HTTPS-bridged (`TLS`) and
-body-rewritten (`rw`). Selecting a request opens a detail pane with an overview,
-request/response headers, and (lazily loaded) bodies — including the original
-pre-rewrite response body when a rule fired. A text filter narrows by
-host/path/method/status. **Export HAR** writes the current buffer to a `.har`
-file.
+body-rewritten (`rw`). A text filter narrows by host/path/method/status.
+**Export HAR** writes the current buffer to a `.har` file.
+
+Selecting a request opens a detail pane: an always-visible overview, then
+four independently collapsible sections — **request headers**, **request
+body**, **response headers**, **response body**. Headers open by default;
+bodies start collapsed, and a body's content is only fetched from the
+webview's own cache and formatted once you actually open its section —
+opening one large JSON body never pays for parsing/formatting the others.
+
+Each body section has its own **Raw / Formatted / Tree** tabs, computed on
+demand per tab (switching tabs doesn't recompute the ones you're not
+looking at):
+- **Raw** — the body exactly as captured.
+- **Formatted** — pretty-printed and syntax-highlighted (keys, strings,
+  numbers, booleans/null) if it parses as JSON; best-effort indented and
+  highlighted (tag names, attribute values) if it looks like XML; otherwise
+  the raw text with a note.
+- **Tree** — a collapsible JSON tree (needs valid JSON; falls back to raw
+  text with a note otherwise). Only the root starts expanded — every nested
+  object/array starts folded, so a large payload opens as a manageable
+  outline rather than a wall of pre-expanded nodes.
+
+Every body section also has a **Find** box (with a match counter and
+prev/next buttons, Enter/Shift+Enter to step through matches) that
+searches whichever tab is currently showing — Raw, Formatted, or Tree
+alike — and keeps working as you switch tabs.
+
+When a rewrite rule changed a body (either direction — request or
+response), that section also gets a **Show rewritten** checkbox, unchecked
+by default: unchecked shows the original body exactly as sent by the
+device or received from the backend; checked shows what the rule actually
+produced. Sections with nothing rewritten don't show the checkbox at all —
+there's nothing to compare.
 
 ---
 
@@ -207,4 +243,4 @@ file.
 | `kopytko.network.defaultUpstreamScheme` | `"https"` | Scheme used to reach origins the app called over HTTP |
 | `kopytko.network.rewriteRules` | `[]` | Seed body-rewrite rules (empty = built-in https→http) |
 | `kopytko.network.upstreamSchemes` | `[]` | Per-host upstream scheme overrides |
-| `kopytko.network.winDivertDir` | `""` | Windows only. Folder with `WinDivert.dll`/`WinDivert64.sys` — required to enable traffic capture on Windows |
+| `kopytko.network.winDivertDir` | `""` | Windows only, usually unnecessary (a working WinDivert is bundled). Override folder with `WinDivert.dll`/`WinDivert64.sys` — machine-scoped, can't be set via workspace settings |

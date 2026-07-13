@@ -171,15 +171,17 @@ into a new folder, and stops/finalizes on the stop command.
 ## Tools sidebar
 
 A small panel in the Kopytko activity-bar sidebar (labeled "Tools", alongside
-Roku Devices) with five buttons for quick navigation:
+Roku Devices) with buttons for quick navigation, top to bottom:
 
 | Button | Opens |
 |---|---|
-| **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
-| **Perfetto** | Opens the Perfetto tracing tab (`kopytko.perfetto.open`) |
-| **Node Tree** | Opens the SceneGraph Node Tree Explorer (`kopytko.nodes.open`) |
-| **Deep Linking** | Opens the Deep Linking tab |
 | **Device Manager** | Opens the Device Manager (remote control, scripts, web admin) — see [device-manager.md](./device-manager.md) |
+| **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
+| **Network Inspector** | Opens the Network Inspector tab (`kopytko.network.open`) — see [network-inspector.md](./network-inspector.md) |
+| **Deep Linking** | Opens the Deep Linking tab |
+| **Node Tree** | Opens the SceneGraph Node Tree Explorer (`kopytko.nodes.open`) |
+| **Perfetto** | Opens the Perfetto tracing tab (`kopytko.perfetto.open`) |
+| **Roku Pay Web Services** | Opens the Roku Pay Web Services tab — see [roku-pay.md](./roku-pay.md) |
 
 It's a plain navigation aid — no data flows through it, it just executes the
 corresponding reveal command. Styled to match this panel's toolbar (same
