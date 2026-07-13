@@ -2,7 +2,7 @@
   "name": "vscode-kopytko",
   "displayName": "Kopytko BrightScript",
   "description": "BrightScript & Kopytko language support for Visual Studio Code — syntax, IntelliSense, diagnostics, and Kopytko import resolution.",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "publisher": "bchelkowski",
   "license": "MIT",
   "icon": "images/kopytko-logo.png",
@@ -1017,8 +1017,12 @@
         },
         "kopytko.network.redirectPorts": {
           "type": "array",
-          "items": { "type": "number" },
-          "default": [80],
+          "items": {
+            "type": "number"
+          },
+          "default": [
+            80
+          ],
           "description": "Device-side ports whose traffic is transparently redirected into the capture proxy (HTTP only)."
         },
         "kopytko.network.maxEntries": {
@@ -1038,7 +1042,11 @@
         },
         "kopytko.network.defaultUpstreamScheme": {
           "type": "string",
-          "enum": ["https", "http", "auto"],
+          "enum": [
+            "https",
+            "http",
+            "auto"
+          ],
           "default": "https",
           "description": "Scheme the proxy uses to reach an origin when the device called it over HTTP. `https` bridges the plaintext device call to a secure upstream connection."
         },
@@ -1055,13 +1063,34 @@
           "items": {
             "type": "object",
             "properties": {
-              "enabled": { "type": "boolean", "default": true },
-              "direction": { "type": "string", "enum": ["response", "request"], "default": "response" },
-              "hostPattern": { "type": "string" },
-              "contentTypePattern": { "type": "string" },
-              "find": { "type": "string" },
-              "replace": { "type": "string" },
-              "isRegex": { "type": "boolean", "default": false }
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "response",
+                  "request"
+                ],
+                "default": "response"
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "contentTypePattern": {
+                "type": "string"
+              },
+              "find": {
+                "type": "string"
+              },
+              "replace": {
+                "type": "string"
+              },
+              "isRegex": {
+                "type": "boolean",
+                "default": false
+              }
             }
           }
         },
@@ -1072,8 +1101,18 @@
           "items": {
             "type": "object",
             "properties": {
-              "hostPattern": { "type": "string" },
-              "scheme": { "type": "string", "enum": ["https", "http", "auto"], "default": "https" }
+              "hostPattern": {
+                "type": "string"
+              },
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "https",
+                  "http",
+                  "auto"
+                ],
+                "default": "https"
+              }
             }
           }
         }

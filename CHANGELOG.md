@@ -1,6 +1,18 @@
 # Changelog
 
 
+## [1.9.0] - 2026-07-13
+
+### Added
+- Redesign Network Inspector detail pane
+- Reorder Kopytko Tools sidebar, new Network Inspector icon
+- Bundle WinDivert driver for zero-setup Windows capture
+- Add Network Inspector tool
+- Add Roku Pay Web Services tool
+
+### Fixed
+- Drop undefined lint rule overrides to fix compile under TypeScript 6
+
 ## [1.8.1] - 2026-07-07
 
 ### Fixed
