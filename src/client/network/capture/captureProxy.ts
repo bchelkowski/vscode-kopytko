@@ -128,6 +128,8 @@ export class CaptureProxy extends EventEmitter {
           contentType: reqContentType,
           direction: 'request',
         });
+        meta.originalRequestBody = reqBodyFull;
+        meta.requestRewritten = reqRewrite.changed;
         const scheme = resolveUpstreamScheme(target.hostname, rules);
 
         void this.forward(req, res, target, reqRewrite.body, scheme, meta);
@@ -250,13 +252,14 @@ export class CaptureProxy extends EventEmitter {
         responseBytes: finalBody.length,
         clientIp: meta.clientIp,
         upstreamScheme: scheme,
-        rewrittenBody: rewrite.changed,
+        rewrittenBody: rewrite.changed || !!meta.requestRewritten,
         requestHeaders: meta.requestHeaders,
         responseHeaders: outHeaders,
         requestBody: reqBodyToSend.length > 0 ? reqCap.buf : undefined,
         requestBodyTruncated: reqCap.truncated,
         responseBody: finalBody.length > 0 && isTextContentType(contentType) ? resCap.buf : undefined,
         responseBodyTruncated: isTextContentType(contentType) ? resCap.truncated : undefined,
+        originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
         originalResponseBody: rewrite.changed ? capBuffer(decoded, this.maxBodyBytes).buf : undefined,
       };
       this.emit('flow', rec);
@@ -384,6 +387,9 @@ interface RequestMeta {
   clientIp: string;
   method: string;
   requestHeaders: Record<string, string | string[]>;
+  /** Pre-rewrite request body, set once `applyBodyRewrites` has run. */
+  originalRequestBody?: Buffer;
+  requestRewritten?: boolean;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

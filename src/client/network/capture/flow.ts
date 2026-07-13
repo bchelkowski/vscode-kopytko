@@ -30,6 +30,8 @@ export interface FlowRecord {
   requestBodyTruncated?: boolean;
   responseBody?: Buffer;
   responseBodyTruncated?: boolean;
+  /** Original (pre-rewrite) request body, only when a rewrite fired. */
+  originalRequestBody?: Buffer;
   /** Original (pre-rewrite) response body, only when a rewrite fired. */
   originalResponseBody?: Buffer;
   error?: string;
@@ -64,6 +66,7 @@ export function toFlowDetail(rec: FlowRecord): FlowDetail {
     id: rec.id,
     requestBody: rec.requestBody?.toString('utf8'),
     responseBody: rec.responseBody?.toString('utf8'),
+    originalRequestBody: rec.originalRequestBody?.toString('utf8'),
     originalResponseBody: rec.originalResponseBody?.toString('utf8'),
     requestBodyTruncated: rec.requestBodyTruncated,
     responseBodyTruncated: rec.responseBodyTruncated,

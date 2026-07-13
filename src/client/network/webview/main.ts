@@ -23,6 +23,9 @@ interface VsCodeApi {
 declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
 
+/** Per body-section find state — current matches + which one is active. Not in `state` since it's transient DOM-derived UI, not app data. */
+const findState = new WeakMap<HTMLDetailsElement, { matches: HTMLElement[]; index: number }>();
+
 const state: {
   flows: SerializedFlow[];
   byId: Map<string, SerializedFlow>;
@@ -204,21 +207,34 @@ function renderDetail(): void {
     <tr><td>Client</td><td>${esc(f.clientIp)}</td></tr>
   </table>`;
 
-  const sections = [
+  const parts = [
     section('Overview', overview),
-    section('Request headers', headersHtml(f.requestHeaders)),
-    d?.requestBody ? section('Request body', bodyHtml(d.requestBody, d.requestBodyTruncated)) : '',
-    section('Response headers', headersHtml(f.responseHeaders)),
-    d?.responseBody ? section('Response body', bodyHtml(d.responseBody, d.responseBodyTruncated)) : '',
-    d?.originalResponseBody
-      ? section('Original response body (pre-rewrite)', bodyHtml(d.originalResponseBody))
-      : '',
+    headersSection('Request headers', f.requestHeaders),
+    bodySectionShell('request', 'Request body', f.requestBytes, !!d?.requestBody, !!d?.originalRequestBody),
+    headersSection('Response headers', f.responseHeaders),
+    bodySectionShell('response', 'Response body', f.responseBytes, !!d?.responseBody, !!d?.originalResponseBody),
   ];
-  el.innerHTML = sections.join('');
+  el.innerHTML = parts.join('');
+
+  // Body content (raw/formatted/tree) is only computed once its section is
+  // actually opened — never eagerly for a section the user hasn't looked at.
+  el.querySelectorAll<HTMLDetailsElement>('.body-section').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      if (details.open) ensureBodyContent(details, d);
+    });
+  });
 }
 
 function section(title: string, inner: string): string {
   return `<div class="section"><h3>${esc(title)}</h3>${inner}</div>`;
+}
+
+function headersSection(title: string, headers: Record<string, string | string[]>): string {
+  const count = Object.keys(headers).length;
+  return `<details class="dsec" open>
+    <summary>${esc(title)}<span class="count">${count}</span></summary>
+    <div class="section-body">${headersHtml(headers)}</div>
+  </details>`;
 }
 
 function headersHtml(headers: Record<string, string | string[]>): string {
@@ -228,8 +244,274 @@ function headersHtml(headers: Record<string, string | string[]>): string {
   return `<table class="kv">${rows || '<tr><td colspan="2">(none)</td></tr>'}</table>`;
 }
 
-function bodyHtml(text: string, truncated?: boolean): string {
-  return `<pre class="body">${esc(text)}${truncated ? '\n…(truncated)' : ''}</pre>`;
+/**
+ * Renders only the collapsed shell (summary + empty content placeholder) —
+ * deliberately closed by default. The body itself is only fetched from
+ * `state` and formatted once the user actually opens it (see
+ * `ensureBodyContent`), so a request with a large JSON/XML body never pays
+ * for parsing/formatting unless someone looks at it.
+ */
+function bodySectionShell(
+  kind: 'request' | 'response',
+  title: string,
+  byteSize: number,
+  hasBody: boolean,
+  hasOriginal: boolean,
+): string {
+  if (!hasBody) return '';
+  return `<details class="dsec body-section" data-kind="${kind}">
+    <summary>${esc(title)}<span class="count">${fmtBytes(byteSize)}</span></summary>
+    <div class="body-toolbar">
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="raw">Raw</button>
+        <button type="button" class="tab" data-tab="formatted">Formatted</button>
+        <button type="button" class="tab" data-tab="tree">Tree</button>
+      </div>
+      <div class="find-group">
+        <input type="text" class="find-input" data-find-input placeholder="Find">
+        <span class="find-count" data-find-count></span>
+        <button type="button" class="find-nav" data-find-prev title="Previous match">˄</button>
+        <button type="button" class="find-nav" data-find-next title="Next match">˅</button>
+      </div>
+      ${hasOriginal ? '<label class="rewritten-toggle"><input type="checkbox" data-rewritten-toggle> Show rewritten</label>' : ''}
+    </div>
+    <div class="body-content"></div>
+  </details>`;
+}
+
+function ensureBodyContent(details: HTMLDetailsElement, d: FlowDetail | undefined): void {
+  const content = details.querySelector<HTMLElement>('.body-content');
+  if (!content || content.dataset.rendered === '1') return;
+  content.dataset.rendered = '1';
+  renderBodyTab(details, d);
+}
+
+/** Computes exactly one (tab × original-vs-rewritten) view — the one currently selected — never all of them. */
+function renderBodyTab(details: HTMLDetailsElement, d: FlowDetail | undefined): void {
+  const content = details.querySelector<HTMLElement>('.body-content');
+  if (!content) return;
+
+  const kind = details.dataset.kind;
+  const tab = details.querySelector<HTMLElement>('.tab.active')?.dataset.tab ?? 'raw';
+  const showRewritten = details.querySelector<HTMLInputElement>('[data-rewritten-toggle]')?.checked ?? false;
+
+  const original = kind === 'request' ? d?.originalRequestBody : d?.originalResponseBody;
+  const current = kind === 'request' ? d?.requestBody : d?.responseBody;
+  const truncated = kind === 'request' ? d?.requestBodyTruncated : d?.responseBodyTruncated;
+  // Default (unchecked) shows the original, pre-rewrite body; checking the
+  // box reveals what the rule actually produced. When nothing was rewritten
+  // for this direction, `original` is absent and `current` covers both.
+  const text = (original !== undefined && !showRewritten ? original : current) ?? '';
+
+  content.innerHTML = bodyView(text, tab, truncated);
+  // A find query survives tab switches / the rewritten toggle — re-apply it
+  // against the freshly rendered content instead of losing it.
+  const query = details.dataset.findQuery ?? '';
+  if (query) runFind(details, query);
+}
+
+function bodyView(text: string, tab: string, truncated?: boolean): string {
+  const truncNote = truncated ? '<div class="hint">Truncated for display — the full body was still forwarded to the device.</div>' : '';
+  if (tab === 'formatted') return truncNote + formattedBodyHtml(text);
+  if (tab === 'tree') return truncNote + jsonTreeBodyHtml(text);
+  return truncNote + `<pre class="body">${esc(text)}</pre>`;
+}
+
+function tryParseJson(text: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function formattedBodyHtml(text: string): string {
+  const parsed = tryParseJson(text);
+  if (parsed.ok) return `<pre class="body">${highlightJson(JSON.stringify(parsed.value, null, 2))}</pre>`;
+  const xml = tryFormatXml(text);
+  if (xml !== null) return `<pre class="body">${highlightXml(xml)}</pre>`;
+  return `<div class="hint">Not valid JSON or XML — showing raw text.</div><pre class="body">${esc(text)}</pre>`;
+}
+
+/** Regex-based JSON token highlighter — reuses the `.jt-*` classes from the tree view. */
+function highlightJson(text: string): string {
+  const pattern = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+  let out = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    out += esc(text.slice(lastIndex, match.index));
+    if (match[1] !== undefined) {
+      const cls = match[2] ? 'jt-key' : 'jt-string';
+      out += `<span class="${cls}">${esc(match[1])}</span>${esc(match[2] ?? '')}`;
+    } else if (match[3] !== undefined) {
+      out += `<span class="${match[3] === 'null' ? 'jt-null' : 'jt-bool'}">${esc(match[3])}</span>`;
+    } else if (match[4] !== undefined) {
+      out += `<span class="jt-number">${esc(match[4])}</span>`;
+    }
+    lastIndex = pattern.lastIndex;
+  }
+  out += esc(text.slice(lastIndex));
+  return out;
+}
+
+/** Best-effort XML token highlighter — tag names + attribute values, not a real parser. */
+function highlightXml(text: string): string {
+  const pattern = /(<!--[\s\S]*?-->)|(<\/?)([a-zA-Z][\w:.-]*)|([a-zA-Z_][\w:.-]*)(=)("[^"]*"|'[^']*')/g;
+  let out = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    out += esc(text.slice(lastIndex, match.index));
+    if (match[1] !== undefined) {
+      out += `<span class="jt-null">${esc(match[1])}</span>`;
+    } else if (match[3] !== undefined) {
+      out += `${esc(match[2])}<span class="jt-key">${esc(match[3])}</span>`;
+    } else if (match[4] !== undefined) {
+      out += `<span class="jt-bool">${esc(match[4])}</span>${esc(match[5])}<span class="jt-string">${esc(match[6])}</span>`;
+    }
+    lastIndex = pattern.lastIndex;
+  }
+  out += esc(text.slice(lastIndex));
+  return out;
+}
+
+/** Best-effort indent by tag depth — not a real XML parser, just a readability aid. */
+function tryFormatXml(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('<')) return null;
+  try {
+    let indent = 0;
+    const lines = trimmed.replace(/>\s*</g, '>\n<').split('\n');
+    const out = lines.map((line) => {
+      const isClosing = /^<\//.test(line);
+      const isSelfClosingOrDecl = /\/>\s*$/.test(line) || /^<\?/.test(line) || /^<!/.test(line);
+      if (isClosing) indent = Math.max(0, indent - 1);
+      const rendered = '  '.repeat(indent) + line;
+      if (!isClosing && !isSelfClosingOrDecl && /^<[a-zA-Z]/.test(line)) indent += 1;
+      return rendered;
+    });
+    return out.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+function jsonTreeBodyHtml(text: string): string {
+  const parsed = tryParseJson(text);
+  if (!parsed.ok) return `<div class="hint">Tree view needs valid JSON.</div><pre class="body">${esc(text)}</pre>`;
+  return `<div class="json-tree">${jsonNodeHtml(parsed.value, null)}</div>`;
+}
+
+/** Only the root node (depth 0) starts open — every deeper node starts folded. */
+function jsonNodeHtml(value: unknown, key: string | null, depth = 0): string {
+  const label = key !== null ? `<span class="jt-key">${esc(key)}</span><span class="jt-colon">: </span>` : '';
+  const openAttr = depth === 0 ? ' open' : '';
+  if (value === null) return `<div class="jt-row">${label}<span class="jt-null">null</span></div>`;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `<div class="jt-row">${label}<span class="jt-punct">[]</span></div>`;
+    return `<details class="jt-node"${openAttr}><summary>${label}<span class="jt-punct">Array(${value.length})</span></summary>${value
+      .map((v, i) => jsonNodeHtml(v, String(i), depth + 1))
+      .join('')}</details>`;
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return `<div class="jt-row">${label}<span class="jt-punct">{}</span></div>`;
+    return `<details class="jt-node"${openAttr}><summary>${label}<span class="jt-punct">{${entries.length}}</span></summary>${entries
+      .map(([k, v]) => jsonNodeHtml(v, k, depth + 1))
+      .join('')}</details>`;
+  }
+  const cls = typeof value === 'string' ? 'jt-string' : typeof value === 'number' ? 'jt-number' : 'jt-bool';
+  const disp = typeof value === 'string' ? `"${esc(value)}"` : String(value);
+  return `<div class="jt-row">${label}<span class="${cls}">${disp}</span></div>`;
+}
+
+// ── find-in-body ────────────────────────────────────────────────────────────
+
+/**
+ * Finds `query` (case-insensitive) inside the currently rendered body
+ * content — works across Raw, Formatted, and Tree alike since it walks the
+ * rendered DOM's text nodes rather than re-parsing the source text, so it
+ * naturally sees through syntax-highlighting spans and the JSON tree's
+ * nested elements without any tab-specific logic.
+ */
+function runFind(details: HTMLDetailsElement, query: string): void {
+  const content = details.querySelector<HTMLElement>('.body-content');
+  if (!content) return;
+  details.dataset.findQuery = query;
+  clearFindHighlights(content);
+
+  if (!query) {
+    findState.delete(details);
+    updateFindCount(details, 0, 0);
+    return;
+  }
+
+  const matches = highlightBodyMatches(content, query);
+  findState.set(details, { matches, index: matches.length > 0 ? 0 : -1 });
+  if (matches.length > 0) matches[0].classList.add('current');
+  updateFindCount(details, matches.length, matches.length > 0 ? 1 : 0);
+  if (matches.length > 0) matches[0].scrollIntoView({ block: 'nearest' });
+}
+
+function clearFindHighlights(container: HTMLElement): void {
+  container.querySelectorAll('mark.body-match').forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    parent.replaceChild(document.createTextNode(mark.textContent ?? ''), mark);
+    parent.normalize();
+  });
+}
+
+function highlightBodyMatches(container: HTMLElement, query: string): HTMLElement[] {
+  const q = query.toLowerCase();
+  const marks: HTMLElement[] = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let node: Node | null;
+  // Collect first — mutating the tree while the walker is mid-traversal skips nodes.
+  while ((node = walker.nextNode())) textNodes.push(node as Text);
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? '';
+    const lower = text.toLowerCase();
+    let idx = lower.indexOf(q);
+    if (idx === -1) continue;
+
+    const frag = document.createDocumentFragment();
+    let pos = 0;
+    while (idx !== -1) {
+      if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+      const mark = document.createElement('mark');
+      mark.className = 'body-match';
+      mark.textContent = text.slice(idx, idx + query.length);
+      frag.appendChild(mark);
+      marks.push(mark);
+      pos = idx + query.length;
+      idx = lower.indexOf(q, pos);
+    }
+    if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+  return marks;
+}
+
+function updateFindCount(details: HTMLDetailsElement, total: number, current: number): void {
+  const label = details.querySelector<HTMLElement>('[data-find-count]');
+  if (!label) return;
+  const query = details.dataset.findQuery;
+  label.textContent = !query ? '' : total === 0 ? '0/0' : `${current}/${total}`;
+}
+
+function gotoFindMatch(details: HTMLDetailsElement, delta: number): void {
+  const s = findState.get(details);
+  if (!s || s.matches.length === 0) return;
+  s.matches[s.index]?.classList.remove('current');
+  s.index = (s.index + delta + s.matches.length) % s.matches.length;
+  const next = s.matches[s.index];
+  next.classList.add('current');
+  next.scrollIntoView({ block: 'nearest' });
+  updateFindCount(details, s.matches.length, s.index + 1);
 }
 
 // ── rules panel ───────────────────────────────────────────────────────────────
@@ -369,6 +651,53 @@ function wireEvents(): void {
       renderTree();
       renderDetail();
     }
+  });
+
+  byId('detail').addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+
+    const tabBtn = target.closest<HTMLElement>('.tab');
+    if (tabBtn) {
+      const details = tabBtn.closest<HTMLDetailsElement>('.body-section');
+      if (!details) return;
+      details.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
+      tabBtn.classList.add('active');
+      renderBodyTab(details, state.selectedId ? state.details.get(state.selectedId) : undefined);
+      return;
+    }
+
+    const findNav = target.closest<HTMLElement>('.find-nav');
+    if (findNav) {
+      const details = findNav.closest<HTMLDetailsElement>('.body-section');
+      if (!details) return;
+      gotoFindMatch(details, findNav.hasAttribute('data-find-prev') ? -1 : 1);
+    }
+  });
+
+  byId('detail').addEventListener('change', (e) => {
+    const input = e.target as HTMLElement;
+    if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-rewritten-toggle')) return;
+    const details = input.closest<HTMLDetailsElement>('.body-section');
+    if (!details) return;
+    renderBodyTab(details, state.selectedId ? state.details.get(state.selectedId) : undefined);
+  });
+
+  byId('detail').addEventListener('input', (e) => {
+    const input = e.target as HTMLElement;
+    if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-find-input')) return;
+    const details = input.closest<HTMLDetailsElement>('.body-section');
+    if (!details) return;
+    runFind(details, input.value);
+  });
+
+  byId('detail').addEventListener('keydown', (e) => {
+    const input = e.target as HTMLElement;
+    if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-find-input')) return;
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const details = input.closest<HTMLDetailsElement>('.body-section');
+    if (!details) return;
+    gotoFindMatch(details, e.shiftKey ? -1 : 1);
   });
 
   byId('rules-panel').addEventListener('click', (e) => {

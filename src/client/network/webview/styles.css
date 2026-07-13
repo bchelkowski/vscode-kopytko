@@ -222,6 +222,140 @@ pre.body {
   font-family: var(--vscode-editor-font-family, monospace);
 }
 
+/* ── collapsible detail sections (headers + bodies) ── */
+.dsec {
+  margin-bottom: 10px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  border-radius: 3px;
+}
+.dsec summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+  opacity: 0.85;
+  background: var(--vscode-sideBarSectionHeader-background, rgba(128, 128, 128, 0.08));
+  list-style: none;
+}
+.dsec summary::-webkit-details-marker { display: none; }
+.dsec summary::before {
+  content: '▸';
+  font-size: 9px;
+  opacity: 0.7;
+  transition: transform 0.1s;
+}
+.dsec[open] > summary::before { transform: rotate(90deg); }
+.dsec .count {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: normal;
+  text-transform: none;
+  opacity: 0.6;
+}
+.dsec .section-body { padding: 6px 8px; }
+
+.body-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 0;
+  flex-wrap: wrap;
+}
+.tabs { display: flex; gap: 2px; }
+.tab {
+  background: transparent;
+  color: var(--vscode-foreground, #ccc);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 2px 8px;
+  font-size: 10px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.tab:hover { opacity: 0.9; background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12)); }
+.tab.active {
+  opacity: 1;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+}
+.rewritten-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  opacity: 0.8;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.find-group { display: flex; align-items: center; gap: 4px; }
+.find-input { width: 110px; font-size: 10px; padding: 2px 5px; }
+.find-count {
+  font-size: 10px;
+  opacity: 0.6;
+  min-width: 28px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.find-nav {
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 2px;
+  padding: 0 5px;
+  font-size: 9px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.find-nav:hover { background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12)); }
+
+mark.body-match {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  color: inherit;
+  border-radius: 1px;
+}
+mark.body-match.current {
+  background: var(--vscode-editor-findMatchBackground, rgba(255, 166, 0, 0.5));
+  outline: 1px solid var(--vscode-editor-findMatchBorder, orange);
+}
+.body-content { padding: 6px 8px 8px; }
+.body-content .hint {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+/* ── JSON tree view ── */
+.json-tree {
+  padding: 6px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  border-radius: 2px;
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+.jt-row { padding: 1px 0 1px 14px; white-space: pre-wrap; word-break: break-all; }
+.jt-node { margin-left: 14px; }
+.jt-node > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 1px 0;
+}
+.jt-node > summary::-webkit-details-marker { display: none; }
+.jt-node > summary::before { content: '▾ '; opacity: 0.6; }
+.jt-node:not([open]) > summary::before { content: '▸ '; }
+.jt-key { color: var(--vscode-symbolIcon-fieldForeground, #9cdcfe); }
+.jt-colon { opacity: 0.6; }
+.jt-punct { opacity: 0.6; }
+.jt-string { color: var(--vscode-debugTokenExpression-string, #ce9178); }
+.jt-number { color: var(--vscode-debugTokenExpression-number, #b5cea8); }
+.jt-bool { color: var(--vscode-debugTokenExpression-boolean, #569cd6); }
+.jt-null { opacity: 0.6; font-style: italic; }
+
 /* ── rules panel ── */
 #rules-panel {
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));

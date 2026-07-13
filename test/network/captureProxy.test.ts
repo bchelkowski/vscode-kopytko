@@ -37,11 +37,11 @@ function startUpstream(handler: http.RequestListener): Promise<{ port: number; c
 function requestThroughProxy(
   proxyPort: number,
   hostHeader: string,
-  opts: { method?: string; path?: string; body?: string } = {},
+  opts: { method?: string; path?: string; body?: string; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: '127.0.0.1', port: proxyPort, path: opts.path ?? '/', method: opts.method ?? 'GET', headers: { host: hostHeader } },
+      { host: '127.0.0.1', port: proxyPort, path: opts.path ?? '/', method: opts.method ?? 'GET', headers: { host: hostHeader, ...opts.headers } },
       (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c) => chunks.push(c));
@@ -90,6 +90,45 @@ describe('network/CaptureProxy', () => {
     expect(flow.rewrittenBody).to.equal(true);
     expect(flow.upstreamScheme).to.equal('http');
     expect(flow.originalResponseBody?.toString()).to.contain('https://api.test/x');
+  });
+
+  it('preserves the pre-rewrite request body alongside the rewritten one actually sent upstream', async () => {
+    let receivedBody = '';
+    upstream = await startUpstream((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        receivedBody = Buffer.concat(chunks).toString();
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      });
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      bodyRules: [
+        { id: 'redact', enabled: true, direction: 'request', find: 'secret', replace: 'REDACTED', isRegex: false },
+      ],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"token":"secret"}',
+    });
+
+    expect(receivedBody).to.equal('{"token":"REDACTED"}');
+
+    const flow = await flowP;
+    expect(flow.rewrittenBody).to.equal(true);
+    expect(flow.requestBody?.toString()).to.equal('{"token":"REDACTED"}');
+    expect(flow.originalRequestBody?.toString()).to.equal('{"token":"secret"}');
+    // Response was untouched, so no original-response variant should exist.
+    expect(flow.originalResponseBody).to.equal(undefined);
   });
 
   it('decodes a gzipped upstream body before rewriting and returns identity', async () => {

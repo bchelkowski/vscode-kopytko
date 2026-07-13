@@ -58,6 +58,8 @@ export interface FlowDetail {
   id: string;
   requestBody?: string;
   responseBody?: string;
+  /** Present only when a rewrite changed the request body. */
+  originalRequestBody?: string;
   /** Present only when a rewrite changed the response body. */
   originalResponseBody?: string;
   requestBodyTruncated?: boolean;
