@@ -3,6 +3,6 @@
  * webview. Zero imports so it can be bundled without pulling in Node/VS Code APIs.
  */
 
-export type NavTarget = 'diagnostics' | 'perfetto' | 'nodes' | 'deepLinking' | 'deviceManager' | 'rokuPay';
+export type NavTarget = 'diagnostics' | 'perfetto' | 'nodes' | 'deepLinking' | 'deviceManager' | 'rokuPay' | 'network';
 
 export type WebMsg = { kind: 'open'; target: NavTarget };

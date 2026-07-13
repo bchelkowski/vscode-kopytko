@@ -14,5 +14,5 @@
     "sourceMap": true
   },
   "include": ["src/client/**/*", "src/extension.ts"],
-  "exclude": ["src/server/**/*", "src/client/diagnostics/webview/**/*", "src/client/perfetto/webview/**/*", "src/client/nodes/webview/**/*", "src/client/nav/webview/**/*", "src/client/deepLinking/webview/**/*", "src/client/deviceManager/webview/**/*", "src/client/deviceManager/editorWebview/**/*", "src/client/rokuPay/webview/main.ts", "test/**/*", "node_modules"]
+  "exclude": ["src/server/**/*", "src/client/diagnostics/webview/**/*", "src/client/perfetto/webview/**/*", "src/client/nodes/webview/**/*", "src/client/nav/webview/**/*", "src/client/deepLinking/webview/**/*", "src/client/deviceManager/webview/**/*", "src/client/deviceManager/editorWebview/**/*", "src/client/rokuPay/webview/main.ts", "src/client/network/webview/**/*", "test/**/*", "node_modules"]
 }

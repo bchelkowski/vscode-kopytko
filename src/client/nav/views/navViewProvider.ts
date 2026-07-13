@@ -43,6 +43,9 @@ export class NavViewProvider implements vscode.WebviewViewProvider {
         case 'rokuPay':
           void vscode.commands.executeCommand('kopytko.rokuPay.open');
           break;
+        case 'network':
+          void vscode.commands.executeCommand('kopytko.network.open');
+          break;
       }
     });
   }

@@ -98,6 +98,7 @@ For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or 
 | [docs/roku-webadmin.md](docs/roku-webadmin.md) | Developer web-admin automation (install/rekey/package/screenshot/update/reboot) |
 | [docs/device-manager.md](docs/device-manager.md) | Device Manager — remote control, keyboard mode, saved text entries, RASP scripts, abilities hub |
 | [docs/roku-pay.md](docs/roku-pay.md) | Roku Pay Web Services tool — cloud API endpoints, credential profiles, request history |
+| [docs/network-inspector.md](docs/network-inspector.md) | Network Inspector — intercepting proxy, no-CA https↔http bridging, transparent redirect, rewrite rules, HAR |
 | [packages/formatter/README.md](packages/formatter/README.md) | Formatter CLI, library API, CI integration |
 | [packages/roku-device/README.md](packages/roku-device/README.md) | Device communication package — SSDP, ECP, debug console/protocol, collectors, Perfetto |
 | [docs/roku-device-cli.md](docs/roku-device-cli.md) | `kopytko-roku` terminal CLI — ECP + web-admin ops, config resolution, exit codes |

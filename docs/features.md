@@ -279,6 +279,29 @@ device involved. See [roku-pay.md](./roku-pay.md).
 | Persistent request/response history — last 200, API key always masked (`****`), per-entry delete + clear all | ✅ | [roku-pay.md](./roku-pay.md) |
 | Tools-sidebar button + `Kopytko: Open Roku Pay Web Services` command | ✅ | [roku-pay.md](./roku-pay.md) |
 
+## Network Inspector
+
+Charles-style editor-tab tool: an intercepting proxy the device's traffic is
+redirected through, showing HTTP requests/responses grouped by origin/path
+with metrics. Uses a protocol-bridging model (device speaks HTTP, proxy
+bridges to HTTPS, response bodies rewritten `https://`→`http://`) so **no CA
+is installed on the device**. Real transparent redirect works on all three
+platforms — macOS/Linux via `iptables`/`pf`, Windows via an elevated
+WinDivert companion process (requires `kopytko.network.winDivertDir` — see
+[network-inspector.md](./network-inspector.md#windows-transparent-redirect-windivert)).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Pure-Node intercepting proxy (HTTP in, HTTP/HTTPS out) — no external deps, no CA | ✅ | [network-inspector.md](./network-inspector.md) |
+| Master enable/disable toggle — starts proxy + OS redirect; reverts on disable/close/crash | ✅ | [network-inspector.md](./network-inspector.md) |
+| Transparent gateway redirect — scoped `iptables` chain (Linux) / pf anchor (macOS) / WinDivert companion (Windows) | ✅ | [network-inspector.md](./network-inspector.md) |
+| Body rewrite rules — built-in `https://`→`http://` + user find/replace, live-editable | ✅ | [network-inspector.md](./network-inspector.md) |
+| Per-host upstream-scheme bridging (https/http/auto) with content-encoding + header handling | ✅ | [network-inspector.md](./network-inspector.md) |
+| Request list grouped by origin → path, detail pane (headers/bodies/metrics), device filter | ✅ | [network-inspector.md](./network-inspector.md) |
+| Export capture to HAR | ✅ | [network-inspector.md](./network-inspector.md) |
+| Tools-sidebar button + `Kopytko: Open Network Inspector` / `Toggle Network Capture` commands | ✅ | [network-inspector.md](./network-inspector.md) |
+| Windows transparent redirect via WinDivert companion (`kopytko.network.winDivertDir`) — packet-level, any port/protocol, hidden elevated process, self-terminates if the extension host goes silent | ✅ verified against real hardware | [network-inspector.md](./network-inspector.md#windows-transparent-redirect-windivert) |
+
 ## Performance & Caching
 
 | Feature | Notes |

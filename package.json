@@ -27,7 +27,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview && npm run bundle:network-webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
@@ -38,7 +38,8 @@
     "bundle:device-manager-webview": "esbuild src/client/deviceManager/webview/main.ts --bundle --outfile=out/device-manager-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:script-editor-webview": "esbuild src/client/deviceManager/editorWebview/main.ts --bundle --outfile=out/script-editor-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:roku-pay-webview": "esbuild src/client/rokuPay/webview/main.ts --bundle --outfile=out/roku-pay-webview/main.js --platform=browser --format=iife --sourcemap",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview",
+    "bundle:network-webview": "esbuild src/client/network/webview/main.ts --bundle --outfile=out/network-webview/main.js --platform=browser --format=iife --sourcemap",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview && npm run bundle:network-webview",
     "build:roku-device": "npm --prefix packages/roku-device install && npm --prefix packages/roku-device run build",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
@@ -1008,6 +1009,72 @@
           "type": "string",
           "default": "",
           "description": "Build and deploy command for Perfetto sessions. Defaults to `npx kopytko start` when empty."
+        },
+        "kopytko.network.proxyPort": {
+          "type": "number",
+          "default": 8888,
+          "description": "Local port the Network Inspector capture proxy listens on. Device traffic is redirected here."
+        },
+        "kopytko.network.redirectPorts": {
+          "type": "array",
+          "items": { "type": "number" },
+          "default": [80],
+          "description": "Device-side ports whose traffic is transparently redirected into the capture proxy (HTTP only)."
+        },
+        "kopytko.network.maxEntries": {
+          "type": "number",
+          "default": 5000,
+          "description": "Maximum number of captured requests kept in memory before the oldest are dropped."
+        },
+        "kopytko.network.filterToActiveDevice": {
+          "type": "boolean",
+          "default": true,
+          "description": "Only show traffic originating from the active Roku device's IP (hides the dev machine's own traffic)."
+        },
+        "kopytko.network.maxBodyBytes": {
+          "type": "number",
+          "default": 262144,
+          "description": "Maximum bytes of each request/response body retained for display and HAR export. The full body is still forwarded to the device."
+        },
+        "kopytko.network.defaultUpstreamScheme": {
+          "type": "string",
+          "enum": ["https", "http", "auto"],
+          "default": "https",
+          "description": "Scheme the proxy uses to reach an origin when the device called it over HTTP. `https` bridges the plaintext device call to a secure upstream connection."
+        },
+        "kopytko.network.winDivertDir": {
+          "type": "string",
+          "default": "",
+          "description": "Windows only. Folder containing WinDivert.dll and WinDivert64.sys (from https://reqrypt.org/windivert.html), required to enable traffic capture on Windows."
+        },
+        "kopytko.network.rewriteRules": {
+          "type": "array",
+          "default": [],
+          "description": "Body rewrite rules applied to text request/response bodies. Each item: { enabled, direction: 'response'|'request', hostPattern?, contentTypePattern?, find, replace, isRegex? }. When empty, the built-in `https://` → `http://` response rule is used.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean", "default": true },
+              "direction": { "type": "string", "enum": ["response", "request"], "default": "response" },
+              "hostPattern": { "type": "string" },
+              "contentTypePattern": { "type": "string" },
+              "find": { "type": "string" },
+              "replace": { "type": "string" },
+              "isRegex": { "type": "boolean", "default": false }
+            }
+          }
+        },
+        "kopytko.network.upstreamSchemes": {
+          "type": "array",
+          "default": [],
+          "description": "Per-host upstream scheme overrides. Each item: { hostPattern, scheme: 'https'|'http'|'auto' }.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "hostPattern": { "type": "string" },
+              "scheme": { "type": "string", "enum": ["https", "http", "auto"], "default": "https" }
+            }
+          }
         }
       }
     },
@@ -1314,6 +1381,24 @@
         "command": "kopytko.perfetto.captureHeapSnapshot",
         "title": "Capture Heap Snapshot (Perfetto)",
         "icon": "$(database)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.network.open",
+        "title": "Open Network Inspector",
+        "icon": "$(radio-tower)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.network.toggleCapture",
+        "title": "Toggle Network Capture",
+        "icon": "$(debug-disconnect)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.network.clear",
+        "title": "Clear Network Capture",
+        "icon": "$(clear-all)",
         "category": "Kopytko"
       }
     ],

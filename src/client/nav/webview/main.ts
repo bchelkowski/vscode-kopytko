@@ -45,6 +45,11 @@ const ICONS: Record<NavTarget, string> = {
     <path d="M1.5 6h13"/>
     <path d="M4 10.5h3"/>
   </svg>`,
+  network: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 10.5a5 5 0 0 1 0-9M8 10.5a5 5 0 0 0 0-9"/>
+    <path d="M3 4h10M3 8h10"/>
+    <circle cx="8" cy="13" r="1.4"/>
+  </svg>`,
 };
 
 const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
@@ -54,6 +59,7 @@ const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
   { target: 'deepLinking', title: 'Deep Linking', desc: 'Launch channels with contentId params' },
   { target: 'deviceManager', title: 'Device Manager', desc: 'Remote control, scripts, web admin' },
   { target: 'rokuPay', title: 'Roku Pay Web Services', desc: 'Validate, cancel, refund — cloud API' },
+  { target: 'network', title: 'Network Inspector', desc: 'Capture HTTP requests, responses & metrics' },
 ];
 
 function buildDom(): void {
