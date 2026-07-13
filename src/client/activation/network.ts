@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { NetworkController, type NetworkConfig } from '../network/networkController';
 import { NetworkEditorPanel } from '../network/views/networkEditorPanel';
 import { RedirectController, RedirectUnsupportedError } from '../network/redirect/redirectController';
 import { createElevatedRunner } from '../network/redirect/elevate';
 import { WindowsCompanionDriver } from '../network/redirect/windows/companionSupervisor';
+import { resolveWinDivertDir } from '../network/redirect/windows/resolveWinDivertDir';
 import { ruleSetFromConfig } from '../network/capture/rewrite/rules';
 import { findGatewayIp } from '../network/discovery/gatewayIp';
 import type { DiscoveryServices } from './discovery';
@@ -20,24 +23,28 @@ export function registerNetwork(
 
   const scriptDir = vscode.Uri.joinPath(context.globalStorageUri, 'network').fsPath;
 
-  // Real packet-level transparent redirect on Windows (WinDivert), when the
-  // user has pointed us at a WinDivert install. Undefined keeps the win32
-  // branch `unsupported` — the proxy still runs, but nothing is routed into
-  // it until `kopytko.network.winDivertDir` is configured.
+  // Real packet-level transparent redirect on Windows (WinDivert). The
+  // extension bundles the official x64 WinDivert build (`resources/win/x64/`)
+  // so this needs zero setup on the common case — `winDivertDir` is only an
+  // escape hatch for a different build/version or a non-x64 architecture.
+  // Undefined keeps the win32 branch `unsupported` — the proxy still runs,
+  // but nothing is routed into it.
   const windowsDriver =
     process.platform === 'win32'
       ? new WindowsCompanionDriver({
           scriptDir,
           resolveWinDivertDir: () => {
-            const dir = vscode.workspace.getConfiguration('kopytko').get<string>('network.winDivertDir', '').trim();
-            if (!dir) {
-              throw new RedirectUnsupportedError(
-                'Set "kopytko.network.winDivertDir" to a folder containing WinDivert.dll and ' +
-                  'WinDivert64.sys (download from https://reqrypt.org/windivert.html) to enable ' +
-                  'traffic capture on Windows.',
-              );
-            }
-            return dir;
+            const configuredDir = vscode.workspace.getConfiguration('kopytko').get<string>('network.winDivertDir', '').trim();
+            const bundledDir = vscode.Uri.joinPath(context.extensionUri, 'resources', 'win', 'x64').fsPath;
+            const result = resolveWinDivertDir({
+              configuredDir,
+              arch: process.arch,
+              bundledDir,
+              hasWinDivertFiles: (dir) =>
+                fs.existsSync(path.join(dir, 'WinDivert.dll')) && fs.existsSync(path.join(dir, 'WinDivert64.sys')),
+            });
+            if (!result.ok) throw new RedirectUnsupportedError(result.reason);
+            return result.dir;
           },
           resolveGatewayIp: (rokuIp) => findGatewayIp(rokuIp),
           log,

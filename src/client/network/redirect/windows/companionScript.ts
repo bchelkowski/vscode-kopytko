@@ -208,9 +208,6 @@ public static class Companion {
     static int ProxyPort;
     static int LoopbackIfIdx;
     static int IcsIfIdx;
-    static long PacketsAtoB = 0;
-    static long PacketsBtoA = 0;
-    static DateTime StartedAt;
     static DateTime LastHeartbeat;
     static string LogPath;
     static string StatusPath;
@@ -296,7 +293,6 @@ public static class Companion {
         }
 
         Running = true;
-        StartedAt = DateTime.UtcNow;
         Log("WinDivert handles open. Redirect active.");
         WriteStatus("ready", "redirect active");
 
@@ -343,7 +339,6 @@ public static class Companion {
                 uint sendLen;
                 bool sent = WinDivertApi.WinDivertSend(HandleInject, packetBuf, recvLen, out sendLen, injectAddr);
                 if (!sent) Log("RecvLoopA: WinDivertSend failed - Win32 error " + Marshal.GetLastWin32Error());
-                else Interlocked.Increment(ref PacketsAtoB);
             } catch (Exception ex) {
                 Log("RecvLoopA: exception " + ex.Message);
             }
@@ -381,7 +376,6 @@ public static class Companion {
                 uint sendLen;
                 bool sent = WinDivertApi.WinDivertSend(HandleA, packetBuf, recvLen, out sendLen, injectAddr);
                 if (!sent) Log("RecvLoopB: WinDivertSend failed - Win32 error " + Marshal.GetLastWin32Error());
-                else Interlocked.Increment(ref PacketsBtoA);
             } catch (Exception ex) {
                 Log("RecvLoopB: exception " + ex.Message);
             }
@@ -499,11 +493,6 @@ public static class Companion {
                 string trimmed = line.Trim();
                 if (trimmed == "ping") {
                     writer.WriteLine("{\\"ok\\":true,\\"event\\":\\"pong\\"}");
-                } else if (trimmed == "status") {
-                    writer.WriteLine("{\\"ok\\":true,\\"event\\":\\"status\\",\\"natEntries\\":" + NatTable.Count +
-                        ",\\"packetsAtoB\\":" + Interlocked.Read(ref PacketsAtoB) +
-                        ",\\"packetsBtoA\\":" + Interlocked.Read(ref PacketsBtoA) +
-                        ",\\"uptimeSec\\":" + (long)(DateTime.UtcNow - StartedAt).TotalSeconds + "}");
                 } else if (trimmed == "stop") {
                     writer.WriteLine("{\\"ok\\":true,\\"event\\":\\"stopping\\"}");
                     Log("Stop command received. Shutting down.");

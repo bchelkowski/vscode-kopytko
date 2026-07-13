@@ -3,9 +3,9 @@
  * elevated WinDivert companion, then supervises it for the lifetime of a
  * capture session — readiness handshake via a status file (the companion may
  * fail before it ever opens the named pipe, e.g. a blocked driver load), a
- * named-pipe control channel for stop/status, and a heartbeat so the
- * companion can detect and self-terminate if this process (or all of VS
- * Code) disappears without a clean `disable()`.
+ * named-pipe control channel for stop + heartbeat pings, so the companion
+ * can detect and self-terminate if this process (or all of VS Code)
+ * disappears without a clean `disable()`.
  *
  * Implements `WindowsRedirectDriver` so `RedirectController` can use it as a
  * drop-in for the win32 branch, exactly like the Linux/macOS `ElevatedRunner`
@@ -24,13 +24,6 @@ import { buildWindowsCompanionScript, HEARTBEAT_TIMEOUT_SEC } from './companionS
 export interface CompanionStatus {
   state: 'starting' | 'ready' | 'failed' | 'stopped';
   detail: string;
-}
-
-export interface CompanionPipeStatus {
-  natEntries: number;
-  packetsAtoB: number;
-  packetsBtoA: number;
-  uptimeSec: number;
 }
 
 export interface CompanionSupervisorDeps {
@@ -140,13 +133,6 @@ export class WindowsCompanionDriver implements WindowsRedirectDriver {
 
   async disable(): Promise<void> {
     await this.teardownPipe();
-  }
-
-  /** Best-effort live status for the UI (nat entries / packet counts). Resolves `undefined` if not connected. */
-  async status(): Promise<CompanionPipeStatus | undefined> {
-    if (!this.pipe) return undefined;
-    const reply = await sendCommand(this.pipe, 'status');
-    return reply as unknown as CompanionPipeStatus;
   }
 
   private async teardownPipe(): Promise<void> {

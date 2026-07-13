@@ -1045,7 +1045,8 @@
         "kopytko.network.winDivertDir": {
           "type": "string",
           "default": "",
-          "description": "Windows only. Folder containing WinDivert.dll and WinDivert64.sys (from https://reqrypt.org/windivert.html), required to enable traffic capture on Windows."
+          "scope": "machine",
+          "description": "Windows only, and usually unnecessary — this extension bundles a working WinDivert driver for 64-bit Windows. Only set this to override it with a different WinDivert build/version, or on a non-x64 architecture the bundled driver doesn't cover. A local driver path is inherently per-machine, so this can only be set in User Settings, never in a workspace/team settings.json."
         },
         "kopytko.network.rewriteRules": {
           "type": "array",
