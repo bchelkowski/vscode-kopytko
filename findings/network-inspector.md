@@ -578,6 +578,75 @@ against the newly-rendered content, and reset to the first match (`1/3`) —
 matching the documented "re-apply, don't try to preserve exact position
 across a full content swap" behavior.
 
+## Perf & memory pass: incremental rendering, byte cap, upstream keep-alive (2026-07-13)
+
+Phase A of a four-phase upgrade (plan: perf → timing waterfall → workflow
+tools → advanced extras). Key decisions and gotchas:
+
+- **Incremental list rendering replaces per-flow full rebuilds.** The webview
+  previously ran `renderTree()` (full `innerHTML` of every group/row) on
+  *every* `flow` message — O(all rows) per arriving flow. Now live
+  `flow`/`trim` messages queue in module-level `pendingFlows`/`pendingTrimIds`
+  and flush as targeted `insertAdjacentHTML` appends / `row.remove()` calls,
+  coalesced per `requestAnimationFrame` **with a 100ms `setTimeout`
+  fallback** — rAF alone stalls while the panel tab is backgrounded (VS Code
+  throttles hidden webviews), and the queues must not grow unboundedly
+  there. Whichever timer fires first wins; a `flushScheduled` flag makes the
+  loser a no-op. Full `renderTree()` remains for init/clear/filter/collapse,
+  and **clears both pending queues** (it supersedes any queued incremental
+  work — forgetting this double-renders rows). Selection change is now two
+  `classList` swaps, not a rebuild.
+- **New origins append at the end of the list** — deliberately the same
+  position a full rebuild gives them, because `renderTree` groups flows in
+  `Map`-insertion (= arrival) order. If either side ever sorts groups, the
+  other must match.
+- **`CSS.escape()` for attribute-value selectors** (`[data-origin="…"]`,
+  `[data-id="…"]`) — origin keys contain dots/colons which are valid in
+  attribute values but not in bare selectors.
+- **Webview mirrors the host's ring buffer** (`maxEntries` arrives in
+  `init`). Before this, `state.flows` grew unboundedly during a long visible
+  session: the host trimmed at `maxEntries` but never told the webview
+  (reconciliation only happened via `init` on tab re-show). Host trims now
+  arrive as a `trim` message with the evicted ids; DOM removal is idempotent
+  so the client ring beating the host's trim message is harmless.
+- **Byte budget on top of the entry cap** (`maxBufferBytes`, default 50 MB,
+  `flowCost()` = capped body buffer lengths + 2 KB flat overhead). Count
+  alone never bounded memory: worst case is ~4×`maxBodyBytes` per flow
+  (request + response + both rewrite originals) ≈ 1 MB each at defaults.
+  `clear()` must reset the running total or later flows get evicted against
+  phantom cost.
+- **Upstream keep-alive is safe now; device-side `Connection: close` stays.**
+  The original reason for forcing close everywhere (netsh portproxy's raw-TCP
+  relay mangling keep-alive close sequences) is gone, but the device leg
+  still crosses non-HTTP-aware hops (WinDivert loopback injection, NAT), so
+  it keeps closing per request. The proxy→origin leg is plain Node HTTP(S)
+  and now pools via shared `http.Agent`/`https.Agent` (`keepAlive:
+  true`, destroyed in `stop()` — forgetting `agent.destroy()` leaves mocha
+  hanging on open sockets). Accepted nuance: `pinnedLookup` (the hosts-file
+  DNS bypass) only runs on *new* connections, so a pooled socket keeps its
+  original resolved IP — fine, the pin exists to defeat local hosts-file
+  redirects and any real address serves the bridge. `upstreamKeepAlive:
+  false` is the escape hatch for origins that misbehave with reuse.
+- **`init` no longer wipes the user's place.** Selection and already-fetched
+  `FlowDetail`s are carried across the rebuild when their ids still exist in
+  the new history (bodies are immutable per flow, so the cache stays valid).
+  This fixes selection loss on tab hide→restore, which resyncs via a full
+  `init` because `_post` drops messages while the panel is hidden.
+- **Bug fixed in passing**: the rules editor UI dropped `contentTypePattern`
+  on every Apply — the field existed in the model and config schema but
+  `renderRules`/`collectRulesFromDom` never round-tripped it.
+- **Origin grouping treats `:443` + HTTPS bridge as a default port** (shows
+  bare `host`, like `:80`) — the row's TLS tag already conveys the bridge.
+
+**Verified in the browser harness** (same static-server approach as the
+detail-pane work above): DOM-identity markers proved appends/trims don't
+rebuild (`dataset` expandos survive across 20-flow bursts and trims), group
+counts track, `:443`/`:8080` grouping correct, client ring keeps exactly the
+last N under a burst, selection + cached detail survive a simulated
+hide→restore `init` with no re-fetch posted, `contentTypePattern` renders and
+round-trips through Apply, and the filter debounce leaves the DOM untouched
+until ~150ms after typing stops.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

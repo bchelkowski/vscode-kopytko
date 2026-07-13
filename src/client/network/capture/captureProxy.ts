@@ -22,6 +22,8 @@ export interface CaptureProxyOptions {
   port: number;
   /** Max bytes of each body retained for display/HAR (full bytes still forwarded). */
   maxBodyBytes?: number;
+  /** Reuse upstream connections (default true). Device side always gets `Connection: close`. */
+  keepAlive?: boolean;
   /** Overridable for tests — real implementation performs actual DNS queries. */
   hostsResolver?: HostsBypassResolver;
 }
@@ -51,11 +53,22 @@ export class CaptureProxy extends EventEmitter {
   private rules: RuleSet = defaultRuleSet();
   private readonly maxBodyBytes: number;
   private readonly hostsResolver: HostsBypassResolver;
+  // Upstream connection pools. The device-facing leg still closes per request
+  // (see handleUpstreamResponse), but the proxy→origin leg can safely reuse
+  // sockets — that hop is plain Node HTTP(S), no packet relay in between.
+  // Note: a pooled socket keeps the IP `pinnedLookup` resolved when it was
+  // first opened; that's fine, the pin only exists to defeat local hosts-file
+  // redirects and any real address for the host serves the bridge equally.
+  private readonly httpAgent: http.Agent;
+  private readonly httpsAgent: https.Agent;
 
   constructor(private readonly options: CaptureProxyOptions) {
     super();
     this.maxBodyBytes = options.maxBodyBytes ?? 256 * 1024;
     this.hostsResolver = options.hostsResolver ?? realHostsBypassResolver;
+    const keepAlive = options.keepAlive ?? true;
+    this.httpAgent = new http.Agent({ keepAlive, keepAliveMsecs: 1000 });
+    this.httpsAgent = new https.Agent({ keepAlive, keepAliveMsecs: 1000 });
   }
 
   setRules(rules: RuleSet): void {
@@ -88,6 +101,8 @@ export class CaptureProxy extends EventEmitter {
   }
 
   stop(): Promise<void> {
+    this.httpAgent.destroy();
+    this.httpsAgent.destroy();
     const server = this.server;
     this.server = null;
     if (!server) return Promise.resolve();
@@ -168,6 +183,7 @@ export class CaptureProxy extends EventEmitter {
         method: req.method,
         path: target.path + (target.query ? `?${target.query}` : ''),
         headers: outHeaders,
+        agent: attemptScheme === 'https' ? this.httpsAgent : this.httpAgent,
         servername: attemptScheme === 'https' && !isIpLiteral(target.hostname) ? target.hostname : undefined,
         lookup: resolvedIp ? pinnedLookup(resolvedIp) : undefined,
       },
@@ -216,13 +232,14 @@ export class CaptureProxy extends EventEmitter {
 
       const outHeaders = rewriteResponseHeaders(upstreamRes.headers);
       outHeaders['content-length'] = String(finalBody.length);
-      // `netsh interface portproxy` (the Windows manual-capture relay) is a
-      // lightweight raw-TCP forwarder, not a robust HTTP-aware proxy — it can
-      // fail to cleanly relay a keep-alive connection's closing sequence back
-      // to the device for larger responses, leaving the device's TCP
-      // connection stuck half-closed and its HTTP client waiting on a body
-      // that never fully arrives. Forcing a fresh connection per request
-      // sidesteps that ambiguity entirely.
+      // The device-facing leg always closes per request: the transparent
+      // redirect bridges packets through mechanisms that aren't HTTP-aware
+      // (WinDivert loopback injection on Windows; NAT rewriting elsewhere),
+      // and trusting keep-alive semantics to survive such a hop has bitten
+      // this feature before (a half-closed device connection waiting on a
+      // body that never arrived). A deterministic fresh connection per
+      // request sidesteps that ambiguity; the proxy→origin leg pools
+      // connections independently (see httpAgent/httpsAgent).
       outHeaders['connection'] = 'close';
 
       const status = upstreamRes.statusCode ?? 0;

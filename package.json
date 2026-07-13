@@ -1030,6 +1030,16 @@
           "default": 5000,
           "description": "Maximum number of captured requests kept in memory before the oldest are dropped."
         },
+        "kopytko.network.maxBufferBytes": {
+          "type": "number",
+          "default": 52428800,
+          "description": "Approximate memory budget in bytes for the captured-flow buffer (retained bodies + header overhead). Oldest requests are evicted when exceeded. 0 disables the byte cap; kopytko.network.maxEntries still applies."
+        },
+        "kopytko.network.upstreamKeepAlive": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reuse upstream connections (HTTP keep-alive) between the capture proxy and origin servers, avoiding a fresh TCP/TLS handshake per request. The device-side connection is always closed per request. Disable if an origin misbehaves with connection reuse."
+        },
         "kopytko.network.filterToActiveDevice": {
           "type": "boolean",
           "default": true,

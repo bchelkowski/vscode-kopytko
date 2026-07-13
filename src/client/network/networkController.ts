@@ -25,8 +25,12 @@ export interface NetworkConfig {
   proxyPort: number;
   redirectPorts: number[];
   maxEntries: number;
+  /** Approximate byte budget for retained flows (bodies + header overhead). 0 disables. */
+  maxBufferBytes: number;
   filterToActiveDevice: boolean;
   maxBodyBytes: number;
+  /** Reuse upstream connections between proxy and origins (device side always closes). */
+  upstreamKeepAlive: boolean;
   rules: RuleSet;
 }
 
@@ -43,6 +47,7 @@ export interface NetworkControllerDeps {
 /**
  * Emits:
  *  - `'flow'`    (entry: SerializedFlow)
+ *  - `'trimmed'` (ids: string[]) — oldest flows evicted by the count/byte caps
  *  - `'state'`   (state: WebviewState)
  *  - `'rules'`   (rules: RuleSet)
  *  - `'cleared'`
@@ -58,12 +63,17 @@ export class NetworkController extends EventEmitter {
   private readonly flows: FlowRecord[] = [];
   private readonly byId = new Map<string, FlowRecord>();
   private rules: RuleSet;
-  private maxEntries = 5000;
+  private _maxEntries = 5000;
+  private maxBufferBytes = 0;
+  private bufferBytes = 0;
   private filterToActiveDevice = true;
 
   constructor(private readonly deps: NetworkControllerDeps) {
     super();
-    this.rules = deps.readConfig().rules;
+    const config = deps.readConfig();
+    this.rules = config.rules;
+    this._maxEntries = Math.max(1, config.maxEntries);
+    this.maxBufferBytes = Math.max(0, config.maxBufferBytes);
   }
 
   private log(msg: string): void {
@@ -72,6 +82,11 @@ export class NetworkController extends EventEmitter {
 
   get isEnabled(): boolean {
     return this.enabled;
+  }
+
+  /** Ring-buffer entry cap — the webview mirrors this client-side. */
+  get maxEntries(): number {
+    return this._maxEntries;
   }
 
   getRules(): RuleSet {
@@ -111,7 +126,8 @@ export class NetworkController extends EventEmitter {
 
     const config = this.deps.readConfig();
     this.rules = config.rules;
-    this.maxEntries = Math.max(1, config.maxEntries);
+    this._maxEntries = Math.max(1, config.maxEntries);
+    this.maxBufferBytes = Math.max(0, config.maxBufferBytes);
     this.filterToActiveDevice = config.filterToActiveDevice;
     this.proxyPort = config.proxyPort;
     this.deviceIp = device.ip;
@@ -120,6 +136,7 @@ export class NetworkController extends EventEmitter {
     const proxy = (this.deps.proxyFactory ?? ((o) => new CaptureProxy(o)))({
       port: config.proxyPort,
       maxBodyBytes: config.maxBodyBytes,
+      keepAlive: config.upstreamKeepAlive,
     });
     proxy.setRules(this.rules);
     proxy.on('flow', (rec: FlowRecord) => this.onFlow(rec));
@@ -214,11 +231,28 @@ export class NetworkController extends EventEmitter {
     }
     this.flows.push(rec);
     this.byId.set(rec.id, rec);
-    while (this.flows.length > this.maxEntries) {
-      const dropped = this.flows.shift();
-      if (dropped) this.byId.delete(dropped.id);
+    this.bufferBytes += flowCost(rec);
+
+    const trimmed: string[] = [];
+    while (this.flows.length > this._maxEntries) {
+      this.evictOldest(trimmed);
     }
+    // Byte budget on top of the entry cap — a handful of max-size bodies can
+    // dwarf thousands of tiny flows, so count alone doesn't bound memory.
+    while (this.maxBufferBytes > 0 && this.bufferBytes > this.maxBufferBytes && this.flows.length > 1) {
+      this.evictOldest(trimmed);
+    }
+
     this.emit('flow', toSerializedFlow(rec));
+    if (trimmed.length > 0) this.emit('trimmed', trimmed);
+  }
+
+  private evictOldest(trimmed: string[]): void {
+    const dropped = this.flows.shift();
+    if (!dropped) return;
+    this.byId.delete(dropped.id);
+    this.bufferBytes -= flowCost(dropped);
+    trimmed.push(dropped.id);
   }
 
   setRules(rules: RuleSet): void {
@@ -230,6 +264,7 @@ export class NetworkController extends EventEmitter {
   clear(): void {
     this.flows.length = 0;
     this.byId.clear();
+    this.bufferBytes = 0;
     this.emit('cleared');
   }
 
@@ -251,6 +286,22 @@ export class NetworkController extends EventEmitter {
   private emitState(): void {
     this.emit('state', this.getState());
   }
+}
+
+/**
+ * Approximate retained memory of one flow: the capped body buffers plus a
+ * flat allowance for headers/strings. Exact accounting isn't the goal — the
+ * same estimate is added on ingest and subtracted on eviction, so the running
+ * total stays consistent with itself.
+ */
+function flowCost(rec: FlowRecord): number {
+  return (
+    (rec.requestBody?.length ?? 0) +
+    (rec.responseBody?.length ?? 0) +
+    (rec.originalRequestBody?.length ?? 0) +
+    (rec.originalResponseBody?.length ?? 0) +
+    2048
+  );
 }
 
 // ── HAR helpers ───────────────────────────────────────────────────────────────

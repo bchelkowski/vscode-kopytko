@@ -192,10 +192,19 @@ otherwise drop them), and drops `Strict-Transport-Security`.
 
 ## Viewing traffic
 
-Requests are grouped by **origin** (`host:port`), each row showing method,
-status, path, duration, size, plus tags for HTTPS-bridged (`TLS`) and
-body-rewritten (`rw`). A text filter narrows by host/path/method/status.
-**Export HAR** writes the current buffer to a `.har` file.
+Requests are grouped by **origin** (`host`, with a `:port` suffix only for
+non-default ports — 80, and 443 when HTTPS-bridged, are omitted), each row
+showing method, status, path, duration, size, plus tags for HTTPS-bridged
+(`TLS`) and body-rewritten (`rw`). A text filter narrows by
+host/path/method/status. **Export HAR** writes the current buffer to a
+`.har` file.
+
+The list stays responsive under heavy traffic: live requests are batched per
+animation frame and appended as individual rows rather than re-rendering the
+whole list, and the buffer is bounded twice over — by entry count
+(`maxEntries`) and by an approximate byte budget (`maxBufferBytes`), evicting
+oldest entries first. Selection and already-loaded bodies survive hiding and
+restoring the panel tab.
 
 Selecting a request opens a detail pane: an always-visible overview, then
 four independently collapsible sections — **request headers**, **request
@@ -238,6 +247,8 @@ there's nothing to compare.
 | `kopytko.network.proxyPort` | `8888` | Local port the capture proxy listens on |
 | `kopytko.network.redirectPorts` | `[80]` | Device-side ports redirected into the proxy |
 | `kopytko.network.maxEntries` | `5000` | Ring-buffer cap before oldest requests drop |
+| `kopytko.network.maxBufferBytes` | `52428800` | Approximate memory budget for retained flows (bodies + overhead); oldest evicted when exceeded, `0` disables |
+| `kopytko.network.upstreamKeepAlive` | `true` | Pool proxy→origin connections instead of a fresh TCP/TLS handshake per request (device side always closes per request) |
 | `kopytko.network.filterToActiveDevice` | `true` | Show only the active device's traffic (macOS/Linux only — always skipped on Windows) |
 | `kopytko.network.maxBodyBytes` | `262144` | Body bytes retained for display/HAR (full body still forwarded) |
 | `kopytko.network.defaultUpstreamScheme` | `"https"` | Scheme used to reach origins the app called over HTTP |

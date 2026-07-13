@@ -67,17 +67,20 @@ export class NetworkEditorPanel {
 
   private _attach(): void {
     const onFlow = (entry: SerializedFlow) => this._post({ kind: 'flow', entry });
+    const onTrimmed = (ids: string[]) => this._post({ kind: 'trim', ids });
     const onState = (state: WebviewState) => this._post({ kind: 'state', state });
     const onRules = (rules: RuleSet) => this._post({ kind: 'rules', rules });
     const onCleared = () => this._post({ kind: 'cleared' });
 
     this.controller.on('flow', onFlow);
+    this.controller.on('trimmed', onTrimmed);
     this.controller.on('state', onState);
     this.controller.on('rules', onRules);
     this.controller.on('cleared', onCleared);
 
     this._detachController = () => {
       this.controller.removeListener('flow', onFlow);
+      this.controller.removeListener('trimmed', onTrimmed);
       this.controller.removeListener('state', onState);
       this.controller.removeListener('rules', onRules);
       this.controller.removeListener('cleared', onCleared);
@@ -154,6 +157,7 @@ export class NetworkEditorPanel {
       state: this.controller.getState(),
       history: this.controller.getHistory(),
       rules: this.controller.getRules(),
+      maxEntries: this.controller.maxEntries,
     });
   }
 

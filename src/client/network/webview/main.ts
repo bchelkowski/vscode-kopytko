@@ -33,6 +33,7 @@ const state: {
   selectedId: string | null;
   collapsed: Set<string>;
   filter: string;
+  maxEntries: number;
   rules: RuleSet;
   view: WebviewState;
   rulesOpen: boolean;
@@ -43,6 +44,7 @@ const state: {
   selectedId: null,
   collapsed: new Set(),
   filter: '',
+  maxEntries: 5000,
   rules: { bodyRules: [], upstreamSchemes: [], defaultUpstreamScheme: 'https' },
   view: { enabled: false, redirectStatus: 'off', proxyPort: 8888 },
   rulesOpen: false,
@@ -82,7 +84,10 @@ function esc(s: string): string {
 }
 
 function originKey(f: SerializedFlow): string {
-  return f.port && f.port !== 80 ? `${f.host}:${f.port}` : f.host;
+  // 443 with an HTTPS bridge is a default port too — the row's TLS tag
+  // already says it was bridged, so `host:443` would just be noise.
+  const isDefaultPort = !f.port || f.port === 80 || (f.port === 443 && f.upstreamScheme === 'https');
+  return isDefaultPort ? f.host : `${f.host}:${f.port}`;
 }
 
 function renderState(): void {
@@ -136,6 +141,10 @@ function passesFilter(f: SerializedFlow): boolean {
 }
 
 function renderTree(): void {
+  // A full rebuild supersedes any queued incremental work.
+  pendingFlows = [];
+  pendingTrimIds = [];
+
   const tree = byId('tree');
   const groups = new Map<string, SerializedFlow[]>();
   for (const f of state.flows) {
@@ -155,19 +164,101 @@ function renderTree(): void {
 
   const parts: string[] = [];
   for (const [origin, flows] of groups) {
-    const collapsed = state.collapsed.has(origin);
-    parts.push(`<div class="origin${collapsed ? ' collapsed' : ''}" data-origin="${esc(origin)}">
-      <div class="origin-head" data-origin="${esc(origin)}">
-        <span class="twisty">${collapsed ? '▸' : '▾'}</span>
-        <span class="origin-name">${esc(origin)}</span>
-        <span class="origin-count">${flows.length}</span>
-      </div>
-      <div class="origin-rows">
-        ${flows.map((f) => rowHtml(f)).join('')}
-      </div>
-    </div>`);
+    parts.push(originGroupHtml(origin, flows.map((f) => rowHtml(f)).join(''), flows.length));
   }
   tree.innerHTML = parts.join('');
+}
+
+function originGroupHtml(origin: string, rows: string, count: number): string {
+  const collapsed = state.collapsed.has(origin);
+  return `<div class="origin${collapsed ? ' collapsed' : ''}" data-origin="${esc(origin)}">
+    <div class="origin-head" data-origin="${esc(origin)}">
+      <span class="twisty">${collapsed ? '▸' : '▾'}</span>
+      <span class="origin-name">${esc(origin)}</span>
+      <span class="origin-count">${count}</span>
+    </div>
+    <div class="origin-rows">${rows}</div>
+  </div>`;
+}
+
+// ── incremental list updates ────────────────────────────────────────────────
+//
+// The full `renderTree()` rebuild is O(all rows) — fine for filter changes
+// and init, but far too expensive to run once per arriving flow when the
+// buffer holds thousands of entries. Live `flow`/`trim` messages instead
+// queue here and are flushed as targeted DOM appends/removals, coalesced per
+// animation frame (with a timeout fallback — rAF stalls while the panel tab
+// is backgrounded, and flows must not pile up unboundedly there).
+
+let pendingFlows: SerializedFlow[] = [];
+let pendingTrimIds: string[] = [];
+let flushScheduled = false;
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleTreeFlush(): void {
+  if (flushScheduled) return;
+  flushScheduled = true;
+  const run = () => {
+    if (!flushScheduled) return;
+    flushScheduled = false;
+    if (flushTimer !== undefined) {
+      clearTimeout(flushTimer);
+      flushTimer = undefined;
+    }
+    flushTree();
+  };
+  requestAnimationFrame(run);
+  flushTimer = setTimeout(run, 100);
+}
+
+function flushTree(): void {
+  const tree = byId('tree');
+  // The empty placeholder isn't a group structure we can append into.
+  if (tree.querySelector(':scope > .empty')) {
+    renderTree();
+    return;
+  }
+
+  const flows = pendingFlows;
+  const trims = pendingTrimIds;
+  pendingFlows = [];
+  pendingTrimIds = [];
+
+  for (const f of flows) {
+    if (passesFilter(f)) appendFlowRow(tree, f);
+  }
+  for (const id of trims) removeFlowRow(tree, id);
+
+  if (!tree.firstElementChild) renderTree(); // last group removed → empty state
+}
+
+function appendFlowRow(tree: HTMLElement, f: SerializedFlow): void {
+  const origin = originKey(f);
+  const group = tree.querySelector<HTMLElement>(`:scope > .origin[data-origin="${CSS.escape(origin)}"]`);
+  if (!group) {
+    // New origins go to the end — the same position a full rebuild gives
+    // them, since renderTree groups in Map-insertion (= arrival) order.
+    tree.insertAdjacentHTML('beforeend', originGroupHtml(origin, rowHtml(f), 1));
+    return;
+  }
+  group.querySelector('.origin-rows')!.insertAdjacentHTML('beforeend', rowHtml(f));
+  updateGroupCount(group);
+}
+
+function removeFlowRow(tree: HTMLElement, id: string): void {
+  const row = tree.querySelector<HTMLElement>(`.row[data-id="${CSS.escape(id)}"]`);
+  if (!row) return; // filtered out, or already gone — nothing to remove
+  const group = row.closest<HTMLElement>('.origin');
+  row.remove();
+  if (!group) return;
+  if (group.querySelector('.row')) updateGroupCount(group);
+  else group.remove();
+}
+
+function updateGroupCount(group: HTMLElement): void {
+  const count = group.querySelectorAll('.row').length;
+  const label = group.querySelector('.origin-count');
+  if (label) label.textContent = String(count);
 }
 
 function rowHtml(f: SerializedFlow): string {
@@ -531,6 +622,7 @@ function renderRules(): void {
         <option value="request" ${rule.direction === 'request' ? 'selected' : ''}>request</option>
       </select>
       <input type="text" data-f="hostPattern" placeholder="host (blank = all)" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="contentTypePattern" placeholder="content-type (blank = any)" value="${esc(rule.contentTypePattern ?? '')}">
       <input type="text" data-f="find" placeholder="find" value="${esc(rule.find)}">
       <input type="text" data-f="replace" placeholder="replace" value="${esc(rule.replace)}">
       <label class="rx"><input type="checkbox" data-f="isRegex" ${rule.isRegex ? 'checked' : ''}>regex</label>
@@ -587,6 +679,7 @@ function collectRulesFromDom(): RuleSet {
       enabled: !!get('enabled')?.checked,
       direction: (get('direction')?.value as 'response' | 'request') ?? 'response',
       hostPattern: get('hostPattern')?.value || undefined,
+      contentTypePattern: get('contentTypePattern')?.value || undefined,
       find: get('find')?.value ?? '',
       replace: get('replace')?.value ?? '',
       isRegex: !!get('isRegex')?.checked,
@@ -622,8 +715,16 @@ function wireEvents(): void {
   byId('toggle').addEventListener('change', (e) => {
     vscode.postMessage({ kind: 'set-enabled', enabled: (e.target as HTMLInputElement).checked });
   });
+  // Re-filtering is a full list rebuild — debounce so fast typing pays once.
+  let filterTimer: ReturnType<typeof setTimeout> | undefined;
   byId('filter').addEventListener('input', (e) => {
     state.filter = (e.target as HTMLInputElement).value;
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(renderTree, 150);
+  });
+  byId('filter').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    clearTimeout(filterTimer);
     renderTree();
   });
   byId('btn-clear').addEventListener('click', () => vscode.postMessage({ kind: 'clear' }));
@@ -648,7 +749,9 @@ function wireEvents(): void {
       if (!state.details.has(state.selectedId)) {
         vscode.postMessage({ kind: 'select-flow', id: state.selectedId });
       }
-      renderTree();
+      // Selection only moves a highlight — two class swaps, not a rebuild.
+      byId('tree').querySelector('.row.selected')?.classList.remove('selected');
+      row.classList.add('selected');
       renderDetail();
     }
   });
@@ -734,26 +837,75 @@ function wireEvents(): void {
 function ingestFlow(f: SerializedFlow): void {
   state.flows.push(f);
   state.byId.set(f.id, f);
+  // Mirror the host's ring buffer so a long visible session can't grow the
+  // webview past `maxEntries` (live `flow` messages are the only growth path;
+  // the host's own trims arrive separately as `trim` messages).
+  while (state.flows.length > state.maxEntries) {
+    const dropped = state.flows.shift()!;
+    state.byId.delete(dropped.id);
+    state.details.delete(dropped.id);
+    pendingTrimIds.push(dropped.id);
+    if (state.selectedId === dropped.id) {
+      state.selectedId = null;
+      renderDetail();
+    }
+  }
+}
+
+function dropFlows(ids: string[]): void {
+  const drop = new Set(ids.filter((id) => state.byId.has(id)));
+  if (drop.size > 0) {
+    state.flows = state.flows.filter((f) => !drop.has(f.id));
+    for (const id of drop) {
+      state.byId.delete(id);
+      state.details.delete(id);
+    }
+    if (state.selectedId && drop.has(state.selectedId)) {
+      state.selectedId = null;
+      renderDetail();
+    }
+  }
+  // Queue DOM removal even for ids already dropped from state (the client
+  // ring may have beaten the host's trim message) — removal is idempotent.
+  pendingTrimIds.push(...ids);
 }
 
 window.addEventListener('message', (ev) => {
   const msg = ev.data as ExtMsg;
   switch (msg.kind) {
-    case 'init':
+    case 'init': {
       state.view = msg.state;
       state.rules = msg.rules;
+      state.maxEntries = Math.max(1, msg.maxEntries ?? 5000);
+      // Rebuild from host history, but keep the user's place: the selection
+      // and any already-fetched bodies survive a tab hide→restore resync
+      // (bodies are immutable per flow, so the cache stays valid).
+      const prevSelected = state.selectedId;
+      const prevDetails = state.details;
+      pendingFlows = [];
+      pendingTrimIds = [];
       state.flows = [];
       state.byId.clear();
-      state.details.clear();
-      msg.history.forEach(ingestFlow);
+      for (const f of msg.history) {
+        state.flows.push(f);
+        state.byId.set(f.id, f);
+      }
+      state.selectedId = prevSelected && state.byId.has(prevSelected) ? prevSelected : null;
+      state.details = new Map([...prevDetails].filter(([id]) => state.byId.has(id)));
       renderState();
       renderTree();
       renderDetail();
       renderRules();
       break;
+    }
     case 'flow':
       ingestFlow(msg.entry);
-      renderTree();
+      pendingFlows.push(msg.entry);
+      scheduleTreeFlush();
+      break;
+    case 'trim':
+      dropFlows(msg.ids);
+      scheduleTreeFlush();
       break;
     case 'flow-detail':
       state.details.set(msg.detail.id, msg.detail);

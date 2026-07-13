@@ -68,8 +68,10 @@ export interface FlowDetail {
 
 // ── Extension → Webview ──────────────────────────────────────────────────────
 export type ExtMsg =
-  | { kind: 'init'; state: WebviewState; history: SerializedFlow[]; rules: RuleSet }
+  | { kind: 'init'; state: WebviewState; history: SerializedFlow[]; rules: RuleSet; maxEntries: number }
   | { kind: 'flow'; entry: SerializedFlow }
+  /** Oldest flows evicted from the host buffer (count or byte cap) — drop them client-side too. */
+  | { kind: 'trim'; ids: string[] }
   | { kind: 'flow-detail'; detail: FlowDetail }
   | { kind: 'state'; state: WebviewState }
   | { kind: 'rules'; rules: RuleSet }

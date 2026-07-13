@@ -59,8 +59,10 @@ export function registerNetwork(
       proxyPort: cfg.get<number>('network.proxyPort', 8888),
       redirectPorts: cfg.get<number[]>('network.redirectPorts', [80]),
       maxEntries: cfg.get<number>('network.maxEntries', 5000),
+      maxBufferBytes: cfg.get<number>('network.maxBufferBytes', 52428800),
       filterToActiveDevice: cfg.get<boolean>('network.filterToActiveDevice', true),
       maxBodyBytes: cfg.get<number>('network.maxBodyBytes', 262144),
+      upstreamKeepAlive: cfg.get<boolean>('network.upstreamKeepAlive', true),
       rules: ruleSetFromConfig(
         cfg.get('network.rewriteRules'),
         cfg.get('network.upstreamSchemes'),

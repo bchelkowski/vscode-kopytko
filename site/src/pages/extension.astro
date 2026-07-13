@@ -76,6 +76,8 @@ const allSettings = [
   { key: 'kopytko.network.proxyPort', type: 'number', default: '8888', desc: 'Local port the Network Inspector capture proxy listens on. Device traffic is redirected here.' },
   { key: 'kopytko.network.redirectPorts', type: 'number[]', default: '[80]', desc: 'Device-side ports whose traffic is transparently redirected into the capture proxy (HTTP only).' },
   { key: 'kopytko.network.maxEntries', type: 'number', default: '5000', desc: 'Maximum captured requests kept in memory before the oldest are dropped.' },
+  { key: 'kopytko.network.maxBufferBytes', type: 'number', default: '52428800', desc: 'Approximate memory budget in bytes for retained flows (bodies + overhead). Oldest requests are evicted when exceeded; 0 disables the byte cap.' },
+  { key: 'kopytko.network.upstreamKeepAlive', type: 'boolean', default: 'true', desc: 'Reuse proxy→origin connections (HTTP keep-alive) instead of a fresh TCP/TLS handshake per request. The device-side connection always closes per request.' },
   { key: 'kopytko.network.filterToActiveDevice', type: 'boolean', default: 'true', desc: "Only show traffic from the active Roku device's IP (hides the dev machine's own traffic)." },
   { key: 'kopytko.network.maxBodyBytes', type: 'number', default: '262144', desc: 'Max body bytes retained per request for display/HAR. The full body is still forwarded to the device.' },
   { key: 'kopytko.network.defaultUpstreamScheme', type: 'enum', default: '"https"', desc: 'Scheme the proxy uses to reach an origin the device called over HTTP. https bridges to a secure upstream connection.' },
@@ -510,6 +512,7 @@ const kopytkoRcExample = `// .kopytkorc
               'Live-editable rewrite rules — built-in https→http plus your own find/replace, per-host, applied without restart',
               'Per-host upstream scheme (https / http / auto); gzip/deflate/br decoded, Set-Cookie Secure stripped, redirects downgraded',
               'Requests grouped by origin, detail pane with headers, bodies and original-vs-rewritten view, filter, and Export HAR',
+              'Built to stay fast under load — frame-batched incremental list updates, a dual entry-count + byte-budget memory cap, and pooled upstream connections (no per-request TLS handshake to origins)',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">
                 <span class="text-violet-400 mt-0.5 shrink-0">✓</span>

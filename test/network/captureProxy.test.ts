@@ -283,4 +283,56 @@ describe('network/CaptureProxy', () => {
     expect(flow.status).to.equal(0);
     expect(flow.error).to.be.a('string');
   });
+
+  it('reuses one upstream connection across sequential requests by default (keep-alive)', async () => {
+    // Count distinct TCP sockets, not HTTP requests — reuse means both
+    // requests arrive over the same socket.
+    const seenSockets = new Set<unknown>();
+    upstream = await startUpstream((req, res) => {
+      seenSockets.add(req.socket);
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+
+    expect(seenSockets.size).to.equal(1);
+  });
+
+  it('opens a fresh upstream connection per request when keepAlive is disabled', async () => {
+    const seenSockets = new Set<unknown>();
+    upstream = await startUpstream((req, res) => {
+      seenSockets.add(req.socket);
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0, keepAlive: false });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+
+    expect(seenSockets.size).to.equal(2);
+  });
+
+  it('still closes the device-facing connection per request even with upstream keep-alive on', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    expect(res.headers.connection).to.equal('close');
+  });
 });

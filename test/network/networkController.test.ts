@@ -26,8 +26,10 @@ function makeConfig(over: Partial<NetworkConfig> = {}): NetworkConfig {
     proxyPort: 8888,
     redirectPorts: [80],
     maxEntries: 5000,
+    maxBufferBytes: 0,
     filterToActiveDevice: true,
     maxBodyBytes: 65536,
+    upstreamKeepAlive: true,
     rules: defaultRuleSet(),
     ...over,
   };
@@ -134,6 +136,66 @@ describe('network/NetworkController', () => {
     expect(controller.getHistory()).to.have.length(3);
     expect(controller.getDetail('id0')).to.equal(undefined); // dropped
     expect(controller.getDetail('id4')).to.not.equal(undefined); // retained
+  });
+
+  it('emits trimmed with the evicted ids when the count cap drops flows', async () => {
+    const { controller, proxy } = make({ config: makeConfig({ maxEntries: 2 }) });
+    await controller.enable();
+    const trimmed: string[][] = [];
+    controller.on('trimmed', (ids: string[]) => trimmed.push(ids));
+
+    proxy.emit('flow', rec({ id: 'a' }));
+    proxy.emit('flow', rec({ id: 'b' }));
+    expect(trimmed).to.deep.equal([]); // under the cap — nothing evicted
+    proxy.emit('flow', rec({ id: 'c' }));
+    expect(trimmed).to.deep.equal([['a']]);
+  });
+
+  it('evicts oldest flows when the byte budget is exceeded', async () => {
+    // Each flow retains a 10 KB body (+2 KB flat overhead) — a 30 KB budget
+    // holds two such flows, so the third arrival must evict the first.
+    const { controller, proxy } = make({ config: makeConfig({ maxBufferBytes: 30 * 1024 }) });
+    await controller.enable();
+    const trimmed: string[] = [];
+    controller.on('trimmed', (ids: string[]) => trimmed.push(...ids));
+
+    const body = Buffer.alloc(10 * 1024, 'x');
+    proxy.emit('flow', rec({ id: 'big1', responseBody: body }));
+    proxy.emit('flow', rec({ id: 'big2', responseBody: body }));
+    proxy.emit('flow', rec({ id: 'big3', responseBody: body }));
+
+    expect(trimmed).to.deep.equal(['big1']);
+    expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['big2', 'big3']);
+    expect(controller.getDetail('big1')).to.equal(undefined);
+  });
+
+  it('byte budget of 0 disables byte-based eviction', async () => {
+    const { controller, proxy } = make({ config: makeConfig({ maxBufferBytes: 0 }) });
+    await controller.enable();
+    const body = Buffer.alloc(64 * 1024, 'x');
+    for (let i = 0; i < 5; i++) proxy.emit('flow', rec({ id: `id${i}`, responseBody: body }));
+    expect(controller.getHistory()).to.have.length(5);
+  });
+
+  it('clear() resets the byte budget so old costs are not double-counted', async () => {
+    const { controller, proxy } = make({ config: makeConfig({ maxBufferBytes: 30 * 1024 }) });
+    await controller.enable();
+    const body = Buffer.alloc(10 * 1024, 'x');
+    proxy.emit('flow', rec({ id: 'pre1', responseBody: body }));
+    proxy.emit('flow', rec({ id: 'pre2', responseBody: body }));
+    controller.clear();
+
+    const trimmed: string[] = [];
+    controller.on('trimmed', (ids: string[]) => trimmed.push(...ids));
+    proxy.emit('flow', rec({ id: 'post1', responseBody: body }));
+    proxy.emit('flow', rec({ id: 'post2', responseBody: body }));
+    expect(trimmed).to.deep.equal([]); // budget restarted from zero after clear
+    expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['post1', 'post2']);
+  });
+
+  it('exposes maxEntries from config for the webview init handshake', async () => {
+    const { controller } = make({ config: makeConfig({ maxEntries: 42 }) });
+    expect(controller.maxEntries).to.equal(42);
   });
 
   it('filters out flows not from the active device', async () => {
