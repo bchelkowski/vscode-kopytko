@@ -13,7 +13,9 @@ import { EventEmitter } from 'events';
 import * as http from 'http';
 import * as https from 'https';
 import type * as net from 'net';
+import { performance } from 'perf_hooks';
 import { FlowRecord } from './flow';
+import type { FlowTimings } from '../webview/protocol';
 import { applyBodyRewrites, decodeBody, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
 import { RuleSet, defaultRuleSet, resolveUpstreamScheme } from './rewrite/rules';
 import { pinnedLookup, realHostsBypassResolver, resolveBypassingHosts, type HostsBypassResolver } from '../dnsBypass';
@@ -134,8 +136,10 @@ export class CaptureProxy extends EventEmitter {
       requestHeaders: cloneHeaderMap(req.headers),
     };
 
+    const tBodyStart = performance.now();
     collectBody(req)
       .then((reqBodyFull) => {
+        meta.blockedMs = performance.now() - tBodyStart;
         const rules = this.rules;
         const reqContentType = strHeader(req.headers['content-type']);
         const reqRewrite = applyBodyRewrites(reqBodyFull, rules, {
@@ -166,6 +170,10 @@ export class CaptureProxy extends EventEmitter {
     const upstreamPort = resolveUpstreamPort(target, attemptScheme);
     const mod = attemptScheme === 'https' ? https : http;
 
+    // Fresh per attempt — the `auto` retry must not inherit the failed
+    // HTTPS attempt's marks.
+    const marks: TimingMarks = { start: performance.now() };
+
     const outHeaders = buildUpstreamHeaders(req.headers, target.hostname, upstreamPort, attemptScheme, reqBodyToSend, req.method);
 
     // On the Windows manual-capture path, the OS hosts file that redirects
@@ -188,9 +196,21 @@ export class CaptureProxy extends EventEmitter {
         lookup: resolvedIp ? pinnedLookup(resolvedIp) : undefined,
       },
       (upstreamRes) => {
-        this.handleUpstreamResponse(res, target, attemptScheme, upstreamRes, reqBodyToSend, meta);
+        marks.firstByte = performance.now();
+        this.handleUpstreamResponse(res, target, attemptScheme, upstreamRes, reqBodyToSend, meta, marks);
       },
     );
+
+    upstreamReq.on('socket', (socket) => {
+      if (!socket.connecting) {
+        marks.reused = true;
+        return;
+      }
+      socket.once('lookup', () => (marks.lookup = performance.now()));
+      socket.once('connect', () => (marks.connect = performance.now()));
+      socket.once('secureConnect', () => (marks.secure = performance.now()));
+    });
+    upstreamReq.on('finish', () => (marks.sent = performance.now()));
 
     let retried = false;
     upstreamReq.on('error', (err) => {
@@ -214,6 +234,7 @@ export class CaptureProxy extends EventEmitter {
     upstreamRes: http.IncomingMessage,
     reqBodyToSend: Buffer,
     meta: RequestMeta,
+    marks: TimingMarks,
   ): void {
     const chunks: Buffer[] = [];
     upstreamRes.on('data', (c: Buffer) => chunks.push(c));
@@ -278,6 +299,7 @@ export class CaptureProxy extends EventEmitter {
         responseBodyTruncated: isTextContentType(contentType) ? resCap.truncated : undefined,
         originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
         originalResponseBody: rewrite.changed ? capBuffer(decoded, this.maxBodyBytes).buf : undefined,
+        timings: computeTimings(marks, meta.blockedMs, performance.now()),
       };
       this.emit('flow', rec);
     });
@@ -407,6 +429,42 @@ interface RequestMeta {
   /** Pre-rewrite request body, set once `applyBodyRewrites` has run. */
   originalRequestBody?: Buffer;
   requestRewritten?: boolean;
+  /** Time spent receiving the device's request body (`performance.now()` delta). */
+  blockedMs?: number;
+}
+
+/** Raw `performance.now()` marks collected while one upstream attempt runs. */
+interface TimingMarks {
+  start: number;
+  lookup?: number;
+  connect?: number;
+  secure?: number;
+  sent?: number;
+  firstByte?: number;
+  reused?: boolean;
+}
+
+/**
+ * Folds raw marks into the per-phase breakdown. Phases whose events never
+ * fired (reused socket, plain http, IP-literal host) are simply absent
+ * rather than reported as 0 — absence means "didn't happen", 0 means
+ * "happened in under half a millisecond".
+ */
+function computeTimings(marks: TimingMarks, blockedMs: number | undefined, end: number): FlowTimings {
+  const round = (v: number) => Math.max(0, Math.round(v));
+  const sentAt = marks.sent ?? marks.start;
+  const firstByte = marks.firstByte ?? sentAt;
+  const timings: FlowTimings = {
+    waitMs: round(firstByte - sentAt),
+    receiveMs: round(end - firstByte),
+  };
+  if (blockedMs !== undefined) timings.blockedMs = round(blockedMs);
+  if (marks.reused) timings.socketReused = true;
+  if (marks.lookup !== undefined) timings.dnsMs = round(marks.lookup - marks.start);
+  if (marks.connect !== undefined) timings.connectMs = round(marks.connect - (marks.lookup ?? marks.start));
+  if (marks.secure !== undefined) timings.tlsMs = round(marks.secure - (marks.connect ?? marks.start));
+  if (marks.sent !== undefined) timings.sendMs = round(marks.sent - (marks.secure ?? marks.connect ?? marks.start));
+  return timings;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

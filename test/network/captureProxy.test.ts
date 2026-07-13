@@ -322,6 +322,61 @@ describe('network/CaptureProxy', () => {
     expect(seenSockets.size).to.equal(2);
   });
 
+  it('captures per-phase timings for a bridged request', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+
+    expect(flow.timings).to.not.equal(undefined);
+    expect(flow.timings!.waitMs).to.be.at.least(0);
+    expect(flow.timings!.receiveMs).to.be.at.least(0);
+    expect(flow.timings!.blockedMs).to.be.at.least(0);
+    expect(flow.timings!.tlsMs).to.equal(undefined); // plain-http upstream — no TLS phase
+    expect(flow.timings!.socketReused).to.equal(undefined);
+  });
+
+  it('marks reused sockets and omits dns/connect phases for them', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const second = await flowP;
+
+    expect(second.timings!.socketReused).to.equal(true);
+    expect(second.timings!.dnsMs).to.equal(undefined);
+    expect(second.timings!.connectMs).to.equal(undefined);
+    expect(second.timings!.tlsMs).to.equal(undefined);
+  });
+
+  it('omits timings on error flows', async () => {
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, '127.0.0.1:9'); // nothing listening
+    const flow = await flowP;
+    expect(flow.error).to.be.a('string');
+    expect(flow.timings).to.equal(undefined);
+  });
+
   it('still closes the device-facing connection per request even with upstream keep-alive on', async () => {
     upstream = await startUpstream((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' });

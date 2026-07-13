@@ -9,6 +9,7 @@ import type {
   BodyRewriteRule,
   ExtMsg,
   FlowDetail,
+  FlowTimings,
   RuleSet,
   SerializedFlow,
   UpstreamScheme,
@@ -300,6 +301,7 @@ function renderDetail(): void {
 
   const parts = [
     section('Overview', overview),
+    timingSection(f),
     headersSection('Request headers', f.requestHeaders),
     bodySectionShell('request', 'Request body', f.requestBytes, !!d?.requestBody, !!d?.originalRequestBody),
     headersSection('Response headers', f.responseHeaders),
@@ -318,6 +320,44 @@ function renderDetail(): void {
 
 function section(title: string, inner: string): string {
   return `<div class="section"><h3>${esc(title)}</h3>${inner}</div>`;
+}
+
+const TIMING_PHASES: Array<{ key: keyof FlowTimings; label: string; cls: string }> = [
+  { key: 'blockedMs', label: 'Blocked (request body)', cls: 'blocked' },
+  { key: 'dnsMs', label: 'DNS', cls: 'dns' },
+  { key: 'connectMs', label: 'Connect', cls: 'connect' },
+  { key: 'tlsMs', label: 'TLS', cls: 'tls' },
+  { key: 'sendMs', label: 'Send', cls: 'send' },
+  { key: 'waitMs', label: 'Wait (TTFB)', cls: 'wait' },
+  { key: 'receiveMs', label: 'Receive', cls: 'receive' },
+];
+
+/** Stacked bar + per-phase table. Absent phases (reused socket, plain http) simply don't appear. */
+function timingSection(f: SerializedFlow): string {
+  const t = f.timings;
+  if (!t) return '';
+  const phases = TIMING_PHASES.filter((p) => typeof t[p.key] === 'number').map((p) => ({
+    ...p,
+    ms: t[p.key] as number,
+  }));
+  const total = phases.reduce((sum, p) => sum + p.ms, 0);
+  const bar =
+    total > 0
+      ? `<div class="tbar">${phases
+          .filter((p) => p.ms > 0)
+          .map((p) => `<span class="tseg ${p.cls}" style="width:${((p.ms / total) * 100).toFixed(2)}%" title="${p.label}: ${p.ms} ms"></span>`)
+          .join('')}</div>`
+      : '';
+  const rows = phases
+    .map((p) => `<tr><td><span class="tdot ${p.cls}"></span>${p.label}</td><td>${p.ms} ms</td></tr>`)
+    .join('');
+  const reused = t.socketReused
+    ? '<div class="hint">Upstream socket reused (keep-alive) — no DNS/connect/TLS cost for this request.</div>'
+    : '';
+  return `<details class="dsec" open>
+    <summary>Timing<span class="count">${f.durationMs} ms</span></summary>
+    <div class="section-body">${bar}<table class="kv">${rows}</table>${reused}</div>
+  </details>`;
 }
 
 function headersSection(title: string, headers: Record<string, string | string[]>): string {

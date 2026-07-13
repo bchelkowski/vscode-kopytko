@@ -512,6 +512,7 @@ const kopytkoRcExample = `// .kopytkorc
               'Live-editable rewrite rules — built-in https→http plus your own find/replace, per-host, applied without restart',
               'Per-host upstream scheme (https / http / auto); gzip/deflate/br decoded, Set-Cookie Secure stripped, redirects downgraded',
               'Requests grouped by origin, detail pane with headers, bodies and original-vs-rewritten view, filter, and Export HAR',
+              'Per-request timing waterfall — blocked / DNS / connect / TLS / send / wait / receive as a stacked bar and table, keep-alive-aware, with the same real phases written to HAR',
               'Built to stay fast under load — frame-batched incremental list updates, a dual entry-count + byte-budget memory cap, and pooled upstream connections (no per-request TLS handshake to origins)',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">

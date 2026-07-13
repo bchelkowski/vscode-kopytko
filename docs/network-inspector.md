@@ -206,9 +206,18 @@ whole list, and the buffer is bounded twice over — by entry count
 oldest entries first. Selection and already-loaded bodies survive hiding and
 restoring the panel tab.
 
-Selecting a request opens a detail pane: an always-visible overview, then
-four independently collapsible sections — **request headers**, **request
-body**, **response headers**, **response body**. Headers open by default;
+Selecting a request opens a detail pane: an always-visible overview, a
+**Timing** section, then four independently collapsible sections — **request
+headers**, **request body**, **response headers**, **response body**.
+
+The Timing section breaks the request into phases measured at the proxy —
+blocked (receiving the device's request body), DNS, connect, TLS, send, wait
+(TTFB), receive — as a color-coded stacked bar plus a per-phase table.
+Phases that didn't happen are absent rather than zero: a request served over
+a pooled upstream connection shows no DNS/connect/TLS and is labeled
+"socket reused". HAR exports carry the same real phase timings (absent
+phases as `-1` per the HAR spec) instead of the previous whole-duration
+placeholder. Headers open by default;
 bodies start collapsed, and a body's content is only fetched from the
 webview's own cache and formatted once you actually open its section —
 opening one large JSON body never pays for parsing/formatting the others.

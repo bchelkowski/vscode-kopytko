@@ -255,6 +255,44 @@ describe('network/NetworkController', () => {
     expect(har.log.entries[0].request.url).to.equal('http://api.test/v1?a=1');
   });
 
+  it('writes real per-phase HAR timings when the flow has them', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({
+      id: 't1',
+      timings: { blockedMs: 1, dnsMs: 2, connectMs: 3, tlsMs: 4, sendMs: 0, waitMs: 20, receiveMs: 5 },
+    }));
+
+    type HarTimings = { blocked: number; dns: number; connect: number; ssl: number; send: number; wait: number; receive: number };
+    const har = controller.buildHar() as { log: { entries: Array<{ timings: HarTimings }> } };
+    expect(har.log.entries[0].timings).to.deep.equal({ blocked: 1, dns: 2, connect: 3, ssl: 4, send: 0, wait: 20, receive: 5 });
+  });
+
+  it('marks absent phases as -1 (HAR not-applicable) for reused sockets', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({
+      id: 't2',
+      timings: { blockedMs: 0, sendMs: 0, waitMs: 8, receiveMs: 2, socketReused: true },
+    }));
+
+    type Entry = { timings: { dns: number; connect: number; ssl: number }; _socketReused?: boolean };
+    const har = controller.buildHar() as { log: { entries: Entry[] } };
+    expect(har.log.entries[0].timings.dns).to.equal(-1);
+    expect(har.log.entries[0].timings.connect).to.equal(-1);
+    expect(har.log.entries[0].timings.ssl).to.equal(-1);
+    expect(har.log.entries[0]._socketReused).to.equal(true);
+  });
+
+  it('falls back to the legacy whole-duration timings shape when a flow has none', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({ id: 't3', durationMs: 42 }));
+
+    const har = controller.buildHar() as { log: { entries: Array<{ timings: unknown }> } };
+    expect(har.log.entries[0].timings).to.deep.equal({ send: 0, wait: 42, receive: 0 });
+  });
+
   it('disable() reverts redirect and stops the proxy', async () => {
     const { controller, proxy } = make({});
     await controller.enable();

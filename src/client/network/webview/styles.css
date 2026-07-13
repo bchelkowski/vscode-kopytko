@@ -256,6 +256,32 @@ pre.body {
   opacity: 0.6;
 }
 .dsec .section-body { padding: 6px 8px; }
+.dsec .section-body > .hint { font-size: 10px; opacity: 0.6; margin-top: 4px; }
+
+/* ── timing waterfall ── */
+.tbar {
+  display: flex;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+}
+.tseg { min-width: 1px; }
+.tdot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 6px;
+}
+.tseg.blocked, .tdot.blocked { background: var(--vscode-charts-lines, #999); }
+.tseg.dns, .tdot.dns { background: var(--vscode-charts-purple, #b180d7); }
+.tseg.connect, .tdot.connect { background: var(--vscode-charts-orange, #d18616); }
+.tseg.tls, .tdot.tls { background: var(--vscode-charts-red, #f14c4c); }
+.tseg.send, .tdot.send { background: var(--vscode-charts-blue, #3794ff); }
+.tseg.wait, .tdot.wait { background: var(--vscode-charts-yellow, #cca700); }
+.tseg.receive, .tdot.receive { background: var(--vscode-charts-green, #89d185); }
 
 .body-toolbar {
   display: flex;

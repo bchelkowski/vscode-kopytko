@@ -5,7 +5,7 @@
  * to the device separately.
  */
 
-import type { FlowDetail, SerializedFlow } from '../webview/protocol';
+import type { FlowDetail, FlowTimings, SerializedFlow } from '../webview/protocol';
 
 export interface FlowRecord {
   id: string;
@@ -34,6 +34,8 @@ export interface FlowRecord {
   originalRequestBody?: Buffer;
   /** Original (pre-rewrite) response body, only when a rewrite fired. */
   originalResponseBody?: Buffer;
+  /** Per-phase timings; absent for flows that errored before a response. */
+  timings?: FlowTimings;
   error?: string;
 }
 
@@ -57,6 +59,7 @@ export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
     rewrittenBody: rec.rewrittenBody,
     requestHeaders: rec.requestHeaders,
     responseHeaders: rec.responseHeaders,
+    timings: rec.timings,
     error: rec.error,
   };
 }

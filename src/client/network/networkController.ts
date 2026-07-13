@@ -357,9 +357,30 @@ function harEntry(rec: FlowRecord): unknown {
       bodySize: rec.responseBytes,
     },
     cache: {},
-    timings: { send: 0, wait: rec.durationMs, receive: 0 },
+    timings: harTimings(rec),
+    ...(rec.timings?.socketReused !== undefined ? { _socketReused: rec.timings.socketReused } : {}),
     _upstreamScheme: rec.upstreamScheme,
     _rewrittenBody: rec.rewrittenBody,
+  };
+}
+
+/**
+ * Real per-phase timings when the proxy measured them; HAR's `-1` marks a
+ * phase as not applicable (reused socket, plain http, error paths). Flows
+ * without timings (errors, pre-upgrade captures) fall back to the legacy
+ * whole-duration-as-wait shape.
+ */
+function harTimings(rec: FlowRecord): unknown {
+  const t = rec.timings;
+  if (!t) return { send: 0, wait: rec.durationMs, receive: 0 };
+  return {
+    blocked: t.blockedMs ?? -1,
+    dns: t.dnsMs ?? -1,
+    connect: t.connectMs ?? -1,
+    ssl: t.tlsMs ?? -1,
+    send: t.sendMs ?? 0,
+    wait: t.waitMs,
+    receive: t.receiveMs,
   };
 }
 

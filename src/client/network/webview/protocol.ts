@@ -29,6 +29,27 @@ export interface WebviewState {
   message?: string;
 }
 
+/**
+ * Per-phase timing breakdown of one exchange, measured at the proxy.
+ * Phases absent when they didn't happen: dns/connect/tls are missing when the
+ * upstream socket was reused from the keep-alive pool (see `socketReused`),
+ * tls also for plain-http upstreams, dns for IP-literal hosts.
+ */
+export interface FlowTimings {
+  /** Receiving the device's request body. */
+  blockedMs?: number;
+  dnsMs?: number;
+  connectMs?: number;
+  tlsMs?: number;
+  /** Writing the request to the upstream. */
+  sendMs?: number;
+  /** Request fully sent → first response byte (TTFB). */
+  waitMs: number;
+  /** First response byte → last. */
+  receiveMs: number;
+  socketReused?: boolean;
+}
+
 /** One captured HTTP exchange — list-row metadata + headers (bodies load lazily). */
 export interface SerializedFlow {
   id: string;
@@ -50,6 +71,7 @@ export interface SerializedFlow {
   rewrittenBody: boolean;
   requestHeaders: Record<string, string | string[]>;
   responseHeaders: Record<string, string | string[]>;
+  timings?: FlowTimings;
   error?: string;
 }
 

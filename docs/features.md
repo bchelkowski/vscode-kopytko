@@ -302,7 +302,8 @@ extension, no setup required (see
 | Detail pane: collapsible header/body sections, per-body Raw/Formatted/Tree tabs computed on demand, original-vs-rewritten toggle per body | ✅ | [network-inspector.md](./network-inspector.md) |
 | Formatted tab: JSON/XML syntax highlighting; Tree tab: only root expanded by default | ✅ | [network-inspector.md](./network-inspector.md) |
 | Per-body Find with match count + prev/next, works across Raw/Formatted/Tree | ✅ | [network-inspector.md](./network-inspector.md) |
-| Export capture to HAR | ✅ | [network-inspector.md](./network-inspector.md) |
+| Export capture to HAR — real per-phase timings, `-1` for not-applicable phases | ✅ | [network-inspector.md](./network-inspector.md) |
+| Timing waterfall — per-request phase breakdown (blocked/DNS/connect/TLS/send/wait/receive) as a stacked bar + table, keep-alive-aware (`socket reused`) | ✅ | [network-inspector.md](./network-inspector.md) |
 | Incremental, frame-batched request list — live flows append targeted DOM rows instead of rebuilding the list; debounced filter; selection survives tab hide/restore | ✅ | [network-inspector.md](./network-inspector.md) |
 | Bounded memory — entry cap (`maxEntries`) plus byte budget (`maxBufferBytes`), enforced host- and webview-side | ✅ | [network-inspector.md](./network-inspector.md) |
 | Upstream connection pooling (keep-alive) — no per-request TCP/TLS handshake to origins; device side still closes per request; `upstreamKeepAlive` off-switch | ✅ | [network-inspector.md](./network-inspector.md) |

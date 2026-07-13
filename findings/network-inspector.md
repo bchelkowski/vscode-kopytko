@@ -647,6 +647,44 @@ hide→restore `init` with no re-fetch posted, `contentTypePattern` renders and
 round-trips through Apply, and the filter debounce leaves the DOM untouched
 until ~150ms after typing stops.
 
+## Timing waterfall (2026-07-14)
+
+Phase B of the upgrade plan. Per-phase timings measured at the proxy with
+`performance.now()` marks (wall `Date.now()` kept only for `startedWall`):
+
+- **Marks come from socket events on the upstream request**: `lookup` /
+  `connect` / `secureConnect` hooked in the `'socket'` callback — but only
+  when `socket.connecting` is true. A socket handed out of the keep-alive
+  pool is already connected; the phases *didn't happen* for that request, so
+  they're **absent, not 0** (`socketReused: true` instead). Absence vs zero
+  is a deliberate distinction: absent = didn't happen, 0 = under half a ms.
+  HAR encodes absent phases as `-1` (the spec's "not applicable" value).
+- **Marks are created fresh per attempt in `forward()`** — the `auto`
+  scheme's HTTPS→HTTP retry re-enters `forward()`, and inheriting the failed
+  attempt's marks would produce nonsense deltas.
+- `blockedMs` = receiving the device's request body (measured around
+  `collectBody` in `handleRequest`); `sendMs` = writing the request upstream
+  (`'finish'` minus secure/connect/start); `waitMs` = TTFB from the response
+  callback; `receiveMs` = response `'end'` minus first byte. `durationMs`
+  stays the wall-clock total and can exceed the phase sum (the bar renders
+  phases proportional to their own sum, not to durationMs).
+- **Error flows carry no `timings`** — partial marks from a failed attempt
+  aren't meaningful, and the webview/HAR both handle absence (webview skips
+  the section, HAR falls back to the legacy `{send:0, wait:durationMs,
+  receive:0}` shape).
+- `dnsMs` is also absent for IP-literal hosts (Node never emits `'lookup'`
+  when connecting to an address), independent of socket reuse.
+- Webview: `timingSection()` renders an always-open `<details>` between
+  Overview and Request headers — stacked bar (segments only for phases > 0,
+  so a 0ms send doesn't paint a sliver) + a table of every present phase +
+  a reused-socket hint. Colors from `--vscode-charts-*` variables with
+  dark-theme fallbacks, shared between bar segments and table dots.
+
+Verified in the browser harness: segment widths match the expected
+proportions exactly (e.g. tls 12/48 → 25%), zero-duration phases appear in
+the table but not the bar, and a reused-socket flow renders only
+wait/receive plus the hint.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**
