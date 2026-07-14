@@ -67,6 +67,9 @@ export function registerNetwork(
         cfg.get('network.rewriteRules'),
         cfg.get('network.upstreamSchemes'),
         cfg.get<string>('network.defaultUpstreamScheme', 'https'),
+        cfg.get('network.mapLocalRules'),
+        cfg.get('network.latencyRules'),
+        cfg.get('network.headerRules'),
       ),
     };
   };

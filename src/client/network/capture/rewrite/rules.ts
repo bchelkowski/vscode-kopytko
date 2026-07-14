@@ -35,10 +35,52 @@ export interface UpstreamSchemeRule {
   scheme: UpstreamScheme;
 }
 
+/** Serve a local file (or inline body) instead of contacting the upstream. */
+export interface MapLocalRule {
+  id: string;
+  enabled: boolean;
+  /** Host glob (`*` wildcards) or substring. Empty = every host. */
+  hostPattern: string;
+  /** Path glob (`*` wildcards) or substring. Empty = every path. */
+  pathPattern?: string;
+  /** Absolute path of the file to serve. Wins over `body` when both are set. */
+  filePath?: string;
+  /** Inline body to serve when no `filePath` is given. */
+  body?: string;
+  contentType?: string;
+  /** Response status (default 200). */
+  status?: number;
+}
+
+/** Delay matched responses before sending them to the device. */
+export interface LatencyRule {
+  id: string;
+  enabled: boolean;
+  hostPattern: string;
+  pathPattern?: string;
+  delayMs: number;
+}
+
+/** Add/set/remove a request or response header for matched hosts. */
+export interface HeaderRule {
+  id: string;
+  enabled: boolean;
+  direction: 'request' | 'response';
+  hostPattern?: string;
+  op: 'set' | 'add' | 'remove';
+  name: string;
+  value?: string;
+}
+
 export interface RuleSet {
   bodyRules: BodyRewriteRule[];
   upstreamSchemes: UpstreamSchemeRule[];
   defaultUpstreamScheme: UpstreamScheme;
+  // Optional so every persisted config / webview literal / `set-rules`
+  // payload from before these existed stays valid.
+  mapLocal?: MapLocalRule[];
+  latency?: LatencyRule[];
+  headerRules?: HeaderRule[];
 }
 
 /** The one built-in rule that makes the whole no-CA bridging model work. */
@@ -56,6 +98,9 @@ export function defaultRuleSet(): RuleSet {
     bodyRules: [{ ...HTTPS_TO_HTTP_RULE }],
     upstreamSchemes: [],
     defaultUpstreamScheme: 'https',
+    mapLocal: [],
+    latency: [],
+    headerRules: [],
   };
 }
 
@@ -80,6 +125,26 @@ export function matchContentType(pattern: string | undefined, contentType: strin
   return contentType.toLowerCase().includes(pattern.toLowerCase());
 }
 
+/** Same glob/substring semantics as {@link matchHost}, applied to a request path. */
+export function matchPath(pattern: string | undefined, path: string): boolean {
+  return matchHost(pattern, path);
+}
+
+/** First enabled map-local rule matching host+path, or undefined. */
+export function findMapLocal(rules: RuleSet, host: string, path: string): MapLocalRule | undefined {
+  return (rules.mapLocal ?? []).find(
+    (r) => r.enabled && matchHost(r.hostPattern, host) && matchPath(r.pathPattern, path),
+  );
+}
+
+/** Delay for the first enabled latency rule matching host+path, or 0. */
+export function findLatencyMs(rules: RuleSet, host: string, path: string): number {
+  const rule = (rules.latency ?? []).find(
+    (r) => r.enabled && r.delayMs > 0 && matchHost(r.hostPattern, host) && matchPath(r.pathPattern, path),
+  );
+  return rule?.delayMs ?? 0;
+}
+
 /** Resolves which scheme the proxy should use to reach `host`. */
 export function resolveUpstreamScheme(host: string, rules: RuleSet): UpstreamScheme {
   for (const rule of rules.upstreamSchemes) {
@@ -101,6 +166,9 @@ export function ruleSetFromConfig(
   bodyRulesRaw: unknown,
   upstreamSchemesRaw: unknown,
   defaultUpstreamScheme: unknown,
+  mapLocalRaw?: unknown,
+  latencyRaw?: unknown,
+  headerRulesRaw?: unknown,
 ): RuleSet {
   const bodyRules = Array.isArray(bodyRulesRaw) && bodyRulesRaw.length > 0
     ? bodyRulesRaw.map(coerceBodyRule).filter((r): r is BodyRewriteRule => r !== null)
@@ -114,7 +182,17 @@ export function ruleSetFromConfig(
     ? defaultUpstreamScheme
     : 'https';
 
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def };
+  const mapLocal = Array.isArray(mapLocalRaw)
+    ? mapLocalRaw.map(coerceMapLocalRule).filter((r): r is MapLocalRule => r !== null)
+    : [];
+  const latency = Array.isArray(latencyRaw)
+    ? latencyRaw.map(coerceLatencyRule).filter((r): r is LatencyRule => r !== null)
+    : [];
+  const headerRules = Array.isArray(headerRulesRaw)
+    ? headerRulesRaw.map(coerceHeaderRule).filter((r): r is HeaderRule => r !== null)
+    : [];
+
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules };
 }
 
 let ruleCounter = 0;
@@ -145,4 +223,52 @@ function coerceSchemeRule(raw: unknown): UpstreamSchemeRule | null {
   if (typeof o.hostPattern !== 'string' || !o.hostPattern) return null;
   const scheme = o.scheme === 'http' || o.scheme === 'auto' ? o.scheme : 'https';
   return { hostPattern: o.hostPattern, scheme };
+}
+
+function coerceMapLocalRule(raw: unknown): MapLocalRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const filePath = typeof o.filePath === 'string' && o.filePath ? o.filePath : undefined;
+  const body = typeof o.body === 'string' ? o.body : undefined;
+  // A rule that serves nothing is a config mistake, not "serve empty 200".
+  if (filePath === undefined && body === undefined) return null;
+  return {
+    id: typeof o.id === 'string' ? o.id : nextRuleId(),
+    enabled: o.enabled !== false,
+    hostPattern: typeof o.hostPattern === 'string' ? o.hostPattern : '',
+    pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
+    filePath,
+    body,
+    contentType: typeof o.contentType === 'string' ? o.contentType : undefined,
+    status: typeof o.status === 'number' && o.status >= 100 && o.status <= 599 ? Math.floor(o.status) : undefined,
+  };
+}
+
+function coerceLatencyRule(raw: unknown): LatencyRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.delayMs !== 'number' || !(o.delayMs > 0)) return null;
+  return {
+    id: typeof o.id === 'string' ? o.id : nextRuleId(),
+    enabled: o.enabled !== false,
+    hostPattern: typeof o.hostPattern === 'string' ? o.hostPattern : '',
+    pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
+    delayMs: Math.floor(o.delayMs),
+  };
+}
+
+function coerceHeaderRule(raw: unknown): HeaderRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.name !== 'string' || !o.name) return null;
+  const op = o.op === 'add' || o.op === 'remove' ? o.op : 'set';
+  return {
+    id: typeof o.id === 'string' ? o.id : nextRuleId(),
+    enabled: o.enabled !== false,
+    direction: o.direction === 'request' ? 'request' : 'response',
+    hostPattern: typeof o.hostPattern === 'string' ? o.hostPattern : undefined,
+    op,
+    name: o.name,
+    value: typeof o.value === 'string' ? o.value : undefined,
+  };
 }

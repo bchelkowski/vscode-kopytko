@@ -12,7 +12,7 @@
  */
 
 import * as zlib from 'zlib';
-import { BodyRewriteRule, RuleSet, matchContentType, matchHost } from './rules';
+import { BodyRewriteRule, HeaderRule, RuleSet, matchContentType, matchHost } from './rules';
 
 const TEXT_CONTENT_TYPES = [
   'application/json',
@@ -29,6 +29,11 @@ const TEXT_CONTENT_TYPES = [
 export function isTextContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
   return TEXT_CONTENT_TYPES.some((t) => ct.includes(t));
+}
+
+/** True for `image/*` — retained as binary for preview, never rewritten. */
+export function isImageContentType(contentType: string): boolean {
+  return contentType.toLowerCase().trim().startsWith('image/');
 }
 
 /**
@@ -99,6 +104,62 @@ function applyOne(text: string, rule: BodyRewriteRule): string {
   }
   if (rule.find === '') return text;
   return text.split(rule.find).join(rule.replace);
+}
+
+/**
+ * Header names the proxy owns outright — user header rules must never touch
+ * these, or they'd fight the bridge's own content-length/connection handling.
+ */
+const RESERVED_HEADER_NAMES = new Set(['content-length', 'transfer-encoding', 'connection', 'host']);
+
+export interface HeaderRewriteResult {
+  headers: Record<string, string | string[]>;
+  changed: boolean;
+}
+
+/**
+ * Applies user header rules (set/add/remove) for one direction. Names are
+ * matched case-insensitively; the output map keeps lowercase keys (matching
+ * the rest of the bridge's header handling). Reserved proxy-owned names are
+ * silently skipped.
+ */
+export function applyHeaderRules(
+  headers: Record<string, string | string[]>,
+  rules: HeaderRule[] | undefined,
+  ctx: { host: string; direction: 'request' | 'response' },
+): HeaderRewriteResult {
+  const applicable = (rules ?? []).filter(
+    (r) =>
+      r.enabled &&
+      r.direction === ctx.direction &&
+      !RESERVED_HEADER_NAMES.has(r.name.toLowerCase()) &&
+      matchHost(r.hostPattern, ctx.host),
+  );
+  if (applicable.length === 0) return { headers, changed: false };
+
+  const out: Record<string, string | string[]> = { ...headers };
+  let changed = false;
+  for (const rule of applicable) {
+    const name = rule.name.toLowerCase();
+    if (rule.op === 'remove') {
+      if (name in out) {
+        delete out[name];
+        changed = true;
+      }
+      continue;
+    }
+    const value = rule.value ?? '';
+    if (rule.op === 'set') {
+      if (out[name] !== value) changed = true;
+      out[name] = value;
+      continue;
+    }
+    // add — append to an existing header rather than replacing it.
+    const existing = out[name];
+    out[name] = existing === undefined ? value : [...(Array.isArray(existing) ? existing : [existing]), value];
+    changed = true;
+  }
+  return { headers: out, changed };
 }
 
 /**

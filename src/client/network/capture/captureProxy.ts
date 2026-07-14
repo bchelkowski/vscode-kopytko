@@ -14,10 +14,11 @@ import * as http from 'http';
 import * as https from 'https';
 import type * as net from 'net';
 import { performance } from 'perf_hooks';
+import * as fs from 'fs';
 import { FlowRecord } from './flow';
 import type { FlowTimings } from '../webview/protocol';
-import { applyBodyRewrites, decodeBody, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
-import { RuleSet, defaultRuleSet, resolveUpstreamScheme } from './rewrite/rules';
+import { applyBodyRewrites, applyHeaderRules, decodeBody, isImageContentType, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
+import { MapLocalRule, RuleSet, defaultRuleSet, findLatencyMs, findMapLocal, resolveUpstreamScheme } from './rewrite/rules';
 import { pinnedLookup, realHostsBypassResolver, resolveBypassingHosts, type HostsBypassResolver } from '../dnsBypass';
 
 export interface CaptureProxyOptions {
@@ -28,6 +29,10 @@ export interface CaptureProxyOptions {
   keepAlive?: boolean;
   /** Overridable for tests — real implementation performs actual DNS queries. */
   hostsResolver?: HostsBypassResolver;
+  /** Reads a map-local rule's file. Overridable for tests; default `fs.readFileSync`. */
+  fileReader?: (path: string) => Buffer;
+  /** Delays a response (latency rules). Overridable for tests; default `setTimeout`. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface Target {
@@ -80,11 +85,15 @@ export class CaptureProxy extends EventEmitter {
   // redirects and any real address for the host serves the bridge equally.
   private readonly httpAgent: http.Agent;
   private readonly httpsAgent: https.Agent;
+  private readonly fileReader: (path: string) => Buffer;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(private readonly options: CaptureProxyOptions) {
     super();
     this.maxBodyBytes = options.maxBodyBytes ?? 256 * 1024;
     this.hostsResolver = options.hostsResolver ?? realHostsBypassResolver;
+    this.fileReader = options.fileReader ?? ((p) => fs.readFileSync(p));
+    this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     const keepAlive = options.keepAlive ?? true;
     this.httpAgent = new http.Agent({ keepAlive, keepAliveMsecs: 1000 });
     this.httpsAgent = new https.Agent({ keepAlive, keepAliveMsecs: 1000 });
@@ -166,8 +175,15 @@ export class CaptureProxy extends EventEmitter {
         });
         meta.originalRequestBody = reqBodyFull;
         meta.requestRewritten = reqRewrite.changed;
-        const scheme = resolveUpstreamScheme(target.hostname, rules);
 
+        // A map-local rule short-circuits the upstream entirely.
+        const mapLocal = findMapLocal(rules, target.hostname, target.path);
+        if (mapLocal) {
+          void this.serveMapLocal(res, target, meta, mapLocal);
+          return;
+        }
+
+        const scheme = resolveUpstreamScheme(target.hostname, rules);
         void this.forward(res, target, reqRewrite.body, scheme, meta);
       })
       .catch((err) => {
@@ -190,7 +206,13 @@ export class CaptureProxy extends EventEmitter {
     // HTTPS attempt's marks.
     const marks: TimingMarks = { start: performance.now() };
 
-    const outHeaders = buildUpstreamHeaders(meta.requestHeaders, target.hostname, upstreamPort, attemptScheme, reqBodyToSend, meta.method);
+    const baseHeaders = buildUpstreamHeaders(meta.requestHeaders, target.hostname, upstreamPort, attemptScheme, reqBodyToSend, meta.method);
+    const reqHeaderRewrite = applyHeaderRules(baseHeaders as Record<string, string | string[]>, this.rules.headerRules, {
+      host: target.hostname,
+      direction: 'request',
+    });
+    const outHeaders = reqHeaderRewrite.headers;
+    if (reqHeaderRewrite.changed) meta.headersRewritten = true;
 
     // On the Windows manual-capture path, the OS hosts file that redirects
     // the ROKU to this proxy also applies to THIS process (the hosts file is
@@ -256,70 +278,161 @@ export class CaptureProxy extends EventEmitter {
     upstreamRes.on('data', (c: Buffer) => chunks.push(c));
     upstreamRes.on('error', (err) => this.finishError(sink, target, meta, err));
     upstreamRes.on('end', () => {
-      const rawBody = Buffer.concat(chunks);
-      const decoded = decodeBody(rawBody, strHeader(upstreamRes.headers['content-encoding']));
-      const contentType = strHeader(upstreamRes.headers['content-type']);
-
-      const rewrite = applyBodyRewrites(decoded, this.rules, {
-        host: target.hostname,
-        contentType,
-        direction: 'response',
-      });
-      const finalBody = rewrite.body;
-
-      const outHeaders = rewriteResponseHeaders(upstreamRes.headers);
-      outHeaders['content-length'] = String(finalBody.length);
-      // The device-facing leg always closes per request: the transparent
-      // redirect bridges packets through mechanisms that aren't HTTP-aware
-      // (WinDivert loopback injection on Windows; NAT rewriting elsewhere),
-      // and trusting keep-alive semantics to survive such a hop has bitten
-      // this feature before (a half-closed device connection waiting on a
-      // body that never arrived). A deterministic fresh connection per
-      // request sidesteps that ambiguity; the proxy→origin leg pools
-      // connections independently (see httpAgent/httpsAgent).
-      outHeaders['connection'] = 'close';
-
-      const status = upstreamRes.statusCode ?? 0;
-      const statusText = upstreamRes.statusMessage ?? '';
-      try {
-        sink.writeHead(status, statusText || undefined, outHeaders);
-        sink.end(finalBody);
-      } catch {
-        // Device socket already gone — nothing to send, but still record the flow.
-      }
-
-      const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
-      const resCap = capBuffer(finalBody, this.maxBodyBytes);
-      const rec: FlowRecord = {
-        id: nextFlowId(),
-        startedWall: meta.startedWall,
-        method: meta.method,
-        host: target.hostname,
-        port: target.clientPort,
-        path: target.path,
-        query: target.query,
-        status,
-        statusText,
-        contentType,
-        durationMs: Date.now() - meta.startedWall,
-        requestBytes: reqBodyToSend.length,
-        responseBytes: finalBody.length,
-        clientIp: meta.clientIp,
-        upstreamScheme: scheme,
-        rewrittenBody: rewrite.changed || !!meta.requestRewritten,
-        requestHeaders: meta.requestHeaders,
-        responseHeaders: outHeaders,
-        requestBody: reqBodyToSend.length > 0 ? reqCap.buf : undefined,
-        requestBodyTruncated: reqCap.truncated,
-        responseBody: finalBody.length > 0 && isTextContentType(contentType) ? resCap.buf : undefined,
-        responseBodyTruncated: isTextContentType(contentType) ? resCap.truncated : undefined,
-        originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
-        originalResponseBody: rewrite.changed ? capBuffer(decoded, this.maxBodyBytes).buf : undefined,
-        timings: computeTimings(marks, meta.blockedMs, performance.now()),
-        replayed: meta.replayed,
-      };
-      this.emit('flow', rec);
+      void this.finishUpstream(sink, target, scheme, upstreamRes, chunks, reqBodyToSend, meta, marks);
     });
+  }
+
+  private async finishUpstream(
+    sink: DeviceSink,
+    target: Target,
+    scheme: 'https' | 'http',
+    upstreamRes: http.IncomingMessage,
+    chunks: Buffer[],
+    reqBodyToSend: Buffer,
+    meta: RequestMeta,
+    marks: TimingMarks,
+  ): Promise<void> {
+    const rawBody = Buffer.concat(chunks);
+    const decoded = decodeBody(rawBody, strHeader(upstreamRes.headers['content-encoding']));
+    const contentType = strHeader(upstreamRes.headers['content-type']);
+
+    const rewrite = applyBodyRewrites(decoded, this.rules, {
+      host: target.hostname,
+      contentType,
+      direction: 'response',
+    });
+    const finalBody = rewrite.body;
+
+    // Bridge-mandated normalizations first, then user header rules, so the
+    // proxy-owned headers (content-length/connection, set below) stay
+    // authoritative regardless of what a rule tried to do.
+    const normalized = rewriteResponseHeaders(upstreamRes.headers);
+    const respHeaderRewrite = applyHeaderRules(normalized, this.rules.headerRules, {
+      host: target.hostname,
+      direction: 'response',
+    });
+    const outHeaders = respHeaderRewrite.headers;
+    const headersRewritten = respHeaderRewrite.changed || !!meta.headersRewritten;
+    outHeaders['content-length'] = String(finalBody.length);
+    // The device-facing leg always closes per request: the transparent
+    // redirect bridges packets through mechanisms that aren't HTTP-aware
+    // (WinDivert loopback injection on Windows; NAT rewriting elsewhere),
+    // and trusting keep-alive semantics to survive such a hop has bitten
+    // this feature before (a half-closed device connection waiting on a
+    // body that never arrived). A deterministic fresh connection per
+    // request sidesteps that ambiguity; the proxy→origin leg pools
+    // connections independently (see httpAgent/httpsAgent).
+    outHeaders['connection'] = 'close';
+
+    // Latency injection — delay the device-facing response (not the flow
+    // record's phase timings, which stay the real measured values).
+    const latencyMs = findLatencyMs(this.rules, target.hostname, target.path);
+    if (latencyMs > 0) await this.sleep(latencyMs);
+
+    const status = upstreamRes.statusCode ?? 0;
+    const statusText = upstreamRes.statusMessage ?? '';
+    try {
+      sink.writeHead(status, statusText || undefined, outHeaders);
+      sink.end(finalBody);
+    } catch {
+      // Device socket already gone — nothing to send, but still record the flow.
+    }
+
+    const retainResponse = finalBody.length > 0 && (isTextContentType(contentType) || isImageContentType(contentType));
+    const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
+    const resCap = capBuffer(finalBody, this.maxBodyBytes);
+    const rec: FlowRecord = {
+      id: nextFlowId(),
+      startedWall: meta.startedWall,
+      method: meta.method,
+      host: target.hostname,
+      port: target.clientPort,
+      path: target.path,
+      query: target.query,
+      status,
+      statusText,
+      contentType,
+      durationMs: Date.now() - meta.startedWall,
+      requestBytes: reqBodyToSend.length,
+      responseBytes: finalBody.length,
+      clientIp: meta.clientIp,
+      upstreamScheme: scheme,
+      rewrittenBody: rewrite.changed || !!meta.requestRewritten,
+      rewrittenHeaders: headersRewritten || undefined,
+      requestHeaders: meta.requestHeaders,
+      responseHeaders: outHeaders,
+      requestBody: reqBodyToSend.length > 0 ? reqCap.buf : undefined,
+      requestBodyTruncated: reqCap.truncated,
+      responseBody: retainResponse ? resCap.buf : undefined,
+      responseBodyTruncated: retainResponse ? resCap.truncated : undefined,
+      originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
+      originalResponseBody: rewrite.changed ? capBuffer(decoded, this.maxBodyBytes).buf : undefined,
+      timings: computeTimings(marks, meta.blockedMs, performance.now()),
+      latencyInjectedMs: latencyMs > 0 ? latencyMs : undefined,
+      replayed: meta.replayed,
+    };
+    this.emit('flow', rec);
+  }
+
+  /**
+   * Serves a map-local rule's file (or inline body) without contacting the
+   * upstream and records it as a flow tagged `servedBy: 'map-local'`. A
+   * file-read failure falls through to `finishError` so it's visible.
+   */
+  private async serveMapLocal(sink: DeviceSink, target: Target, meta: RequestMeta, rule: MapLocalRule): Promise<void> {
+    let body: Buffer;
+    try {
+      body = rule.filePath ? this.fileReader(rule.filePath) : Buffer.from(rule.body ?? '', 'utf8');
+    } catch (err) {
+      this.finishError(sink, target, meta, err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+
+    const contentType = rule.contentType ?? 'application/octet-stream';
+    const status = rule.status ?? 200;
+    const latencyMs = findLatencyMs(this.rules, target.hostname, target.path);
+    if (latencyMs > 0) await this.sleep(latencyMs);
+
+    const outHeaders: http.OutgoingHttpHeaders = {
+      'content-type': contentType,
+      'content-length': String(body.length),
+      connection: 'close',
+    };
+    try {
+      sink.writeHead(status, undefined, outHeaders);
+      sink.end(body);
+    } catch {
+      // Device socket already gone — still record the flow.
+    }
+
+    const retainResponse = body.length > 0 && (isTextContentType(contentType) || isImageContentType(contentType));
+    const resCap = capBuffer(body, this.maxBodyBytes);
+    const rec: FlowRecord = {
+      id: nextFlowId(),
+      startedWall: meta.startedWall,
+      method: meta.method,
+      host: target.hostname,
+      port: target.clientPort,
+      path: target.path,
+      query: target.query,
+      status,
+      statusText: '',
+      contentType,
+      durationMs: Date.now() - meta.startedWall,
+      requestBytes: meta.originalRequestBody?.length ?? 0,
+      responseBytes: body.length,
+      clientIp: meta.clientIp,
+      upstreamScheme: 'http',
+      rewrittenBody: false,
+      requestHeaders: meta.requestHeaders,
+      responseHeaders: { ...outHeaders } as Record<string, string | string[]>,
+      responseBody: retainResponse ? resCap.buf : undefined,
+      responseBodyTruncated: retainResponse ? resCap.truncated : undefined,
+      servedBy: 'map-local',
+      latencyInjectedMs: latencyMs > 0 ? latencyMs : undefined,
+      replayed: meta.replayed,
+    };
+    this.emit('flow', rec);
   }
 
   private finishError(sink: DeviceSink, target: Target, meta: RequestMeta, err: Error): void {
@@ -475,6 +588,8 @@ interface RequestMeta {
   requestRewritten?: boolean;
   /** Time spent receiving the device's request body (`performance.now()` delta). */
   blockedMs?: number;
+  /** True when a request-direction header rule changed the forwarded headers. */
+  headersRewritten?: boolean;
   /** True when this exchange is a user-initiated replay, not device traffic. */
   replayed?: boolean;
 }

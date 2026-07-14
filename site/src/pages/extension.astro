@@ -83,6 +83,9 @@ const allSettings = [
   { key: 'kopytko.network.defaultUpstreamScheme', type: 'enum', default: '"https"', desc: 'Scheme the proxy uses to reach an origin the device called over HTTP. https bridges to a secure upstream connection.' },
   { key: 'kopytko.network.rewriteRules', type: 'object[]', default: '[]', desc: 'Body rewrite rules for text bodies. When empty, the built-in https:// → http:// response rule is used.' },
   { key: 'kopytko.network.upstreamSchemes', type: 'object[]', default: '[]', desc: 'Per-host upstream scheme overrides ({ hostPattern, scheme }).' },
+  { key: 'kopytko.network.mapLocalRules', type: 'object[]', default: '[]', desc: 'Serve a local file or inline body instead of contacting the upstream on host/path match.' },
+  { key: 'kopytko.network.latencyRules', type: 'object[]', default: '[]', desc: 'Delay matched responses by delayMs before sending them to the device.' },
+  { key: 'kopytko.network.headerRules', type: 'object[]', default: '[]', desc: 'Add/set/remove request or response headers for matched hosts (proxy-owned headers are protected).' },
   { key: 'kopytko.network.winDivertDir', type: 'string', default: '""', desc: 'Windows only, usually unnecessary — a working WinDivert driver ships with the extension. Override folder with WinDivert.dll/WinDivert64.sys; machine-scoped, cannot be set via workspace settings.' },
 ];
 
@@ -514,6 +517,7 @@ const kopytkoRcExample = `// .kopytkorc
               'Requests grouped by origin, detail pane with headers, bodies and original-vs-rewritten view, filter, and Export HAR',
               'Per-request timing waterfall — blocked / DNS / connect / TLS / send / wait / receive as a stacked bar and table, keep-alive-aware, with the same real phases written to HAR',
               'Workflow tools — copy URL / copy as cURL / copy body, one-click replay through the proxy (with confirmation for state-changing methods), pause recording without dropping the redirect, timestamps, and status/method filter chips',
+              'Map-local, latency-injection and header rules; image response preview + hex; parsed query-param and cookie views; and a search across every captured request (URL, headers, text bodies) that jumps straight to the flow',
               'Built to stay fast under load — frame-batched incremental list updates, a dual entry-count + byte-budget memory cap, and pooled upstream connections (no per-request TLS handshake to origins)',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">

@@ -5,6 +5,7 @@
  * to the device separately.
  */
 
+import { isTextContentType } from './rewrite/engine';
 import type { FlowDetail, FlowTimings, SerializedFlow } from '../webview/protocol';
 
 export interface FlowRecord {
@@ -24,6 +25,12 @@ export interface FlowRecord {
   clientIp: string;
   upstreamScheme: 'https' | 'http';
   rewrittenBody: boolean;
+  /** A header rule changed request and/or response headers. */
+  rewrittenHeaders?: boolean;
+  /** How the response was produced — `map-local` when served from a rule, else upstream. */
+  servedBy?: 'upstream' | 'map-local';
+  /** Milliseconds of artificial latency injected by a rule (separate from measured timings). */
+  latencyInjectedMs?: number;
   requestHeaders: Record<string, string | string[]>;
   responseHeaders: Record<string, string | string[]>;
   requestBody?: Buffer;
@@ -59,6 +66,9 @@ export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
     clientIp: rec.clientIp,
     upstreamScheme: rec.upstreamScheme,
     rewrittenBody: rec.rewrittenBody,
+    rewrittenHeaders: rec.rewrittenHeaders,
+    servedBy: rec.servedBy,
+    latencyInjectedMs: rec.latencyInjectedMs,
     requestHeaders: rec.requestHeaders,
     responseHeaders: rec.responseHeaders,
     timings: rec.timings,
@@ -68,10 +78,14 @@ export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
 }
 
 export function toFlowDetail(rec: FlowRecord): FlowDetail {
+  // Text bodies go as UTF-8; retained binary (images) goes base64 so the
+  // webview can render a preview or hex dump without corruption.
+  const responseIsText = isTextContentType(rec.contentType);
   return {
     id: rec.id,
     requestBody: rec.requestBody?.toString('utf8'),
-    responseBody: rec.responseBody?.toString('utf8'),
+    responseBody: rec.responseBody?.toString(responseIsText ? 'utf8' : 'base64'),
+    responseBodyEncoding: rec.responseBody ? (responseIsText ? 'utf8' : 'base64') : undefined,
     originalRequestBody: rec.originalRequestBody?.toString('utf8'),
     originalResponseBody: rec.originalResponseBody?.toString('utf8'),
     requestBodyTruncated: rec.requestBodyTruncated,

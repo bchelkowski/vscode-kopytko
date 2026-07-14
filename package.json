@@ -1125,6 +1125,101 @@
               }
             }
           }
+        },
+        "kopytko.network.mapLocalRules": {
+          "type": "array",
+          "default": [],
+          "description": "Serve a local file or inline body instead of contacting the upstream when host/path match. Each item: { enabled?, hostPattern, pathPattern?, filePath?, body?, contentType?, status? }. filePath wins over body; a rule with neither is ignored.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "pathPattern": {
+                "type": "string"
+              },
+              "filePath": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "status": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "kopytko.network.latencyRules": {
+          "type": "array",
+          "default": [],
+          "description": "Delay matched responses by delayMs before sending them to the device — simulate slow backends. Each item: { enabled?, hostPattern, pathPattern?, delayMs }.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "pathPattern": {
+                "type": "string"
+              },
+              "delayMs": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "kopytko.network.headerRules": {
+          "type": "array",
+          "default": [],
+          "description": "Add/set/remove request or response headers for matched hosts. Each item: { enabled?, direction: 'request'|'response', hostPattern?, op: 'set'|'add'|'remove', name, value? }. Proxy-managed headers (content-length, transfer-encoding, connection, host) cannot be changed.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "request",
+                  "response"
+                ],
+                "default": "response"
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "set",
+                  "add",
+                  "remove"
+                ],
+                "default": "set"
+              },
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

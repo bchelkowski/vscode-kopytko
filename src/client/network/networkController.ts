@@ -13,7 +13,8 @@ import { CaptureProxy, CaptureProxyOptions } from './capture/captureProxy';
 import { FlowRecord, toFlowDetail, toSerializedFlow } from './capture/flow';
 import { RedirectController, RedirectUnsupportedError } from './redirect/redirectController';
 import { RuleSet } from './capture/rewrite/rules';
-import type { FlowDetail, RedirectStatus, SerializedFlow, WebviewState } from './webview/protocol';
+import { isTextContentType } from './capture/rewrite/engine';
+import type { FlowDetail, RedirectStatus, SearchHit, SerializedFlow, WebviewState } from './webview/protocol';
 
 export interface DeviceLike {
   ip: string;
@@ -138,6 +139,34 @@ export class NetworkController extends EventEmitter {
     if (!rec) throw new Error('Request is no longer in the capture buffer.');
     if (!this.proxy) throw new Error('Enable capture to replay requests.');
     this.proxy.replay(rec);
+  }
+
+  /**
+   * Case-insensitive scan across all buffered flows (newest first) over URL,
+   * headers, and text bodies. Binary bodies are skipped. Capped at 200 hits.
+   */
+  search(query: string): SearchHit[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hits: SearchHit[] = [];
+    const LIMIT = 200;
+    for (let i = this.flows.length - 1; i >= 0 && hits.length < LIMIT; i--) {
+      const rec = this.flows[i];
+      const url = `${rec.host}${rec.path}${rec.query ? `?${rec.query}` : ''}`;
+      if (url.toLowerCase().includes(q)) {
+        hits.push({ id: rec.id, where: 'url', snippet: url });
+        continue;
+      }
+      const headerHit = findHeaderHit(rec.requestHeaders, q) ?? findHeaderHit(rec.responseHeaders, q);
+      if (headerHit) {
+        hits.push({ id: rec.id, where: headerHit.where, snippet: headerHit.snippet });
+        continue;
+      }
+      const bodyHit = searchBody(rec.requestBody, rec.requestHeaders, q, 'request body')
+        ?? searchBody(rec.responseBody, rec.responseHeaders, q, 'response body', rec.contentType);
+      if (bodyHit) hits.push({ id: rec.id, where: bodyHit.where, snippet: bodyHit.snippet });
+    }
+    return hits;
   }
 
   // ── lifecycle ───────────────────────────────────────────────────────────────
@@ -382,11 +411,7 @@ function harEntry(rec: FlowRecord): unknown {
       statusText: rec.statusText,
       httpVersion: 'HTTP/1.1',
       headers: harHeaders(rec.responseHeaders),
-      content: {
-        size: rec.responseBytes,
-        mimeType: rec.contentType || 'application/octet-stream',
-        text: rec.responseBody ? rec.responseBody.toString('utf8') : '',
-      },
+      content: harContent(rec),
       redirectURL: '',
       headersSize: -1,
       bodySize: rec.responseBytes,
@@ -423,6 +448,52 @@ function contentTypeOf(headers: Record<string, string | string[]>): string {
   const ct = headers['content-type'];
   if (Array.isArray(ct)) return ct[0] ?? '';
   return ct ?? '';
+}
+
+/** HAR `content` object — text bodies as UTF-8, retained binary (images) base64-encoded. */
+function harContent(rec: FlowRecord): unknown {
+  const mimeType = rec.contentType || 'application/octet-stream';
+  const base = { size: rec.responseBytes, mimeType };
+  if (!rec.responseBody) return { ...base, text: '' };
+  if (isTextContentType(rec.contentType)) return { ...base, text: rec.responseBody.toString('utf8') };
+  return { ...base, text: rec.responseBody.toString('base64'), encoding: 'base64' };
+}
+
+// ── search helpers ─────────────────────────────────────────────────────────────
+
+function snippetAround(text: string, index: number, matchLen: number): string {
+  const start = Math.max(0, index - 40);
+  const end = Math.min(text.length, index + matchLen + 40);
+  return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '');
+}
+
+function findHeaderHit(
+  headers: Record<string, string | string[]>,
+  q: string,
+): { where: string; snippet: string } | undefined {
+  for (const [name, value] of Object.entries(headers)) {
+    const joined = Array.isArray(value) ? value.join(', ') : value;
+    const line = `${name}: ${joined}`;
+    const idx = line.toLowerCase().indexOf(q);
+    if (idx >= 0) return { where: 'header', snippet: snippetAround(line, idx, q.length) };
+  }
+  return undefined;
+}
+
+function searchBody(
+  body: Buffer | undefined,
+  headers: Record<string, string | string[]>,
+  q: string,
+  where: string,
+  contentType?: string,
+): { where: string; snippet: string } | undefined {
+  if (!body || body.length === 0) return undefined;
+  const ct = contentType ?? contentTypeOf(headers);
+  if (!isTextContentType(ct)) return undefined; // don't scan binary payloads
+  const text = body.toString('utf8');
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx < 0) return undefined;
+  return { where, snippet: snippetAround(text, idx, q.length) };
 }
 
 function decode(s: string): string {

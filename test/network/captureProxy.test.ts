@@ -270,6 +270,131 @@ describe('network/CaptureProxy', () => {
     expect(flow.error).to.contain('Client error before request could be parsed');
   });
 
+  it('map-local rule short-circuits the upstream and serves an injected body', async () => {
+    let upstreamHits = 0;
+    upstream = await startUpstream((_req, res) => {
+      upstreamHits++;
+      res.writeHead(200);
+      res.end('SHOULD NOT BE REACHED');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      mapLocal: [{ id: 'm', enabled: true, hostPattern: '127.0.0.1', pathPattern: '/mock', body: '{"mocked":true}', contentType: 'application/json', status: 201 }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, { path: '/mock' });
+    const flow = await flowP;
+
+    expect(upstreamHits).to.equal(0);
+    expect(res.status).to.equal(201);
+    expect(res.body).to.equal('{"mocked":true}');
+    expect(flow.servedBy).to.equal('map-local');
+  });
+
+  it('map-local reads a file through the injected fileReader', async () => {
+    proxy = new CaptureProxy({ port: 0, fileReader: (p) => Buffer.from(`file-contents-of:${p}`) });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      mapLocal: [{ id: 'm', enabled: true, hostPattern: 'x.test', filePath: '/fake/path.json', contentType: 'text/plain' }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, 'x.test', { path: '/' });
+    await flowP;
+    expect(res.body).to.equal('file-contents-of:/fake/path.json');
+  });
+
+  it('map-local file-read failure surfaces as a 502 error flow', async () => {
+    proxy = new CaptureProxy({
+      port: 0,
+      fileReader: () => { throw new Error('ENOENT'); },
+    });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      mapLocal: [{ id: 'm', enabled: true, hostPattern: 'x.test', filePath: '/missing' }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, 'x.test');
+    const flow = await flowP;
+    expect(res.status).to.equal(502);
+    expect(flow.error).to.contain('ENOENT');
+  });
+
+  it('latency rule delays the response via the injected sleep and records the injected ms', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+    const sleeps: number[] = [];
+    proxy = new CaptureProxy({ port: 0, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); } });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      latency: [{ id: 'l', enabled: true, hostPattern: '127.0.0.1', delayMs: 250 }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+    expect(sleeps).to.deep.equal([250]);
+    expect(flow.latencyInjectedMs).to.equal(250);
+  });
+
+  it('header rules add a request header upstream and set a response header the device sees', async () => {
+    let receivedAuth = '';
+    upstream = await startUpstream((req, res) => {
+      receivedAuth = String(req.headers['x-injected'] ?? '');
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      headerRules: [
+        { id: 'req', enabled: true, direction: 'request', op: 'set', name: 'x-injected', value: 'yes' },
+        { id: 'res', enabled: true, direction: 'response', op: 'set', name: 'x-added', value: 'seen' },
+      ],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+    expect(receivedAuth).to.equal('yes');
+    expect(res.headers['x-added']).to.equal('seen');
+    expect(flow.rewrittenHeaders).to.equal(true);
+  });
+
+  it('retains an image response body (capped) for preview', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.end(png);
+    });
+
+    proxy = new CaptureProxy({ port: 0, maxBodyBytes: 4 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+    expect(flow.responseBody).to.not.equal(undefined);
+    expect(flow.responseBody!.length).to.equal(4); // capped
+    expect(flow.responseBodyTruncated).to.equal(true);
+  });
+
   it('records a 502 flow when the upstream is unreachable', async () => {
     proxy = new CaptureProxy({ port: 0 });
     proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });

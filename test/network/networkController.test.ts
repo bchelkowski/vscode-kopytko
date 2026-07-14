@@ -356,6 +356,43 @@ describe('network/NetworkController', () => {
     expect(har.log.entries[0].timings).to.deep.equal({ send: 0, wait: 42, receive: 0 });
   });
 
+  it('search finds matches in url, headers, and text bodies but skips binary bodies', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({ id: 'byurl', host: 'search-me.test', path: '/find' }));
+    proxy.emit('flow', rec({ id: 'byheader', host: 'h.test', requestHeaders: { 'x-token': 'NEEDLE-42' } }));
+    proxy.emit('flow', rec({ id: 'bybody', host: 'b.test', contentType: 'application/json', responseBody: Buffer.from('{"k":"NEEDLE-42"}') }));
+    proxy.emit('flow', rec({ id: 'binary', host: 'i.test', contentType: 'image/png', responseBody: Buffer.from('NEEDLE-42-but-binary') }));
+
+    const urlHits = controller.search('search-me');
+    expect(urlHits.map((h) => h.id)).to.deep.equal(['byurl']);
+
+    const needleHits = controller.search('needle-42');
+    // header + text body match; binary body is skipped.
+    expect(needleHits.map((h) => h.id).sort()).to.deep.equal(['bybody', 'byheader']);
+    expect(needleHits.find((h) => h.id === 'byheader')?.where).to.equal('header');
+  });
+
+  it('search caps at 200 hits', async () => {
+    const { controller, proxy } = make({ config: makeConfig({ maxEntries: 500 }) });
+    await controller.enable();
+    for (let i = 0; i < 300; i++) proxy.emit('flow', rec({ id: `m${i}`, path: '/match' }));
+    expect(controller.search('match')).to.have.length(200);
+  });
+
+  it('HAR encodes a binary response body as base64', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    proxy.emit('flow', rec({ id: 'img', contentType: 'image/png', responseBody: png, responseBytes: png.length }));
+
+    type Content = { text: string; encoding?: string };
+    const har = controller.buildHar() as { log: { entries: Array<{ response: { content: Content } }> } };
+    const content = har.log.entries[0].response.content;
+    expect(content.encoding).to.equal('base64');
+    expect(content.text).to.equal(png.toString('base64'));
+  });
+
   it('disable() reverts redirect and stops the proxy', async () => {
     const { controller, proxy } = make({});
     await controller.enable();

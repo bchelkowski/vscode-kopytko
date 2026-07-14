@@ -308,6 +308,12 @@ extension, no setup required (see
 | Replay a captured request through the proxy (new flow tagged `replay`; confirmation for state-changing methods) | ✅ | [network-inspector.md](./network-inspector.md) |
 | Pause recording without tearing down the proxy/redirect (traffic keeps bridging) | ✅ | [network-inspector.md](./network-inspector.md) |
 | Timestamp column + status-class and method filter chips combining with the text filter | ✅ | [network-inspector.md](./network-inspector.md) |
+| Map-local rules — serve a local file/inline body instead of the upstream (flow tagged `local`) | ✅ | [network-inspector.md](./network-inspector.md) |
+| Latency-injection rules — delay matched responses by a chosen ms | ✅ | [network-inspector.md](./network-inspector.md) |
+| Header rules — add/set/remove request or response headers (proxy-owned headers protected) | ✅ | [network-inspector.md](./network-inspector.md) |
+| Binary/image response preview — inline image + hex dump; base64 in HAR | ✅ | [network-inspector.md](./network-inspector.md) |
+| Query-params and cookies detail sections (parsed Cookie / Set-Cookie) | ✅ | [network-inspector.md](./network-inspector.md) |
+| Search across all captured flows (URL, headers, text bodies) with jump-to-flow | ✅ | [network-inspector.md](./network-inspector.md) |
 | Incremental, frame-batched request list — live flows append targeted DOM rows instead of rebuilding the list; debounced filter; selection survives tab hide/restore | ✅ | [network-inspector.md](./network-inspector.md) |
 | Bounded memory — entry cap (`maxEntries`) plus byte budget (`maxBufferBytes`), enforced host- and webview-side | ✅ | [network-inspector.md](./network-inspector.md) |
 | Upstream connection pooling (keep-alive) — no per-request TCP/TLS handshake to origins; device side still closes per request; `upstreamKeepAlive` off-switch | ✅ | [network-inspector.md](./network-inspector.md) |

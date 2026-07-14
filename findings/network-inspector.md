@@ -731,6 +731,62 @@ Verified in the browser harness: timestamp column, replay tag, chip
 combinations, all four copy/replay postMessages, pause button
 visibility/relabel and the paused dot state.
 
+## Advanced extras: map-local, latency, header rules, binary preview, search (2026-07-14)
+
+Phase D of the upgrade plan. Notes:
+
+- **RuleSet grew three optional arrays** (`mapLocal`, `latency`,
+  `headerRules`) — optional specifically so every pre-existing persisted
+  config, webview `state.rules` literal, and `set-rules` payload stays valid.
+  `ruleSetFromConfig` gained three optional trailing params; all existing
+  3-arg call sites compile unchanged. Coercers drop malformed entries
+  (map-local with neither file nor body; latency with `delayMs <= 0`; header
+  rule with no name).
+- **Header rules run at two points, ordering matters.** Request-direction
+  rules apply after `buildUpstreamHeaders`; response-direction rules apply
+  after `rewriteResponseHeaders` but **before** the proxy sets
+  content-length/connection — so the bridge's own normalizations always win.
+  `applyHeaderRules` refuses the reserved set
+  (`content-length`/`transfer-encoding`/`connection`/`host`) outright; a rule
+  targeting one is silently a no-op rather than corrupting the bridge.
+- **Map-local short-circuits in `handleRequest`** after body collection,
+  before `forward()` — new `serveMapLocal` writes the file/inline body with
+  its own headers and emits a flow tagged `servedBy: 'map-local'`. `fileReader`
+  is injectable (default `fs.readFileSync`; this is the first `fs` use in
+  `captureProxy.ts`). A read failure routes to `finishError` → visible 502
+  flow, never a silent drop.
+- **Latency is injected on the device-facing write, not the flow's phase
+  timings.** `findLatencyMs` → `await sleep(ms)` (injectable, default
+  `setTimeout`) right before `sink.writeHead`; recorded as
+  `latencyInjectedMs` so it reads as deliberate, separate from measured
+  `waitMs`. This is why the `end` handler became async (`finishUpstream`).
+- **Binary retention is image-only.** `captureProxy` retains a response body
+  when `isTextContentType || isImageContentType`; other binary types stay
+  dropped (unchanged). `toFlowDetail` base64-encodes non-text retained bodies
+  and sets `responseBodyEncoding`. Webview swaps the Raw/Formatted/Tree tabs
+  for Preview/Hex when `responseBodyEncoding === 'base64'`: `<img src="data:
+  …;base64,…">` (CSP already allows `img-src data:`) or a 16-byte-row hex
+  dump via `atob`, capped at 64 KB decoded. HAR writes `{text: base64,
+  encoding: 'base64'}` (spec-compliant).
+- **Search is host-side and on-demand** (`NetworkController.search`) — no
+  index, scans newest-first over URL, headers, and *text* bodies (binary
+  skipped), caps at 200 hits with a ±40-char snippet. The webview search
+  overlay is separate from the list filter: filter narrows the visible list,
+  search finds across the whole buffer and jumps (expanding the origin +
+  `scrollIntoView`). Distinct from the per-body find (that's within one open
+  body section).
+- **Query/cookies detail sections are pure webview** — parsed from
+  `f.query` and the `cookie`/`set-cookie` headers already on the
+  SerializedFlow, no protocol change, rendered only when non-empty.
+
+Verified in the browser harness: 1×1 PNG renders as an inline image and its
+hex dump shows the PNG magic bytes; overview shows served-locally +
+latency-injected notes; query/cookies sections parse and count correctly;
+`local`/`hdr` row tags appear; the search overlay posts a `search` message,
+renders hits, and a hit click selects + scrolls to the flow; and all three
+new rule types add, fill, and round-trip through Apply into the `set-rules`
+payload.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

@@ -187,6 +187,17 @@ seedable from settings.
   The built-in `https://`→`http://` response rule is enabled by default.
 - **Upstream scheme** — a global default (`https`) plus per-host overrides
   (`https`/`http`/`auto`, where `auto` tries HTTPS then falls back to HTTP).
+- **Map local** (`mapLocalRules`) — when a rule's `hostPattern` + `pathPattern`
+  match, the proxy serves a local `filePath` (or inline `body`) with a chosen
+  `contentType`/`status` and never contacts the upstream. The flow is tagged
+  `local`.
+- **Latency** (`latencyRules`) — delay matched responses by `delayMs` before
+  they reach the device, to simulate a slow backend. The injected delay is
+  recorded separately from the measured network phases.
+- **Header rules** (`headerRules`) — `set`/`add`/`remove` a named request- or
+  response-direction header for matched hosts. The proxy-owned headers
+  (`content-length`, `transfer-encoding`, `connection`, `host`) are protected
+  and can't be changed. Affected flows are tagged `hdr`.
 
 Because the proxy edits bodies, it also handles the mechanics that keeps the
 bridge intact: it decodes gzip/deflate/br before rewriting, recomputes
@@ -230,9 +241,21 @@ anything other than GET/HEAD/OPTIONS asks for confirmation first, since it
 repeats a state-changing request. Each body section also has a **Copy**
 button for the raw body text.
 
+A toolbar **Search** button opens an overlay that scans *every* buffered
+request (URL, headers, and text bodies — binary bodies are skipped) and lists
+matches with a snippet; clicking a result jumps to that flow, expanding its
+origin and scrolling it into view. This is distinct from the toolbar filter,
+which only narrows the visible list by host/path/method/status.
+
 Selecting a request opens a detail pane: an always-visible overview, a
-**Timing** section, then four independently collapsible sections — **request
-headers**, **request body**, **response headers**, **response body**.
+**Timing** section, an optional **Query parameters** section (parsed query
+string), then the request headers, an optional **Cookies** section (parsed
+request `Cookie` and response `Set-Cookie`), and the request/response bodies —
+each independently collapsible.
+
+Response bodies for `image/*` are retained and shown with **Preview** (inline
+image) and **Hex** tabs instead of Raw/Formatted/Tree; other binary content
+types are not retained. Text bodies keep the Raw/Formatted/Tree tabs.
 
 The Timing section breaks the request into phases measured at the proxy —
 blocked (receiving the device's request body), DNS, connect, TLS, send, wait
@@ -287,4 +310,7 @@ there's nothing to compare.
 | `kopytko.network.defaultUpstreamScheme` | `"https"` | Scheme used to reach origins the app called over HTTP |
 | `kopytko.network.rewriteRules` | `[]` | Seed body-rewrite rules (empty = built-in https→http) |
 | `kopytko.network.upstreamSchemes` | `[]` | Per-host upstream scheme overrides |
+| `kopytko.network.mapLocalRules` | `[]` | Serve a local file/inline body instead of the upstream on host/path match |
+| `kopytko.network.latencyRules` | `[]` | Delay matched responses by `delayMs` |
+| `kopytko.network.headerRules` | `[]` | Add/set/remove request or response headers for matched hosts |
 | `kopytko.network.winDivertDir` | `""` | Windows only, usually unnecessary (a working WinDivert is bundled). Override folder with `WinDivert.dll`/`WinDivert64.sys` — machine-scoped, can't be set via workspace settings |

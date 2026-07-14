@@ -123,6 +123,9 @@ export class NetworkEditorPanel {
       case 'replay-flow':
         void this._handleReplay(msg.id);
         break;
+      case 'search':
+        this._post({ kind: 'search-results', query: msg.query, hits: this.controller.search(msg.query) });
+        break;
       case 'set-rules':
         this.controller.setRules(msg.rules as RuleSet);
         break;

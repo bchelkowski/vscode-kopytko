@@ -10,6 +10,9 @@ import type {
   ExtMsg,
   FlowDetail,
   FlowTimings,
+  HeaderRule,
+  LatencyRule,
+  MapLocalRule,
   RuleSet,
   SerializedFlow,
   UpstreamScheme,
@@ -71,9 +74,17 @@ function buildDom(): void {
   <span id="redirect-badge" class="badge"></span>
   <span class="spacer"></span>
   <input id="filter" type="text" placeholder="Filter host / path / method">
+  <button id="btn-search" class="secondary" title="Search across all captured requests (URL, headers, text bodies)">Search</button>
   <button id="btn-rules" class="secondary">Rules</button>
   <button id="btn-clear" class="secondary">Clear</button>
   <button id="btn-export" class="secondary">Export HAR</button>
+</div>
+<div id="search-panel" style="display:none">
+  <div class="search-inner">
+    <input id="search-input" type="text" placeholder="Search URL, headers, and text bodies — Enter to run">
+    <button id="search-close" class="secondary">Close</button>
+    <div id="search-results"></div>
+  </div>
 </div>
 <div id="chip-bar">
   <span class="chip-group" id="status-chips">
@@ -306,14 +317,16 @@ function rowHtml(f: SerializedFlow): string {
   const statusClass = f.error ? 'err' : f.status >= 400 ? 'warn' : f.status >= 300 ? 'redir' : 'ok';
   const statusText = f.error ? 'ERR' : String(f.status || '—');
   const rw = f.rewrittenBody ? '<span class="tag" title="Response body rewritten">rw</span>' : '';
+  const hdr = f.rewrittenHeaders ? '<span class="tag" title="Headers changed by a rule">hdr</span>' : '';
   const up = f.upstreamScheme === 'https' ? '<span class="tag https" title="Bridged to HTTPS upstream">TLS</span>' : '';
   const rp = f.replayed ? '<span class="tag replay" title="User-initiated replay, not device traffic">replay</span>' : '';
+  const local = f.servedBy === 'map-local' ? '<span class="tag local" title="Served from a map-local rule">local</span>' : '';
   return `<div class="row${sel}" data-id="${f.id}">
     <span class="time">${fmtTime(f.startedWall)}</span>
     <span class="method ${f.method.toLowerCase()}">${esc(f.method)}</span>
     <span class="status ${statusClass}">${statusText}</span>
     <span class="path" title="${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}">${esc(f.path)}</span>
-    ${up}${rw}${rp}
+    ${up}${rw}${hdr}${rp}${local}
     <span class="dur">${f.durationMs}ms</span>
     <span class="size">${fmtBytes(f.responseBytes)}</span>
   </div>`;
@@ -330,11 +343,14 @@ function renderDetail(): void {
   if (!f) return;
   const d = state.details.get(id);
 
+  const servedNote = f.servedBy === 'map-local' ? ' · served locally' : '';
+  const latencyNote = f.latencyInjectedMs ? ` · +${f.latencyInjectedMs} ms injected` : '';
+  const upstreamExtras = `${f.rewrittenBody ? ' · body rewritten' : ''}${f.rewrittenHeaders ? ' · headers rewritten' : ''}${servedNote}${latencyNote}`;
   const overview = `<table class="kv">
-    <tr><td>URL</td><td>http://${esc(originKey(f))}${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}</td></tr>
+    <tr><td>URL</td><td>${esc(f.upstreamScheme)}://${esc(originKey(f))}${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}</td></tr>
     <tr><td>Method</td><td>${esc(f.method)}</td></tr>
     <tr><td>Status</td><td>${f.error ? esc(f.error) : `${f.status} ${esc(f.statusText)}`}</td></tr>
-    <tr><td>Upstream</td><td>${f.upstreamScheme.toUpperCase()}${f.rewrittenBody ? ' · body rewritten' : ''}</td></tr>
+    <tr><td>Upstream</td><td>${f.upstreamScheme.toUpperCase()}${upstreamExtras}</td></tr>
     <tr><td>Duration</td><td>${f.durationMs} ms</td></tr>
     <tr><td>Size</td><td>req ${fmtBytes(f.requestBytes)} · resp ${fmtBytes(f.responseBytes)}</td></tr>
     <tr><td>Client</td><td>${esc(f.clientIp)}</td></tr>
@@ -346,13 +362,16 @@ function renderDetail(): void {
     <button class="secondary" data-replay title="Re-send this request through the proxy as a new flow">Replay</button>
   </div>`;
 
+  const responseIsBinary = d?.responseBodyEncoding === 'base64';
   const parts = [
     section('Overview', actions + overview),
     timingSection(f),
+    querySection(f.query),
     headersSection('Request headers', f.requestHeaders),
-    bodySectionShell('request', 'Request body', f.requestBytes, !!d?.requestBody, !!d?.originalRequestBody),
+    cookiesSection(f),
+    bodySectionShell('request', 'Request body', f.requestBytes, !!d?.requestBody, !!d?.originalRequestBody, false),
     headersSection('Response headers', f.responseHeaders),
-    bodySectionShell('response', 'Response body', f.responseBytes, !!d?.responseBody, !!d?.originalResponseBody),
+    bodySectionShell('response', 'Response body', f.responseBytes, !!d?.responseBody, !!d?.originalResponseBody, responseIsBinary),
   ];
   el.innerHTML = parts.join('');
 
@@ -360,9 +379,65 @@ function renderDetail(): void {
   // actually opened — never eagerly for a section the user hasn't looked at.
   el.querySelectorAll<HTMLDetailsElement>('.body-section').forEach((details) => {
     details.addEventListener('toggle', () => {
-      if (details.open) ensureBodyContent(details, d);
+      if (details.open) ensureBodyContent(details, d, f);
     });
   });
+}
+
+/** Parsed query-string section — one row per parameter. Hidden when empty. */
+function querySection(query: string): string {
+  if (!query) return '';
+  const rows = query
+    .split('&')
+    .filter(Boolean)
+    .map((pair) => {
+      const eq = pair.indexOf('=');
+      const name = eq >= 0 ? pair.slice(0, eq) : pair;
+      const value = eq >= 0 ? pair.slice(eq + 1) : '';
+      return `<tr><td>${esc(decodeParam(name))}</td><td>${esc(decodeParam(value))}</td></tr>`;
+    })
+    .join('');
+  return `<details class="dsec">
+    <summary>Query parameters<span class="count">${query.split('&').filter(Boolean).length}</span></summary>
+    <div class="section-body"><table class="kv">${rows}</table></div>
+  </details>`;
+}
+
+/** Request Cookie header + response Set-Cookie, parsed into rows. Hidden when neither is present. */
+function cookiesSection(f: SerializedFlow): string {
+  const reqCookie = f.requestHeaders['cookie'];
+  const reqCookieStr = Array.isArray(reqCookie) ? reqCookie.join('; ') : reqCookie ?? '';
+  const reqRows = reqCookieStr
+    .split(';')
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => {
+      const eq = c.indexOf('=');
+      const name = eq >= 0 ? c.slice(0, eq) : c;
+      const value = eq >= 0 ? c.slice(eq + 1) : '';
+      return `<tr><td>${esc(name)}</td><td>${esc(value)}</td></tr>`;
+    })
+    .join('');
+
+  const setCookie = f.responseHeaders['set-cookie'];
+  const setCookies = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
+  const respRows = setCookies.map((c) => `<tr><td colspan="2">${esc(c)}</td></tr>`).join('');
+
+  if (!reqRows && !respRows) return '';
+  const reqTable = reqRows ? `<div class="hint">Request cookies</div><table class="kv">${reqRows}</table>` : '';
+  const respTable = respRows ? `<div class="hint">Set-Cookie</div><table class="kv">${respRows}</table>` : '';
+  return `<details class="dsec">
+    <summary>Cookies<span class="count">${(reqRows ? reqCookieStr.split(';').filter(Boolean).length : 0) + setCookies.length}</span></summary>
+    <div class="section-body">${reqTable}${respTable}</div>
+  </details>`;
+}
+
+function decodeParam(s: string): string {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, ' '));
+  } catch {
+    return s;
+  }
 }
 
 function section(title: string, inner: string): string {
@@ -435,16 +510,21 @@ function bodySectionShell(
   byteSize: number,
   hasBody: boolean,
   hasOriginal: boolean,
+  binary: boolean,
 ): string {
   if (!hasBody) return '';
-  return `<details class="dsec body-section" data-kind="${kind}">
+  // Binary bodies (images) get Preview/Hex instead of Raw/Formatted/Tree, and
+  // no rewritten toggle (binary is never rewritten).
+  const tabs = binary
+    ? `<button type="button" class="tab active" data-tab="preview">Preview</button>
+       <button type="button" class="tab" data-tab="hex">Hex</button>`
+    : `<button type="button" class="tab active" data-tab="raw">Raw</button>
+       <button type="button" class="tab" data-tab="formatted">Formatted</button>
+       <button type="button" class="tab" data-tab="tree">Tree</button>`;
+  return `<details class="dsec body-section" data-kind="${kind}"${binary ? ' data-binary="1"' : ''}>
     <summary>${esc(title)}<span class="count">${fmtBytes(byteSize)}</span></summary>
     <div class="body-toolbar">
-      <div class="tabs">
-        <button type="button" class="tab active" data-tab="raw">Raw</button>
-        <button type="button" class="tab" data-tab="formatted">Formatted</button>
-        <button type="button" class="tab" data-tab="tree">Tree</button>
-      </div>
+      <div class="tabs">${tabs}</div>
       <div class="find-group">
         <input type="text" class="find-input" data-find-input placeholder="Find">
         <span class="find-count" data-find-count></span>
@@ -458,22 +538,28 @@ function bodySectionShell(
   </details>`;
 }
 
-function ensureBodyContent(details: HTMLDetailsElement, d: FlowDetail | undefined): void {
+function ensureBodyContent(details: HTMLDetailsElement, d: FlowDetail | undefined, f: SerializedFlow | undefined): void {
   const content = details.querySelector<HTMLElement>('.body-content');
   if (!content || content.dataset.rendered === '1') return;
   content.dataset.rendered = '1';
-  renderBodyTab(details, d);
+  renderBodyTab(details, d, f);
 }
 
 /** Computes exactly one (tab × original-vs-rewritten) view — the one currently selected — never all of them. */
-function renderBodyTab(details: HTMLDetailsElement, d: FlowDetail | undefined): void {
+function renderBodyTab(details: HTMLDetailsElement, d: FlowDetail | undefined, f: SerializedFlow | undefined): void {
   const content = details.querySelector<HTMLElement>('.body-content');
   if (!content) return;
 
   const kind = details.dataset.kind;
   const tab = details.querySelector<HTMLElement>('.tab.active')?.dataset.tab ?? 'raw';
-  const showRewritten = details.querySelector<HTMLInputElement>('[data-rewritten-toggle]')?.checked ?? false;
 
+  // Binary response body — Preview (image) or Hex, from the base64 payload.
+  if (details.dataset.binary === '1' && kind === 'response') {
+    content.innerHTML = binaryBodyView(d?.responseBody ?? '', tab, f?.contentType ?? '', d?.responseBodyTruncated);
+    return;
+  }
+
+  const showRewritten = details.querySelector<HTMLInputElement>('[data-rewritten-toggle]')?.checked ?? false;
   const original = kind === 'request' ? d?.originalRequestBody : d?.originalResponseBody;
   const current = kind === 'request' ? d?.requestBody : d?.responseBody;
   const truncated = kind === 'request' ? d?.requestBodyTruncated : d?.responseBodyTruncated;
@@ -487,6 +573,46 @@ function renderBodyTab(details: HTMLDetailsElement, d: FlowDetail | undefined): 
   // against the freshly rendered content instead of losing it.
   const query = details.dataset.findQuery ?? '';
   if (query) runFind(details, query);
+}
+
+/** Renders a base64 binary body as an inline image (Preview) or a hex dump (Hex). */
+function binaryBodyView(base64: string, tab: string, contentType: string, truncated?: boolean): string {
+  const truncNote = truncated ? '<div class="hint">Truncated for display — the full body was still forwarded to the device.</div>' : '';
+  if (tab === 'preview') {
+    if (contentType.toLowerCase().startsWith('image/') && base64) {
+      return `${truncNote}<img class="body-img" src="data:${esc(contentType)};base64,${base64}" alt="response preview">`;
+    }
+    return `${truncNote}<div class="hint">No inline preview for this content type — switch to Hex.</div>`;
+  }
+  // Hex
+  const bytes = base64ToBytes(base64);
+  if (bytes.length === 0) return `${truncNote}<div class="hint">Empty body.</div>`;
+  if (bytes.length > 64 * 1024) {
+    return `${truncNote}<div class="hint">Body is ${fmtBytes(bytes.length)} — too large to hex-dump inline.</div>`;
+  }
+  return truncNote + `<pre class="body">${esc(hexDump(bytes))}</pre>`;
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  try {
+    const bin = atob(base64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return new Uint8Array(0);
+  }
+}
+
+function hexDump(bytes: Uint8Array): string {
+  const lines: string[] = [];
+  for (let off = 0; off < bytes.length; off += 16) {
+    const slice = bytes.subarray(off, off + 16);
+    const hex = Array.from(slice, (b) => b.toString(16).padStart(2, '0')).join(' ').padEnd(47, ' ');
+    const ascii = Array.from(slice, (b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '.')).join('');
+    lines.push(`${off.toString(16).padStart(8, '0')}  ${hex}  ${ascii}`);
+  }
+  return lines.join('\n');
 }
 
 function bodyView(text: string, tab: string, truncated?: boolean): string {
@@ -733,6 +859,52 @@ function renderRules(): void {
     )
     .join('');
 
+  const mapLocalRows = (r.mapLocal ?? [])
+    .map(
+      (rule, i) => `<div class="maplocal" data-i="${i}">
+      <input type="checkbox" data-f="enabled" ${rule.enabled ? 'checked' : ''} title="Enabled">
+      <input type="text" data-f="hostPattern" placeholder="host" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="pathPattern" placeholder="path (blank = all)" value="${esc(rule.pathPattern ?? '')}">
+      <input type="number" data-f="status" placeholder="200" value="${rule.status ?? ''}" title="Status" style="width:56px">
+      <input type="text" data-f="contentType" placeholder="content-type" value="${esc(rule.contentType ?? '')}">
+      <input type="text" data-f="filePath" placeholder="file path (wins over body)" value="${esc(rule.filePath ?? '')}">
+      <input type="text" data-f="body" placeholder="inline body" value="${esc(rule.body ?? '')}">
+      <button class="link del-maplocal" data-i="${i}">✕</button>
+    </div>`,
+    )
+    .join('');
+
+  const latencyRows = (r.latency ?? [])
+    .map(
+      (rule, i) => `<div class="latency" data-i="${i}">
+      <input type="checkbox" data-f="enabled" ${rule.enabled ? 'checked' : ''} title="Enabled">
+      <input type="text" data-f="hostPattern" placeholder="host" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="pathPattern" placeholder="path (blank = all)" value="${esc(rule.pathPattern ?? '')}">
+      <input type="number" data-f="delayMs" placeholder="ms" value="${rule.delayMs ?? ''}" style="width:80px">
+      <button class="link del-latency" data-i="${i}">✕</button>
+    </div>`,
+    )
+    .join('');
+
+  const headerRows = (r.headerRules ?? [])
+    .map(
+      (rule, i) => `<div class="headerrule" data-i="${i}">
+      <input type="checkbox" data-f="enabled" ${rule.enabled ? 'checked' : ''} title="Enabled">
+      <select data-f="direction">
+        <option value="response" ${rule.direction === 'response' ? 'selected' : ''}>response</option>
+        <option value="request" ${rule.direction === 'request' ? 'selected' : ''}>request</option>
+      </select>
+      <input type="text" data-f="hostPattern" placeholder="host (blank = all)" value="${esc(rule.hostPattern ?? '')}">
+      <select data-f="op">
+        ${['set', 'add', 'remove'].map((o) => `<option value="${o}" ${rule.op === o ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>
+      <input type="text" data-f="name" placeholder="header name" value="${esc(rule.name ?? '')}">
+      <input type="text" data-f="value" placeholder="value" value="${esc(rule.value ?? '')}" ${rule.op === 'remove' ? 'disabled' : ''}>
+      <button class="link del-header" data-i="${i}">✕</button>
+    </div>`,
+    )
+    .join('');
+
   panel.innerHTML = `
   <div class="rules-inner">
     <h3>Body rewrite rules</h3>
@@ -749,6 +921,18 @@ function renderRules(): void {
     </label>
     <div id="scheme-rules">${schemeRows}</div>
     <button class="link" id="add-scheme">+ add host override</button>
+
+    <h3>Map local <span class="rules-hint">serve a file or inline body instead of the upstream</span></h3>
+    <div id="maplocal-rules">${mapLocalRows}</div>
+    <button class="link" id="add-maplocal">+ add map-local rule</button>
+
+    <h3>Latency <span class="rules-hint">delay matched responses</span></h3>
+    <div id="latency-rules">${latencyRows}</div>
+    <button class="link" id="add-latency">+ add latency rule</button>
+
+    <h3>Header rules <span class="rules-hint">add / set / remove request or response headers</span></h3>
+    <div id="header-rules">${headerRows}</div>
+    <button class="link" id="add-header">+ add header rule</button>
 
     <div class="rules-actions">
       <button id="apply-rules">Apply rules</button>
@@ -781,14 +965,97 @@ function collectRulesFromDom(): RuleSet {
     if (host) upstreamSchemes.push({ hostPattern: host, scheme });
   });
 
+  const mapLocal: MapLocalRule[] = [];
+  document.querySelectorAll('#maplocal-rules .maplocal').forEach((row) => {
+    const get = (f: string) => row.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+    const existing = state.rules.mapLocal?.[Number((row as HTMLElement).dataset.i)];
+    const statusVal = get('status')?.value;
+    mapLocal.push({
+      id: existing?.id ?? `maplocal-${Date.now()}-${mapLocal.length}`,
+      enabled: !!get('enabled')?.checked,
+      hostPattern: get('hostPattern')?.value ?? '',
+      pathPattern: get('pathPattern')?.value || undefined,
+      filePath: get('filePath')?.value || undefined,
+      body: get('body')?.value || undefined,
+      contentType: get('contentType')?.value || undefined,
+      status: statusVal ? Number(statusVal) : undefined,
+    });
+  });
+
+  const latency: LatencyRule[] = [];
+  document.querySelectorAll('#latency-rules .latency').forEach((row) => {
+    const get = (f: string) => row.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+    const existing = state.rules.latency?.[Number((row as HTMLElement).dataset.i)];
+    latency.push({
+      id: existing?.id ?? `latency-${Date.now()}-${latency.length}`,
+      enabled: !!get('enabled')?.checked,
+      hostPattern: get('hostPattern')?.value ?? '',
+      pathPattern: get('pathPattern')?.value || undefined,
+      delayMs: Number(get('delayMs')?.value ?? 0),
+    });
+  });
+
+  const headerRules: HeaderRule[] = [];
+  document.querySelectorAll('#header-rules .headerrule').forEach((row) => {
+    const get = (f: string) => row.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+    const existing = state.rules.headerRules?.[Number((row as HTMLElement).dataset.i)];
+    headerRules.push({
+      id: existing?.id ?? `header-${Date.now()}-${headerRules.length}`,
+      enabled: !!get('enabled')?.checked,
+      direction: (get('direction')?.value as 'request' | 'response') ?? 'response',
+      hostPattern: get('hostPattern')?.value || undefined,
+      op: (get('op')?.value as 'set' | 'add' | 'remove') ?? 'set',
+      name: get('name')?.value ?? '',
+      value: get('value')?.value || undefined,
+    });
+  });
+
   const def = (byId('default-scheme') as HTMLSelectElement).value as UpstreamScheme;
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules };
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function byId(id: string): HTMLElement {
   return document.getElementById(id) as HTMLElement;
+}
+
+function selectedDetail(): FlowDetail | undefined {
+  return state.selectedId ? state.details.get(state.selectedId) : undefined;
+}
+
+function selectedFlow(): SerializedFlow | undefined {
+  return state.selectedId ? state.byId.get(state.selectedId) : undefined;
+}
+
+/** Selects a flow from a search hit: expand its origin, scroll the row into view, load detail. */
+function jumpToFlow(id: string): void {
+  const f = state.byId.get(id);
+  if (!f) return;
+  state.collapsed.delete(originKey(f)); // ensure the group is expanded
+  state.selectedId = id;
+  if (!state.details.has(id)) vscode.postMessage({ kind: 'select-flow', id });
+  renderTree();
+  renderDetail();
+  byId('tree').querySelector<HTMLElement>(`.row[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
+}
+
+function renderSearchResults(query: string, hits: Array<{ id: string; where: string; snippet: string }>): void {
+  const el = byId('search-results');
+  if (hits.length === 0) {
+    el.innerHTML = `<div class="hint">No matches for “${esc(query)}”.</div>`;
+    return;
+  }
+  el.innerHTML = hits
+    .map((h) => {
+      const f = state.byId.get(h.id);
+      const label = f ? `${esc(f.method)} ${esc(f.host)}${esc(f.path)}` : esc(h.id);
+      return `<div class="search-hit" data-id="${esc(h.id)}">
+        <div class="search-hit-head"><span class="search-where">${esc(h.where)}</span> ${label}</div>
+        <div class="search-snippet">${esc(h.snippet)}</div>
+      </div>`;
+    })
+    .join('');
 }
 
 function fmtBytes(n: number): string {
@@ -819,6 +1086,26 @@ function wireEvents(): void {
   byId('btn-export').addEventListener('click', () => vscode.postMessage({ kind: 'export-har' }));
   byId('btn-pause').addEventListener('click', () => {
     vscode.postMessage({ kind: 'set-paused', paused: !state.view.paused });
+  });
+
+  byId('btn-search').addEventListener('click', () => {
+    const panel = byId('search-panel');
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    if (!open) (byId('search-input') as HTMLInputElement).focus();
+  });
+  byId('search-close').addEventListener('click', () => {
+    byId('search-panel').style.display = 'none';
+  });
+  byId('search-input').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const q = (e.target as HTMLInputElement).value.trim();
+    if (q) vscode.postMessage({ kind: 'search', query: q });
+  });
+  byId('search-results').addEventListener('click', (e) => {
+    const hit = (e.target as HTMLElement).closest<HTMLElement>('.search-hit');
+    if (!hit) return;
+    jumpToFlow(hit.dataset.id!);
   });
 
   byId('chip-bar').addEventListener('click', (e) => {
@@ -895,7 +1182,7 @@ function wireEvents(): void {
       if (!details) return;
       details.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
       tabBtn.classList.add('active');
-      renderBodyTab(details, state.selectedId ? state.details.get(state.selectedId) : undefined);
+      renderBodyTab(details, selectedDetail(), selectedFlow());
       return;
     }
 
@@ -912,7 +1199,7 @@ function wireEvents(): void {
     if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-rewritten-toggle')) return;
     const details = input.closest<HTMLDetailsElement>('.body-section');
     if (!details) return;
-    renderBodyTab(details, state.selectedId ? state.details.get(state.selectedId) : undefined);
+    renderBodyTab(details, selectedDetail(), selectedFlow());
   });
 
   byId('detail').addEventListener('input', (e) => {
@@ -950,6 +1237,18 @@ function wireEvents(): void {
       state.rules = collectRulesFromDom();
       state.rules.upstreamSchemes.push({ hostPattern: '', scheme: 'https' });
       renderRules();
+    } else if (t.id === 'add-maplocal') {
+      state.rules = collectRulesFromDom();
+      (state.rules.mapLocal ??= []).push({ id: `maplocal-${Date.now()}`, enabled: true, hostPattern: '', body: '' });
+      renderRules();
+    } else if (t.id === 'add-latency') {
+      state.rules = collectRulesFromDom();
+      (state.rules.latency ??= []).push({ id: `latency-${Date.now()}`, enabled: true, hostPattern: '', delayMs: 500 });
+      renderRules();
+    } else if (t.id === 'add-header') {
+      state.rules = collectRulesFromDom();
+      (state.rules.headerRules ??= []).push({ id: `header-${Date.now()}`, enabled: true, direction: 'response', op: 'set', name: '' });
+      renderRules();
     } else if (t.classList.contains('del-body')) {
       state.rules = collectRulesFromDom();
       state.rules.bodyRules.splice(Number(t.dataset.i), 1);
@@ -957,6 +1256,18 @@ function wireEvents(): void {
     } else if (t.classList.contains('del-scheme')) {
       state.rules = collectRulesFromDom();
       state.rules.upstreamSchemes.splice(Number(t.dataset.i), 1);
+      renderRules();
+    } else if (t.classList.contains('del-maplocal')) {
+      state.rules = collectRulesFromDom();
+      state.rules.mapLocal?.splice(Number(t.dataset.i), 1);
+      renderRules();
+    } else if (t.classList.contains('del-latency')) {
+      state.rules = collectRulesFromDom();
+      state.rules.latency?.splice(Number(t.dataset.i), 1);
+      renderRules();
+    } else if (t.classList.contains('del-header')) {
+      state.rules = collectRulesFromDom();
+      state.rules.headerRules?.splice(Number(t.dataset.i), 1);
       renderRules();
     }
   });
@@ -1049,6 +1360,9 @@ window.addEventListener('message', (ev) => {
     case 'rules':
       state.rules = msg.rules;
       if (state.rulesOpen) renderRules();
+      break;
+    case 'search-results':
+      renderSearchResults(msg.query, msg.hits);
       break;
     case 'cleared':
       state.flows = [];

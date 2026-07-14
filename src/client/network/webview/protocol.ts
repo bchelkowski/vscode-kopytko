@@ -8,12 +8,15 @@
 
 import type {
   BodyRewriteRule,
+  HeaderRule,
+  LatencyRule,
+  MapLocalRule,
   RuleSet,
   UpstreamScheme,
   UpstreamSchemeRule,
 } from '../capture/rewrite/rules';
 
-export type { BodyRewriteRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
+export type { BodyRewriteRule, HeaderRule, LatencyRule, MapLocalRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
 
 /** Whether the automatic OS traffic redirect is applied. */
 export type RedirectStatus = 'off' | 'applying' | 'on' | 'unsupported' | 'error';
@@ -52,6 +55,13 @@ export interface FlowTimings {
   socketReused?: boolean;
 }
 
+/** A cross-flow search hit — which flow, where the match was, and a short snippet. */
+export interface SearchHit {
+  id: string;
+  where: string;
+  snippet: string;
+}
+
 /** One captured HTTP exchange — list-row metadata + headers (bodies load lazily). */
 export interface SerializedFlow {
   id: string;
@@ -71,6 +81,12 @@ export interface SerializedFlow {
   /** Scheme the proxy used to reach the origin (`https` bridge, or `http`). */
   upstreamScheme: 'https' | 'http';
   rewrittenBody: boolean;
+  /** A header rule changed request and/or response headers. */
+  rewrittenHeaders?: boolean;
+  /** `map-local` when the response was served from a rule instead of the upstream. */
+  servedBy?: 'upstream' | 'map-local';
+  /** Milliseconds of artificial latency injected by a rule. */
+  latencyInjectedMs?: number;
   requestHeaders: Record<string, string | string[]>;
   responseHeaders: Record<string, string | string[]>;
   timings?: FlowTimings;
@@ -84,6 +100,8 @@ export interface FlowDetail {
   id: string;
   requestBody?: string;
   responseBody?: string;
+  /** How `responseBody` is encoded — `base64` for retained binary (images). */
+  responseBodyEncoding?: 'utf8' | 'base64';
   /** Present only when a rewrite changed the request body. */
   originalRequestBody?: string;
   /** Present only when a rewrite changed the response body. */
@@ -101,6 +119,7 @@ export type ExtMsg =
   | { kind: 'flow-detail'; detail: FlowDetail }
   | { kind: 'state'; state: WebviewState }
   | { kind: 'rules'; rules: RuleSet }
+  | { kind: 'search-results'; query: string; hits: SearchHit[] }
   | { kind: 'cleared' }
   | { kind: 'error'; message: string };
 
@@ -114,4 +133,5 @@ export type WebMsg =
   | { kind: 'select-flow'; id: string }
   | { kind: 'copy-flow'; id: string; what: 'url' | 'curl' | 'request-body' | 'response-body' }
   | { kind: 'replay-flow'; id: string }
+  | { kind: 'search'; query: string }
   | { kind: 'set-rules'; rules: RuleSet };
