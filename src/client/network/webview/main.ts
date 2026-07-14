@@ -34,6 +34,8 @@ const state: {
   selectedId: string | null;
   collapsed: Set<string>;
   filter: string;
+  statusChips: Set<string>;
+  methodChips: Set<string>;
   maxEntries: number;
   rules: RuleSet;
   view: WebviewState;
@@ -45,9 +47,11 @@ const state: {
   selectedId: null,
   collapsed: new Set(),
   filter: '',
+  statusChips: new Set(),
+  methodChips: new Set(),
   maxEntries: 5000,
   rules: { bodyRules: [], upstreamSchemes: [], defaultUpstreamScheme: 'https' },
-  view: { enabled: false, redirectStatus: 'off', proxyPort: 8888 },
+  view: { enabled: false, paused: false, redirectStatus: 'off', proxyPort: 8888 },
   rulesOpen: false,
 };
 
@@ -61,6 +65,7 @@ function buildDom(): void {
     <span class="slider"></span>
     <span id="toggle-label">Capture off</span>
   </label>
+  <button id="btn-pause" class="secondary" style="display:none" title="Pause recording — traffic keeps flowing through the proxy">⏸ Pause</button>
   <span class="dot" id="dot"></span>
   <span id="device-label">No device</span>
   <span id="redirect-badge" class="badge"></span>
@@ -69,6 +74,14 @@ function buildDom(): void {
   <button id="btn-rules" class="secondary">Rules</button>
   <button id="btn-clear" class="secondary">Clear</button>
   <button id="btn-export" class="secondary">Export HAR</button>
+</div>
+<div id="chip-bar">
+  <span class="chip-group" id="status-chips">
+    ${['2xx', '3xx', '4xx', '5xx', 'ERR'].map((c) => `<button class="chip" data-status-chip="${c}">${c}</button>`).join('')}
+  </span>
+  <span class="chip-group" id="method-chips">
+    ${['GET', 'POST', 'PUT', 'DELETE', 'other'].map((c) => `<button class="chip" data-method-chip="${c}">${c}</button>`).join('')}
+  </span>
 </div>
 <div id="rules-panel" style="display:none"></div>
 <div id="notice" style="display:none"></div>
@@ -100,7 +113,11 @@ function renderState(): void {
     : 'No device';
 
   const dot = byId('dot');
-  dot.className = 'dot ' + (v.enabled ? 'live' : 'off');
+  dot.className = 'dot ' + (v.enabled ? (v.paused ? 'paused' : 'live') : 'off');
+
+  const pauseBtn = byId('btn-pause');
+  pauseBtn.style.display = v.enabled ? '' : 'none';
+  pauseBtn.textContent = v.paused ? '▶ Resume' : '⏸ Pause';
 
   const badge = byId('redirect-badge');
   const map: Record<string, string> = {
@@ -130,7 +147,23 @@ function renderState(): void {
   }
 }
 
+function statusChipOf(f: SerializedFlow): string {
+  if (f.error) return 'ERR';
+  if (f.status >= 500) return '5xx';
+  if (f.status >= 400) return '4xx';
+  if (f.status >= 300) return '3xx';
+  return '2xx';
+}
+
+const METHOD_CHIPS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
+
+function methodChipOf(f: SerializedFlow): string {
+  return METHOD_CHIPS.has(f.method) ? f.method : 'other';
+}
+
 function passesFilter(f: SerializedFlow): boolean {
+  if (state.statusChips.size > 0 && !state.statusChips.has(statusChipOf(f))) return false;
+  if (state.methodChips.size > 0 && !state.methodChips.has(methodChipOf(f))) return false;
   if (!state.filter) return true;
   const q = state.filter.toLowerCase();
   return (
@@ -262,17 +295,25 @@ function updateGroupCount(group: HTMLElement): void {
   if (label) label.textContent = String(count);
 }
 
+function fmtTime(wallMs: number): string {
+  const d = new Date(wallMs);
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+
 function rowHtml(f: SerializedFlow): string {
   const sel = f.id === state.selectedId ? ' selected' : '';
   const statusClass = f.error ? 'err' : f.status >= 400 ? 'warn' : f.status >= 300 ? 'redir' : 'ok';
   const statusText = f.error ? 'ERR' : String(f.status || '—');
   const rw = f.rewrittenBody ? '<span class="tag" title="Response body rewritten">rw</span>' : '';
   const up = f.upstreamScheme === 'https' ? '<span class="tag https" title="Bridged to HTTPS upstream">TLS</span>' : '';
+  const rp = f.replayed ? '<span class="tag replay" title="User-initiated replay, not device traffic">replay</span>' : '';
   return `<div class="row${sel}" data-id="${f.id}">
+    <span class="time">${fmtTime(f.startedWall)}</span>
     <span class="method ${f.method.toLowerCase()}">${esc(f.method)}</span>
     <span class="status ${statusClass}">${statusText}</span>
     <span class="path" title="${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}">${esc(f.path)}</span>
-    ${up}${rw}
+    ${up}${rw}${rp}
     <span class="dur">${f.durationMs}ms</span>
     <span class="size">${fmtBytes(f.responseBytes)}</span>
   </div>`;
@@ -299,8 +340,14 @@ function renderDetail(): void {
     <tr><td>Client</td><td>${esc(f.clientIp)}</td></tr>
   </table>`;
 
+  const actions = `<div class="detail-actions">
+    <button class="secondary" data-copy="url">Copy URL</button>
+    <button class="secondary" data-copy="curl">Copy as cURL</button>
+    <button class="secondary" data-replay title="Re-send this request through the proxy as a new flow">Replay</button>
+  </div>`;
+
   const parts = [
-    section('Overview', overview),
+    section('Overview', actions + overview),
     timingSection(f),
     headersSection('Request headers', f.requestHeaders),
     bodySectionShell('request', 'Request body', f.requestBytes, !!d?.requestBody, !!d?.originalRequestBody),
@@ -404,6 +451,7 @@ function bodySectionShell(
         <button type="button" class="find-nav" data-find-prev title="Previous match">˄</button>
         <button type="button" class="find-nav" data-find-next title="Next match">˅</button>
       </div>
+      <button type="button" class="find-nav" data-copy-body title="Copy the body as sent/received (host-side, untruncated view of the retained bytes)">Copy</button>
       ${hasOriginal ? '<label class="rewritten-toggle"><input type="checkbox" data-rewritten-toggle> Show rewritten</label>' : ''}
     </div>
     <div class="body-content"></div>
@@ -769,6 +817,25 @@ function wireEvents(): void {
   });
   byId('btn-clear').addEventListener('click', () => vscode.postMessage({ kind: 'clear' }));
   byId('btn-export').addEventListener('click', () => vscode.postMessage({ kind: 'export-har' }));
+  byId('btn-pause').addEventListener('click', () => {
+    vscode.postMessage({ kind: 'set-paused', paused: !state.view.paused });
+  });
+
+  byId('chip-bar').addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest<HTMLElement>('.chip');
+    if (!chip) return;
+    const statusKey = chip.dataset.statusChip;
+    const set = statusKey !== undefined ? state.statusChips : state.methodChips;
+    const key = statusKey ?? chip.dataset.methodChip!;
+    if (set.has(key)) {
+      set.delete(key);
+      chip.classList.remove('active');
+    } else {
+      set.add(key);
+      chip.classList.add('active');
+    }
+    renderTree();
+  });
   byId('btn-rules').addEventListener('click', () => {
     state.rulesOpen = !state.rulesOpen;
     renderRules();
@@ -798,6 +865,29 @@ function wireEvents(): void {
 
   byId('detail').addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
+
+    const copyBtn = target.closest<HTMLElement>('[data-copy]');
+    if (copyBtn && state.selectedId) {
+      vscode.postMessage({ kind: 'copy-flow', id: state.selectedId, what: copyBtn.dataset.copy as 'url' | 'curl' });
+      return;
+    }
+    const replayBtn = target.closest<HTMLElement>('[data-replay]');
+    if (replayBtn && state.selectedId) {
+      vscode.postMessage({ kind: 'replay-flow', id: state.selectedId });
+      return;
+    }
+    const copyBodyBtn = target.closest<HTMLElement>('[data-copy-body]');
+    if (copyBodyBtn && state.selectedId) {
+      const details = copyBodyBtn.closest<HTMLDetailsElement>('.body-section');
+      if (details) {
+        vscode.postMessage({
+          kind: 'copy-flow',
+          id: state.selectedId,
+          what: details.dataset.kind === 'request' ? 'request-body' : 'response-body',
+        });
+      }
+      return;
+    }
 
     const tabBtn = target.closest<HTMLElement>('.tab');
     if (tabBtn) {

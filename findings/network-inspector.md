@@ -685,6 +685,52 @@ proportions exactly (e.g. tls 12/48 → 25%), zero-duration phases appear in
 the table but not the bar, and a reused-socket flow renders only
 wait/receive plus the hint.
 
+## Workflow tools: copy/cURL, replay, pause, chips (2026-07-14)
+
+Phase C of the upgrade plan. Non-obvious decisions:
+
+- **`DeviceSink` refactor made replay nearly free.** `forward()` /
+  `handleUpstreamResponse` / `finishError` now take a minimal
+  `{ headersSent, writeHead, end }` sink instead of `http.ServerResponse` —
+  the real `ServerResponse` satisfies it *structurally* (no wrapper needed;
+  TS void-return assignability lets `writeHead(): this` match
+  `writeHead(): void`), and `replay()` passes a no-op sink since no device
+  connection is waiting. `forward()` also stopped touching `req` entirely
+  (method/headers come from `RequestMeta`), which is what makes it callable
+  without a live request.
+- **Replay sends the *retained* request body** (`rec.requestBody`, capped at
+  `maxBodyBytes`) — the panel warns before replaying when
+  `requestBodyTruncated`. Also confirms non-GET/HEAD/OPTIONS replays via a
+  modal (`showWarningMessage` in the panel, controller stays vscode-free).
+- **Replayed flows bypass both the pause gate and the clientIp device
+  filter** — they're user-initiated and their clientIp is a loopback
+  placeholder. Skipping either exemption makes replay appear to do nothing
+  (filtered out) exactly when `filterToActiveDevice` is on.
+- **Pause ≠ disable**: `setPaused` only gates `onFlow` recording; proxy +
+  redirect stay up so the app keeps working through the bridge. Reset on
+  `disable()` so the next session records from the start.
+- **Clipboard goes through the host** (`vscode.env.clipboard` via a
+  `copy-flow` message), not `navigator.clipboard` — webview clipboard
+  permission is flaky, host-side always works. cURL builder skips
+  proxy-managed headers (`host`/`content-length`/`connection`/
+  `proxy-connection`/`accept-encoding`) and single-quote-escapes with
+  `'\''`; binary request bodies become a `<binary body omitted>`
+  placeholder rather than corrupt shell text.
+- **Test-fake gotcha that exposed real hygiene**: `make()`'s FakeProxy is
+  reused across enable/disable cycles, which surfaced that the controller
+  never removed its `flow` listener from the old proxy on `disable()` —
+  harmless live (a real CaptureProxy is created per enable and stopped), but
+  a double-enable against the same instance recorded every flow twice. Fixed
+  by `removeAllListeners('flow'|'error')` in `disable()`; the controller
+  owns the proxy outright so blanket removal is safe.
+- **ERR chip doubles as the error-only filter** (`!!f.error`); chips are
+  OR within a group, AND across groups and with the text filter. Empty chip
+  group = no restriction, deliberately, so the default state filters nothing.
+
+Verified in the browser harness: timestamp column, replay tag, chip
+combinations, all four copy/replay postMessages, pause button
+visibility/relabel and the paused dot state.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

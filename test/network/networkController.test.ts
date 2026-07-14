@@ -15,9 +15,11 @@ class FakeProxy extends EventEmitter {
   stopped = false;
   rules = defaultRuleSet();
   port = 8888;
+  replays: FlowRecord[] = [];
   start(): Promise<void> { this.started = true; return Promise.resolve(); }
   stop(): Promise<void> { this.stopped = true; return Promise.resolve(); }
   setRules(r: typeof this.rules): void { this.rules = r; }
+  replay(rec: FlowRecord): void { this.replays.push(rec); }
   dispose(): void {}
 }
 
@@ -196,6 +198,67 @@ describe('network/NetworkController', () => {
   it('exposes maxEntries from config for the webview init handshake', async () => {
     const { controller } = make({ config: makeConfig({ maxEntries: 42 }) });
     expect(controller.maxEntries).to.equal(42);
+  });
+
+  it('pause drops flows without touching proxy or redirect state', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    const states: boolean[] = [];
+    controller.on('state', (s) => states.push(s.paused));
+
+    controller.setPaused(true);
+    proxy.emit('flow', rec({ id: 'while-paused' }));
+    expect(controller.getHistory()).to.have.length(0);
+    expect(controller.isEnabled).to.equal(true);
+    expect(proxy.stopped).to.equal(false);
+    expect(states).to.deep.equal([true]);
+
+    controller.setPaused(false);
+    proxy.emit('flow', rec({ id: 'after-resume' }));
+    expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['after-resume']);
+  });
+
+  it('records replayed flows even while paused', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    controller.setPaused(true);
+    proxy.emit('flow', rec({ id: 'replayed', replayed: true, clientIp: '127.0.0.1' }));
+    expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['replayed']);
+  });
+
+  it('replayed flows bypass the active-device clientIp filter', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({ id: 'replayed', replayed: true, clientIp: '127.0.0.1' }));
+    proxy.emit('flow', rec({ id: 'foreign', clientIp: '127.0.0.1' }));
+    expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['replayed']);
+  });
+
+  it('replay() forwards the stored record to the proxy', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({ id: 'orig' }));
+    controller.replay('orig');
+    expect(proxy.replays.map((r) => r.id)).to.deep.equal(['orig']);
+  });
+
+  it('replay() throws when capture is off or the flow is gone', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    proxy.emit('flow', rec({ id: 'orig' }));
+    expect(() => controller.replay('missing')).to.throw('no longer in the capture buffer');
+    await controller.disable();
+    expect(() => controller.replay('orig')).to.throw('Enable capture');
+  });
+
+  it('disable() resets pause so the next session starts recording', async () => {
+    const { controller, proxy } = make({});
+    await controller.enable();
+    controller.setPaused(true);
+    await controller.disable();
+    await controller.enable();
+    proxy.emit('flow', rec({ id: 'fresh' }));
+    expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['fresh']);
   });
 
   it('filters out flows not from the active device', async () => {

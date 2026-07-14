@@ -88,6 +88,36 @@ input[type="text"], select {
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
 .dot.live { background: var(--vscode-testing-iconPassed, #2ea043); }
 .dot.off { background: #666; }
+.dot.paused { background: var(--vscode-charts-yellow, #cca700); }
+
+/* ── filter chips ── */
+#chip-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  flex-shrink: 0;
+}
+.chip-group { display: flex; gap: 4px; }
+.chip {
+  background: transparent;
+  color: var(--vscode-foreground, #ccc);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 9px;
+  padding: 0 8px;
+  font-size: 10px;
+  line-height: 16px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.chip:hover { opacity: 1; }
+.chip.active {
+  opacity: 1;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  border-color: transparent;
+}
 
 .badge {
   font-size: 10px;
@@ -181,6 +211,12 @@ input[type="text"], select {
 .status.err { color: #e06c75; }
 
 .path { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.time {
+  opacity: 0.5;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
 .dur, .size {
   opacity: 0.6;
   font-size: 10px;
@@ -193,6 +229,9 @@ input[type="text"], select {
   background: var(--vscode-badge-background, #4d4d4d);
 }
 .tag.https { background: #2d4d3a; color: #9fe0b5; }
+.tag.replay { background: #4d3a2d; color: #e0c49f; }
+
+.detail-actions { display: flex; gap: 6px; margin-bottom: 8px; }
 
 /* ── detail ── */
 .section { margin-bottom: 12px; }

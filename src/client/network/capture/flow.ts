@@ -36,6 +36,8 @@ export interface FlowRecord {
   originalResponseBody?: Buffer;
   /** Per-phase timings; absent for flows that errored before a response. */
   timings?: FlowTimings;
+  /** True when this flow is a user-initiated replay, not device traffic. */
+  replayed?: boolean;
   error?: string;
 }
 
@@ -60,6 +62,7 @@ export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
     requestHeaders: rec.requestHeaders,
     responseHeaders: rec.responseHeaders,
     timings: rec.timings,
+    replayed: rec.replayed,
     error: rec.error,
   };
 }

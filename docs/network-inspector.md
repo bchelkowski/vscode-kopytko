@@ -67,6 +67,12 @@ backends are seen fully decrypted because TLS terminates **at the proxy**.
 The panel's on/off toggle is the single control. **It is OFF by default and
 nothing runs automatically.**
 
+While capture is on, a **Pause** button suspends *recording* without touching
+the proxy or the OS redirect — traffic keeps flowing through the bridge (the
+app keeps working), it just isn't added to the list until you resume.
+User-initiated replays are still recorded while paused. Pause resets when
+capture is disabled.
+
 - **Enable** starts the proxy, then runs the OS redirect for your platform
   (one admin/credential prompt), then shows "Capturing". If the redirect fails
   hard, the proxy is rolled back so you're never left half-applied.
@@ -199,12 +205,30 @@ showing method, status, path, duration, size, plus tags for HTTPS-bridged
 host/path/method/status. **Export HAR** writes the current buffer to a
 `.har` file.
 
+Each row starts with a `HH:MM:SS.mmm` timestamp. Below the toolbar, **filter
+chips** narrow the list by status class (`2xx 3xx 4xx 5xx ERR` — `ERR` is
+requests that never got a response) and by method (`GET POST PUT DELETE
+other`); chips combine with the text filter, and an empty chip group means
+no restriction.
+
 The list stays responsive under heavy traffic: live requests are batched per
 animation frame and appended as individual rows rather than re-rendering the
 whole list, and the buffer is bounded twice over — by entry count
 (`maxEntries`) and by an approximate byte budget (`maxBufferBytes`), evicting
 oldest entries first. Selection and already-loaded bodies survive hiding and
 restoring the panel tab.
+
+### Copy & replay
+
+The detail pane's Overview offers **Copy URL** (the effective upstream URL —
+`https://…` for bridged calls), **Copy as cURL** (method, headers minus the
+proxy-managed ones, and the request body; truncated bodies get an explicit
+warning comment instead of silently pretending to be complete), and
+**Replay** — re-sends the request through the running proxy against the real
+backend and records the result as a new flow tagged `replay`. Replaying
+anything other than GET/HEAD/OPTIONS asks for confirmation first, since it
+repeats a state-changing request. Each body section also has a **Copy**
+button for the raw body text.
 
 Selecting a request opens a detail pane: an always-visible overview, a
 **Timing** section, then four independently collapsible sections — **request

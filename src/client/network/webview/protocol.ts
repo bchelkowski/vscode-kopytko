@@ -21,6 +21,8 @@ export type RedirectStatus = 'off' | 'applying' | 'on' | 'unsupported' | 'error'
 export interface WebviewState {
   /** Master toggle — is the proxy capturing? */
   enabled: boolean;
+  /** Recording paused — traffic still bridges, flows aren't recorded. */
+  paused: boolean;
   redirectStatus: RedirectStatus;
   proxyPort: number;
   deviceIp?: string;
@@ -72,6 +74,8 @@ export interface SerializedFlow {
   requestHeaders: Record<string, string | string[]>;
   responseHeaders: Record<string, string | string[]>;
   timings?: FlowTimings;
+  /** True when this flow is a user-initiated replay, not device traffic. */
+  replayed?: boolean;
   error?: string;
 }
 
@@ -104,7 +108,10 @@ export type ExtMsg =
 export type WebMsg =
   | { kind: 'ready' }
   | { kind: 'set-enabled'; enabled: boolean }
+  | { kind: 'set-paused'; paused: boolean }
   | { kind: 'clear' }
   | { kind: 'export-har' }
   | { kind: 'select-flow'; id: string }
+  | { kind: 'copy-flow'; id: string; what: 'url' | 'curl' | 'request-body' | 'response-body' }
+  | { kind: 'replay-flow'; id: string }
   | { kind: 'set-rules'; rules: RuleSet };

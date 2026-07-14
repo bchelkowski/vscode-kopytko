@@ -67,6 +67,7 @@ export class NetworkController extends EventEmitter {
   private maxBufferBytes = 0;
   private bufferBytes = 0;
   private filterToActiveDevice = true;
+  private paused = false;
 
   constructor(private readonly deps: NetworkControllerDeps) {
     super();
@@ -89,6 +90,17 @@ export class NetworkController extends EventEmitter {
     return this._maxEntries;
   }
 
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** Pauses/resumes recording. Proxy + redirect stay up — traffic still bridges. */
+  setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.emitState();
+  }
+
   getRules(): RuleSet {
     return this.rules;
   }
@@ -101,6 +113,7 @@ export class NetworkController extends EventEmitter {
     const device = this.deps.deviceManager.getActiveDevice();
     return {
       enabled: this.enabled,
+      paused: this.paused,
       redirectStatus: this.redirectStatus,
       proxyPort: this.proxyPort,
       deviceIp: device?.ip,
@@ -112,6 +125,19 @@ export class NetworkController extends EventEmitter {
   getDetail(id: string): FlowDetail | undefined {
     const rec = this.byId.get(id);
     return rec ? toFlowDetail(rec) : undefined;
+  }
+
+  /** Raw host-side record — for copy-as-curl / replay, not for the webview. */
+  getRecord(id: string): FlowRecord | undefined {
+    return this.byId.get(id);
+  }
+
+  /** Re-sends a captured request through the running proxy as a new, `replayed`-tagged flow. */
+  replay(id: string): void {
+    const rec = this.byId.get(id);
+    if (!rec) throw new Error('Request is no longer in the capture buffer.');
+    if (!this.proxy) throw new Error('Enable capture to replay requests.');
+    this.proxy.replay(rec);
   }
 
   // ── lifecycle ───────────────────────────────────────────────────────────────
@@ -184,6 +210,7 @@ export class NetworkController extends EventEmitter {
   async disable(): Promise<void> {
     if (!this.enabled && !this.proxy) return;
     this.enabled = false;
+    this.paused = false;
 
     try {
       await this.deps.redirect.disable();
@@ -191,6 +218,10 @@ export class NetworkController extends EventEmitter {
       this.redirectStatus = 'off';
       this.message = undefined;
       if (this.proxy) {
+        // The controller owns the proxy outright — drop our listeners so a
+        // stopped instance can never feed flows into a later session.
+        this.proxy.removeAllListeners('flow');
+        this.proxy.removeAllListeners('error');
         await this.proxy.stop();
         this.proxy = null;
       }
@@ -201,6 +232,9 @@ export class NetworkController extends EventEmitter {
   // ── data ──────────────────────────────────────────────────────────────────
 
   private onFlow(rec: FlowRecord): void {
+    // Replays are user-initiated: they bypass both the pause gate and the
+    // device-IP filter (their clientIp is a loopback placeholder anyway).
+    if (this.paused && !rec.replayed) return;
     // Device-IP filtering only makes sense when the redirect preserves the
     // device's original source IP end to end — true for macOS/Linux's real
     // NAT redirect (`iptables`/`pf`), but NOT for Windows even when
@@ -225,6 +259,7 @@ export class NetworkController extends EventEmitter {
       this.deviceIp &&
       this.redirectStatus === 'on' &&
       clientIpIsTrustworthy &&
+      !rec.replayed &&
       rec.clientIp !== this.deviceIp
     ) {
       return;

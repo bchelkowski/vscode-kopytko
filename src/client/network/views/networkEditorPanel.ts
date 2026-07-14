@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import type { NetworkController } from '../networkController';
+import { buildCurl, buildUrl } from '../capture/curl';
 import type { ExtMsg, RuleSet, SerializedFlow, WebMsg, WebviewState } from '../webview/protocol';
 
 const VIEW_TYPE = 'kopytkoNetwork';
@@ -102,6 +103,9 @@ export class NetworkEditorPanel {
       case 'set-enabled':
         void this._handleToggle(msg.enabled);
         break;
+      case 'set-paused':
+        this.controller.setPaused(msg.paused);
+        break;
       case 'clear':
         this.controller.clear();
         break;
@@ -113,6 +117,12 @@ export class NetworkEditorPanel {
         if (detail) this._post({ kind: 'flow-detail', detail });
         break;
       }
+      case 'copy-flow':
+        void this._handleCopyFlow(msg.id, msg.what);
+        break;
+      case 'replay-flow':
+        void this._handleReplay(msg.id);
+        break;
       case 'set-rules':
         this.controller.setRules(msg.rules as RuleSet);
         break;
@@ -132,6 +142,50 @@ export class NetworkEditorPanel {
       // The controller already rolled back; push the true state so the toggle
       // snaps back to OFF instead of getting stuck "on".
       this._post({ kind: 'state', state: this.controller.getState() });
+    }
+  }
+
+  private async _handleCopyFlow(id: string, what: 'url' | 'curl' | 'request-body' | 'response-body'): Promise<void> {
+    const rec = this.controller.getRecord(id);
+    if (!rec) {
+      this._post({ kind: 'error', message: 'Request is no longer in the capture buffer.' });
+      return;
+    }
+    const text =
+      what === 'url'
+        ? buildUrl(rec)
+        : what === 'curl'
+          ? buildCurl(rec)
+          : what === 'request-body'
+            ? rec.requestBody?.toString('utf8') ?? ''
+            : rec.responseBody?.toString('utf8') ?? '';
+    await vscode.env.clipboard.writeText(text);
+    vscode.window.setStatusBarMessage(`Copied ${what === 'curl' ? 'cURL command' : what.replace('-', ' ')}`, 2000);
+  }
+
+  private async _handleReplay(id: string): Promise<void> {
+    const rec = this.controller.getRecord(id);
+    if (!rec) {
+      this._post({ kind: 'error', message: 'Request is no longer in the capture buffer.' });
+      return;
+    }
+    // Replaying a state-changing request hits the real backend again — make
+    // that a deliberate choice. GET/HEAD/OPTIONS replays are assumed safe.
+    const needsConfirm = !['GET', 'HEAD', 'OPTIONS'].includes(rec.method);
+    const truncNote = rec.requestBodyTruncated
+      ? ' The stored request body was truncated at capture time, so the replay will send only the retained prefix.'
+      : '';
+    if (needsConfirm || rec.requestBodyTruncated) {
+      const verb = needsConfirm
+        ? `Re-send ${rec.method} ${rec.path} to ${rec.host}? This repeats a state-changing request against the real server.`
+        : `Re-send ${rec.method} ${rec.path} to ${rec.host}?`;
+      const pick = await vscode.window.showWarningMessage(`${verb}${truncNote}`, { modal: true }, 'Replay');
+      if (pick !== 'Replay') return;
+    }
+    try {
+      this.controller.replay(id);
+    } catch (err) {
+      this._post({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
   }
 

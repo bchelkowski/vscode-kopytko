@@ -377,6 +377,50 @@ describe('network/CaptureProxy', () => {
     expect(flow.timings).to.equal(undefined);
   });
 
+  it('replay() re-sends a captured request upstream and emits a replayed-tagged flow', async () => {
+    const seen: Array<{ method: string; url: string; auth: string; body: string }> = [];
+    upstream = await startUpstream((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        seen.push({
+          method: req.method ?? '',
+          url: req.url ?? '',
+          auth: String(req.headers['x-auth'] ?? ''),
+          body: Buffer.concat(chunks).toString(),
+        });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{"ok":true}');
+      });
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    // Capture an original POST through the proxy...
+    const firstFlowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, {
+      method: 'POST',
+      path: '/v1/create?x=1',
+      headers: { 'content-type': 'application/json', 'x-auth': 'tok' },
+      body: '{"a":1}',
+    });
+    const original = await firstFlowP;
+
+    // ...then replay it with no device connection involved.
+    const replayFlowP = nextFlow(proxy);
+    proxy.replay(original);
+    const replayed = await replayFlowP;
+
+    expect(seen).to.have.length(2);
+    expect(seen[1]).to.deep.equal(seen[0]); // same method, url, header, body
+    expect(replayed.replayed).to.equal(true);
+    expect(replayed.method).to.equal('POST');
+    expect(replayed.status).to.equal(200);
+    expect(original.replayed).to.equal(undefined);
+  });
+
   it('still closes the device-facing connection per request even with upstream keep-alive on', async () => {
     upstream = await startUpstream((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' });

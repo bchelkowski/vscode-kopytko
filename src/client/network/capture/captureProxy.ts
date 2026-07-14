@@ -39,6 +39,23 @@ interface Target {
   query: string;
 }
 
+/**
+ * Where the upstream response is written. The live path passes the real
+ * `http.ServerResponse` (structurally compatible); replays pass a no-op sink
+ * since there's no device connection waiting for the bytes.
+ */
+export interface DeviceSink {
+  headersSent: boolean;
+  writeHead(status: number, statusText: string | undefined, headers: http.OutgoingHttpHeaders): void;
+  end(body: string | Buffer): void;
+}
+
+const NOOP_SINK: DeviceSink = {
+  headersSent: false,
+  writeHead: () => undefined,
+  end: () => undefined,
+};
+
 let flowCounter = 0;
 function nextFlowId(): string {
   flowCounter += 1;
@@ -151,7 +168,7 @@ export class CaptureProxy extends EventEmitter {
         meta.requestRewritten = reqRewrite.changed;
         const scheme = resolveUpstreamScheme(target.hostname, rules);
 
-        void this.forward(req, res, target, reqRewrite.body, scheme, meta);
+        void this.forward(res, target, reqRewrite.body, scheme, meta);
       })
       .catch((err) => {
         this.finishError(res, target, meta, err instanceof Error ? err : new Error(String(err)));
@@ -159,8 +176,7 @@ export class CaptureProxy extends EventEmitter {
   }
 
   private async forward(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
+    sink: DeviceSink,
     target: Target,
     reqBodyToSend: Buffer,
     scheme: 'https' | 'http' | 'auto',
@@ -174,7 +190,7 @@ export class CaptureProxy extends EventEmitter {
     // HTTPS attempt's marks.
     const marks: TimingMarks = { start: performance.now() };
 
-    const outHeaders = buildUpstreamHeaders(req.headers, target.hostname, upstreamPort, attemptScheme, reqBodyToSend, req.method);
+    const outHeaders = buildUpstreamHeaders(meta.requestHeaders, target.hostname, upstreamPort, attemptScheme, reqBodyToSend, meta.method);
 
     // On the Windows manual-capture path, the OS hosts file that redirects
     // the ROKU to this proxy also applies to THIS process (the hosts file is
@@ -188,7 +204,7 @@ export class CaptureProxy extends EventEmitter {
       {
         host: target.hostname,
         port: upstreamPort,
-        method: req.method,
+        method: meta.method,
         path: target.path + (target.query ? `?${target.query}` : ''),
         headers: outHeaders,
         agent: attemptScheme === 'https' ? this.httpsAgent : this.httpAgent,
@@ -197,7 +213,7 @@ export class CaptureProxy extends EventEmitter {
       },
       (upstreamRes) => {
         marks.firstByte = performance.now();
-        this.handleUpstreamResponse(res, target, attemptScheme, upstreamRes, reqBodyToSend, meta, marks);
+        this.handleUpstreamResponse(sink, target, attemptScheme, upstreamRes, reqBodyToSend, meta, marks);
       },
     );
 
@@ -217,10 +233,10 @@ export class CaptureProxy extends EventEmitter {
       // For 'auto', a failed HTTPS attempt falls back to plaintext HTTP once.
       if (scheme === 'auto' && attemptScheme === 'https' && !retried) {
         retried = true;
-        void this.forward(req, res, target, reqBodyToSend, 'http', meta);
+        void this.forward(sink, target, reqBodyToSend, 'http', meta);
         return;
       }
-      this.finishError(res, target, meta, err);
+      this.finishError(sink, target, meta, err);
     });
 
     if (reqBodyToSend.length > 0) upstreamReq.write(reqBodyToSend);
@@ -228,7 +244,7 @@ export class CaptureProxy extends EventEmitter {
   }
 
   private handleUpstreamResponse(
-    res: http.ServerResponse,
+    sink: DeviceSink,
     target: Target,
     scheme: 'https' | 'http',
     upstreamRes: http.IncomingMessage,
@@ -238,7 +254,7 @@ export class CaptureProxy extends EventEmitter {
   ): void {
     const chunks: Buffer[] = [];
     upstreamRes.on('data', (c: Buffer) => chunks.push(c));
-    upstreamRes.on('error', (err) => this.finishError(res, target, meta, err));
+    upstreamRes.on('error', (err) => this.finishError(sink, target, meta, err));
     upstreamRes.on('end', () => {
       const rawBody = Buffer.concat(chunks);
       const decoded = decodeBody(rawBody, strHeader(upstreamRes.headers['content-encoding']));
@@ -266,8 +282,8 @@ export class CaptureProxy extends EventEmitter {
       const status = upstreamRes.statusCode ?? 0;
       const statusText = upstreamRes.statusMessage ?? '';
       try {
-        res.writeHead(status, statusText || undefined, outHeaders);
-        res.end(finalBody);
+        sink.writeHead(status, statusText || undefined, outHeaders);
+        sink.end(finalBody);
       } catch {
         // Device socket already gone — nothing to send, but still record the flow.
       }
@@ -300,15 +316,16 @@ export class CaptureProxy extends EventEmitter {
         originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
         originalResponseBody: rewrite.changed ? capBuffer(decoded, this.maxBodyBytes).buf : undefined,
         timings: computeTimings(marks, meta.blockedMs, performance.now()),
+        replayed: meta.replayed,
       };
       this.emit('flow', rec);
     });
   }
 
-  private finishError(res: http.ServerResponse, target: Target, meta: RequestMeta, err: Error): void {
+  private finishError(sink: DeviceSink, target: Target, meta: RequestMeta, err: Error): void {
     try {
-      if (!res.headersSent) res.writeHead(502, 'Bad Gateway', { connection: 'close' });
-      res.end(`Kopytko Network Inspector: upstream error — ${err.message}`);
+      if (!sink.headersSent) sink.writeHead(502, 'Bad Gateway', { connection: 'close' });
+      sink.end(`Kopytko Network Inspector: upstream error — ${err.message}`);
     } catch {
       // ignore secondary failures
     }
@@ -332,8 +349,35 @@ export class CaptureProxy extends EventEmitter {
       requestHeaders: meta.requestHeaders,
       responseHeaders: {},
       error: err.message,
+      replayed: meta.replayed,
     };
     this.emit('flow', rec);
+  }
+
+  /**
+   * Re-sends a captured request through the same upstream path (current
+   * rules decide the scheme) with no device connection involved — the
+   * response goes to a no-op sink and the exchange is recorded as a new
+   * flow tagged `replayed`. Sends the retained (possibly capped) request
+   * body exactly as it was originally forwarded.
+   */
+  replay(rec: FlowRecord): void {
+    const target: Target = {
+      hostname: rec.host,
+      clientPort: rec.port || 80,
+      explicitPort: rec.port !== 0 && rec.port !== 80,
+      path: rec.path,
+      query: rec.query,
+    };
+    const meta: RequestMeta = {
+      startedWall: Date.now(),
+      clientIp: '127.0.0.1',
+      method: rec.method,
+      requestHeaders: { ...rec.requestHeaders },
+      replayed: true,
+    };
+    const scheme = resolveUpstreamScheme(rec.host, this.rules);
+    void this.forward({ ...NOOP_SINK }, target, rec.requestBody ?? Buffer.alloc(0), scheme, meta);
   }
 
   /**
@@ -431,6 +475,8 @@ interface RequestMeta {
   requestRewritten?: boolean;
   /** Time spent receiving the device's request body (`performance.now()` delta). */
   blockedMs?: number;
+  /** True when this exchange is a user-initiated replay, not device traffic. */
+  replayed?: boolean;
 }
 
 /** Raw `performance.now()` marks collected while one upstream attempt runs. */
