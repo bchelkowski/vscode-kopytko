@@ -80,6 +80,18 @@ export interface BlockRule {
   pathPattern?: string;
 }
 
+/** Pause a matched request and/or response so it can be edited live before continuing. */
+export interface BreakpointRule {
+  id: string;
+  enabled: boolean;
+  hostPattern: string;
+  pathPattern?: string;
+  /** Pause the request before it's forwarded upstream. */
+  onRequest: boolean;
+  /** Pause the response before it's returned to the device. */
+  onResponse: boolean;
+}
+
 export interface RuleSet {
   bodyRules: BodyRewriteRule[];
   upstreamSchemes: UpstreamSchemeRule[];
@@ -90,6 +102,7 @@ export interface RuleSet {
   latency?: LatencyRule[];
   headerRules?: HeaderRule[];
   block?: BlockRule[];
+  breakpoints?: BreakpointRule[];
 }
 
 /** The one built-in rule that makes the whole no-CA bridging model work. */
@@ -111,6 +124,7 @@ export function defaultRuleSet(): RuleSet {
     latency: [],
     headerRules: [],
     block: [],
+    breakpoints: [],
   };
 }
 
@@ -162,6 +176,13 @@ export function findBlock(rules: RuleSet, host: string, path: string): BlockRule
   );
 }
 
+/** First enabled breakpoint rule matching host+path, or undefined. */
+export function findBreakpoint(rules: RuleSet, host: string, path: string): BreakpointRule | undefined {
+  return (rules.breakpoints ?? []).find(
+    (r) => r.enabled && (r.onRequest || r.onResponse) && matchHost(r.hostPattern, host) && matchPath(r.pathPattern, path),
+  );
+}
+
 /** Resolves which scheme the proxy should use to reach `host`. */
 export function resolveUpstreamScheme(host: string, rules: RuleSet): UpstreamScheme {
   for (const rule of rules.upstreamSchemes) {
@@ -187,6 +208,7 @@ export function ruleSetFromConfig(
   latencyRaw?: unknown,
   headerRulesRaw?: unknown,
   blockRaw?: unknown,
+  breakpointsRaw?: unknown,
 ): RuleSet {
   const bodyRules = Array.isArray(bodyRulesRaw) && bodyRulesRaw.length > 0
     ? bodyRulesRaw.map(coerceBodyRule).filter((r): r is BodyRewriteRule => r !== null)
@@ -212,8 +234,11 @@ export function ruleSetFromConfig(
   const block = Array.isArray(blockRaw)
     ? blockRaw.map(coerceBlockRule).filter((r): r is BlockRule => r !== null)
     : [];
+  const breakpoints = Array.isArray(breakpointsRaw)
+    ? breakpointsRaw.map(coerceBreakpointRule).filter((r): r is BreakpointRule => r !== null)
+    : [];
 
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block, breakpoints };
 }
 
 let ruleCounter = 0;
@@ -303,5 +328,23 @@ function coerceBlockRule(raw: unknown): BlockRule | null {
     enabled: o.enabled !== false,
     hostPattern: o.hostPattern,
     pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
+  };
+}
+
+function coerceBreakpointRule(raw: unknown): BreakpointRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.hostPattern !== 'string' || !o.hostPattern) return null;
+  // Default to pausing the request if neither side is specified, so a rule
+  // added with just a host still does something.
+  const onRequest = o.onRequest === undefined ? o.onResponse !== true : o.onRequest === true;
+  const onResponse = o.onResponse === true;
+  return {
+    id: typeof o.id === 'string' ? o.id : nextRuleId(),
+    enabled: o.enabled !== false,
+    hostPattern: o.hostPattern,
+    pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
+    onRequest,
+    onResponse,
   };
 }

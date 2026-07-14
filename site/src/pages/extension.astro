@@ -87,6 +87,8 @@ const allSettings = [
   { key: 'kopytko.network.latencyRules', type: 'object[]', default: '[]', desc: 'Delay matched responses by delayMs before sending them to the device.' },
   { key: 'kopytko.network.headerRules', type: 'object[]', default: '[]', desc: 'Add/set/remove request or response headers for matched hosts (proxy-owned headers are protected).' },
   { key: 'kopytko.network.blockRules', type: 'object[]', default: '[]', desc: 'Abort matched requests (connection reset) to test the channel\'s network-error handling.' },
+  { key: 'kopytko.network.breakpointRules', type: 'object[]', default: '[]', desc: 'Pause matched request/response so you can edit it live before continuing.' },
+  { key: 'kopytko.network.breakpointTimeoutMs', type: 'number', default: '30000', desc: 'Auto-continue a paused breakpoint after this long, so a forgotten one can\'t hang the device.' },
   { key: 'kopytko.network.winDivertDir', type: 'string', default: '""', desc: 'Windows only, usually unnecessary — a working WinDivert driver ships with the extension. Override folder with WinDivert.dll/WinDivert64.sys; machine-scoped, cannot be set via workspace settings.' },
 ];
 
@@ -521,6 +523,7 @@ const kopytkoRcExample = `// .kopytkorc
               'Map-local, latency-injection, header and block rules (block aborts a matched request so you can test error handling); image response preview + hex; parsed query-param and cookie views; and a search across every captured request that jumps straight to the flow',
               'Streaming pass-through — Server-Sent Events and chunked no-length responses forward chunk-by-chunk instead of buffering, so a live stream never hangs the device',
               'Compare any two captured requests — a line-level diff of summary, headers and bodies to spot exactly what changed between them',
+              'Breakpoints — pause a matched request or response mid-flight, edit its method/status/headers/body live, then continue or abort (with an auto-continue timeout so nothing hangs)',
               'Built to stay fast under load — frame-batched incremental list updates, a dual entry-count + byte-budget memory cap, and pooled upstream connections (no per-request TLS handshake to origins)',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">

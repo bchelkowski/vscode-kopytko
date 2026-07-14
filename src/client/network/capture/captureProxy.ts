@@ -16,9 +16,9 @@ import type * as net from 'net';
 import { performance } from 'perf_hooks';
 import * as fs from 'fs';
 import { FlowRecord } from './flow';
-import type { FlowTimings } from '../webview/protocol';
+import type { FlowTimings, InterceptPayload, InterceptResult } from '../webview/protocol';
 import { applyBodyRewrites, applyHeaderRules, decodeBody, hasMatchingBodyRules, isImageContentType, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
-import { MapLocalRule, RuleSet, defaultRuleSet, findBlock, findLatencyMs, findMapLocal, resolveUpstreamScheme } from './rewrite/rules';
+import { MapLocalRule, RuleSet, defaultRuleSet, findBlock, findBreakpoint, findLatencyMs, findMapLocal, resolveUpstreamScheme } from './rewrite/rules';
 import { pinnedLookup, realHostsBypassResolver, resolveBypassingHosts, type HostsBypassResolver } from '../dnsBypass';
 
 export interface CaptureProxyOptions {
@@ -33,6 +33,11 @@ export interface CaptureProxyOptions {
   fileReader?: (path: string) => Buffer;
   /** Delays a response (latency rules). Overridable for tests; default `setTimeout`. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Called when a breakpoint rule pauses a request/response — resolves with
+   * the user's edits (or an abort). Absent = breakpoints are a no-op pass-through.
+   */
+  onIntercept?: (payload: InterceptPayload) => Promise<InterceptResult>;
 }
 
 interface Target {
@@ -54,6 +59,7 @@ export interface DeviceSink {
   writeHead(status: number, statusText: string | undefined, headers: http.OutgoingHttpHeaders): void;
   write(chunk: string | Buffer): void;
   end(body?: string | Buffer): void;
+  destroy(): void;
 }
 
 const NOOP_SINK: DeviceSink = {
@@ -61,12 +67,19 @@ const NOOP_SINK: DeviceSink = {
   writeHead: () => undefined,
   write: () => undefined,
   end: () => undefined,
+  destroy: () => undefined,
 };
 
 let flowCounter = 0;
 function nextFlowId(): string {
   flowCounter += 1;
   return `flow-${Date.now().toString(36)}-${flowCounter}`;
+}
+
+let interceptCounter = 0;
+function nextInterceptId(): string {
+  interceptCounter += 1;
+  return `intercept-${Date.now().toString(36)}-${interceptCounter}`;
 }
 
 /**
@@ -89,6 +102,7 @@ export class CaptureProxy extends EventEmitter {
   private readonly httpsAgent: https.Agent;
   private readonly fileReader: (path: string) => Buffer;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly onIntercept?: (payload: InterceptPayload) => Promise<InterceptResult>;
 
   constructor(private readonly options: CaptureProxyOptions) {
     super();
@@ -96,6 +110,7 @@ export class CaptureProxy extends EventEmitter {
     this.hostsResolver = options.hostsResolver ?? realHostsBypassResolver;
     this.fileReader = options.fileReader ?? ((p) => fs.readFileSync(p));
     this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.onIntercept = options.onIntercept;
     const keepAlive = options.keepAlive ?? true;
     this.httpAgent = new http.Agent({ keepAlive, keepAliveMsecs: 1000 });
     this.httpsAgent = new https.Agent({ keepAlive, keepAliveMsecs: 1000 });
@@ -174,7 +189,7 @@ export class CaptureProxy extends EventEmitter {
 
     const tBodyStart = performance.now();
     collectBody(req)
-      .then((reqBodyFull) => {
+      .then(async (reqBodyFull) => {
         meta.blockedMs = performance.now() - tBodyStart;
         const rules = this.rules;
         const reqContentType = strHeader(req.headers['content-type']);
@@ -185,6 +200,33 @@ export class CaptureProxy extends EventEmitter {
         });
         meta.originalRequestBody = reqBodyFull;
         meta.requestRewritten = reqRewrite.changed;
+        let bodyToSend = reqRewrite.body;
+
+        // Request breakpoint: pause here so the request can be edited (or
+        // aborted) before it's forwarded upstream.
+        const bp = findBreakpoint(rules, target.hostname, target.path);
+        if (bp?.onRequest && this.onIntercept) {
+          const editable = isTextContentType(reqContentType) || bodyToSend.length === 0;
+          const result = await this.onIntercept({
+            id: nextInterceptId(),
+            phase: 'request',
+            method: meta.method,
+            host: target.hostname,
+            path: target.path,
+            query: target.query,
+            upstreamScheme: resolveUpstreamScheme(target.hostname, rules) === 'http' ? 'http' : 'https',
+            headers: meta.requestHeaders,
+            body: editable ? bodyToSend.toString('utf8') : '',
+            bodyEditable: editable,
+          });
+          if (result.action === 'abort') {
+            this.recordBlocked(res, target, meta);
+            return;
+          }
+          if (result.method) meta.method = result.method.toUpperCase();
+          if (result.headers) meta.requestHeaders = result.headers;
+          if (editable && result.body !== undefined) bodyToSend = Buffer.from(result.body, 'utf8');
+        }
 
         // A map-local rule short-circuits the upstream entirely.
         const mapLocal = findMapLocal(rules, target.hostname, target.path);
@@ -194,7 +236,7 @@ export class CaptureProxy extends EventEmitter {
         }
 
         const scheme = resolveUpstreamScheme(target.hostname, rules);
-        void this.forward(res, target, reqRewrite.body, scheme, meta);
+        void this.forward(res, target, bodyToSend, scheme, meta);
       })
       .catch((err) => {
         this.finishError(res, target, meta, err instanceof Error ? err : new Error(String(err)));
@@ -469,6 +511,41 @@ export class CaptureProxy extends EventEmitter {
     this.emit('flow', rec);
   }
 
+  /** Flow record for a response aborted at a response breakpoint. */
+  private buildAbortedResponseRecord(
+    target: Target,
+    meta: RequestMeta,
+    scheme: 'https' | 'http',
+    status: number,
+    contentType: string,
+    marks: TimingMarks,
+  ): FlowRecord {
+    return {
+      id: nextFlowId(),
+      startedWall: meta.startedWall,
+      method: meta.method,
+      host: target.hostname,
+      port: target.clientPort,
+      path: target.path,
+      query: target.query,
+      status,
+      statusText: '',
+      contentType,
+      durationMs: Date.now() - meta.startedWall,
+      requestBytes: 0,
+      responseBytes: 0,
+      clientIp: meta.clientIp,
+      upstreamScheme: scheme,
+      rewrittenBody: false,
+      requestHeaders: meta.requestHeaders,
+      responseHeaders: {},
+      blocked: true,
+      error: 'Aborted at response breakpoint — connection reset',
+      timings: computeTimings(marks, meta.blockedMs, performance.now()),
+      replayed: meta.replayed,
+    };
+  }
+
   private async finishUpstream(
     sink: DeviceSink,
     target: Target,
@@ -498,9 +575,49 @@ export class CaptureProxy extends EventEmitter {
       host: target.hostname,
       direction: 'response',
     });
-    const outHeaders = respHeaderRewrite.headers;
-    const headersRewritten = respHeaderRewrite.changed || !!meta.headersRewritten;
-    outHeaders['content-length'] = String(finalBody.length);
+    let outHeaders = respHeaderRewrite.headers;
+    let headersRewritten = respHeaderRewrite.changed || !!meta.headersRewritten;
+    let outBody = finalBody;
+    let status = upstreamRes.statusCode ?? 0;
+    const statusText = upstreamRes.statusMessage ?? '';
+
+    // Response breakpoint: pause here so the response can be edited (or
+    // aborted) before it reaches the device. Not for replays or streams
+    // (streams can't be held; they're handled in streamUpstream).
+    const bp = findBreakpoint(this.rules, target.hostname, target.path);
+    if (bp?.onResponse && this.onIntercept && !meta.replayed) {
+      const editable = isTextContentType(contentType) || outBody.length === 0;
+      const result = await this.onIntercept({
+        id: nextInterceptId(),
+        phase: 'response',
+        method: meta.method,
+        host: target.hostname,
+        path: target.path,
+        query: target.query,
+        upstreamScheme: scheme,
+        status,
+        statusText,
+        headers: outHeaders,
+        body: editable ? outBody.toString('utf8') : '',
+        bodyEditable: editable,
+      });
+      if (result.action === 'abort') {
+        sink.destroy();
+        this.emit('flow', this.buildAbortedResponseRecord(target, meta, scheme, status, contentType, marks));
+        return;
+      }
+      if (typeof result.status === 'number') status = result.status;
+      if (result.headers) {
+        outHeaders = result.headers;
+        headersRewritten = true;
+      }
+      if (editable && result.body !== undefined) {
+        outBody = Buffer.from(result.body, 'utf8');
+        headersRewritten = true;
+      }
+    }
+
+    outHeaders['content-length'] = String(outBody.length);
     // The device-facing leg always closes per request: the transparent
     // redirect bridges packets through mechanisms that aren't HTTP-aware
     // (WinDivert loopback injection on Windows; NAT rewriting elsewhere),
@@ -516,18 +633,16 @@ export class CaptureProxy extends EventEmitter {
     const latencyMs = findLatencyMs(this.rules, target.hostname, target.path);
     if (latencyMs > 0) await this.sleep(latencyMs);
 
-    const status = upstreamRes.statusCode ?? 0;
-    const statusText = upstreamRes.statusMessage ?? '';
     try {
       sink.writeHead(status, statusText || undefined, outHeaders);
-      sink.end(finalBody);
+      sink.end(outBody);
     } catch {
       // Device socket already gone — nothing to send, but still record the flow.
     }
 
-    const retainResponse = finalBody.length > 0 && (isTextContentType(contentType) || isImageContentType(contentType));
+    const retainResponse = outBody.length > 0 && (isTextContentType(contentType) || isImageContentType(contentType));
     const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
-    const resCap = capBuffer(finalBody, this.maxBodyBytes);
+    const resCap = capBuffer(outBody, this.maxBodyBytes);
     const rec: FlowRecord = {
       id: nextFlowId(),
       startedWall: meta.startedWall,
@@ -541,7 +656,7 @@ export class CaptureProxy extends EventEmitter {
       contentType,
       durationMs: Date.now() - meta.startedWall,
       requestBytes: reqBodyToSend.length,
-      responseBytes: finalBody.length,
+      responseBytes: outBody.length,
       clientIp: meta.clientIp,
       upstreamScheme: scheme,
       rewrittenBody: rewrite.changed || !!meta.requestRewritten,

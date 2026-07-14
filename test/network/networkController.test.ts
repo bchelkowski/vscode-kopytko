@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import * as sinon from 'sinon';
 import { EventEmitter } from 'events';
 import { NetworkController, type NetworkConfig } from '../../src/client/network/networkController';
 import {
@@ -32,6 +33,7 @@ function makeConfig(over: Partial<NetworkConfig> = {}): NetworkConfig {
     filterToActiveDevice: true,
     maxBodyBytes: 65536,
     upstreamKeepAlive: true,
+    breakpointTimeoutMs: 30000,
     rules: defaultRuleSet(),
     ...over,
   };
@@ -77,13 +79,17 @@ function make(opts: {
     opts.windowsDriver,
   );
   const device = 'device' in opts ? opts.device : DEVICE;
+  let proxyOpts: import('../../src/client/network/capture/captureProxy').CaptureProxyOptions | undefined;
   const controller = new NetworkController({
     deviceManager: { getActiveDevice: () => device },
     redirect,
     readConfig: () => opts.config ?? makeConfig(),
-    proxyFactory: () => proxy as unknown as CaptureProxy,
+    proxyFactory: (o) => {
+      proxyOpts = o;
+      return proxy as unknown as CaptureProxy;
+    },
   });
-  return { controller, proxy, redirect };
+  return { controller, proxy, redirect, getProxyOpts: () => proxyOpts };
 }
 
 describe('network/NetworkController', () => {
@@ -259,6 +265,72 @@ describe('network/NetworkController', () => {
     await controller.enable();
     proxy.emit('flow', rec({ id: 'fresh' }));
     expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['fresh']);
+  });
+
+  const interceptPayload = (over: Record<string, unknown> = {}) => ({
+    id: 'ic-1',
+    phase: 'request' as const,
+    method: 'GET',
+    host: 'api.test',
+    path: '/x',
+    query: '',
+    upstreamScheme: 'https' as const,
+    headers: { accept: 'application/json' },
+    body: '',
+    bodyEditable: true,
+    ...over,
+  });
+
+  it('bridges a breakpoint pause to an intercept event and resolves it with the user edits', async () => {
+    const { controller, getProxyOpts } = make({});
+    await controller.enable();
+    const onIntercept = getProxyOpts()!.onIntercept!;
+
+    const emitted: unknown[] = [];
+    controller.on('intercept', (p) => emitted.push(p));
+
+    const resultP = onIntercept(interceptPayload());
+    expect(emitted).to.have.length(1);
+    controller.resolveIntercept('ic-1', { action: 'continue', method: 'POST' });
+    const result = await resultP;
+    expect(result).to.deep.equal({ action: 'continue', method: 'POST' });
+    expect(controller.getPendingIntercepts()).to.have.length(0);
+  });
+
+  it('exposes pending intercepts until they are resolved (for panel resync)', async () => {
+    const { controller, getProxyOpts } = make({});
+    await controller.enable();
+    const onIntercept = getProxyOpts()!.onIntercept!;
+    const resultP = onIntercept(interceptPayload({ id: 'ic-2' }));
+    expect(controller.getPendingIntercepts().map((p) => p.id)).to.deep.equal(['ic-2']);
+    controller.resolveIntercept('ic-2', { action: 'abort' });
+    expect(await resultP).to.deep.equal({ action: 'abort' });
+    expect(controller.getPendingIntercepts()).to.have.length(0);
+  });
+
+  it('auto-continues a breakpoint after the timeout so a forgotten one never hangs', async () => {
+    const clock = sinon.useFakeTimers();
+    try {
+      const { controller, getProxyOpts } = make({ config: makeConfig({ breakpointTimeoutMs: 5000 }) });
+      await controller.enable();
+      const onIntercept = getProxyOpts()!.onIntercept!;
+      const resultP = onIntercept(interceptPayload({ id: 'ic-3' }));
+      await clock.tickAsync(5001);
+      expect(await resultP).to.deep.equal({ action: 'continue' });
+      expect(controller.getPendingIntercepts()).to.have.length(0);
+    } finally {
+      clock.restore();
+    }
+  });
+
+  it('drains pending intercepts (continue) when capture is disabled', async () => {
+    const { controller, getProxyOpts } = make({});
+    await controller.enable();
+    const onIntercept = getProxyOpts()!.onIntercept!;
+    const resultP = onIntercept(interceptPayload({ id: 'ic-4' }));
+    await controller.disable();
+    expect(await resultP).to.deep.equal({ action: 'continue' });
+    expect(controller.getPendingIntercepts()).to.have.length(0);
   });
 
   it('filters out flows not from the active device', async () => {

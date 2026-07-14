@@ -317,6 +317,7 @@ extension, no setup required (see
 | Streaming pass-through — open-ended responses (SSE, chunked no-length) forwarded chunk-by-chunk instead of buffered, so the device never hangs (tagged `stream`) | ✅ | [network-inspector.md](./network-inspector.md) |
 | Block rules — abort matched requests (connection reset) to test the channel's network-error handling (tagged `block`) | ✅ | [network-inspector.md](./network-inspector.md) |
 | Compare two flows — line-level diff of summary, headers, and bodies (mark one, diff against another) | ✅ | [network-inspector.md](./network-inspector.md) |
+| Breakpoints (intercept & edit) — pause a matched request/response, edit method/status/headers/body live, continue or abort; auto-continue timeout | ✅ | [network-inspector.md](./network-inspector.md) |
 | Incremental, frame-batched request list — live flows append targeted DOM rows instead of rebuilding the list; debounced filter; selection survives tab hide/restore | ✅ | [network-inspector.md](./network-inspector.md) |
 | Bounded memory — entry cap (`maxEntries`) plus byte budget (`maxBufferBytes`), enforced host- and webview-side | ✅ | [network-inspector.md](./network-inspector.md) |
 | Upstream connection pooling (keep-alive) — no per-request TCP/TLS handshake to origins; device side still closes per request; `upstreamKeepAlive` off-switch | ✅ | [network-inspector.md](./network-inspector.md) |

@@ -63,6 +63,7 @@ export function registerNetwork(
       filterToActiveDevice: cfg.get<boolean>('network.filterToActiveDevice', true),
       maxBodyBytes: cfg.get<number>('network.maxBodyBytes', 262144),
       upstreamKeepAlive: cfg.get<boolean>('network.upstreamKeepAlive', true),
+      breakpointTimeoutMs: cfg.get<number>('network.breakpointTimeoutMs', 30000),
       rules: ruleSetFromConfig(
         cfg.get('network.rewriteRules'),
         cfg.get('network.upstreamSchemes'),
@@ -71,6 +72,7 @@ export function registerNetwork(
         cfg.get('network.latencyRules'),
         cfg.get('network.headerRules'),
         cfg.get('network.blockRules'),
+        cfg.get('network.breakpointRules'),
       ),
     };
   };

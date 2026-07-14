@@ -1240,6 +1240,39 @@
               }
             }
           }
+        },
+        "kopytko.network.breakpointRules": {
+          "type": "array",
+          "default": [],
+          "description": "Pause matched requests and/or responses so you can edit them live before continuing. Each item: { enabled?, hostPattern, pathPattern?, onRequest?, onResponse? }.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "pathPattern": {
+                "type": "string"
+              },
+              "onRequest": {
+                "type": "boolean",
+                "default": true
+              },
+              "onResponse": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "kopytko.network.breakpointTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "How long a breakpoint pause waits for you to act before auto-continuing the request/response unmodified, so a forgotten breakpoint can't hang the device."
         }
       }
     },

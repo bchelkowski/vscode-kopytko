@@ -853,6 +853,52 @@ Selecting any row clears `diffView` (exits the diff). Verified in the harness:
 mark→run shows A/B tags, per-section changed/identical, correct add/del lines,
 and close returns to the normal detail pane.
 
+## Breakpoints / intercept-and-edit (2026-07-14)
+
+Pause a matched request/response mid-flight, edit it, continue or abort. The
+one genuinely new architectural piece: the proxy has to *await* a decision
+that comes from the webview, across the vscode-free boundary.
+
+- **`CaptureProxy` gets an injected `onIntercept(payload) => Promise<result>`.**
+  Absent = breakpoints no-op. Request intercept sits in `handleRequest`'s
+  (now async) body-collect callback, before `forward`; response intercept in
+  `finishUpstream`, before content-length/latency/writeHead. `findBreakpoint`
+  gates both. Edits apply selectively: method/headers/(text)body on request;
+  status/headers/(text)body on response. Abort → reset the device connection
+  (`res.destroy()` for request via the existing block path; a new
+  `DeviceSink.destroy()` for response) and emit a `blocked`-tagged flow.
+- **Only text bodies are editable** (`bodyEditable`); binary bodies pause but
+  are forwarded byte-for-byte (the payload sends `body: ''`, result body
+  ignored). Response intercept is skipped for **streams** (can't hold a
+  flowing response) and **replays** (`!meta.replayed`).
+- **Controller bridges via a pending-promise map** keyed by intercept id.
+  `handleIntercept` emits `'intercept'` and returns a promise; a
+  `breakpointTimeoutMs` timer (default 30s, floor 1s) auto-resolves
+  `{action:'continue'}` so a forgotten breakpoint can never hang the device —
+  this is the critical safety property, since a paused breakpoint holds the
+  device's TCP connection open. `resolveIntercept` (from the webview) and
+  `drainIntercepts` (on `disable`) both clear the timer and resolve. Pending
+  payloads are stored and exposed via `getPendingIntercepts()` so the webview
+  rebuilds its queue on an `init` resync (panel hide/restore) — otherwise a
+  pause that fired while hidden would be invisible until it timed out.
+- **Webview**: `state.intercepts` queue; a `⏸ N paused` toolbar button and an
+  edit panel showing the first pending item (method/status input, headers
+  textarea parsed back with `parseHeadersText`, body textarea). Continue posts
+  `resolve-intercept` with the edits and optimistically drops the item (the
+  `intercept-resolved` echo is idempotent). Multiple pauses queue and surface
+  one at a time.
+- **Timing caveat** (documented, not fixed): a paused breakpoint inflates the
+  flow's `durationMs`/receive by the real wall-clock hold time — it *is* real
+  elapsed time, so that's arguably correct, just worth knowing.
+
+Verified: proxy tests confirm request-phase edits reach the upstream
+(method/header/body), response-phase edits reach the device (status/body),
+abort resets with zero upstream contact, and no-match doesn't call the hook;
+controller tests confirm the event/resolve bridge, `getPendingIntercepts`,
+sinon-fake-timer auto-continue, and disable-drains-continue. Harness confirmed
+the toolbar indicator, request vs response panels, Continue-with-edits payload,
+Abort, and the breakpoint rules editor round-trip.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

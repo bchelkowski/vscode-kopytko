@@ -14,7 +14,7 @@ import { FlowRecord, toFlowDetail, toSerializedFlow } from './capture/flow';
 import { RedirectController, RedirectUnsupportedError } from './redirect/redirectController';
 import { RuleSet } from './capture/rewrite/rules';
 import { isTextContentType } from './capture/rewrite/engine';
-import type { FlowDetail, RedirectStatus, SearchHit, SerializedFlow, WebviewState } from './webview/protocol';
+import type { FlowDetail, InterceptPayload, InterceptResult, RedirectStatus, SearchHit, SerializedFlow, WebviewState } from './webview/protocol';
 
 export interface DeviceLike {
   ip: string;
@@ -32,6 +32,8 @@ export interface NetworkConfig {
   maxBodyBytes: number;
   /** Reuse upstream connections between proxy and origins (device side always closes). */
   upstreamKeepAlive: boolean;
+  /** How long a breakpoint pause waits for the user before auto-continuing (ms). */
+  breakpointTimeoutMs: number;
   rules: RuleSet;
 }
 
@@ -69,6 +71,9 @@ export class NetworkController extends EventEmitter {
   private bufferBytes = 0;
   private filterToActiveDevice = true;
   private paused = false;
+  private breakpointTimeoutMs = 30000;
+  /** Paused intercepts awaiting a webview decision, keyed by intercept id. */
+  private readonly pendingIntercepts = new Map<string, { payload: InterceptPayload; resolve: (r: InterceptResult) => void; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(private readonly deps: NetworkControllerDeps) {
     super();
@@ -76,6 +81,7 @@ export class NetworkController extends EventEmitter {
     this.rules = config.rules;
     this._maxEntries = Math.max(1, config.maxEntries);
     this.maxBufferBytes = Math.max(0, config.maxBufferBytes);
+    this.breakpointTimeoutMs = Math.max(1000, config.breakpointTimeoutMs);
   }
 
   private log(msg: string): void {
@@ -133,12 +139,56 @@ export class NetworkController extends EventEmitter {
     return this.byId.get(id);
   }
 
+  /** Currently-paused intercepts — replayed to the webview on (re)connect. */
+  getPendingIntercepts(): InterceptPayload[] {
+    return [...this.pendingIntercepts.values()].map((p) => p.payload);
+  }
+
   /** Re-sends a captured request through the running proxy as a new, `replayed`-tagged flow. */
   replay(id: string): void {
     const rec = this.byId.get(id);
     if (!rec) throw new Error('Request is no longer in the capture buffer.');
     if (!this.proxy) throw new Error('Enable capture to replay requests.');
     this.proxy.replay(rec);
+  }
+
+  /**
+   * Bridges a proxy breakpoint pause to the webview: emits `'intercept'` and
+   * returns a promise resolved when the user decides (via `resolveIntercept`)
+   * or the timeout fires (auto-continue, so a forgotten breakpoint can never
+   * hang the device forever).
+   */
+  private handleIntercept(payload: InterceptPayload): Promise<InterceptResult> {
+    return new Promise<InterceptResult>((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.pendingIntercepts.delete(payload.id)) {
+          this.emit('interceptResolved', payload.id);
+          resolve({ action: 'continue' });
+        }
+      }, this.breakpointTimeoutMs);
+      this.pendingIntercepts.set(payload.id, { payload, resolve, timer });
+      this.emit('intercept', payload);
+    });
+  }
+
+  /** Applies the user's decision to a paused intercept. */
+  resolveIntercept(id: string, result: InterceptResult): void {
+    const pending = this.pendingIntercepts.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingIntercepts.delete(id);
+    this.emit('interceptResolved', id);
+    pending.resolve(result);
+  }
+
+  /** Continues every paused intercept unmodified — used when capture stops. */
+  private drainIntercepts(): void {
+    for (const [id, pending] of this.pendingIntercepts) {
+      clearTimeout(pending.timer);
+      this.emit('interceptResolved', id);
+      pending.resolve({ action: 'continue' });
+    }
+    this.pendingIntercepts.clear();
   }
 
   /**
@@ -183,6 +233,7 @@ export class NetworkController extends EventEmitter {
     this.rules = config.rules;
     this._maxEntries = Math.max(1, config.maxEntries);
     this.maxBufferBytes = Math.max(0, config.maxBufferBytes);
+    this.breakpointTimeoutMs = Math.max(1000, config.breakpointTimeoutMs);
     this.filterToActiveDevice = config.filterToActiveDevice;
     this.proxyPort = config.proxyPort;
     this.deviceIp = device.ip;
@@ -192,6 +243,7 @@ export class NetworkController extends EventEmitter {
       port: config.proxyPort,
       maxBodyBytes: config.maxBodyBytes,
       keepAlive: config.upstreamKeepAlive,
+      onIntercept: (payload) => this.handleIntercept(payload),
     });
     proxy.setRules(this.rules);
     proxy.on('flow', (rec: FlowRecord) => this.onFlow(rec));
@@ -240,6 +292,7 @@ export class NetworkController extends EventEmitter {
     if (!this.enabled && !this.proxy) return;
     this.enabled = false;
     this.paused = false;
+    this.drainIntercepts();
 
     try {
       await this.deps.redirect.disable();

@@ -486,6 +486,119 @@ describe('network/CaptureProxy', () => {
     expect(flow.error).to.contain('Blocked by rule');
   });
 
+  it('request breakpoint intercepts and applies the edited method/headers/body upstream', async () => {
+    const seen: Array<{ method: string; auth: string; body: string }> = [];
+    upstream = await startUpstream((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        seen.push({ method: req.method ?? '', auth: String(req.headers['x-auth'] ?? ''), body: Buffer.concat(chunks).toString() });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      });
+    });
+
+    let interceptPhase = '';
+    proxy = new CaptureProxy({
+      port: 0,
+      onIntercept: async (payload) => {
+        interceptPhase = payload.phase;
+        return { action: 'continue', method: 'PUT', headers: { ...payload.headers, 'x-auth': 'injected' }, body: '{"edited":true}' };
+      },
+    });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      breakpoints: [{ id: 'bp', enabled: true, hostPattern: '127.0.0.1', onRequest: true, onResponse: false }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"orig":1}',
+    });
+    await flowP;
+
+    expect(interceptPhase).to.equal('request');
+    expect(seen).to.have.length(1);
+    expect(seen[0].method).to.equal('PUT');
+    expect(seen[0].auth).to.equal('injected');
+    expect(seen[0].body).to.equal('{"edited":true}');
+  });
+
+  it('response breakpoint intercepts and applies the edited status/body to the device', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"orig":true}');
+    });
+
+    proxy = new CaptureProxy({
+      port: 0,
+      onIntercept: async (payload) => ({ action: 'continue', status: 503, body: payload.body.replace('orig', 'edited') }),
+    });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      breakpoints: [{ id: 'bp', enabled: true, hostPattern: '127.0.0.1', onRequest: false, onResponse: true }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+
+    expect(res.status).to.equal(503);
+    expect(res.body).to.equal('{"edited":true}');
+    expect(flow.status).to.equal(503);
+  });
+
+  it('aborting a request breakpoint resets the device connection with no upstream contact', async () => {
+    let upstreamHits = 0;
+    upstream = await startUpstream((_req, res) => {
+      upstreamHits++;
+      res.writeHead(200);
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0, onIntercept: async () => ({ action: 'abort' }) });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      breakpoints: [{ id: 'bp', enabled: true, hostPattern: '127.0.0.1', onRequest: true, onResponse: false }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    let errored = false;
+    try {
+      await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    } catch {
+      errored = true;
+    }
+    const flow = await flowP;
+    expect(errored).to.equal(true);
+    expect(upstreamHits).to.equal(0);
+    expect(flow.blocked).to.equal(true);
+  });
+
+  it('does not intercept when no breakpoint rule matches', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+    let called = false;
+    proxy = new CaptureProxy({ port: 0, onIntercept: async () => { called = true; return { action: 'continue' }; } });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' }); // no breakpoints
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    await flowP;
+    expect(called).to.equal(false);
+  });
+
   it('records a 502 flow when the upstream is unreachable', async () => {
     proxy = new CaptureProxy({ port: 0 });
     proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });

@@ -9,10 +9,13 @@ import { diffLines } from '../textDiff';
 import type {
   BlockRule,
   BodyRewriteRule,
+  BreakpointRule,
   ExtMsg,
   FlowDetail,
   FlowTimings,
   HeaderRule,
+  InterceptPayload,
+  InterceptResult,
   LatencyRule,
   MapLocalRule,
   RuleSet,
@@ -45,6 +48,8 @@ const state: {
   diffBaseId: string | null;
   /** When set, the detail pane shows a diff of these two flows instead of one flow. */
   diffView: { aId: string; bId: string } | null;
+  /** Paused breakpoints awaiting the user's edits, oldest first. */
+  intercepts: InterceptPayload[];
   maxEntries: number;
   rules: RuleSet;
   view: WebviewState;
@@ -60,6 +65,7 @@ const state: {
   methodChips: new Set(),
   diffBaseId: null,
   diffView: null,
+  intercepts: [],
   maxEntries: 5000,
   rules: { bodyRules: [], upstreamSchemes: [], defaultUpstreamScheme: 'https' },
   view: { enabled: false, paused: false, redirectStatus: 'off', proxyPort: 8888 },
@@ -80,6 +86,7 @@ function buildDom(): void {
   <span class="dot" id="dot"></span>
   <span id="device-label">No device</span>
   <span id="redirect-badge" class="badge"></span>
+  <button id="btn-intercepts" class="secondary" style="display:none" title="Paused breakpoints awaiting your edits"></button>
   <span class="spacer"></span>
   <input id="filter" type="text" placeholder="Filter host / path / method">
   <button id="btn-search" class="secondary" title="Search across all captured requests (URL, headers, text bodies)">Search</button>
@@ -103,6 +110,7 @@ function buildDom(): void {
   </span>
 </div>
 <div id="rules-panel" style="display:none"></div>
+<div id="intercept-panel" style="display:none"></div>
 <div id="notice" style="display:none"></div>
 <div id="main">
   <div id="tree"></div>
@@ -1028,6 +1036,19 @@ function renderRules(): void {
     )
     .join('');
 
+  const breakpointRows = (r.breakpoints ?? [])
+    .map(
+      (rule, i) => `<div class="breakpoint" data-i="${i}">
+      <input type="checkbox" data-f="enabled" ${rule.enabled ? 'checked' : ''} title="Enabled">
+      <input type="text" data-f="hostPattern" placeholder="host" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="pathPattern" placeholder="path (blank = all)" value="${esc(rule.pathPattern ?? '')}">
+      <label class="rx"><input type="checkbox" data-f="onRequest" ${rule.onRequest ? 'checked' : ''}>request</label>
+      <label class="rx"><input type="checkbox" data-f="onResponse" ${rule.onResponse ? 'checked' : ''}>response</label>
+      <button class="link del-breakpoint" data-i="${i}">✕</button>
+    </div>`,
+    )
+    .join('');
+
   panel.innerHTML = `
   <div class="rules-inner">
     <h3>Body rewrite rules</h3>
@@ -1060,6 +1081,10 @@ function renderRules(): void {
     <h3>Block <span class="rules-hint">abort matched requests — the device sees a connection reset</span></h3>
     <div id="block-rules">${blockRows}</div>
     <button class="link" id="add-block">+ add block rule</button>
+
+    <h3>Breakpoints <span class="rules-hint">pause matched request/response to edit it live before continuing</span></h3>
+    <div id="breakpoint-rules">${breakpointRows}</div>
+    <button class="link" id="add-breakpoint">+ add breakpoint</button>
 
     <div class="rules-actions">
       <button id="apply-rules">Apply rules</button>
@@ -1149,8 +1174,98 @@ function collectRulesFromDom(): RuleSet {
     });
   });
 
+  const breakpoints: BreakpointRule[] = [];
+  document.querySelectorAll('#breakpoint-rules .breakpoint').forEach((row) => {
+    const get = (f: string) => row.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+    const existing = state.rules.breakpoints?.[Number((row as HTMLElement).dataset.i)];
+    breakpoints.push({
+      id: existing?.id ?? `bp-${Date.now()}-${breakpoints.length}`,
+      enabled: !!get('enabled')?.checked,
+      hostPattern: get('hostPattern')?.value ?? '',
+      pathPattern: get('pathPattern')?.value || undefined,
+      onRequest: !!get('onRequest')?.checked,
+      onResponse: !!get('onResponse')?.checked,
+    });
+  });
+
   const def = (byId('default-scheme') as HTMLSelectElement).value as UpstreamScheme;
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block, breakpoints };
+}
+
+// ── breakpoints / intercept ─────────────────────────────────────────────────
+
+function parseHeadersText(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx < 0) continue;
+    const name = line.slice(0, idx).trim();
+    if (name) out[name] = line.slice(idx + 1).trim();
+  }
+  return out;
+}
+
+/** Toolbar indicator + the edit panel for the first paused breakpoint. */
+function renderIntercepts(): void {
+  const btn = byId('btn-intercepts');
+  const n = state.intercepts.length;
+  btn.style.display = n > 0 ? '' : 'none';
+  btn.textContent = `⏸ ${n} paused`;
+
+  const panel = byId('intercept-panel');
+  if (n === 0) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  const ic = state.intercepts[0];
+  const isResp = ic.phase === 'response';
+  panel.style.display = 'block';
+  panel.innerHTML = `
+  <div class="intercept-inner">
+    <div class="intercept-head">
+      <strong>Paused ${esc(ic.phase)}</strong>
+      ${esc(ic.method)} ${esc(ic.upstreamScheme)}://${esc(ic.host)}${esc(ic.path)}${ic.query ? '?' + esc(ic.query) : ''}
+      <span class="intercept-count">${n} paused</span>
+    </div>
+    <div class="intercept-fields">
+      ${isResp
+        ? `<label>Status <input type="number" id="ic-status" value="${ic.status ?? 200}"></label>`
+        : `<label>Method <input type="text" id="ic-method" value="${esc(ic.method)}"></label>`}
+    </div>
+    <label class="intercept-label">Headers — one per line, <code>Name: value</code></label>
+    <textarea id="ic-headers" rows="6" spellcheck="false">${esc(headersToText(ic.headers))}</textarea>
+    ${ic.bodyEditable
+      ? `<label class="intercept-label">Body</label><textarea id="ic-body" rows="8" spellcheck="false">${esc(ic.body)}</textarea>`
+      : '<div class="hint">Binary body — not editable; forwarded unchanged.</div>'}
+    <div class="intercept-actions">
+      <button id="ic-continue">Continue</button>
+      <button class="secondary" id="ic-abort">Abort (reset)</button>
+    </div>
+  </div>`;
+}
+
+function submitIntercept(action: 'continue' | 'abort'): void {
+  const ic = state.intercepts[0];
+  if (!ic) return;
+  let result: InterceptResult;
+  if (action === 'abort') {
+    result = { action: 'abort' };
+  } else {
+    result = { action: 'continue', headers: parseHeadersText((byId('ic-headers') as HTMLTextAreaElement).value) };
+    if (ic.phase === 'request') {
+      const m = (document.getElementById('ic-method') as HTMLInputElement | null)?.value;
+      if (m) result.method = m;
+    } else {
+      const s = (document.getElementById('ic-status') as HTMLInputElement | null)?.value;
+      if (s) result.status = Number(s);
+    }
+    if (ic.bodyEditable) result.body = (document.getElementById('ic-body') as HTMLTextAreaElement | null)?.value ?? '';
+  }
+  vscode.postMessage({ kind: 'resolve-intercept', id: ic.id, result });
+  // Optimistically drop it; the `intercept-resolved` echo is idempotent.
+  state.intercepts = state.intercepts.filter((x) => x.id !== ic.id);
+  renderIntercepts();
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -1225,6 +1340,15 @@ function wireEvents(): void {
   byId('btn-export').addEventListener('click', () => vscode.postMessage({ kind: 'export-har' }));
   byId('btn-pause').addEventListener('click', () => {
     vscode.postMessage({ kind: 'set-paused', paused: !state.view.paused });
+  });
+
+  byId('btn-intercepts').addEventListener('click', () => {
+    byId('intercept-panel').scrollIntoView({ block: 'nearest' });
+  });
+  byId('intercept-panel').addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t.id === 'ic-continue') submitIntercept('continue');
+    else if (t.id === 'ic-abort') submitIntercept('abort');
   });
 
   byId('btn-search').addEventListener('click', () => {
@@ -1408,6 +1532,10 @@ function wireEvents(): void {
       state.rules = collectRulesFromDom();
       (state.rules.block ??= []).push({ id: `block-${Date.now()}`, enabled: true, hostPattern: '' });
       renderRules();
+    } else if (t.id === 'add-breakpoint') {
+      state.rules = collectRulesFromDom();
+      (state.rules.breakpoints ??= []).push({ id: `bp-${Date.now()}`, enabled: true, hostPattern: '', onRequest: true, onResponse: false });
+      renderRules();
     } else if (t.classList.contains('del-body')) {
       state.rules = collectRulesFromDom();
       state.rules.bodyRules.splice(Number(t.dataset.i), 1);
@@ -1431,6 +1559,10 @@ function wireEvents(): void {
     } else if (t.classList.contains('del-block')) {
       state.rules = collectRulesFromDom();
       state.rules.block?.splice(Number(t.dataset.i), 1);
+      renderRules();
+    } else if (t.classList.contains('del-breakpoint')) {
+      state.rules = collectRulesFromDom();
+      state.rules.breakpoints?.splice(Number(t.dataset.i), 1);
       renderRules();
     }
   });
@@ -1496,10 +1628,12 @@ window.addEventListener('message', (ev) => {
       }
       state.selectedId = prevSelected && state.byId.has(prevSelected) ? prevSelected : null;
       state.details = new Map([...prevDetails].filter(([id]) => state.byId.has(id)));
+      state.intercepts = msg.intercepts ?? [];
       renderState();
       renderTree();
       renderDetail();
       renderRules();
+      renderIntercepts();
       break;
     }
     case 'flow':
@@ -1528,6 +1662,14 @@ window.addEventListener('message', (ev) => {
       break;
     case 'search-results':
       renderSearchResults(msg.query, msg.hits);
+      break;
+    case 'intercept':
+      state.intercepts.push(msg.intercept);
+      renderIntercepts();
+      break;
+    case 'intercept-resolved':
+      state.intercepts = state.intercepts.filter((x) => x.id !== msg.id);
+      renderIntercepts();
       break;
     case 'cleared':
       state.flows = [];

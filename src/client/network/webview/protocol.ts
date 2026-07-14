@@ -9,6 +9,7 @@
 import type {
   BlockRule,
   BodyRewriteRule,
+  BreakpointRule,
   HeaderRule,
   LatencyRule,
   MapLocalRule,
@@ -17,7 +18,36 @@ import type {
   UpstreamSchemeRule,
 } from '../capture/rewrite/rules';
 
-export type { BlockRule, BodyRewriteRule, HeaderRule, LatencyRule, MapLocalRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
+export type { BlockRule, BodyRewriteRule, BreakpointRule, HeaderRule, LatencyRule, MapLocalRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
+
+/** A paused request or response awaiting live edits before the proxy continues. */
+export interface InterceptPayload {
+  id: string;
+  phase: 'request' | 'response';
+  method: string;
+  host: string;
+  path: string;
+  query: string;
+  upstreamScheme: 'https' | 'http';
+  /** Response phase only. */
+  status?: number;
+  statusText?: string;
+  headers: Record<string, string | string[]>;
+  /** UTF-8 body text; empty when there's no body or it isn't editable. */
+  body: string;
+  /** False for binary bodies — the editor hides the body field and the original bytes are kept. */
+  bodyEditable: boolean;
+}
+
+/** The user's decision for a paused intercept. */
+export interface InterceptResult {
+  action: 'continue' | 'abort';
+  method?: string;
+  status?: number;
+  headers?: Record<string, string | string[]>;
+  /** Applied only when the payload was `bodyEditable`. */
+  body?: string;
+}
 
 /** Whether the automatic OS traffic redirect is applied. */
 export type RedirectStatus = 'off' | 'applying' | 'on' | 'unsupported' | 'error';
@@ -117,7 +147,7 @@ export interface FlowDetail {
 
 // ── Extension → Webview ──────────────────────────────────────────────────────
 export type ExtMsg =
-  | { kind: 'init'; state: WebviewState; history: SerializedFlow[]; rules: RuleSet; maxEntries: number }
+  | { kind: 'init'; state: WebviewState; history: SerializedFlow[]; rules: RuleSet; maxEntries: number; intercepts: InterceptPayload[] }
   | { kind: 'flow'; entry: SerializedFlow }
   /** Oldest flows evicted from the host buffer (count or byte cap) — drop them client-side too. */
   | { kind: 'trim'; ids: string[] }
@@ -125,6 +155,8 @@ export type ExtMsg =
   | { kind: 'state'; state: WebviewState }
   | { kind: 'rules'; rules: RuleSet }
   | { kind: 'search-results'; query: string; hits: SearchHit[] }
+  | { kind: 'intercept'; intercept: InterceptPayload }
+  | { kind: 'intercept-resolved'; id: string }
   | { kind: 'cleared' }
   | { kind: 'error'; message: string };
 
@@ -139,4 +171,5 @@ export type WebMsg =
   | { kind: 'copy-flow'; id: string; what: 'url' | 'curl' | 'request-body' | 'response-body' }
   | { kind: 'replay-flow'; id: string }
   | { kind: 'search'; query: string }
+  | { kind: 'resolve-intercept'; id: string; result: InterceptResult }
   | { kind: 'set-rules'; rules: RuleSet };

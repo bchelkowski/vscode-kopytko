@@ -12,6 +12,7 @@ import {
 import {
   defaultRuleSet,
   findBlock,
+  findBreakpoint,
   findLatencyMs,
   findMapLocal,
   resolveUpstreamScheme,
@@ -232,6 +233,23 @@ describe('network/rewrite/engine', () => {
     });
   });
 
+  describe('findBreakpoint', () => {
+    const rules: RuleSet = {
+      ...defaultRuleSet(),
+      breakpoints: [
+        { id: 'bp1', enabled: true, hostPattern: 'api.test', pathPattern: '/edit/*', onRequest: true, onResponse: false },
+        { id: 'bp2', enabled: true, hostPattern: 'other.test', onRequest: false, onResponse: false }, // neither side → skipped
+        { id: 'bp3', enabled: false, hostPattern: 'off.test', onRequest: true, onResponse: true },
+      ],
+    };
+    it('matches an enabled rule with at least one side active', () => {
+      expect(findBreakpoint(rules, 'api.test', '/edit/x')?.id).to.equal('bp1');
+      expect(findBreakpoint(rules, 'api.test', '/other')).to.equal(undefined);
+      expect(findBreakpoint(rules, 'other.test', '/')).to.equal(undefined); // no side active
+      expect(findBreakpoint(rules, 'off.test', '/')).to.equal(undefined); // disabled
+    });
+  });
+
   describe('hasMatchingBodyRules', () => {
     it('is true when an enabled rule would rewrite this response, false otherwise', () => {
       const rs = defaultRuleSet(); // built-in https→http response rule, all hosts
@@ -248,6 +266,7 @@ describe('network/rewrite/engine', () => {
       expect(rs.latency).to.deep.equal([]);
       expect(rs.headerRules).to.deep.equal([]);
       expect(rs.block).to.deep.equal([]);
+      expect(rs.breakpoints).to.deep.equal([]);
     });
 
     it('coerces the new rule arrays and drops malformed entries', () => {
@@ -259,6 +278,7 @@ describe('network/rewrite/engine', () => {
         [{ hostPattern: 'a', delayMs: 100 }, { hostPattern: 'b', delayMs: 0 }], // second not > 0 → dropped
         [{ name: 'X', op: 'set', value: '1' }, { op: 'set' }], // second has no name → dropped
         [{ hostPattern: 'ads.test' }, { pathPattern: '/x' }], // second has no host → dropped
+        [{ hostPattern: 'api.test', onResponse: true }, { pathPattern: '/x' }], // second has no host → dropped
       );
       expect(rs.mapLocal).to.have.length(1);
       expect(rs.latency).to.have.length(1);
@@ -266,6 +286,10 @@ describe('network/rewrite/engine', () => {
       expect(rs.headerRules![0].name).to.equal('X');
       expect(rs.block).to.have.length(1);
       expect(rs.block![0].hostPattern).to.equal('ads.test');
+      expect(rs.breakpoints).to.have.length(1);
+      // onRequest defaults to false when onResponse was explicitly set.
+      expect(rs.breakpoints![0].onResponse).to.equal(true);
+      expect(rs.breakpoints![0].onRequest).to.equal(false);
     });
   });
 });

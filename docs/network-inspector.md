@@ -202,6 +202,23 @@ seedable from settings.
   the proxy aborts the connection before reaching the upstream, so the device
   sees a network reset (`ECONNRESET`) — for testing the channel's error/
   timeout handling. Blocked flows are tagged `block`.
+- **Breakpoints** (`breakpointRules`) — pause a matched request (`onRequest`)
+  and/or response (`onResponse`) so it can be edited live before continuing.
+  See below.
+
+## Breakpoints (intercept & edit)
+
+A breakpoint rule pauses matched traffic mid-flight and holds the device
+connection open while you edit it. When one fires, a **⏸ N paused** button
+appears in the toolbar and an edit panel opens showing the paused
+request/response: an editable method (request) or status (response), a
+headers text area (`Name: value` per line), and the body (text bodies only —
+binary is forwarded unchanged). **Continue** applies your edits and resumes;
+**Abort** resets the device connection. If you don't act within
+`kopytko.network.breakpointTimeoutMs` (default 30s) the request auto-continues
+unmodified, so a forgotten breakpoint can never hang the device. Response
+breakpoints don't apply to streamed responses (they can't be held) or to
+replays. Multiple pauses queue and are handled one at a time.
 
 Because the proxy edits bodies, it also handles the mechanics that keeps the
 bridge intact: it decodes gzip/deflate/br before rewriting, recomputes
@@ -341,4 +358,6 @@ there's nothing to compare.
 | `kopytko.network.latencyRules` | `[]` | Delay matched responses by `delayMs` |
 | `kopytko.network.headerRules` | `[]` | Add/set/remove request or response headers for matched hosts |
 | `kopytko.network.blockRules` | `[]` | Abort matched requests (connection reset) to test the channel's error handling |
+| `kopytko.network.breakpointRules` | `[]` | Pause matched request/response to edit it live before continuing |
+| `kopytko.network.breakpointTimeoutMs` | `30000` | Auto-continue a paused breakpoint after this long, so a forgotten one can't hang the device |
 | `kopytko.network.winDivertDir` | `""` | Windows only, usually unnecessary (a working WinDivert is bundled). Override folder with `WinDivert.dll`/`WinDivert64.sys` — machine-scoped, can't be set via workspace settings |

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import type { NetworkController } from '../networkController';
 import { buildCurl, buildUrl } from '../capture/curl';
-import type { ExtMsg, RuleSet, SerializedFlow, WebMsg, WebviewState } from '../webview/protocol';
+import type { ExtMsg, InterceptPayload, RuleSet, SerializedFlow, WebMsg, WebviewState } from '../webview/protocol';
 
 const VIEW_TYPE = 'kopytkoNetwork';
 const TITLE = 'Kopytko Network Inspector';
@@ -72,12 +72,16 @@ export class NetworkEditorPanel {
     const onState = (state: WebviewState) => this._post({ kind: 'state', state });
     const onRules = (rules: RuleSet) => this._post({ kind: 'rules', rules });
     const onCleared = () => this._post({ kind: 'cleared' });
+    const onIntercept = (intercept: InterceptPayload) => this._post({ kind: 'intercept', intercept });
+    const onInterceptResolved = (id: string) => this._post({ kind: 'intercept-resolved', id });
 
     this.controller.on('flow', onFlow);
     this.controller.on('trimmed', onTrimmed);
     this.controller.on('state', onState);
     this.controller.on('rules', onRules);
     this.controller.on('cleared', onCleared);
+    this.controller.on('intercept', onIntercept);
+    this.controller.on('interceptResolved', onInterceptResolved);
 
     this._detachController = () => {
       this.controller.removeListener('flow', onFlow);
@@ -85,6 +89,8 @@ export class NetworkEditorPanel {
       this.controller.removeListener('state', onState);
       this.controller.removeListener('rules', onRules);
       this.controller.removeListener('cleared', onCleared);
+      this.controller.removeListener('intercept', onIntercept);
+      this.controller.removeListener('interceptResolved', onInterceptResolved);
     };
   }
 
@@ -125,6 +131,9 @@ export class NetworkEditorPanel {
         break;
       case 'search':
         this._post({ kind: 'search-results', query: msg.query, hits: this.controller.search(msg.query) });
+        break;
+      case 'resolve-intercept':
+        this.controller.resolveIntercept(msg.id, msg.result);
         break;
       case 'set-rules':
         this.controller.setRules(msg.rules as RuleSet);
@@ -215,6 +224,7 @@ export class NetworkEditorPanel {
       history: this.controller.getHistory(),
       rules: this.controller.getRules(),
       maxEntries: this.controller.maxEntries,
+      intercepts: this.controller.getPendingIntercepts(),
     });
   }
 
