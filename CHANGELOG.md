@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.1] - 2026-07-14
+
+### Added
+- Network Inspector detail-pane UX, disk-persisted bodies, wss rewrite + excludes
+
 ## [1.10.0] - 2026-07-14
 
 ### Added
