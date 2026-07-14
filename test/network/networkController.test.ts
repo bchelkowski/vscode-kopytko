@@ -10,6 +10,7 @@ import {
 import type { CaptureProxy } from '../../src/client/network/capture/captureProxy';
 import type { FlowRecord } from '../../src/client/network/capture/flow';
 import { defaultRuleSet } from '../../src/client/network/capture/rewrite/rules';
+import { NetworkSessionStore, type NetworkSessionSink } from '../../src/client/network/storage/networkSessionStore';
 
 class FakeProxy extends EventEmitter {
   started = false;
@@ -71,6 +72,7 @@ function make(opts: {
   platform?: NodeJS.Platform;
   device?: typeof DEVICE | undefined;
   windowsDriver?: WindowsRedirectDriver;
+  sessionStore?: NetworkSessionStore;
 }) {
   const proxy = new FakeProxy();
   const redirect = new RedirectController(
@@ -88,8 +90,36 @@ function make(opts: {
       proxyOpts = o;
       return proxy as unknown as CaptureProxy;
     },
+    sessionStore: opts.sessionStore,
   });
   return { controller, proxy, redirect, getProxyOpts: () => proxyOpts };
+}
+
+/** In-memory session store on top of the real NetworkSessionStore class. */
+function makeStore() {
+  const files = new Map<string, Buffer>();
+  const sink: NetworkSessionSink = {
+    async ensureDir() { /* dirs are implicit in the map */ },
+    async appendFile(file, data) {
+      files.set(file, Buffer.concat([files.get(file) ?? Buffer.alloc(0), Buffer.from(data)]));
+    },
+    async writeFile(file, data) {
+      files.set(file, Buffer.isBuffer(data) ? data : Buffer.from(data));
+    },
+    async readFile(file) {
+      const f = files.get(file);
+      if (!f) throw new Error(`ENOENT: ${file}`);
+      return f;
+    },
+    async exists(target) { return files.has(target); },
+  };
+  const store = new NetworkSessionStore({ resolveRoot: () => '/out', sink, now: () => 1_752_480_000_000 });
+  return { store, files };
+}
+
+/** Lets the controller's fire-and-forget persistFlow settle. */
+function flushAsync(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 describe('network/NetworkController', () => {
@@ -244,17 +274,21 @@ describe('network/NetworkController', () => {
     const { controller, proxy } = make({});
     await controller.enable();
     proxy.emit('flow', rec({ id: 'orig' }));
-    controller.replay('orig');
+    await controller.replay('orig');
     expect(proxy.replays.map((r) => r.id)).to.deep.equal(['orig']);
   });
 
-  it('replay() throws when capture is off or the flow is gone', async () => {
+  it('replay() rejects when capture is off or the flow is gone', async () => {
     const { controller, proxy } = make({});
     await controller.enable();
     proxy.emit('flow', rec({ id: 'orig' }));
-    expect(() => controller.replay('missing')).to.throw('no longer in the capture buffer');
+    let missingErr: unknown;
+    try { await controller.replay('missing'); } catch (e) { missingErr = e; }
+    expect((missingErr as Error).message).to.contain('no longer in the capture buffer');
     await controller.disable();
-    expect(() => controller.replay('orig')).to.throw('Enable capture');
+    let offErr: unknown;
+    try { await controller.replay('orig'); } catch (e) { offErr = e; }
+    expect((offErr as Error).message).to.contain('Enable capture');
   });
 
   it('disable() resets pause so the next session starts recording', async () => {
@@ -472,5 +506,108 @@ describe('network/NetworkController', () => {
     expect(controller.isEnabled).to.equal(false);
     expect(proxy.stopped).to.equal(true);
     expect(controller.getState().redirectStatus).to.equal('off');
+  });
+
+  describe('session store integration', () => {
+    it('enable() starts a session; flows and full bodies persist; disable() finalizes', async () => {
+      const { store, files } = makeStore();
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+
+      const dir = store.sessionDir!;
+      expect(dir).to.match(/__network$/);
+
+      proxy.emit('flow', rec({ id: 'a' }), { request: Buffer.from('full-request-bytes') });
+      await flushAsync();
+
+      expect(files.get(`${dir}/flows.ndjson`)!.toString()).to.contain('"id":"a"');
+      expect(files.get(`${dir}/bodies/a.req`)!.toString()).to.equal('full-request-bytes');
+
+      await controller.disable();
+      const manifest = JSON.parse(files.get(`${dir}/session.json`)!.toString()) as { endedWall: number | null; flowCount: number };
+      expect(manifest.endedWall).to.not.equal(null);
+      expect(manifest.flowCount).to.equal(1);
+    });
+
+    it('does not persist flows dropped by the pause gate', async () => {
+      const { store, files } = makeStore();
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+      controller.setPaused(true);
+      proxy.emit('flow', rec({ id: 'hidden' }), { request: Buffer.from('x') });
+      await flushAsync();
+      expect(files.has(`${store.sessionDir!}/flows.ndjson`)).to.equal(false);
+    });
+
+    it('clear() empties the buffer but keeps the on-disk session files', async () => {
+      const { store, files } = makeStore();
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+      proxy.emit('flow', rec({ id: 'a' }), { response: Buffer.from('kept') });
+      await flushAsync();
+      controller.clear();
+      expect(controller.getHistory()).to.have.length(0);
+      expect(files.get(`${store.sessionDir!}/bodies/a.res`)!.toString()).to.equal('kept');
+    });
+
+    it('replay() sends the full on-disk request body when the in-memory one was truncated', async () => {
+      const { store } = makeStore();
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+      proxy.emit(
+        'flow',
+        rec({ id: 'big', requestBody: Buffer.from('trunc'), requestBodyTruncated: true }),
+        { request: Buffer.from('the-complete-request-body') },
+      );
+      await flushAsync();
+
+      expect(await controller.hasFullRequestBody('big')).to.equal(true);
+      await controller.replay('big');
+      expect(proxy.replays[0].requestBody!.toString()).to.equal('the-complete-request-body');
+      expect(proxy.replays[0].requestBodyTruncated).to.equal(false);
+    });
+
+    it('getFullBody() prefers the complete on-disk bytes and falls back to the capped buffer', async () => {
+      const { store } = makeStore();
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+      proxy.emit(
+        'flow',
+        rec({ id: 'a', responseBody: Buffer.from('capped'), responseBodyTruncated: true }),
+        { response: Buffer.from('the-complete-response') },
+      );
+      // No disk copy for this one — memory fallback, honestly marked incomplete.
+      proxy.emit('flow', rec({ id: 'b', responseBody: Buffer.from('capped-only'), responseBodyTruncated: true }));
+      await flushAsync();
+
+      const fromDisk = await controller.getFullBody('a', 'response', 'current');
+      expect(fromDisk!.data.toString()).to.equal('the-complete-response');
+      expect(fromDisk!.complete).to.equal(true);
+
+      const fromMem = await controller.getFullBody('b', 'response', 'current');
+      expect(fromMem!.data.toString()).to.equal('capped-only');
+      expect(fromMem!.complete).to.equal(false);
+
+      expect(await controller.getFullBody('missing', 'response', 'current')).to.equal(undefined);
+    });
+
+    it('a failing store never breaks capture', async () => {
+      const sink: NetworkSessionSink = {
+        ensureDir: () => Promise.reject(new Error('disk full')),
+        appendFile: () => Promise.reject(new Error('disk full')),
+        writeFile: () => Promise.reject(new Error('disk full')),
+        readFile: () => Promise.reject(new Error('disk full')),
+        exists: () => Promise.resolve(false),
+      };
+      const store = new NetworkSessionStore({ resolveRoot: () => '/out', sink, now: () => 1 });
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+      expect(controller.isEnabled).to.equal(true);
+      proxy.emit('flow', rec({ id: 'a' }), { request: Buffer.from('x') });
+      await flushAsync();
+      expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['a']);
+      await controller.disable();
+      expect(controller.isEnabled).to.equal(false);
+    });
   });
 });

@@ -21,12 +21,30 @@ export interface BodyRewriteRule {
   direction: 'response' | 'request';
   /** Host glob (`*` wildcards) or substring. Empty = every host. */
   hostPattern?: string;
+  /** Path glob (`*` wildcards) or substring. Empty = every path. */
+  pathPattern?: string;
   /** Content-type substring (e.g. `json`). Empty = every text content type. */
   contentTypePattern?: string;
   find: string;
   replace: string;
   /** Treat `find` as a JS regular expression (applied with the global flag). */
   isRegex?: boolean;
+}
+
+/**
+ * Opts a specific host+path out of ALL body rewriting (every enabled body
+ * rule, both directions) — for a host whose payload must reach the device
+ * byte-for-byte (e.g. a signed/HMAC'd response, or a webhook echo) even
+ * though a broad rule like the built-in https→http one would otherwise
+ * match it.
+ */
+export interface RewriteExcludeRule {
+  id: string;
+  enabled: boolean;
+  /** Host glob (`*` wildcards) or substring. Empty = every host. */
+  hostPattern?: string;
+  /** Path glob (`*` wildcards) or substring. Empty = every path. */
+  pathPattern?: string;
 }
 
 export interface UpstreamSchemeRule {
@@ -103,6 +121,8 @@ export interface RuleSet {
   headerRules?: HeaderRule[];
   block?: BlockRule[];
   breakpoints?: BreakpointRule[];
+  /** Host+path pairs opted out of ALL body rewriting — see {@link RewriteExcludeRule}. */
+  rewriteExcludes?: RewriteExcludeRule[];
 }
 
 /** The one built-in rule that makes the whole no-CA bridging model work. */
@@ -115,9 +135,25 @@ export const HTTPS_TO_HTTP_RULE: BodyRewriteRule = {
   isRegex: false,
 };
 
+/**
+ * Same bridging idea as {@link HTTPS_TO_HTTP_RULE}, for WebSocket endpoint
+ * URLs a backend hands back in a text body (config dictionaries, etc.). The
+ * proxy itself never handles a WebSocket `Upgrade` — this only rewrites the
+ * `wss://` text so the device's *next* connection attempt is a plain `ws://`
+ * one, same category as the https rule.
+ */
+export const WSS_TO_WS_RULE: BodyRewriteRule = {
+  id: 'builtin-wss-to-ws',
+  enabled: true,
+  direction: 'response',
+  find: 'wss://',
+  replace: 'ws://',
+  isRegex: false,
+};
+
 export function defaultRuleSet(): RuleSet {
   return {
-    bodyRules: [{ ...HTTPS_TO_HTTP_RULE }],
+    bodyRules: [{ ...HTTPS_TO_HTTP_RULE }, { ...WSS_TO_WS_RULE }],
     upstreamSchemes: [],
     defaultUpstreamScheme: 'https',
     mapLocal: [],
@@ -125,6 +161,7 @@ export function defaultRuleSet(): RuleSet {
     headerRules: [],
     block: [],
     breakpoints: [],
+    rewriteExcludes: [],
   };
 }
 
@@ -183,6 +220,13 @@ export function findBreakpoint(rules: RuleSet, host: string, path: string): Brea
   );
 }
 
+/** First enabled rewrite-exclude rule matching host+path, or undefined — a hit means "skip all body rewriting for this exchange". */
+export function findRewriteExclude(rules: RuleSet, host: string, path: string): RewriteExcludeRule | undefined {
+  return (rules.rewriteExcludes ?? []).find(
+    (r) => r.enabled && matchHost(r.hostPattern, host) && matchPath(r.pathPattern, path),
+  );
+}
+
 /** Resolves which scheme the proxy should use to reach `host`. */
 export function resolveUpstreamScheme(host: string, rules: RuleSet): UpstreamScheme {
   for (const rule of rules.upstreamSchemes) {
@@ -209,10 +253,11 @@ export function ruleSetFromConfig(
   headerRulesRaw?: unknown,
   blockRaw?: unknown,
   breakpointsRaw?: unknown,
+  rewriteExcludesRaw?: unknown,
 ): RuleSet {
   const bodyRules = Array.isArray(bodyRulesRaw) && bodyRulesRaw.length > 0
     ? bodyRulesRaw.map(coerceBodyRule).filter((r): r is BodyRewriteRule => r !== null)
-    : [{ ...HTTPS_TO_HTTP_RULE }];
+    : [{ ...HTTPS_TO_HTTP_RULE }, { ...WSS_TO_WS_RULE }];
 
   const upstreamSchemes = Array.isArray(upstreamSchemesRaw)
     ? upstreamSchemesRaw.map(coerceSchemeRule).filter((r): r is UpstreamSchemeRule => r !== null)
@@ -237,8 +282,11 @@ export function ruleSetFromConfig(
   const breakpoints = Array.isArray(breakpointsRaw)
     ? breakpointsRaw.map(coerceBreakpointRule).filter((r): r is BreakpointRule => r !== null)
     : [];
+  const rewriteExcludes = Array.isArray(rewriteExcludesRaw)
+    ? rewriteExcludesRaw.map(coerceRewriteExcludeRule).filter((r): r is RewriteExcludeRule => r !== null)
+    : [];
 
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block, breakpoints };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block, breakpoints, rewriteExcludes };
 }
 
 let ruleCounter = 0;
@@ -256,6 +304,7 @@ function coerceBodyRule(raw: unknown): BodyRewriteRule | null {
     enabled: o.enabled !== false,
     direction: o.direction === 'request' ? 'request' : 'response',
     hostPattern: typeof o.hostPattern === 'string' ? o.hostPattern : undefined,
+    pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
     contentTypePattern: typeof o.contentTypePattern === 'string' ? o.contentTypePattern : undefined,
     find: o.find,
     replace: o.replace,
@@ -328,6 +377,23 @@ function coerceBlockRule(raw: unknown): BlockRule | null {
     enabled: o.enabled !== false,
     hostPattern: o.hostPattern,
     pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
+  };
+}
+
+function coerceRewriteExcludeRule(raw: unknown): RewriteExcludeRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  // Unlike block/breakpoint rules, an empty hostPattern is meaningful here
+  // (host="", pathPattern set → exclude a path across every host) — only
+  // reject an entry that would exclude literally everything (no scoping at all).
+  const hostPattern = typeof o.hostPattern === 'string' ? o.hostPattern : undefined;
+  const pathPattern = typeof o.pathPattern === 'string' ? o.pathPattern : undefined;
+  if (!hostPattern && !pathPattern) return null;
+  return {
+    id: typeof o.id === 'string' ? o.id : nextRuleId(),
+    enabled: o.enabled !== false,
+    hostPattern,
+    pathPattern,
   };
 }
 

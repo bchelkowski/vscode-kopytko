@@ -12,7 +12,7 @@
  */
 
 import * as zlib from 'zlib';
-import { BodyRewriteRule, HeaderRule, RuleSet, matchContentType, matchHost } from './rules';
+import { BodyRewriteRule, HeaderRule, RuleSet, findRewriteExclude, matchContentType, matchHost, matchPath } from './rules';
 
 const TEXT_CONTENT_TYPES = [
   'application/json',
@@ -61,43 +61,52 @@ export interface BodyRewriteResult {
 
 /**
  * Whether any enabled body rule *could* rewrite a response of this
- * content-type from this host — used to decide if a response is safe to
+ * content-type from this host+path — used to decide if a response is safe to
  * stream (streaming skips body rewrite, so we only stream when nothing would
- * have been rewritten, keeping the https→http bridge intact).
+ * have been rewritten, keeping the https→http bridge intact). A matching
+ * rewrite-exclude always wins, same as {@link applyBodyRewrites}.
  */
 export function hasMatchingBodyRules(
   ruleSet: RuleSet,
   host: string,
+  path: string,
   contentType: string,
   direction: 'response' | 'request',
 ): boolean {
   if (!isTextContentType(contentType)) return false;
+  if (findRewriteExclude(ruleSet, host, path)) return false;
   return ruleSet.bodyRules.some(
     (r) =>
       r.enabled &&
       r.direction === direction &&
       matchHost(r.hostPattern, host) &&
+      matchPath(r.pathPattern, path) &&
       matchContentType(r.contentTypePattern, contentType),
   );
 }
 
 /**
  * Applies every enabled, matching body rule to a text body. Binary bodies and
- * unmatched content types pass through unchanged.
+ * unmatched content types pass through unchanged. A host+path matched by an
+ * enabled {@link RewriteExcludeRule} skips ALL body rules unconditionally —
+ * checked before any individual rule, so it can't be second-guessed by a
+ * broadly-scoped rule like the https→http built-in.
  */
 export function applyBodyRewrites(
   body: Buffer,
   ruleSet: RuleSet,
-  ctx: { host: string; contentType: string; direction: 'response' | 'request' },
+  ctx: { host: string; path: string; contentType: string; direction: 'response' | 'request' },
 ): BodyRewriteResult {
   if (body.length === 0) return { body, changed: false };
   if (!isTextContentType(ctx.contentType)) return { body, changed: false };
+  if (findRewriteExclude(ruleSet, ctx.host, ctx.path)) return { body, changed: false };
 
   const rules = ruleSet.bodyRules.filter(
     (r) =>
       r.enabled &&
       r.direction === ctx.direction &&
       matchHost(r.hostPattern, ctx.host) &&
+      matchPath(r.pathPattern, ctx.path) &&
       matchContentType(r.contentTypePattern, ctx.contentType),
   );
   if (rules.length === 0) return { body, changed: false };

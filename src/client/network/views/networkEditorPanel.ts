@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import type { NetworkController } from '../networkController';
+import { formatBodyForEditor } from '../bodyFormat';
 import { buildCurl, buildUrl } from '../capture/curl';
 import type { ExtMsg, InterceptPayload, RuleSet, SerializedFlow, WebMsg, WebviewState } from '../webview/protocol';
 
@@ -126,6 +127,12 @@ export class NetworkEditorPanel {
       case 'copy-flow':
         void this._handleCopyFlow(msg.id, msg.what);
         break;
+      case 'copy-text':
+        void this._handleCopyText(msg.text);
+        break;
+      case 'open-body':
+        void this._handleOpenBody(msg.id, msg.body, msg.variant);
+        break;
       case 'replay-flow':
         void this._handleReplay(msg.id);
         break;
@@ -175,6 +182,42 @@ export class NetworkEditorPanel {
     vscode.window.setStatusBarMessage(`Copied ${what === 'curl' ? 'cURL command' : what.replace('-', ' ')}`, 2000);
   }
 
+  /** Context-menu key/value copy — arbitrary snippet, host-side clipboard. */
+  private async _handleCopyText(text: string): Promise<void> {
+    await vscode.env.clipboard.writeText(text);
+    vscode.window.setStatusBarMessage('Copied', 2000);
+  }
+
+  /**
+   * Opens a body in a new (untitled) editor tab, formatted — the full bytes
+   * from the on-disk session when available, else the in-memory retained
+   * prefix with an explicit truncation banner.
+   */
+  private async _handleOpenBody(id: string, body: 'request' | 'response', variant: 'current' | 'original'): Promise<void> {
+    const rec = this.controller.getRecord(id);
+    if (!rec) {
+      this._post({ kind: 'error', message: 'Request is no longer in the capture buffer.' });
+      return;
+    }
+    const full = await this.controller.getFullBody(id, body, variant);
+    if (!full) {
+      this._post({ kind: 'error', message: 'No body bytes are retained for this request.' });
+      return;
+    }
+    const contentType = body === 'response' ? rec.contentType : headerValue(rec.requestHeaders['content-type']);
+    const { content, language } = formatBodyForEditor(full.data.toString('utf8'), contentType);
+    // A truncated body can't be valid JSON/XML anyway — the banner costing
+    // the language id is a non-loss, and silence about missing bytes isn't.
+    const banner = full.complete
+      ? ''
+      : `[Kopytko Network Inspector] Body truncated at capture time — only the first ${full.data.length} bytes were retained (enable capture to persist full bodies to the session folder).\n\n`;
+    const doc = await vscode.workspace.openTextDocument({
+      content: banner + content,
+      language: banner ? 'plaintext' : language,
+    });
+    await vscode.window.showTextDocument(doc, { preview: false });
+  }
+
   private async _handleReplay(id: string): Promise<void> {
     const rec = this.controller.getRecord(id);
     if (!rec) {
@@ -184,10 +227,13 @@ export class NetworkEditorPanel {
     // Replaying a state-changing request hits the real backend again — make
     // that a deliberate choice. GET/HEAD/OPTIONS replays are assumed safe.
     const needsConfirm = !['GET', 'HEAD', 'OPTIONS'].includes(rec.method);
-    const truncNote = rec.requestBodyTruncated
+    // A truncated in-memory body is only a problem when the full bytes aren't
+    // on disk — the controller replays from the session folder when they are.
+    const prefixOnly = rec.requestBodyTruncated && !(await this.controller.hasFullRequestBody(id));
+    const truncNote = prefixOnly
       ? ' The stored request body was truncated at capture time, so the replay will send only the retained prefix.'
       : '';
-    if (needsConfirm || rec.requestBodyTruncated) {
+    if (needsConfirm || prefixOnly) {
       const verb = needsConfirm
         ? `Re-send ${rec.method} ${rec.path} to ${rec.host}? This repeats a state-changing request against the real server.`
         : `Re-send ${rec.method} ${rec.path} to ${rec.host}?`;
@@ -195,7 +241,7 @@ export class NetworkEditorPanel {
       if (pick !== 'Replay') return;
     }
     try {
-      this.controller.replay(id);
+      await this.controller.replay(id);
     } catch (err) {
       this._post({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
@@ -258,4 +304,9 @@ export class NetworkEditorPanel {
 </body>
 </html>`;
   }
+}
+
+function headerValue(v: string | string[] | undefined): string {
+  if (Array.isArray(v)) return v[0] ?? '';
+  return v ?? '';
 }

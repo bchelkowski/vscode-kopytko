@@ -3,7 +3,7 @@ import * as http from 'http';
 import * as net from 'net';
 import * as zlib from 'zlib';
 import { CaptureProxy } from '../../src/client/network/capture/captureProxy';
-import type { FlowRecord } from '../../src/client/network/capture/flow';
+import type { FlowBodies, FlowRecord } from '../../src/client/network/capture/flow';
 import { defaultRuleSet } from '../../src/client/network/capture/rewrite/rules';
 
 /** Sends a raw HTTP request over a plain socket, bypassing Node's http client
@@ -90,6 +90,51 @@ describe('network/CaptureProxy', () => {
     expect(flow.rewrittenBody).to.equal(true);
     expect(flow.upstreamScheme).to.equal('http');
     expect(flow.originalResponseBody?.toString()).to.contain('https://api.test/x');
+  });
+
+  it('rewrites wss:// out of the response body via the built-in rule', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"socket":"wss://api.test/live"}');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+
+    expect(res.body).to.equal('{"socket":"ws://api.test/live"}');
+    const flow = await flowP;
+    expect(flow.rewrittenBody).to.equal(true);
+  });
+
+  it('a rewrite-exclude rule leaves a matched host+path byte-for-byte untouched, other paths still rewrite', async () => {
+    upstream = await startUpstream((req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(`{"path":"${req.url}","next":"https://api.test/x"}`);
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      rewriteExcludes: [{ id: 'x', enabled: true, hostPattern: '127.0.0.1', pathPattern: '/webhook' }],
+    });
+    await proxy.start();
+
+    const excludedFlowP = nextFlow(proxy);
+    const excludedRes = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, { path: '/webhook' });
+    expect(excludedRes.body).to.contain('https://api.test/x'); // untouched
+    const excludedFlow = await excludedFlowP;
+    expect(excludedFlow.rewrittenBody).to.equal(false);
+
+    const rewrittenFlowP = nextFlow(proxy);
+    const rewrittenRes = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, { path: '/other' });
+    expect(rewrittenRes.body).to.contain('http://api.test/x');
+    const rewrittenFlow = await rewrittenFlowP;
+    expect(rewrittenFlow.rewrittenBody).to.equal(true);
   });
 
   it('preserves the pre-rewrite request body alongside the rewritten one actually sent upstream', async () => {
@@ -393,6 +438,41 @@ describe('network/CaptureProxy', () => {
     expect(flow.responseBody).to.not.equal(undefined);
     expect(flow.responseBody!.length).to.equal(4); // capped
     expect(flow.responseBodyTruncated).to.equal(true);
+  });
+
+  it("emits the full pre-cap bodies alongside the capped record on 'flow'", async () => {
+    const bigResponse = 'A'.repeat(64);
+    upstream = await startUpstream((req, res) => {
+      req.on('data', () => undefined);
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(bigResponse);
+      });
+    });
+
+    proxy = new CaptureProxy({ port: 0, maxBodyBytes: 8 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const pair = new Promise<{ rec: FlowRecord; bodies?: FlowBodies }>((resolve) =>
+      proxy.once('flow', (rec: FlowRecord, bodies?: FlowBodies) => resolve({ rec, bodies })),
+    );
+    const bigRequest = 'B'.repeat(32);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, {
+      method: 'POST',
+      body: bigRequest,
+      headers: { 'content-type': 'text/plain' },
+    });
+
+    const { rec, bodies } = await pair;
+    // The record's own buffers stay capped for display/HAR...
+    expect(rec.requestBody!.length).to.equal(8);
+    expect(rec.requestBodyTruncated).to.equal(true);
+    expect(rec.responseBody!.length).to.equal(8);
+    expect(rec.responseBodyTruncated).to.equal(true);
+    // ...while the second event argument carries the complete bytes.
+    expect(bodies!.request!.toString()).to.equal(bigRequest);
+    expect(bodies!.response!.toString()).to.equal(bigResponse);
   });
 
   it('streams a Server-Sent-Events response through instead of buffering (no hang) and tags it', async () => {

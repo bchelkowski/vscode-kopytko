@@ -5,6 +5,7 @@
  */
 
 import './styles.css';
+import { tryFormatXml } from '../bodyFormat';
 import { diffLines } from '../textDiff';
 import type {
   BlockRule,
@@ -18,6 +19,7 @@ import type {
   InterceptResult,
   LatencyRule,
   MapLocalRule,
+  RewriteExcludeRule,
   RuleSet,
   SerializedFlow,
   UpstreamScheme,
@@ -35,6 +37,9 @@ const vscode = acquireVsCodeApi();
 /** Per body-section find state — current matches + which one is active. Not in `state` since it's transient DOM-derived UI, not app data. */
 const findState = new WeakMap<HTMLDetailsElement, { matches: HTMLElement[]; index: number }>();
 
+/** Parsed JSON of each section's currently rendered Tree tab — used by the copy context menu. */
+const treeData = new WeakMap<HTMLDetailsElement, unknown>();
+
 const state: {
   flows: SerializedFlow[];
   byId: Map<string, SerializedFlow>;
@@ -44,6 +49,10 @@ const state: {
   filter: string;
   statusChips: Set<string>;
   methodChips: Set<string>;
+  /** Per-section open state (keyed by `data-sec`) — survives flow switches. Only Overview starts open. */
+  sectionOpen: Record<string, boolean>;
+  /** Section the user last opened/clicked — scrolled back into view when switching flows. */
+  lastFocusedSection: string | null;
   /** Flow marked as the "A" side for a comparison, if any. */
   diffBaseId: string | null;
   /** When set, the detail pane shows a diff of these two flows instead of one flow. */
@@ -63,6 +72,8 @@ const state: {
   filter: '',
   statusChips: new Set(),
   methodChips: new Set(),
+  sectionOpen: { overview: true },
+  lastFocusedSection: null,
   diffBaseId: null,
   diffView: null,
   intercepts: [],
@@ -395,24 +406,44 @@ function renderDetail(): void {
 
   const responseIsBinary = d?.responseBodyEncoding === 'base64';
   const parts = [
-    section('Overview', actions + overview),
+    dsec('overview', 'Overview', '', `<div class="section-body">${actions}${overview}</div>`),
     timingSection(f),
     querySection(f.query),
-    headersSection('Request headers', f.requestHeaders),
+    headersSection('req-headers', 'Request headers', f.requestHeaders),
     cookiesSection(f),
     bodySectionShell('request', 'Request body', f.requestBytes, !!d?.requestBody, !!d?.originalRequestBody, false),
-    headersSection('Response headers', f.responseHeaders),
+    headersSection('resp-headers', 'Response headers', f.responseHeaders),
     bodySectionShell('response', 'Response body', f.responseBytes, !!d?.responseBody, !!d?.originalResponseBody, responseIsBinary),
   ];
   el.innerHTML = parts.join('');
 
   // Body content (raw/formatted/tree) is only computed once its section is
-  // actually opened — never eagerly for a section the user hasn't looked at.
-  el.querySelectorAll<HTMLDetailsElement>('.body-section').forEach((details) => {
-    details.addEventListener('toggle', () => {
-      if (details.open) ensureBodyContent(details, d, f);
-    });
+  // actually open — never eagerly for a section the user hasn't looked at.
+  // Sections restored pre-opened get no `toggle` event (the attribute is in
+  // the markup), so render those explicitly; user toggles are handled by the
+  // delegated capturing listener in wireEvents.
+  el.querySelectorAll<HTMLDetailsElement>('.body-section[open]').forEach((details) => {
+    ensureBodyContent(details, d, f);
   });
+
+  // Put the user back at the section they were looking at on the previous
+  // request — absent sections (e.g. this flow has no response body) stay top.
+  if (state.lastFocusedSection) {
+    el.querySelector(`.dsec[data-sec="${CSS.escape(state.lastFocusedSection)}"]`)?.scrollIntoView({ block: 'start' });
+  }
+}
+
+/**
+ * Collapsible detail section whose open state persists across flow switches
+ * via `state.sectionOpen[key]` (only `overview` starts open by default).
+ * `count` and `inner` are raw HTML; `title` is escaped here.
+ */
+function dsec(key: string, title: string, count: string, inner: string, extraClass = '', extraAttrs = ''): string {
+  const open = state.sectionOpen[key] ? ' open' : '';
+  return `<details class="dsec${extraClass}" data-sec="${key}"${extraAttrs}${open}>
+    <summary>${esc(title)}${count}</summary>
+    ${inner}
+  </details>`;
 }
 
 // ── diff view ────────────────────────────────────────────────────────────────
@@ -517,10 +548,8 @@ function querySection(query: string): string {
       return `<tr><td>${esc(decodeParam(name))}</td><td>${esc(decodeParam(value))}</td></tr>`;
     })
     .join('');
-  return `<details class="dsec">
-    <summary>Query parameters<span class="count">${query.split('&').filter(Boolean).length}</span></summary>
-    <div class="section-body"><table class="kv">${rows}</table></div>
-  </details>`;
+  const count = `<span class="count">${query.split('&').filter(Boolean).length}</span>`;
+  return dsec('query', 'Query parameters', count, `<div class="section-body"><table class="kv">${rows}</table></div>`);
 }
 
 /** Request Cookie header + response Set-Cookie, parsed into rows. Hidden when neither is present. */
@@ -546,10 +575,8 @@ function cookiesSection(f: SerializedFlow): string {
   if (!reqRows && !respRows) return '';
   const reqTable = reqRows ? `<div class="hint">Request cookies</div><table class="kv">${reqRows}</table>` : '';
   const respTable = respRows ? `<div class="hint">Set-Cookie</div><table class="kv">${respRows}</table>` : '';
-  return `<details class="dsec">
-    <summary>Cookies<span class="count">${(reqRows ? reqCookieStr.split(';').filter(Boolean).length : 0) + setCookies.length}</span></summary>
-    <div class="section-body">${reqTable}${respTable}</div>
-  </details>`;
+  const count = `<span class="count">${(reqRows ? reqCookieStr.split(';').filter(Boolean).length : 0) + setCookies.length}</span>`;
+  return dsec('cookies', 'Cookies', count, `<div class="section-body">${reqTable}${respTable}</div>`);
 }
 
 function decodeParam(s: string): string {
@@ -558,10 +585,6 @@ function decodeParam(s: string): string {
   } catch {
     return s;
   }
-}
-
-function section(title: string, inner: string): string {
-  return `<div class="section"><h3>${esc(title)}</h3>${inner}</div>`;
 }
 
 const TIMING_PHASES: Array<{ key: keyof FlowTimings; label: string; cls: string }> = [
@@ -596,18 +619,13 @@ function timingSection(f: SerializedFlow): string {
   const reused = t.socketReused
     ? '<div class="hint">Upstream socket reused (keep-alive) — no DNS/connect/TLS cost for this request.</div>'
     : '';
-  return `<details class="dsec" open>
-    <summary>Timing<span class="count">${f.durationMs} ms</span></summary>
-    <div class="section-body">${bar}<table class="kv">${rows}</table>${reused}</div>
-  </details>`;
+  const count = `<span class="count">${f.durationMs} ms</span>`;
+  return dsec('timing', 'Timing', count, `<div class="section-body">${bar}<table class="kv">${rows}</table>${reused}</div>`);
 }
 
-function headersSection(title: string, headers: Record<string, string | string[]>): string {
-  const count = Object.keys(headers).length;
-  return `<details class="dsec" open>
-    <summary>${esc(title)}<span class="count">${count}</span></summary>
-    <div class="section-body">${headersHtml(headers)}</div>
-  </details>`;
+function headersSection(key: string, title: string, headers: Record<string, string | string[]>): string {
+  const count = `<span class="count">${Object.keys(headers).length}</span>`;
+  return dsec(key, title, count, `<div class="section-body">${headersHtml(headers)}</div>`);
 }
 
 function headersHtml(headers: Record<string, string | string[]>): string {
@@ -641,9 +659,10 @@ function bodySectionShell(
     : `<button type="button" class="tab active" data-tab="raw">Raw</button>
        <button type="button" class="tab" data-tab="formatted">Formatted</button>
        <button type="button" class="tab" data-tab="tree">Tree</button>`;
-  return `<details class="dsec body-section" data-kind="${kind}"${binary ? ' data-binary="1"' : ''}>
-    <summary>${esc(title)}<span class="count">${fmtBytes(byteSize)}</span></summary>
-    <div class="body-toolbar">
+  const openInEditor = binary
+    ? ''
+    : '<button type="button" class="find-nav" data-open-body title="Open the full body, formatted, in a new editor tab">Open in editor</button>';
+  const inner = `<div class="body-toolbar">
       <div class="tabs">${tabs}</div>
       <div class="find-group">
         <input type="text" class="find-input" data-find-input placeholder="Find">
@@ -651,11 +670,14 @@ function bodySectionShell(
         <button type="button" class="find-nav" data-find-prev title="Previous match">˄</button>
         <button type="button" class="find-nav" data-find-next title="Next match">˅</button>
       </div>
-      <button type="button" class="find-nav" data-copy-body title="Copy the body as sent/received (host-side, untruncated view of the retained bytes)">Copy</button>
+      <button type="button" class="find-nav" data-copy-body title="Copy the body as sent/received (host-side view of the retained bytes)">Copy</button>
+      ${openInEditor}
       ${hasOriginal ? '<label class="rewritten-toggle"><input type="checkbox" data-rewritten-toggle> Show rewritten</label>' : ''}
     </div>
-    <div class="body-content"></div>
-  </details>`;
+    <div class="body-content"></div>`;
+  const count = `<span class="count">${fmtBytes(byteSize)}</span>`;
+  const key = kind === 'request' ? 'req-body' : 'resp-body';
+  return dsec(key, title, count, inner, ' body-section', ` data-kind="${kind}"${binary ? ' data-binary="1"' : ''}`);
 }
 
 function ensureBodyContent(details: HTMLDetailsElement, d: FlowDetail | undefined, f: SerializedFlow | undefined): void {
@@ -688,7 +710,24 @@ function renderBodyTab(details: HTMLDetailsElement, d: FlowDetail | undefined, f
   // for this direction, `original` is absent and `current` covers both.
   const text = (original !== undefined && !showRewritten ? original : current) ?? '';
 
-  content.innerHTML = bodyView(text, tab, truncated);
+  // A cut body is useless to read — offer the full one (persisted to the
+  // session folder on disk) in an editor tab instead of rendering the stump.
+  if (truncated) {
+    const fullBytes = (kind === 'request' ? f?.requestBytes : f?.responseBytes) ?? 0;
+    content.innerHTML = `<div class="trunc-warning">Body is ${fmtBytes(fullBytes)} — too large to show here (only the first ${fmtBytes(text.length)} was kept in memory).
+      <button type="button" class="link" data-open-body>Open full body in editor</button></div>`;
+    return;
+  }
+
+  // Cache the parsed JSON per section so the context menu can copy any
+  // node's subtree without re-parsing on every right-click.
+  if (tab === 'tree') {
+    const parsed = tryParseJson(text);
+    if (parsed.ok) treeData.set(details, parsed.value);
+    else treeData.delete(details);
+  }
+
+  content.innerHTML = bodyView(text, tab);
   // A find query survives tab switches / the rewritten toggle — re-apply it
   // against the freshly rendered content instead of losing it.
   const query = details.dataset.findQuery ?? '';
@@ -735,11 +774,10 @@ function hexDump(bytes: Uint8Array): string {
   return lines.join('\n');
 }
 
-function bodyView(text: string, tab: string, truncated?: boolean): string {
-  const truncNote = truncated ? '<div class="hint">Truncated for display — the full body was still forwarded to the device.</div>' : '';
-  if (tab === 'formatted') return truncNote + formattedBodyHtml(text);
-  if (tab === 'tree') return truncNote + jsonTreeBodyHtml(text);
-  return truncNote + `<pre class="body">${esc(text)}</pre>`;
+function bodyView(text: string, tab: string): string {
+  if (tab === 'formatted') return formattedBodyHtml(text);
+  if (tab === 'tree') return jsonTreeBodyHtml(text);
+  return `<pre class="body">${esc(text)}</pre>`;
 }
 
 function tryParseJson(text: string): { ok: true; value: unknown } | { ok: false } {
@@ -801,54 +839,38 @@ function highlightXml(text: string): string {
   return out;
 }
 
-/** Best-effort indent by tag depth — not a real XML parser, just a readability aid. */
-function tryFormatXml(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('<')) return null;
-  try {
-    let indent = 0;
-    const lines = trimmed.replace(/>\s*</g, '>\n<').split('\n');
-    const out = lines.map((line) => {
-      const isClosing = /^<\//.test(line);
-      const isSelfClosingOrDecl = /\/>\s*$/.test(line) || /^<\?/.test(line) || /^<!/.test(line);
-      if (isClosing) indent = Math.max(0, indent - 1);
-      const rendered = '  '.repeat(indent) + line;
-      if (!isClosing && !isSelfClosingOrDecl && /^<[a-zA-Z]/.test(line)) indent += 1;
-      return rendered;
-    });
-    return out.join('\n');
-  } catch {
-    return null;
-  }
-}
-
 function jsonTreeBodyHtml(text: string): string {
   const parsed = tryParseJson(text);
   if (!parsed.ok) return `<div class="hint">Tree view needs valid JSON.</div><pre class="body">${esc(text)}</pre>`;
   return `<div class="json-tree">${jsonNodeHtml(parsed.value, null)}</div>`;
 }
 
-/** Only the root node (depth 0) starts open — every deeper node starts folded. */
-function jsonNodeHtml(value: unknown, key: string | null, depth = 0): string {
+/**
+ * Only the root node (depth 0) starts open — every deeper node starts folded.
+ * Each node carries its `data-path` (JSON-encoded segment array) so the copy
+ * context menu can resolve its value against the cached parsed body.
+ */
+function jsonNodeHtml(value: unknown, key: string | null, depth = 0, path: Array<string | number> = []): string {
   const label = key !== null ? `<span class="jt-key">${esc(key)}</span><span class="jt-colon">: </span>` : '';
   const openAttr = depth === 0 ? ' open' : '';
-  if (value === null) return `<div class="jt-row">${label}<span class="jt-null">null</span></div>`;
+  const pathAttr = ` data-path="${esc(JSON.stringify(path))}"`;
+  if (value === null) return `<div class="jt-row"${pathAttr}>${label}<span class="jt-null">null</span></div>`;
   if (Array.isArray(value)) {
-    if (value.length === 0) return `<div class="jt-row">${label}<span class="jt-punct">[]</span></div>`;
-    return `<details class="jt-node"${openAttr}><summary>${label}<span class="jt-punct">Array(${value.length})</span></summary>${value
-      .map((v, i) => jsonNodeHtml(v, String(i), depth + 1))
+    if (value.length === 0) return `<div class="jt-row"${pathAttr}>${label}<span class="jt-punct">[]</span></div>`;
+    return `<details class="jt-node"${openAttr}${pathAttr}><summary>${label}<span class="jt-punct">Array(${value.length})</span></summary>${value
+      .map((v, i) => jsonNodeHtml(v, String(i), depth + 1, [...path, i]))
       .join('')}</details>`;
   }
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) return `<div class="jt-row">${label}<span class="jt-punct">{}</span></div>`;
-    return `<details class="jt-node"${openAttr}><summary>${label}<span class="jt-punct">{${entries.length}}</span></summary>${entries
-      .map(([k, v]) => jsonNodeHtml(v, k, depth + 1))
+    if (entries.length === 0) return `<div class="jt-row"${pathAttr}>${label}<span class="jt-punct">{}</span></div>`;
+    return `<details class="jt-node"${openAttr}${pathAttr}><summary>${label}<span class="jt-punct">{${entries.length}}</span></summary>${entries
+      .map(([k, v]) => jsonNodeHtml(v, k, depth + 1, [...path, k]))
       .join('')}</details>`;
   }
   const cls = typeof value === 'string' ? 'jt-string' : typeof value === 'number' ? 'jt-number' : 'jt-bool';
   const disp = typeof value === 'string' ? `"${esc(value)}"` : String(value);
-  return `<div class="jt-row">${label}<span class="${cls}">${disp}</span></div>`;
+  return `<div class="jt-row"${pathAttr}>${label}<span class="${cls}">${disp}</span></div>`;
 }
 
 // ── find-in-body ────────────────────────────────────────────────────────────
@@ -876,7 +898,24 @@ function runFind(details: HTMLDetailsElement, query: string): void {
   findState.set(details, { matches, index: matches.length > 0 ? 0 : -1 });
   if (matches.length > 0) matches[0].classList.add('current');
   updateFindCount(details, matches.length, matches.length > 0 ? 1 : 0);
-  if (matches.length > 0) matches[0].scrollIntoView({ block: 'nearest' });
+  if (matches.length > 0) revealMatch(details, matches[0]);
+}
+
+/**
+ * Makes a match actually visible before scrolling to it: a Tree-tab match
+ * can sit inside collapsed `<details>` nodes (their text is in the DOM, just
+ * hidden), so every closed ancestor node up to the section's content is
+ * expanded first. Only the current match's chain is opened — expanding all
+ * matches at once would unfold huge payloads on every keystroke.
+ */
+function revealMatch(details: HTMLDetailsElement, mark: HTMLElement): void {
+  const content = details.querySelector<HTMLElement>('.body-content');
+  let anc = mark.parentElement?.closest('details');
+  while (anc && content?.contains(anc)) {
+    anc.open = true;
+    anc = anc.parentElement?.closest('details');
+  }
+  mark.scrollIntoView({ block: 'nearest' });
 }
 
 function clearFindHighlights(container: HTMLElement): void {
@@ -935,8 +974,98 @@ function gotoFindMatch(details: HTMLDetailsElement, delta: number): void {
   s.index = (s.index + delta + s.matches.length) % s.matches.length;
   const next = s.matches[s.index];
   next.classList.add('current');
-  next.scrollIntoView({ block: 'nearest' });
+  revealMatch(details, next);
   updateFindCount(details, s.matches.length, s.index + 1);
+}
+
+// ── copy context menu ───────────────────────────────────────────────────────
+
+interface CtxItem {
+  label: string;
+  text: string;
+}
+
+function hideCtxMenu(): void {
+  document.getElementById('ctx-menu')?.remove();
+}
+
+/** Small self-built floating menu — webviews get no native extension context menu. */
+function showCtxMenu(x: number, y: number, items: CtxItem[]): void {
+  hideCtxMenu();
+  const menu = document.createElement('div');
+  menu.id = 'ctx-menu';
+  for (const item of items) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = item.label;
+    btn.addEventListener('click', () => {
+      // Clipboard goes through the host (`vscode.env.clipboard`) — webview
+      // navigator.clipboard permission is flaky, host-side always works.
+      vscode.postMessage({ kind: 'copy-text', text: item.text });
+      hideCtxMenu();
+    });
+    menu.appendChild(btn);
+  }
+  document.body.appendChild(menu);
+  // Clamp so the menu never opens half off-screen near an edge.
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width - 4))}px`;
+  menu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - rect.height - 4))}px`;
+}
+
+/** Copy items for a right-click target, or null when it isn't on a key/value row. */
+function copyMenuItemsFor(target: HTMLElement): CtxItem[] | null {
+  // JSON tree nodes first — they're the most specific match.
+  const treeNode = target.closest<HTMLElement>('[data-path]');
+  if (treeNode) return treeCopyItems(treeNode);
+
+  const row = target.closest<HTMLTableRowElement>('table.kv tr');
+  if (row) {
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 2) {
+      const key = cells[0].textContent?.trim() ?? '';
+      const value = cells[1].textContent?.trim() ?? '';
+      return [
+        { label: 'Copy key', text: key },
+        { label: 'Copy value', text: value },
+        { label: 'Copy key: value', text: `${key}: ${value}` },
+      ];
+    }
+    // Single-cell rows (e.g. Set-Cookie lines) only have a value.
+    if (cells.length === 1) return [{ label: 'Copy value', text: cells[0].textContent?.trim() ?? '' }];
+  }
+  return null;
+}
+
+/**
+ * Copy items for a JSON-tree node: the key is the node's own name; the value
+ * is resolved from the cached parsed body via the node's `data-path`, so an
+ * object/array node copies its whole subtree as pretty-printed JSON (strings
+ * copy unquoted).
+ */
+function treeCopyItems(node: HTMLElement): CtxItem[] | null {
+  const details = node.closest<HTMLDetailsElement>('.body-section');
+  if (!details || !treeData.has(details)) return null;
+  let path: Array<string | number>;
+  try {
+    path = JSON.parse(node.dataset.path ?? '') as Array<string | number>;
+  } catch {
+    return null;
+  }
+  let value: unknown = treeData.get(details);
+  for (const seg of path) {
+    if (value === null || typeof value !== 'object') return null;
+    value = (value as Record<string | number, unknown>)[seg];
+    if (value === undefined) return null;
+  }
+  const valueText = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  if (path.length === 0) return [{ label: 'Copy value', text: valueText }]; // root has no key
+  const key = String(path[path.length - 1]);
+  return [
+    { label: 'Copy key', text: key },
+    { label: 'Copy value', text: valueText },
+    { label: 'Copy key: value', text: `${key}: ${valueText}` },
+  ];
 }
 
 // ── rules panel ───────────────────────────────────────────────────────────────
@@ -956,6 +1085,7 @@ function renderRules(): void {
         <option value="request" ${rule.direction === 'request' ? 'selected' : ''}>request</option>
       </select>
       <input type="text" data-f="hostPattern" placeholder="host (blank = all)" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="pathPattern" placeholder="path (blank = all)" value="${esc(rule.pathPattern ?? '')}">
       <input type="text" data-f="contentTypePattern" placeholder="content-type (blank = any)" value="${esc(rule.contentTypePattern ?? '')}">
       <input type="text" data-f="find" placeholder="find" value="${esc(rule.find)}">
       <input type="text" data-f="replace" placeholder="replace" value="${esc(rule.replace)}">
@@ -1049,11 +1179,26 @@ function renderRules(): void {
     )
     .join('');
 
+  const rewriteExcludeRows = (r.rewriteExcludes ?? [])
+    .map(
+      (rule, i) => `<div class="rewriteexclude" data-i="${i}">
+      <input type="checkbox" data-f="enabled" ${rule.enabled ? 'checked' : ''} title="Enabled">
+      <input type="text" data-f="hostPattern" placeholder="host (blank = all)" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="pathPattern" placeholder="path (blank = all)" value="${esc(rule.pathPattern ?? '')}">
+      <button class="link del-rewriteexclude" data-i="${i}">✕</button>
+    </div>`,
+    )
+    .join('');
+
   panel.innerHTML = `
   <div class="rules-inner">
     <h3>Body rewrite rules</h3>
     <div id="body-rules">${bodyRows || '<div class="empty">No rules.</div>'}</div>
     <button class="link" id="add-body">+ add body rule</button>
+
+    <h3>Rewrite excludes <span class="rules-hint">skip ALL body rewriting for matched host+path — for a response that must reach the device byte-for-byte</span></h3>
+    <div id="rewriteexclude-rules">${rewriteExcludeRows}</div>
+    <button class="link" id="add-rewriteexclude">+ add rewrite exclude</button>
 
     <h3>Upstream scheme</h3>
     <label>Default:
@@ -1103,6 +1248,7 @@ function collectRulesFromDom(): RuleSet {
       enabled: !!get('enabled')?.checked,
       direction: (get('direction')?.value as 'response' | 'request') ?? 'response',
       hostPattern: get('hostPattern')?.value || undefined,
+      pathPattern: get('pathPattern')?.value || undefined,
       contentTypePattern: get('contentTypePattern')?.value || undefined,
       find: get('find')?.value ?? '',
       replace: get('replace')?.value ?? '',
@@ -1188,8 +1334,20 @@ function collectRulesFromDom(): RuleSet {
     });
   });
 
+  const rewriteExcludes: RewriteExcludeRule[] = [];
+  document.querySelectorAll('#rewriteexclude-rules .rewriteexclude').forEach((row) => {
+    const get = (f: string) => row.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+    const existing = state.rules.rewriteExcludes?.[Number((row as HTMLElement).dataset.i)];
+    rewriteExcludes.push({
+      id: existing?.id ?? `rwex-${Date.now()}-${rewriteExcludes.length}`,
+      enabled: !!get('enabled')?.checked,
+      hostPattern: get('hostPattern')?.value || undefined,
+      pathPattern: get('pathPattern')?.value || undefined,
+    });
+  });
+
   const def = (byId('default-scheme') as HTMLSelectElement).value as UpstreamScheme;
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block, breakpoints };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block, breakpoints, rewriteExcludes };
 }
 
 // ── breakpoints / intercept ─────────────────────────────────────────────────
@@ -1414,8 +1572,71 @@ function wireEvents(): void {
     }
   });
 
+  // <details> `toggle` doesn't bubble — a capturing listener catches every
+  // section (and the lazily-rendered body sections) with one registration.
+  byId('detail').addEventListener(
+    'toggle',
+    (e) => {
+      const details = e.target as HTMLElement;
+      if (!(details instanceof HTMLDetailsElement)) return;
+      const key = details.dataset.sec;
+      if (key) {
+        state.sectionOpen[key] = details.open;
+        if (details.open) state.lastFocusedSection = key;
+      }
+      if (details.classList.contains('body-section') && details.open) {
+        ensureBodyContent(details, selectedDetail(), selectedFlow());
+      }
+    },
+    true,
+  );
+
+  byId('detail').addEventListener('contextmenu', (e) => {
+    const items = copyMenuItemsFor(e.target as HTMLElement);
+    if (!items) return; // fall through to the native menu elsewhere
+    e.preventDefault();
+    showCtxMenu(e.clientX, e.clientY, items);
+  });
+  // Dismiss the copy menu on any click outside it, Escape, or scrolling.
+  document.addEventListener(
+    'click',
+    (e) => {
+      if (!(e.target as HTMLElement).closest('#ctx-menu')) hideCtxMenu();
+    },
+    true,
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideCtxMenu();
+  });
+  byId('detail').addEventListener('scroll', hideCtxMenu, true);
+
   byId('detail').addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
+
+    // Any interaction inside a section marks it as the user's "place" —
+    // restored (scrolled to) when they select another request.
+    const secEl = target.closest<HTMLElement>('.dsec[data-sec]');
+    if (secEl?.dataset.sec) state.lastFocusedSection = secEl.dataset.sec;
+
+    const openBodyBtn = target.closest<HTMLElement>('[data-open-body]');
+    if (openBodyBtn && state.selectedId) {
+      const details = openBodyBtn.closest<HTMLDetailsElement>('.body-section');
+      if (details) {
+        const kind = details.dataset.kind === 'request' ? 'request' : 'response';
+        const d = selectedDetail();
+        const original = kind === 'request' ? d?.originalRequestBody : d?.originalResponseBody;
+        const showRewritten = details.querySelector<HTMLInputElement>('[data-rewritten-toggle]')?.checked ?? false;
+        vscode.postMessage({
+          kind: 'open-body',
+          id: state.selectedId,
+          body: kind,
+          // Open what's on screen: unchecked toggle shows the original,
+          // pre-rewrite body whenever one exists.
+          variant: original !== undefined && !showRewritten ? 'original' : 'current',
+        });
+      }
+      return;
+    }
 
     const copyBtn = target.closest<HTMLElement>('[data-copy]');
     if (copyBtn && state.selectedId) {
@@ -1536,6 +1757,10 @@ function wireEvents(): void {
       state.rules = collectRulesFromDom();
       (state.rules.breakpoints ??= []).push({ id: `bp-${Date.now()}`, enabled: true, hostPattern: '', onRequest: true, onResponse: false });
       renderRules();
+    } else if (t.id === 'add-rewriteexclude') {
+      state.rules = collectRulesFromDom();
+      (state.rules.rewriteExcludes ??= []).push({ id: `rwex-${Date.now()}`, enabled: true, hostPattern: '' });
+      renderRules();
     } else if (t.classList.contains('del-body')) {
       state.rules = collectRulesFromDom();
       state.rules.bodyRules.splice(Number(t.dataset.i), 1);
@@ -1563,6 +1788,10 @@ function wireEvents(): void {
     } else if (t.classList.contains('del-breakpoint')) {
       state.rules = collectRulesFromDom();
       state.rules.breakpoints?.splice(Number(t.dataset.i), 1);
+      renderRules();
+    } else if (t.classList.contains('del-rewriteexclude')) {
+      state.rules = collectRulesFromDom();
+      state.rules.rewriteExcludes?.splice(Number(t.dataset.i), 1);
       renderRules();
     }
   });

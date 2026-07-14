@@ -1048,7 +1048,12 @@
         "kopytko.network.maxBodyBytes": {
           "type": "number",
           "default": 262144,
-          "description": "Maximum bytes of each request/response body retained for display and HAR export. The full body is still forwarded to the device."
+          "description": "Maximum bytes of each request/response body retained in memory for inline display and HAR export. The full body is always forwarded to the device, and is persisted uncapped to the capture session folder (see kopytko.network.outputDir) for the “Open full body in editor” action."
+        },
+        "kopytko.network.outputDir": {
+          "type": "string",
+          "default": "debug",
+          "description": "Folder (relative to the workspace root, or absolute) where Network Inspector capture sessions are saved — flow metadata plus full request/response bodies. Each capture session gets its own timestamped subfolder."
         },
         "kopytko.network.defaultUpstreamScheme": {
           "type": "string",
@@ -1069,7 +1074,7 @@
         "kopytko.network.rewriteRules": {
           "type": "array",
           "default": [],
-          "description": "Body rewrite rules applied to text request/response bodies. Each item: { enabled, direction: 'response'|'request', hostPattern?, contentTypePattern?, find, replace, isRegex? }. When empty, the built-in `https://` → `http://` response rule is used.",
+          "description": "Body rewrite rules applied to text request/response bodies. Each item: { enabled, direction: 'response'|'request', hostPattern?, pathPattern?, contentTypePattern?, find, replace, isRegex? }. When empty, the built-in `https://` → `http://` and `wss://` → `ws://` response rules are used.",
           "items": {
             "type": "object",
             "properties": {
@@ -1088,6 +1093,9 @@
               "hostPattern": {
                 "type": "string"
               },
+              "pathPattern": {
+                "type": "string"
+              },
               "contentTypePattern": {
                 "type": "string"
               },
@@ -1100,6 +1108,26 @@
               "isRegex": {
                 "type": "boolean",
                 "default": false
+              }
+            }
+          }
+        },
+        "kopytko.network.rewriteExcludeRules": {
+          "type": "array",
+          "default": [],
+          "description": "Opt specific host+path combinations out of ALL body rewriting (every enabled rewrite rule, both directions) — for a response that must reach the device byte-for-byte even though a broad rule like the built-in https→http one would otherwise match it. Each item: { enabled?, hostPattern?, pathPattern? }.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "pathPattern": {
+                "type": "string"
               }
             }
           }

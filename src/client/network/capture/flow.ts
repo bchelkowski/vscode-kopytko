@@ -52,6 +52,19 @@ export interface FlowRecord {
   error?: string;
 }
 
+/**
+ * Full (pre-cap) body buffers for one flow — emitted by the proxy alongside
+ * the `FlowRecord` (whose own buffers are capped at `maxBodyBytes`) so a
+ * session store can persist the complete bytes to disk. Streamed responses
+ * only carry the capped teed copy (best-effort, as documented).
+ */
+export interface FlowBodies {
+  request?: Buffer;
+  response?: Buffer;
+  originalRequest?: Buffer;
+  originalResponse?: Buffer;
+}
+
 export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
   return {
     id: rec.id,

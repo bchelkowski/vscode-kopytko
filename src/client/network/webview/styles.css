@@ -302,14 +302,14 @@ input[type="text"], select {
   word-break: break-all;
 }
 .rules-hint { font-size: 10px; font-weight: 400; opacity: 0.5; text-transform: none; margin-left: 6px; }
-.maplocal, .latency, .headerrule, .blockrule, .breakpoint {
+.maplocal, .latency, .headerrule, .blockrule, .breakpoint, .rewriteexclude {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
   flex-wrap: wrap;
 }
-.maplocal input[type="text"], .latency input[type="text"], .headerrule input[type="text"], .blockrule input[type="text"], .breakpoint input[type="text"] { flex: 1; min-width: 80px; }
+.maplocal input[type="text"], .latency input[type="text"], .headerrule input[type="text"], .blockrule input[type="text"], .breakpoint input[type="text"], .rewriteexclude input[type="text"] { flex: 1; min-width: 80px; }
 
 /* ── breakpoint intercept panel ── */
 #btn-intercepts {
@@ -350,13 +350,6 @@ input[type="text"], select {
 .intercept-actions { display: flex; gap: 8px; margin-top: 4px; }
 
 /* ── detail ── */
-.section { margin-bottom: 12px; }
-.section h3 {
-  font-size: 11px;
-  text-transform: uppercase;
-  opacity: 0.7;
-  margin: 0 0 4px;
-}
 table.kv { width: 100%; border-collapse: collapse; }
 table.kv td {
   padding: 2px 6px;
@@ -383,7 +376,10 @@ pre.body {
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   border-radius: 3px;
 }
-.dsec summary {
+/* Direct-child selectors only — a descendant `.dsec summary` would cascade
+   the uppercase/section styling onto the JSON tree's nested `.jt-node`
+   summaries and change the displayed key casing. */
+.dsec > summary {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -395,8 +391,8 @@ pre.body {
   background: var(--vscode-sideBarSectionHeader-background, rgba(128, 128, 128, 0.08));
   list-style: none;
 }
-.dsec summary::-webkit-details-marker { display: none; }
-.dsec summary::before {
+.dsec > summary::-webkit-details-marker { display: none; }
+.dsec > summary::before {
   content: '▸';
   font-size: 9px;
   opacity: 0.7;
@@ -507,6 +503,43 @@ mark.body-match.current {
   font-size: 10px;
   opacity: 0.6;
   margin-bottom: 4px;
+}
+.trunc-warning {
+  padding: 8px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(93, 83, 38, 0.3));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(204, 167, 0, 0.4));
+  border-radius: 3px;
+  font-size: 11px;
+}
+.trunc-warning .link { font-size: 11px; }
+
+/* ── copy context menu ── */
+#ctx-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  padding: 3px;
+  background: var(--vscode-menu-background, #252526);
+  color: var(--vscode-menu-foreground, #ccc);
+  border: 1px solid var(--vscode-menu-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+#ctx-menu button {
+  background: none;
+  border: none;
+  color: inherit;
+  text-align: left;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+#ctx-menu button:hover {
+  background: var(--vscode-menu-selectionBackground, #094771);
+  color: var(--vscode-menu-selectionForeground, #fff);
 }
 
 /* ── JSON tree view ── */

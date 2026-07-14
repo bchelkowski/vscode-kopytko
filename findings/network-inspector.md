@@ -899,6 +899,133 @@ sinon-fake-timer auto-continue, and disable-drains-continue. Harness confirmed
 the toolbar indicator, request vs response panels, Continue-with-edits payload,
 Abort, and the breakpoint rules editor round-trip.
 
+## Detail-pane UX pass + full-body disk persistence (2026-07-14)
+
+Five user asks in one pass: persistent section state + scroll restore,
+right-click copy key/value everywhere, never show cut bodies (open the full
+one in an editor instead), keep JSON-tree key casing, and make per-body Find
+reveal matches inside folded tree nodes. Non-obvious findings:
+
+- **The uppercased tree keys were pure CSS cascade.** `.dsec summary` (a
+  descendant selector) carried `text-transform: uppercase` for section
+  headers — and the JSON tree's `<details class="jt-node"><summary>` elements
+  are descendants of the body section's `.dsec`, so every *collapsible*
+  object/array key rendered uppercase while leaf keys (plain `.jt-row` divs)
+  kept their casing. Nothing in TS ever touched casing. Fix: scope all the
+  section-summary rules to `.dsec > summary`. Lesson for any webview with
+  nested `<details>`: style outer summaries with direct-child selectors only.
+- **`toggle` does not bubble** — persistent section open-state uses ONE
+  capturing listener on `#detail` (`addEventListener('toggle', h, true)`)
+  instead of per-`<details>` listeners; it both writes `state.sectionOpen`
+  and lazily renders body sections. Corollary: a `<details open>` restored
+  via `innerHTML` fires no toggle in that flow, so `renderDetail()` must call
+  `ensureBodyContent()` explicitly for `.body-section[open]`.
+- **Find-in-tree already *found* collapsed matches** (children of a closed
+  `<details>` are in the DOM, TreeWalker sees them) — they were counted but
+  invisible and `scrollIntoView` no-oped. `revealMatch()` walks
+  `parentElement.closest('details')` chains up to `.body-content` setting
+  `open = true`, only for the *current* match (expanding all matches on every
+  keystroke would unfold huge payloads).
+- **Full bodies now go to disk, not memory** (user's explicit call when
+  offered a bigger in-memory cap: "save responses/session in files like
+  diagnostics/perfetto"). `CaptureProxy` emits `'flow'` with a second
+  `FlowBodies` argument carrying the pre-cap buffers (they were already in
+  memory transiently for rewriting — this adds no buffering); the record's
+  own buffers stay capped. `NetworkSessionStore`
+  (`storage/networkSessionStore.ts`, injectable Buffer-capable sink — the
+  diagnostics `DiagnosticsSink` is string-only, hence a separate interface,
+  though `buildSessionId()` is reused) writes
+  `<outputDir>/<ts>__network/{session.json, flows.ndjson, bodies/<id>.req|.res|.req.orig|.res.orig}`.
+  The controller persists ONLY flows that pass the pause/device-filter gates,
+  fire-and-forget, and a failing store must never break capture (tested).
+  `getFullBody()` prefers disk (complete) over the capped memory buffer;
+  replay of a truncated request now sends the full on-disk body.
+- **Truncated bodies render a warning + "Open full body in editor" link, not
+  the stump.** The editor path formats host-side via the new pure
+  `bodyFormat.ts` (shared with the webview's Formatted tab like `textDiff.ts`)
+  and opens an untitled doc with a proper language id. While unit-testing
+  `tryFormatXml` its one-line-element staircase surfaced (`<b>1</b>` used to
+  increment indent, staircasing flat element lists — the common API shape);
+  fixed in the shared module, accepting slightly worse indent for
+  mixed-inline-markup XML.
+- **Tree-node copy resolves values from data, not DOM text**: `jsonNodeHtml`
+  stamps every node with `data-path` (JSON-encoded segment array), and the
+  context menu resolves it against a `WeakMap<sectionEl, parsedJson>` cache
+  filled on each Tree render — so "Copy value" on an object/array yields its
+  real pretty-printed subtree, and string leaves copy unquoted.
+- **Test gotcha (repo repeat offender)**: a test helper `make(root = '/out')`
+  called with an explicit `undefined` still gets the default — the "no
+  output root" case must be signalled with `null`. Same JS default-param trap
+  already documented in the diagnostics findings for `makeController`.
+- Verified in the browser harness (DOM-level, not just pixels): default
+  section state, persistence + scroll restore across flow switches, computed
+  `text-transform: none` on `.jt-node > summary` vs `uppercase` on section
+  summaries, context-menu copy payloads (kv row, tree subtree, unquoted
+  leaf), truncation warning without a rendered stump, `open-body` messages
+  from both the warning link and the toolbar button, and find expanding the
+  collapsed ancestor chain (`1/1`, visible mark).
+
+## wss→ws built-in rewrite + rewrite excludes (2026-07-14, same day)
+
+Follow-up user asks: rewrite `wss://` to `ws://` like the existing
+`https://`→`http://` bridging rule, and a way to exclude specific
+hostnames+paths from rewriting entirely.
+
+- **`wss://` is the same category as `https://`, not a new proxy capability.**
+  Confirmed first: `CaptureProxy` never handles a live WebSocket `Upgrade` at
+  all (grepped for it — nothing). So this is purely a second built-in
+  `BodyRewriteRule` (`WSS_TO_WS_RULE`, response direction, plain string
+  find/replace) — a backend hands back a `wss://` endpoint URL in a JSON/XML
+  config body, the rule downgrades it to `ws://` text so the device's *next*
+  connection attempt is plain, same mechanism as the https rule. No new
+  proxy logic, no actual frame-level WebSocket proxying added.
+- **`defaultRuleSet()` and `ruleSetFromConfig`'s empty-array fallback both
+  now seed two body rules, not one.** Checked every test asserting on
+  `defaultRuleSet().bodyRules` first — none asserted an exact length, only
+  behavior (`hasMatchingBodyRules`, response-rewrite tests) — so this was a
+  safe default change; a persisted/customized `rewriteRules` setting is
+  untouched either way (the fallback only fires when the array is empty).
+- **Rewrite excludes are a new rule category, not a per-rule flag.**
+  `enabled` already existed per body rule — the actual ask was an opt-out
+  scoped by host+path that applies across *every* rule including the
+  built-ins (e.g. don't touch `signed.test/webhook`'s response even though
+  the broad https rule matches every host). Modeled as `RewriteExcludeRule
+  { id, enabled, hostPattern?, pathPattern? }`, checked first (before any
+  individual body rule) in both `applyBodyRewrites` and
+  `hasMatchingBodyRules` via `findRewriteExclude()`. Naming: RuleSet field
+  `rewriteExcludes` (short, matches the `block`/`latency`/`mapLocal`
+  brevity), config key `kopytko.network.rewriteExcludeRules` (`*Rules`
+  suffix, matches `blockRules`/`latencyRules`/etc.) — the existing field
+  names in this file were already inconsistent on that suffix, picked the
+  more common convention going forward.
+- **A rewrite-exclude needs at least a host or a path pattern.** Unlike
+  block/breakpoint rules (which require a host), an exclude with neither set
+  would silently exclude literally everything — `coerceRewriteExcludeRule`
+  rejects that combination specifically, while still allowing a
+  path-only exclude (host omitted = every host) since that's a legitimate,
+  intentional shape (e.g. "never touch `/webhook` regardless of which
+  backend serves it").
+- **`BodyRewriteRule` gained `pathPattern`** (it only had `hostPattern` +
+  `contentTypePattern` before) — needed so a rule, not just an exclude, can
+  be host+path scoped. This required threading `path` through
+  `applyBodyRewrites`'/`hasMatchingBodyRules`'s context objects, which
+  `captureProxy.ts` already has on hand at every call site (`target.path`)
+  — no new data plumbing, just wider function signatures. `shouldStream()`
+  needed the same `path` param added since it delegates to
+  `hasMatchingBodyRules` to decide stream-vs-buffer; this is a beneficial
+  side effect noted but not separately implemented: a host+path now excluded
+  from rewriting can also be safely streamed instead of buffered, since
+  `hasMatchingBodyRules` naturally returns `false` for it once excluded.
+- Verified via the real proxy in `captureProxy.test.ts` (not just the pure
+  rule-matching unit tests): a JSON response containing both `https://` and
+  `wss://` URLs at an excluded host+path passes through completely
+  untouched, while the identical body at a different path on the same host
+  still gets both rewritten — confirms the exclude is genuinely host+path
+  scoped, not host-only. Also confirmed in the browser harness that the
+  Rules panel's body-rule rows now have a path field and a new "Rewrite
+  excludes" section that round-trips through Apply into the `set-rules`
+  payload.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

@@ -10,10 +10,11 @@
 
 import { EventEmitter } from 'events';
 import { CaptureProxy, CaptureProxyOptions } from './capture/captureProxy';
-import { FlowRecord, toFlowDetail, toSerializedFlow } from './capture/flow';
+import { FlowBodies, FlowRecord, toFlowDetail, toSerializedFlow } from './capture/flow';
 import { RedirectController, RedirectUnsupportedError } from './redirect/redirectController';
 import { RuleSet } from './capture/rewrite/rules';
 import { isTextContentType } from './capture/rewrite/engine';
+import type { BodyFileKind, NetworkSessionStore } from './storage/networkSessionStore';
 import type { FlowDetail, InterceptPayload, InterceptResult, RedirectStatus, SearchHit, SerializedFlow, WebviewState } from './webview/protocol';
 
 export interface DeviceLike {
@@ -45,6 +46,12 @@ export interface NetworkControllerDeps {
   log?: (msg: string) => void;
   /** Overridable for tests. */
   proxyFactory?: (opts: CaptureProxyOptions) => CaptureProxy;
+  /**
+   * Optional on-disk session store — persists each session's flow metadata
+   * and FULL body bytes (the in-memory buffers stay capped at `maxBodyBytes`).
+   * Store failures are logged, never allowed to break capture.
+   */
+  sessionStore?: NetworkSessionStore;
 }
 
 /**
@@ -144,12 +151,59 @@ export class NetworkController extends EventEmitter {
     return [...this.pendingIntercepts.values()].map((p) => p.payload);
   }
 
-  /** Re-sends a captured request through the running proxy as a new, `replayed`-tagged flow. */
-  replay(id: string): void {
+  /**
+   * Re-sends a captured request through the running proxy as a new,
+   * `replayed`-tagged flow. When the in-memory request body was truncated at
+   * the retention cap, the full body is read back from the on-disk session
+   * so the replay sends exactly what the device originally sent.
+   */
+  async replay(id: string): Promise<void> {
     const rec = this.byId.get(id);
     if (!rec) throw new Error('Request is no longer in the capture buffer.');
     if (!this.proxy) throw new Error('Enable capture to replay requests.');
-    this.proxy.replay(rec);
+    const fullBody = rec.requestBodyTruncated
+      ? await this.deps.sessionStore?.readBody(id, 'req').catch(() => null)
+      : null;
+    this.proxy.replay(fullBody ? { ...rec, requestBody: fullBody, requestBodyTruncated: false } : rec);
+  }
+
+  /** Whether the full (untruncated) request body is available from the on-disk session. */
+  async hasFullRequestBody(id: string): Promise<boolean> {
+    try {
+      return (await this.deps.sessionStore?.hasBody(id, 'req')) ?? false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Full body bytes for a flow — from the on-disk session when present
+   * (complete), else the in-memory retained buffer (possibly truncated).
+   */
+  async getFullBody(
+    id: string,
+    body: 'request' | 'response',
+    variant: 'current' | 'original',
+  ): Promise<{ data: Buffer; complete: boolean } | undefined> {
+    const rec = this.byId.get(id);
+    if (!rec) return undefined;
+    const kind: BodyFileKind =
+      body === 'request' ? (variant === 'original' ? 'req.orig' : 'req') : variant === 'original' ? 'res.orig' : 'res';
+    const fromDisk = await this.deps.sessionStore?.readBody(id, kind).catch(() => null);
+    if (fromDisk) return { data: fromDisk, complete: true };
+    const mem =
+      body === 'request'
+        ? variant === 'original'
+          ? rec.originalRequestBody
+          : rec.requestBody
+        : variant === 'original'
+          ? rec.originalResponseBody
+          : rec.responseBody;
+    if (!mem) return undefined;
+    // The original* buffers are capped by the same limit; the direction's
+    // truncated flag is the closest signal we have for them too.
+    const truncated = body === 'request' ? rec.requestBodyTruncated : rec.responseBodyTruncated;
+    return { data: mem, complete: !truncated };
   }
 
   /**
@@ -246,7 +300,7 @@ export class NetworkController extends EventEmitter {
       onIntercept: (payload) => this.handleIntercept(payload),
     });
     proxy.setRules(this.rules);
-    proxy.on('flow', (rec: FlowRecord) => this.onFlow(rec));
+    proxy.on('flow', (rec: FlowRecord, bodies?: FlowBodies) => this.onFlow(rec, bodies));
     proxy.on('error', () => {
       /* surfaced via start() rejection; per-request errors are recorded as flows */
     });
@@ -284,6 +338,19 @@ export class NetworkController extends EventEmitter {
       }
     }
 
+    // Start the on-disk session (flow metadata + full body bytes). A store
+    // failure only costs persistence — capture itself must keep working.
+    try {
+      await this.deps.sessionStore?.startSession({
+        device: { ip: device.ip, label: device.friendlyName ?? device.modelName },
+        proxyPort: this.proxyPort,
+      });
+      const dir = this.deps.sessionStore?.sessionDir;
+      if (dir) this.log(`Session folder: ${dir}`);
+    } catch (err) {
+      this.log(`Session store unavailable — full bodies won't be persisted: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     this.enabled = true;
     this.emitState();
   }
@@ -307,13 +374,18 @@ export class NetworkController extends EventEmitter {
         await this.proxy.stop();
         this.proxy = null;
       }
+      try {
+        await this.deps.sessionStore?.endSession();
+      } catch (err) {
+        this.log(`Failed to finalize the session manifest: ${err instanceof Error ? err.message : String(err)}`);
+      }
       this.emitState();
     }
   }
 
   // ── data ──────────────────────────────────────────────────────────────────
 
-  private onFlow(rec: FlowRecord): void {
+  private onFlow(rec: FlowRecord, bodies?: FlowBodies): void {
     // Replays are user-initiated: they bypass both the pause gate and the
     // device-IP filter (their clientIp is a loopback placeholder anyway).
     if (this.paused && !rec.replayed) return;
@@ -349,6 +421,10 @@ export class NetworkController extends EventEmitter {
     this.flows.push(rec);
     this.byId.set(rec.id, rec);
     this.bufferBytes += flowCost(rec);
+    // Persist metadata + full bodies to the session folder. Fire-and-forget —
+    // recording must never wait on (or die with) disk I/O. Deliberately only
+    // for flows that passed the pause/device-filter gates above.
+    void this.persistFlow(rec, bodies);
 
     const trimmed: string[] = [];
     while (this.flows.length > this._maxEntries) {
@@ -362,6 +438,16 @@ export class NetworkController extends EventEmitter {
 
     this.emit('flow', toSerializedFlow(rec));
     if (trimmed.length > 0) this.emit('trimmed', trimmed);
+  }
+
+  private async persistFlow(rec: FlowRecord, bodies?: FlowBodies): Promise<void> {
+    const store = this.deps.sessionStore;
+    if (!store) return;
+    try {
+      await store.appendFlow(toSerializedFlow(rec), bodies);
+    } catch (err) {
+      this.log(`Failed to persist flow ${rec.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private evictOldest(trimmed: string[]): void {

@@ -182,9 +182,19 @@ seedable from settings.
 
 - **Body rewrite rules** — ordered find/replace over text bodies
   (`application/json`, `*/xml`, `text/*`, JavaScript, form-encoded). Fields:
-  `enabled`, `direction` (`response`/`request`), optional `hostPattern`
-  (substring or `*` glob) + `contentTypePattern`, `find`, `replace`, `isRegex`.
-  The built-in `https://`→`http://` response rule is enabled by default.
+  `enabled`, `direction` (`response`/`request`), optional `hostPattern` +
+  `pathPattern` (substring or `*` glob) + `contentTypePattern`, `find`,
+  `replace`, `isRegex`. Two built-in response rules are enabled by default:
+  `https://`→`http://` (the bridging model — see above) and `wss://`→`ws://`
+  for WebSocket endpoint URLs a backend hands back in a config body (the
+  proxy itself doesn't handle a live WebSocket `Upgrade`; this only rewrites
+  the text so the device's *next* connection attempt is plain `ws://`).
+- **Rewrite excludes** (`rewriteExcludeRules`) — opts a specific `hostPattern`
+  + `pathPattern` out of *every* enabled body rewrite rule, both directions,
+  even the built-ins. For a response that must reach the device
+  byte-for-byte (a signed/HMAC'd payload, a webhook echo) despite otherwise
+  matching a broad rule. A rule needs at least a host or a path pattern — an
+  entry with neither would exclude literally everything and is dropped.
 - **Upstream scheme** — a global default (`https`) plus per-host overrides
   (`https`/`http`/`auto`, where `auto` tries HTTPS then falls back to HTTP).
 - **Map local** (`mapLocalRules`) — when a rule's `hostPattern` + `pathPattern`
@@ -291,11 +301,21 @@ matches with a snippet; clicking a result jumps to that flow, expanding its
 origin and scrolling it into view. This is distinct from the toolbar filter,
 which only narrows the visible list by host/path/method/status.
 
-Selecting a request opens a detail pane: an always-visible overview, a
-**Timing** section, an optional **Query parameters** section (parsed query
-string), then the request headers, an optional **Cookies** section (parsed
-request `Cookie` and response `Set-Cookie`), and the request/response bodies —
-each independently collapsible.
+Selecting a request opens a detail pane: an **Overview**, a **Timing**
+section, an optional **Query parameters** section (parsed query string), then
+the request headers, an optional **Cookies** section (parsed request `Cookie`
+and response `Set-Cookie`), and the request/response bodies — each
+independently collapsible. Only Overview starts expanded; every section you
+open (or close) stays that way as you move between requests, and the pane
+scrolls back to the section you were last looking at — stepping through
+requests comparing, say, response bodies never means re-expanding and
+re-scrolling each time.
+
+Every key/value row — Overview fields, timing phases, query parameters,
+headers, cookies, and JSON-tree nodes — has a right-click context menu with
+**Copy key**, **Copy value**, and **Copy key: value**. On a tree node, Copy
+value copies the node's whole subtree as pretty-printed JSON (string leaves
+copy unquoted).
 
 Response bodies for `image/*` are retained and shown with **Preview** (inline
 image) and **Hex** tabs instead of Raw/Formatted/Tree; other binary content
@@ -308,10 +328,9 @@ Phases that didn't happen are absent rather than zero: a request served over
 a pooled upstream connection shows no DNS/connect/TLS and is labeled
 "socket reused". HAR exports carry the same real phase timings (absent
 phases as `-1` per the HAR spec) instead of the previous whole-duration
-placeholder. Headers open by default;
-bodies start collapsed, and a body's content is only fetched from the
-webview's own cache and formatted once you actually open its section —
-opening one large JSON body never pays for parsing/formatting the others.
+placeholder. A body's content is only fetched from the webview's own cache
+and formatted once you actually open its section — opening one large JSON
+body never pays for parsing/formatting the others.
 
 Each body section has its own **Raw / Formatted / Tree** tabs, computed on
 demand per tab (switching tabs doesn't recompute the ones you're not
@@ -329,7 +348,17 @@ looking at):
 Every body section also has a **Find** box (with a match counter and
 prev/next buttons, Enter/Shift+Enter to step through matches) that
 searches whichever tab is currently showing — Raw, Formatted, or Tree
-alike — and keeps working as you switch tabs.
+alike — and keeps working as you switch tabs. On the Tree tab a match
+inside a folded node is revealed, not just counted: every collapsed
+ancestor expands so the highlighted term is actually visible.
+
+Bodies larger than the in-memory retention cap (`maxBodyBytes`, 256 KB by
+default) are never shown cut off — a cut JSON body is useless. The section
+shows a warning with the real size and an **Open full body in editor**
+link instead; the complete body is read back from the capture session's
+folder on disk (see below) and opened, formatted, as a new editor tab.
+Every text body also has an **Open in editor** button in its toolbar for
+the same formatted editor view regardless of size.
 
 When a rewrite rule changed a body (either direction — request or
 response), that section also gets a **Show rewritten** checkbox, unchecked
@@ -337,6 +366,31 @@ by default: unchecked shows the original body exactly as sent by the
 device or received from the backend; checked shows what the rule actually
 produced. Sections with nothing rewritten don't show the checkbox at all —
 there's nothing to compare.
+
+---
+
+## Session files on disk
+
+Like the Diagnostics and Perfetto tools, every capture session is persisted
+to a timestamped folder under `kopytko.network.outputDir` (default `debug/`,
+relative to the workspace root): `<outputDir>/<YYYY-MM-DD_HH-MM-SS__network>/`
+containing:
+
+- `session.json` — manifest (start/end time, device, proxy port, flow count).
+- `flows.ndjson` — one JSON line per captured flow (metadata + headers),
+  appended as traffic arrives; crash-safe.
+- `bodies/<flowId>.req` / `.res` (+ `.req.orig` / `.res.orig` when a rewrite
+  rule changed a body) — the **full, uncapped** body bytes.
+
+This is what keeps memory flat while nothing is lost: the in-memory buffer
+retains at most `maxBodyBytes` per body for inline display and HAR export,
+and anything bigger is read back from these files on demand — the "Open full
+body in editor" action, and replays of requests whose in-memory body was
+truncated (the replay sends the complete on-disk bytes, not the retained
+prefix). Streamed responses are the one exception: only the capped teed copy
+exists, so their body files are best-effort. **Clear** empties the panel but
+never deletes session files; without a workspace folder (and a relative
+`outputDir`) persistence is skipped and capture works memory-only as before.
 
 ---
 
@@ -350,9 +404,11 @@ there's nothing to compare.
 | `kopytko.network.maxBufferBytes` | `52428800` | Approximate memory budget for retained flows (bodies + overhead); oldest evicted when exceeded, `0` disables |
 | `kopytko.network.upstreamKeepAlive` | `true` | Pool proxy→origin connections instead of a fresh TCP/TLS handshake per request (device side always closes per request) |
 | `kopytko.network.filterToActiveDevice` | `true` | Show only the active device's traffic (macOS/Linux only — always skipped on Windows) |
-| `kopytko.network.maxBodyBytes` | `262144` | Body bytes retained for display/HAR (full body still forwarded) |
+| `kopytko.network.maxBodyBytes` | `262144` | Body bytes retained **in memory** for inline display/HAR — the full body is always forwarded to the device and persisted uncapped to the session folder |
+| `kopytko.network.outputDir` | `"debug"` | Folder (workspace-relative or absolute) where capture sessions are saved — manifest, `flows.ndjson`, and full body files per session |
 | `kopytko.network.defaultUpstreamScheme` | `"https"` | Scheme used to reach origins the app called over HTTP |
-| `kopytko.network.rewriteRules` | `[]` | Seed body-rewrite rules (empty = built-in https→http) |
+| `kopytko.network.rewriteRules` | `[]` | Seed body-rewrite rules (empty = built-in https→http and wss→ws) |
+| `kopytko.network.rewriteExcludeRules` | `[]` | Host+path pairs opted out of ALL body rewriting, even the built-ins |
 | `kopytko.network.upstreamSchemes` | `[]` | Per-host upstream scheme overrides |
 | `kopytko.network.mapLocalRules` | `[]` | Serve a local file/inline body instead of the upstream on host/path match |
 | `kopytko.network.latencyRules` | `[]` | Delay matched responses by `delayMs` |

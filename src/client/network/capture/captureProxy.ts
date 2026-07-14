@@ -15,7 +15,7 @@ import * as https from 'https';
 import type * as net from 'net';
 import { performance } from 'perf_hooks';
 import * as fs from 'fs';
-import { FlowRecord } from './flow';
+import { FlowBodies, FlowRecord } from './flow';
 import type { FlowTimings, InterceptPayload, InterceptResult } from '../webview/protocol';
 import { applyBodyRewrites, applyHeaderRules, decodeBody, hasMatchingBodyRules, isImageContentType, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
 import { MapLocalRule, RuleSet, defaultRuleSet, findBlock, findBreakpoint, findLatencyMs, findMapLocal, resolveUpstreamScheme } from './rewrite/rules';
@@ -84,8 +84,12 @@ function nextInterceptId(): string {
 
 /**
  * Emits:
- *  - `'flow'`   (rec: FlowRecord) — one completed (or errored) exchange
- *  - `'error'`  (err: Error)      — server-level error
+ *  - `'flow'`   (rec: FlowRecord, bodies?: FlowBodies) — one completed (or
+ *               errored) exchange. `rec`'s buffers are capped at
+ *               `maxBodyBytes`; `bodies` carries the full pre-cap bytes for
+ *               listeners that persist them (absent when there's nothing
+ *               beyond what the record already holds).
+ *  - `'error'`  (err: Error) — server-level error
  */
 export class CaptureProxy extends EventEmitter {
   private server: http.Server | null = null;
@@ -195,6 +199,7 @@ export class CaptureProxy extends EventEmitter {
         const reqContentType = strHeader(req.headers['content-type']);
         const reqRewrite = applyBodyRewrites(reqBodyFull, rules, {
           host: target.hostname,
+          path: target.path,
           contentType: reqContentType,
           direction: 'request',
         });
@@ -327,7 +332,7 @@ export class CaptureProxy extends EventEmitter {
     marks: TimingMarks,
   ): void {
     const contentType = strHeader(upstreamRes.headers['content-type']);
-    if (this.shouldStream(upstreamRes, target.hostname, contentType)) {
+    if (this.shouldStream(upstreamRes, target.hostname, target.path, contentType)) {
       void this.streamUpstream(sink, target, scheme, upstreamRes, reqBodyToSend, meta, marks, contentType);
       return;
     }
@@ -353,12 +358,12 @@ export class CaptureProxy extends EventEmitter {
    *  - never stream a compressed response (we must buffer to decode it, or the
    *    device receives bytes it can't read once we strip Content-Encoding).
    */
-  private shouldStream(upstreamRes: http.IncomingMessage, host: string, contentType: string): boolean {
+  private shouldStream(upstreamRes: http.IncomingMessage, host: string, path: string, contentType: string): boolean {
     const enc = strHeader(upstreamRes.headers['content-encoding']).toLowerCase().trim();
     if (enc !== '' && enc !== 'identity') return false;
     if (contentType.toLowerCase().includes('text/event-stream')) return true;
     if (upstreamRes.headers['content-length'] !== undefined) return false;
-    return !hasMatchingBodyRules(this.rules, host, contentType, 'response');
+    return !hasMatchingBodyRules(this.rules, host, path, contentType, 'response');
   }
 
   /**
@@ -411,6 +416,7 @@ export class CaptureProxy extends EventEmitter {
       if (done) return;
       done = true;
       const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
+      const teedBody = retainable && teed.length > 0 ? Buffer.concat(teed) : undefined;
       const rec: FlowRecord = {
         id: nextFlowId(),
         startedWall: meta.startedWall,
@@ -433,7 +439,7 @@ export class CaptureProxy extends EventEmitter {
         responseHeaders: outHeaders,
         requestBody: reqBodyToSend.length > 0 ? reqCap.buf : undefined,
         requestBodyTruncated: reqCap.truncated,
-        responseBody: retainable && teed.length > 0 ? Buffer.concat(teed) : undefined,
+        responseBody: teedBody,
         responseBodyTruncated: truncated || undefined,
         originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
         timings: computeTimings(marks, meta.blockedMs, performance.now()),
@@ -442,7 +448,14 @@ export class CaptureProxy extends EventEmitter {
         replayed: meta.replayed,
         error: err?.message,
       };
-      this.emit('flow', rec);
+      // Streamed responses only ever have the capped teed copy — the full
+      // stream was never buffered (that's the point) — so `response` here is
+      // best-effort, unlike the buffered paths.
+      this.emit('flow', rec, flowBodies({
+        request: reqBodyToSend,
+        response: teedBody,
+        originalRequest: meta.requestRewritten ? meta.originalRequestBody : undefined,
+      }));
     };
 
     upstreamRes.on('data', (c: Buffer) => {
@@ -562,6 +575,7 @@ export class CaptureProxy extends EventEmitter {
 
     const rewrite = applyBodyRewrites(decoded, this.rules, {
       host: target.hostname,
+      path: target.path,
       contentType,
       direction: 'response',
     });
@@ -673,7 +687,12 @@ export class CaptureProxy extends EventEmitter {
       latencyInjectedMs: latencyMs > 0 ? latencyMs : undefined,
       replayed: meta.replayed,
     };
-    this.emit('flow', rec);
+    this.emit('flow', rec, flowBodies({
+      request: reqBodyToSend,
+      response: retainResponse ? outBody : undefined,
+      originalRequest: meta.requestRewritten ? meta.originalRequestBody : undefined,
+      originalResponse: rewrite.changed ? decoded : undefined,
+    }));
   }
 
   /**
@@ -734,7 +753,7 @@ export class CaptureProxy extends EventEmitter {
       latencyInjectedMs: latencyMs > 0 ? latencyMs : undefined,
       replayed: meta.replayed,
     };
-    this.emit('flow', rec);
+    this.emit('flow', rec, flowBodies({ response: retainResponse ? body : undefined }));
   }
 
   private finishError(sink: DeviceSink, target: Target, meta: RequestMeta, err: Error): void {
@@ -1029,6 +1048,16 @@ function collectBody(req: http.IncomingMessage): Promise<Buffer> {
 function capBuffer(buf: Buffer, max: number): { buf: Buffer; truncated: boolean } {
   if (buf.length <= max) return { buf, truncated: false };
   return { buf: buf.subarray(0, max), truncated: true };
+}
+
+/** Drops empty/absent buffers; returns undefined when nothing is worth persisting. */
+function flowBodies(b: FlowBodies): FlowBodies | undefined {
+  const out: FlowBodies = {};
+  if (b.request && b.request.length > 0) out.request = b.request;
+  if (b.response && b.response.length > 0) out.response = b.response;
+  if (b.originalRequest && b.originalRequest.length > 0) out.originalRequest = b.originalRequest;
+  if (b.originalResponse && b.originalResponse.length > 0) out.originalResponse = b.originalResponse;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function strHeader(v: string | string[] | undefined): string {

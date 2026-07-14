@@ -13,12 +13,13 @@ import type {
   HeaderRule,
   LatencyRule,
   MapLocalRule,
+  RewriteExcludeRule,
   RuleSet,
   UpstreamScheme,
   UpstreamSchemeRule,
 } from '../capture/rewrite/rules';
 
-export type { BlockRule, BodyRewriteRule, BreakpointRule, HeaderRule, LatencyRule, MapLocalRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
+export type { BlockRule, BodyRewriteRule, BreakpointRule, HeaderRule, LatencyRule, MapLocalRule, RewriteExcludeRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
 
 /** A paused request or response awaiting live edits before the proxy continues. */
 export interface InterceptPayload {
@@ -169,6 +170,10 @@ export type WebMsg =
   | { kind: 'export-har' }
   | { kind: 'select-flow'; id: string }
   | { kind: 'copy-flow'; id: string; what: 'url' | 'curl' | 'request-body' | 'response-body' }
+  /** Copy an arbitrary snippet (context-menu key/value copy) via the host clipboard. */
+  | { kind: 'copy-text'; text: string }
+  /** Open a body — full version from the on-disk session when available — in a new editor tab. */
+  | { kind: 'open-body'; id: string; body: 'request' | 'response'; variant: 'current' | 'original' }
   | { kind: 'replay-flow'; id: string }
   | { kind: 'search'; query: string }
   | { kind: 'resolve-intercept'; id: string; result: InterceptResult }

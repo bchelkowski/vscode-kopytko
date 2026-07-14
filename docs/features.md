@@ -296,12 +296,17 @@ extension, no setup required (see
 | Pure-Node intercepting proxy (HTTP in, HTTP/HTTPS out) — no external deps, no CA | ✅ | [network-inspector.md](./network-inspector.md) |
 | Master enable/disable toggle — starts proxy + OS redirect; reverts on disable/close/crash | ✅ | [network-inspector.md](./network-inspector.md) |
 | Transparent gateway redirect — scoped `iptables` chain (Linux) / pf anchor (macOS) / WinDivert companion (Windows) | ✅ | [network-inspector.md](./network-inspector.md) |
-| Body rewrite rules — built-in `https://`→`http://` + user find/replace, live-editable | ✅ | [network-inspector.md](./network-inspector.md) |
+| Body rewrite rules — built-in `https://`→`http://` and `wss://`→`ws://` + user find/replace (host and path scoped), live-editable | ✅ | [network-inspector.md](./network-inspector.md) |
+| Rewrite excludes — opt specific host+path combinations out of ALL body rewriting, even the built-ins | ✅ | [network-inspector.md](./network-inspector.md) |
 | Per-host upstream-scheme bridging (https/http/auto) with content-encoding + header handling | ✅ | [network-inspector.md](./network-inspector.md) |
 | Request list grouped by origin → path, detail pane (headers/bodies/metrics), device filter | ✅ | [network-inspector.md](./network-inspector.md) |
 | Detail pane: collapsible header/body sections, per-body Raw/Formatted/Tree tabs computed on demand, original-vs-rewritten toggle per body | ✅ | [network-inspector.md](./network-inspector.md) |
-| Formatted tab: JSON/XML syntax highlighting; Tree tab: only root expanded by default | ✅ | [network-inspector.md](./network-inspector.md) |
-| Per-body Find with match count + prev/next, works across Raw/Formatted/Tree | ✅ | [network-inspector.md](./network-inspector.md) |
+| Detail pane remembers your place — only Overview open by default, per-section open state persists across request selections, pane scrolls back to the last-focused section | ✅ | [network-inspector.md](./network-inspector.md) |
+| Right-click Copy key / Copy value / Copy key: value on every kv row and JSON-tree node (tree nodes copy their subtree as JSON) | ✅ | [network-inspector.md](./network-inspector.md) |
+| Formatted tab: JSON/XML syntax highlighting; Tree tab: only root expanded by default, original key casing preserved | ✅ | [network-inspector.md](./network-inspector.md) |
+| Per-body Find with match count + prev/next, works across Raw/Formatted/Tree; Tree matches inside folded nodes auto-expand their ancestors | ✅ | [network-inspector.md](./network-inspector.md) |
+| Session folders on disk (`outputDir`) — manifest + `flows.ndjson` + full uncapped body files per capture session | ✅ | [network-inspector.md](./network-inspector.md) |
+| Truncated bodies never shown cut — warning + "Open full body in editor" (formatted, from the on-disk session); Open-in-editor button on every text body; truncated replays send the full on-disk body | ✅ | [network-inspector.md](./network-inspector.md) |
 | Export capture to HAR — real per-phase timings, `-1` for not-applicable phases | ✅ | [network-inspector.md](./network-inspector.md) |
 | Timing waterfall — per-request phase breakdown (blocked/DNS/connect/TLS/send/wait/receive) as a stacked bar + table, keep-alive-aware (`socket reused`) | ✅ | [network-inspector.md](./network-inspector.md) |
 | Copy URL / Copy as cURL / Copy body — host-side clipboard, truncation warnings on partial bodies | ✅ | [network-inspector.md](./network-inspector.md) |

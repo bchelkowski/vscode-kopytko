@@ -15,6 +15,7 @@ import {
   findBreakpoint,
   findLatencyMs,
   findMapLocal,
+  findRewriteExclude,
   resolveUpstreamScheme,
   ruleSetFromConfig,
   type RuleSet,
@@ -50,23 +51,30 @@ describe('network/rewrite/engine', () => {
 
     it('rewrites https:// to http:// in a json body and reports the change', () => {
       const body = Buffer.from('{"a":"https://x.test/1","b":"https://y.test/2"}');
-      const out = applyBodyRewrites(body, rules, { host: 'x.test', contentType: 'application/json', direction: 'response' });
+      const out = applyBodyRewrites(body, rules, { host: 'x.test', path: '/', contentType: 'application/json', direction: 'response' });
       expect(out.changed).to.equal(true);
       expect(out.body.toString()).to.equal('{"a":"http://x.test/1","b":"http://y.test/2"}');
       // Content length shrinks by one char per occurrence.
       expect(out.body.length).to.equal(body.length - 2);
     });
 
+    it('rewrites wss:// to ws:// via the built-in rule too', () => {
+      const body = Buffer.from('{"socket":"wss://x.test/live"}');
+      const out = applyBodyRewrites(body, rules, { host: 'x.test', path: '/', contentType: 'application/json', direction: 'response' });
+      expect(out.changed).to.equal(true);
+      expect(out.body.toString()).to.equal('{"socket":"ws://x.test/live"}');
+    });
+
     it('leaves binary content types untouched', () => {
       const body = Buffer.from('https://x.test');
-      const out = applyBodyRewrites(body, rules, { host: 'x.test', contentType: 'image/png', direction: 'response' });
+      const out = applyBodyRewrites(body, rules, { host: 'x.test', path: '/', contentType: 'image/png', direction: 'response' });
       expect(out.changed).to.equal(false);
       expect(out.body).to.equal(body);
     });
 
     it('does not touch request bodies with a response-only rule', () => {
       const body = Buffer.from('https://x.test');
-      const out = applyBodyRewrites(body, rules, { host: 'x.test', contentType: 'application/json', direction: 'request' });
+      const out = applyBodyRewrites(body, rules, { host: 'x.test', path: '/', contentType: 'application/json', direction: 'request' });
       expect(out.changed).to.equal(false);
     });
 
@@ -75,8 +83,19 @@ describe('network/rewrite/engine', () => {
         ...defaultRuleSet(),
         bodyRules: [{ id: 'r', enabled: true, direction: 'response', hostPattern: 'only.test', find: 'A', replace: 'B' }],
       };
-      const hit = applyBodyRewrites(Buffer.from('A'), scoped, { host: 'only.test', contentType: 'text/plain', direction: 'response' });
-      const miss = applyBodyRewrites(Buffer.from('A'), scoped, { host: 'other.test', contentType: 'text/plain', direction: 'response' });
+      const hit = applyBodyRewrites(Buffer.from('A'), scoped, { host: 'only.test', path: '/', contentType: 'text/plain', direction: 'response' });
+      const miss = applyBodyRewrites(Buffer.from('A'), scoped, { host: 'other.test', path: '/', contentType: 'text/plain', direction: 'response' });
+      expect(hit.body.toString()).to.equal('B');
+      expect(miss.body.toString()).to.equal('A');
+    });
+
+    it('honours pathPattern scoping', () => {
+      const scoped: RuleSet = {
+        ...defaultRuleSet(),
+        bodyRules: [{ id: 'r', enabled: true, direction: 'response', pathPattern: '/v1/*', find: 'A', replace: 'B' }],
+      };
+      const hit = applyBodyRewrites(Buffer.from('A'), scoped, { host: 'h', path: '/v1/items', contentType: 'text/plain', direction: 'response' });
+      const miss = applyBodyRewrites(Buffer.from('A'), scoped, { host: 'h', path: '/v2/items', contentType: 'text/plain', direction: 'response' });
       expect(hit.body.toString()).to.equal('B');
       expect(miss.body.toString()).to.equal('A');
     });
@@ -86,15 +105,39 @@ describe('network/rewrite/engine', () => {
         ...defaultRuleSet(),
         bodyRules: [{ id: 'r', enabled: true, direction: 'response', find: 'v\\d+', replace: 'vN', isRegex: true }],
       };
-      const out = applyBodyRewrites(Buffer.from('v1 v22 v3'), rx, { host: 'h', contentType: 'text/plain', direction: 'response' });
+      const out = applyBodyRewrites(Buffer.from('v1 v22 v3'), rx, { host: 'h', path: '/', contentType: 'text/plain', direction: 'response' });
       expect(out.body.toString()).to.equal('vN vN vN');
 
       const bad: RuleSet = {
         ...defaultRuleSet(),
         bodyRules: [{ id: 'r', enabled: true, direction: 'response', find: '(', replace: 'x', isRegex: true }],
       };
-      const safe = applyBodyRewrites(Buffer.from('abc'), bad, { host: 'h', contentType: 'text/plain', direction: 'response' });
+      const safe = applyBodyRewrites(Buffer.from('abc'), bad, { host: 'h', path: '/', contentType: 'text/plain', direction: 'response' });
       expect(safe.body.toString()).to.equal('abc');
+    });
+
+    it('a matching rewrite-exclude wins over every otherwise-applicable rule', () => {
+      const excluded: RuleSet = {
+        ...defaultRuleSet(),
+        rewriteExcludes: [{ id: 'x', enabled: true, hostPattern: 'signed.test', pathPattern: '/webhook' }],
+      };
+      const body = Buffer.from('{"cb":"https://signed.test/x","sig":"wss://signed.test/x"}');
+      const excludedOut = applyBodyRewrites(body, excluded, { host: 'signed.test', path: '/webhook', contentType: 'application/json', direction: 'response' });
+      expect(excludedOut.changed).to.equal(false);
+      expect(excludedOut.body).to.equal(body);
+
+      // Same host, a path the exclude doesn't cover — rewriting still applies.
+      const otherPath = applyBodyRewrites(body, excluded, { host: 'signed.test', path: '/other', contentType: 'application/json', direction: 'response' });
+      expect(otherPath.changed).to.equal(true);
+    });
+
+    it('a disabled rewrite-exclude does not suppress rewriting', () => {
+      const rs: RuleSet = {
+        ...defaultRuleSet(),
+        rewriteExcludes: [{ id: 'x', enabled: false, hostPattern: 'signed.test' }],
+      };
+      const out = applyBodyRewrites(Buffer.from('https://signed.test'), rs, { host: 'signed.test', path: '/', contentType: 'text/plain', direction: 'response' });
+      expect(out.changed).to.equal(true);
     });
   });
 
@@ -252,10 +295,45 @@ describe('network/rewrite/engine', () => {
 
   describe('hasMatchingBodyRules', () => {
     it('is true when an enabled rule would rewrite this response, false otherwise', () => {
-      const rs = defaultRuleSet(); // built-in https→http response rule, all hosts
-      expect(hasMatchingBodyRules(rs, 'any.test', 'application/json', 'response')).to.equal(true);
-      expect(hasMatchingBodyRules(rs, 'any.test', 'image/png', 'response')).to.equal(false); // binary
-      expect(hasMatchingBodyRules(rs, 'any.test', 'application/json', 'request')).to.equal(false); // wrong direction
+      const rs = defaultRuleSet(); // built-in https→http and wss→ws response rules, all hosts
+      expect(hasMatchingBodyRules(rs, 'any.test', '/', 'application/json', 'response')).to.equal(true);
+      expect(hasMatchingBodyRules(rs, 'any.test', '/', 'image/png', 'response')).to.equal(false); // binary
+      expect(hasMatchingBodyRules(rs, 'any.test', '/', 'application/json', 'request')).to.equal(false); // wrong direction
+    });
+
+    it('is false when a rewrite-exclude matches the host+path, even though a body rule would otherwise apply', () => {
+      const rs: RuleSet = {
+        ...defaultRuleSet(),
+        rewriteExcludes: [{ id: 'x', enabled: true, hostPattern: 'signed.test', pathPattern: '/webhook' }],
+      };
+      expect(hasMatchingBodyRules(rs, 'signed.test', '/webhook', 'application/json', 'response')).to.equal(false);
+      expect(hasMatchingBodyRules(rs, 'signed.test', '/other', 'application/json', 'response')).to.equal(true);
+    });
+
+    it('respects pathPattern scoping on the body rule itself', () => {
+      const rs: RuleSet = {
+        ...defaultRuleSet(),
+        bodyRules: [{ id: 'r', enabled: true, direction: 'response', pathPattern: '/v1/*', find: 'A', replace: 'B' }],
+      };
+      expect(hasMatchingBodyRules(rs, 'h', '/v1/items', 'text/plain', 'response')).to.equal(true);
+      expect(hasMatchingBodyRules(rs, 'h', '/v2/items', 'text/plain', 'response')).to.equal(false);
+    });
+  });
+
+  describe('findRewriteExclude', () => {
+    const rules: RuleSet = {
+      ...defaultRuleSet(),
+      rewriteExcludes: [
+        { id: 'e1', enabled: true, hostPattern: 'signed.test', pathPattern: '/webhook' },
+        { id: 'e2', enabled: true, pathPattern: '/no-touch' }, // no host = every host
+        { id: 'e3', enabled: false, hostPattern: 'off.test' },
+      ],
+    };
+    it('matches by host and/or path, ignoring disabled rules', () => {
+      expect(findRewriteExclude(rules, 'signed.test', '/webhook')?.id).to.equal('e1');
+      expect(findRewriteExclude(rules, 'signed.test', '/other')).to.equal(undefined);
+      expect(findRewriteExclude(rules, 'any.test', '/no-touch')?.id).to.equal('e2');
+      expect(findRewriteExclude(rules, 'off.test', '/')).to.equal(undefined); // disabled
     });
   });
 
@@ -267,6 +345,12 @@ describe('network/rewrite/engine', () => {
       expect(rs.headerRules).to.deep.equal([]);
       expect(rs.block).to.deep.equal([]);
       expect(rs.breakpoints).to.deep.equal([]);
+      expect(rs.rewriteExcludes).to.deep.equal([]);
+    });
+
+    it('defaults bodyRules to both built-in rewrite rules (https→http, wss→ws) when empty', () => {
+      const rs = ruleSetFromConfig([], [], 'https');
+      expect(rs.bodyRules.map((r) => r.id).sort()).to.deep.equal(['builtin-https-to-http', 'builtin-wss-to-ws']);
     });
 
     it('coerces the new rule arrays and drops malformed entries', () => {
@@ -279,6 +363,7 @@ describe('network/rewrite/engine', () => {
         [{ name: 'X', op: 'set', value: '1' }, { op: 'set' }], // second has no name → dropped
         [{ hostPattern: 'ads.test' }, { pathPattern: '/x' }], // second has no host → dropped
         [{ hostPattern: 'api.test', onResponse: true }, { pathPattern: '/x' }], // second has no host → dropped
+        [{ hostPattern: 'signed.test', pathPattern: '/webhook' }, {}], // second has neither host nor path → dropped
       );
       expect(rs.mapLocal).to.have.length(1);
       expect(rs.latency).to.have.length(1);
@@ -290,6 +375,15 @@ describe('network/rewrite/engine', () => {
       // onRequest defaults to false when onResponse was explicitly set.
       expect(rs.breakpoints![0].onResponse).to.equal(true);
       expect(rs.breakpoints![0].onRequest).to.equal(false);
+      expect(rs.rewriteExcludes).to.have.length(1);
+      expect(rs.rewriteExcludes![0].hostPattern).to.equal('signed.test');
+    });
+
+    it('accepts a rewrite-exclude with only a pathPattern (no host = every host)', () => {
+      const rs = ruleSetFromConfig([], [], 'https', [], [], [], [], [], [{ pathPattern: '/no-touch' }]);
+      expect(rs.rewriteExcludes).to.have.length(1);
+      expect(rs.rewriteExcludes![0].hostPattern).to.equal(undefined);
+      expect(rs.rewriteExcludes![0].pathPattern).to.equal('/no-touch');
     });
   });
 });

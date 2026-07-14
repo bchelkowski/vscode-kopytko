@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { NetworkController, type NetworkConfig } from '../network/networkController';
+import { NetworkSessionStore } from '../network/storage/networkSessionStore';
 import { NetworkEditorPanel } from '../network/views/networkEditorPanel';
 import { RedirectController, RedirectUnsupportedError } from '../network/redirect/redirectController';
 import { createElevatedRunner } from '../network/redirect/elevate';
@@ -73,15 +74,29 @@ export function registerNetwork(
         cfg.get('network.headerRules'),
         cfg.get('network.blockRules'),
         cfg.get('network.breakpointRules'),
+        cfg.get('network.rewriteExcludeRules'),
       ),
     };
   };
+
+  // On-disk session persistence (flows.ndjson + full body files) — same
+  // "timestamped folder under the workspace output dir" pattern as the
+  // Diagnostics/Perfetto tools. No workspace → no persistence, capture still works.
+  const sessionStore = new NetworkSessionStore({
+    resolveRoot: () => {
+      const dir = vscode.workspace.getConfiguration('kopytko').get<string>('network.outputDir', 'debug');
+      if (path.isAbsolute(dir)) return dir;
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      return workspaceRoot ? path.join(workspaceRoot, dir) : undefined;
+    },
+  });
 
   const controller = new NetworkController({
     deviceManager: services.deviceManager,
     redirect,
     readConfig,
     log,
+    sessionStore,
   });
 
   context.subscriptions.push(
