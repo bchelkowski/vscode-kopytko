@@ -17,8 +17,8 @@ import { performance } from 'perf_hooks';
 import * as fs from 'fs';
 import { FlowRecord } from './flow';
 import type { FlowTimings } from '../webview/protocol';
-import { applyBodyRewrites, applyHeaderRules, decodeBody, isImageContentType, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
-import { MapLocalRule, RuleSet, defaultRuleSet, findLatencyMs, findMapLocal, resolveUpstreamScheme } from './rewrite/rules';
+import { applyBodyRewrites, applyHeaderRules, decodeBody, hasMatchingBodyRules, isImageContentType, isTextContentType, rewriteResponseHeaders } from './rewrite/engine';
+import { MapLocalRule, RuleSet, defaultRuleSet, findBlock, findLatencyMs, findMapLocal, resolveUpstreamScheme } from './rewrite/rules';
 import { pinnedLookup, realHostsBypassResolver, resolveBypassingHosts, type HostsBypassResolver } from '../dnsBypass';
 
 export interface CaptureProxyOptions {
@@ -52,12 +52,14 @@ interface Target {
 export interface DeviceSink {
   headersSent: boolean;
   writeHead(status: number, statusText: string | undefined, headers: http.OutgoingHttpHeaders): void;
-  end(body: string | Buffer): void;
+  write(chunk: string | Buffer): void;
+  end(body?: string | Buffer): void;
 }
 
 const NOOP_SINK: DeviceSink = {
   headersSent: false,
   writeHead: () => undefined,
+  write: () => undefined,
   end: () => undefined,
 };
 
@@ -161,6 +163,14 @@ export class CaptureProxy extends EventEmitter {
       method: (req.method ?? 'GET').toUpperCase(),
       requestHeaders: cloneHeaderMap(req.headers),
     };
+
+    // A block rule aborts the connection before we ever touch the upstream —
+    // the device sees a reset (ECONNRESET), which is exactly the network
+    // failure a developer wants to test the channel's error handling against.
+    if (findBlock(this.rules, target.hostname, target.path)) {
+      this.recordBlocked(res, target, meta);
+      return;
+    }
 
     const tBodyStart = performance.now();
     collectBody(req)
@@ -274,12 +284,189 @@ export class CaptureProxy extends EventEmitter {
     meta: RequestMeta,
     marks: TimingMarks,
   ): void {
+    const contentType = strHeader(upstreamRes.headers['content-type']);
+    if (this.shouldStream(upstreamRes, target.hostname, contentType)) {
+      void this.streamUpstream(sink, target, scheme, upstreamRes, reqBodyToSend, meta, marks, contentType);
+      return;
+    }
+
     const chunks: Buffer[] = [];
     upstreamRes.on('data', (c: Buffer) => chunks.push(c));
     upstreamRes.on('error', (err) => this.finishError(sink, target, meta, err));
     upstreamRes.on('end', () => {
       void this.finishUpstream(sink, target, scheme, upstreamRes, chunks, reqBodyToSend, meta, marks);
     });
+  }
+
+  /**
+   * Decides whether to pass a response through chunk-by-chunk instead of
+   * buffering it whole. Buffering is required to rewrite bodies and recompute
+   * Content-Length, but an open-ended response (Server-Sent Events, or a
+   * chunked response with no Content-Length) never fires `end`, so buffering
+   * hangs the device forever. We stream those — but only when doing so can't
+   * break the https→http bridge:
+   *  - always stream SSE (buffering it is a guaranteed hang),
+   *  - stream a no-Content-Length response only when no body rule would have
+   *    rewritten it (otherwise the bridge needs the buffered/rewritten body),
+   *  - never stream a compressed response (we must buffer to decode it, or the
+   *    device receives bytes it can't read once we strip Content-Encoding).
+   */
+  private shouldStream(upstreamRes: http.IncomingMessage, host: string, contentType: string): boolean {
+    const enc = strHeader(upstreamRes.headers['content-encoding']).toLowerCase().trim();
+    if (enc !== '' && enc !== 'identity') return false;
+    if (contentType.toLowerCase().includes('text/event-stream')) return true;
+    if (upstreamRes.headers['content-length'] !== undefined) return false;
+    return !hasMatchingBodyRules(this.rules, host, contentType, 'response');
+  }
+
+  /**
+   * Streaming response path: forward each chunk to the device as it arrives
+   * (no body rewrite), teeing a capped copy for display, and emit the flow
+   * when the stream ends or the connection closes. A never-ending SSE stream
+   * therefore appears in the list when it finally closes — the point is that
+   * the device is never left hanging on a buffer that never completes.
+   */
+  private async streamUpstream(
+    sink: DeviceSink,
+    target: Target,
+    scheme: 'https' | 'http',
+    upstreamRes: http.IncomingMessage,
+    reqBodyToSend: Buffer,
+    meta: RequestMeta,
+    marks: TimingMarks,
+    contentType: string,
+  ): Promise<void> {
+    const normalized = rewriteResponseHeaders(upstreamRes.headers);
+    const headerRewrite = applyHeaderRules(normalized, this.rules.headerRules, {
+      host: target.hostname,
+      direction: 'response',
+    });
+    const outHeaders = headerRewrite.headers;
+    // Length is unknown up front — omit it and let Node frame the response
+    // (chunked / close-delimited). Connection: close per the bridge rule.
+    delete outHeaders['content-length'];
+    outHeaders['connection'] = 'close';
+
+    const latencyMs = findLatencyMs(this.rules, target.hostname, target.path);
+    if (latencyMs > 0) await this.sleep(latencyMs);
+
+    const status = upstreamRes.statusCode ?? 0;
+    const statusText = upstreamRes.statusMessage ?? '';
+    try {
+      sink.writeHead(status, statusText || undefined, outHeaders);
+    } catch {
+      // Device socket already gone — still tee + record what streams in.
+    }
+
+    const retainable = isTextContentType(contentType) || isImageContentType(contentType);
+    const teed: Buffer[] = [];
+    let teedLen = 0;
+    let responseBytes = 0;
+    let truncated = false;
+    let done = false;
+
+    const finalize = (err?: Error): void => {
+      if (done) return;
+      done = true;
+      const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
+      const rec: FlowRecord = {
+        id: nextFlowId(),
+        startedWall: meta.startedWall,
+        method: meta.method,
+        host: target.hostname,
+        port: target.clientPort,
+        path: target.path,
+        query: target.query,
+        status,
+        statusText,
+        contentType,
+        durationMs: Date.now() - meta.startedWall,
+        requestBytes: reqBodyToSend.length,
+        responseBytes,
+        clientIp: meta.clientIp,
+        upstreamScheme: scheme,
+        rewrittenBody: !!meta.requestRewritten,
+        rewrittenHeaders: headerRewrite.changed || !!meta.headersRewritten || undefined,
+        requestHeaders: meta.requestHeaders,
+        responseHeaders: outHeaders,
+        requestBody: reqBodyToSend.length > 0 ? reqCap.buf : undefined,
+        requestBodyTruncated: reqCap.truncated,
+        responseBody: retainable && teed.length > 0 ? Buffer.concat(teed) : undefined,
+        responseBodyTruncated: truncated || undefined,
+        originalRequestBody: meta.requestRewritten ? capBuffer(meta.originalRequestBody!, this.maxBodyBytes).buf : undefined,
+        timings: computeTimings(marks, meta.blockedMs, performance.now()),
+        streamed: true,
+        latencyInjectedMs: latencyMs > 0 ? latencyMs : undefined,
+        replayed: meta.replayed,
+        error: err?.message,
+      };
+      this.emit('flow', rec);
+    };
+
+    upstreamRes.on('data', (c: Buffer) => {
+      responseBytes += c.length;
+      try {
+        sink.write(c);
+      } catch {
+        // Device leg gone — keep draining upstream so it can close cleanly.
+      }
+      if (teedLen < this.maxBodyBytes) {
+        const take = c.subarray(0, this.maxBodyBytes - teedLen);
+        teed.push(take);
+        teedLen += take.length;
+        if (take.length < c.length) truncated = true;
+      }
+    });
+    upstreamRes.on('end', () => {
+      try {
+        sink.end();
+      } catch {
+        // ignore
+      }
+      finalize();
+    });
+    upstreamRes.on('close', () => finalize());
+    upstreamRes.on('error', (err) => {
+      try {
+        sink.end();
+      } catch {
+        // ignore
+      }
+      finalize(err instanceof Error ? err : new Error(String(err)));
+    });
+  }
+
+  /** Aborts a request matched by a block rule and records it as a blocked flow. */
+  private recordBlocked(res: http.ServerResponse, target: Target, meta: RequestMeta): void {
+    try {
+      res.destroy(); // reset the device connection → ECONNRESET on the device
+    } catch {
+      // already gone
+    }
+    const rec: FlowRecord = {
+      id: nextFlowId(),
+      startedWall: meta.startedWall,
+      method: meta.method,
+      host: target.hostname,
+      port: target.clientPort,
+      path: target.path,
+      query: target.query,
+      status: 0,
+      statusText: '',
+      contentType: '',
+      durationMs: Date.now() - meta.startedWall,
+      requestBytes: 0,
+      responseBytes: 0,
+      clientIp: meta.clientIp,
+      upstreamScheme: 'http',
+      rewrittenBody: false,
+      requestHeaders: meta.requestHeaders,
+      responseHeaders: {},
+      blocked: true,
+      error: 'Blocked by rule — connection reset',
+      replayed: meta.replayed,
+    };
+    this.emit('flow', rec);
   }
 
   private async finishUpstream(

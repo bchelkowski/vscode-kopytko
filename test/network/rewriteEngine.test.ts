@@ -4,12 +4,14 @@ import {
   applyBodyRewrites,
   applyHeaderRules,
   decodeBody,
+  hasMatchingBodyRules,
   isImageContentType,
   isTextContentType,
   rewriteResponseHeaders,
 } from '../../src/client/network/capture/rewrite/engine';
 import {
   defaultRuleSet,
+  findBlock,
   findLatencyMs,
   findMapLocal,
   resolveUpstreamScheme,
@@ -213,12 +215,39 @@ describe('network/rewrite/engine', () => {
     });
   });
 
+  describe('findBlock', () => {
+    const rules: RuleSet = {
+      ...defaultRuleSet(),
+      block: [
+        { id: 'b1', enabled: true, hostPattern: 'ads.test' },
+        { id: 'b2', enabled: true, hostPattern: 'api.test', pathPattern: '/fail/*' },
+        { id: 'b3', enabled: false, hostPattern: 'off.test' },
+      ],
+    };
+    it('matches by host and optional path, ignoring disabled rules', () => {
+      expect(findBlock(rules, 'ads.test', '/anything')?.id).to.equal('b1');
+      expect(findBlock(rules, 'api.test', '/fail/x')?.id).to.equal('b2');
+      expect(findBlock(rules, 'api.test', '/ok')).to.equal(undefined);
+      expect(findBlock(rules, 'off.test', '/')).to.equal(undefined);
+    });
+  });
+
+  describe('hasMatchingBodyRules', () => {
+    it('is true when an enabled rule would rewrite this response, false otherwise', () => {
+      const rs = defaultRuleSet(); // built-in https→http response rule, all hosts
+      expect(hasMatchingBodyRules(rs, 'any.test', 'application/json', 'response')).to.equal(true);
+      expect(hasMatchingBodyRules(rs, 'any.test', 'image/png', 'response')).to.equal(false); // binary
+      expect(hasMatchingBodyRules(rs, 'any.test', 'application/json', 'request')).to.equal(false); // wrong direction
+    });
+  });
+
   describe('ruleSetFromConfig', () => {
     it('accepts the legacy 3-arg form and defaults the new arrays to empty', () => {
       const rs = ruleSetFromConfig([], [], 'https');
       expect(rs.mapLocal).to.deep.equal([]);
       expect(rs.latency).to.deep.equal([]);
       expect(rs.headerRules).to.deep.equal([]);
+      expect(rs.block).to.deep.equal([]);
     });
 
     it('coerces the new rule arrays and drops malformed entries', () => {
@@ -229,11 +258,14 @@ describe('network/rewrite/engine', () => {
         [{ hostPattern: 'a', body: 'x' }, { hostPattern: 'b' }], // second has no file/body → dropped
         [{ hostPattern: 'a', delayMs: 100 }, { hostPattern: 'b', delayMs: 0 }], // second not > 0 → dropped
         [{ name: 'X', op: 'set', value: '1' }, { op: 'set' }], // second has no name → dropped
+        [{ hostPattern: 'ads.test' }, { pathPattern: '/x' }], // second has no host → dropped
       );
       expect(rs.mapLocal).to.have.length(1);
       expect(rs.latency).to.have.length(1);
       expect(rs.headerRules).to.have.length(1);
       expect(rs.headerRules![0].name).to.equal('X');
+      expect(rs.block).to.have.length(1);
+      expect(rs.block![0].hostPattern).to.equal('ads.test');
     });
   });
 });

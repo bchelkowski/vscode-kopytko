@@ -60,6 +60,28 @@ export interface BodyRewriteResult {
 }
 
 /**
+ * Whether any enabled body rule *could* rewrite a response of this
+ * content-type from this host — used to decide if a response is safe to
+ * stream (streaming skips body rewrite, so we only stream when nothing would
+ * have been rewritten, keeping the https→http bridge intact).
+ */
+export function hasMatchingBodyRules(
+  ruleSet: RuleSet,
+  host: string,
+  contentType: string,
+  direction: 'response' | 'request',
+): boolean {
+  if (!isTextContentType(contentType)) return false;
+  return ruleSet.bodyRules.some(
+    (r) =>
+      r.enabled &&
+      r.direction === direction &&
+      matchHost(r.hostPattern, host) &&
+      matchContentType(r.contentTypePattern, contentType),
+  );
+}
+
+/**
  * Applies every enabled, matching body rule to a text body. Binary bodies and
  * unmatched content types pass through unchanged.
  */

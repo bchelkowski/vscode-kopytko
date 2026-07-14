@@ -72,6 +72,14 @@ export interface HeaderRule {
   value?: string;
 }
 
+/** Abort the connection for matched requests — the device sees a network error. */
+export interface BlockRule {
+  id: string;
+  enabled: boolean;
+  hostPattern: string;
+  pathPattern?: string;
+}
+
 export interface RuleSet {
   bodyRules: BodyRewriteRule[];
   upstreamSchemes: UpstreamSchemeRule[];
@@ -81,6 +89,7 @@ export interface RuleSet {
   mapLocal?: MapLocalRule[];
   latency?: LatencyRule[];
   headerRules?: HeaderRule[];
+  block?: BlockRule[];
 }
 
 /** The one built-in rule that makes the whole no-CA bridging model work. */
@@ -101,6 +110,7 @@ export function defaultRuleSet(): RuleSet {
     mapLocal: [],
     latency: [],
     headerRules: [],
+    block: [],
   };
 }
 
@@ -145,6 +155,13 @@ export function findLatencyMs(rules: RuleSet, host: string, path: string): numbe
   return rule?.delayMs ?? 0;
 }
 
+/** First enabled block rule matching host+path, or undefined. */
+export function findBlock(rules: RuleSet, host: string, path: string): BlockRule | undefined {
+  return (rules.block ?? []).find(
+    (r) => r.enabled && matchHost(r.hostPattern, host) && matchPath(r.pathPattern, path),
+  );
+}
+
 /** Resolves which scheme the proxy should use to reach `host`. */
 export function resolveUpstreamScheme(host: string, rules: RuleSet): UpstreamScheme {
   for (const rule of rules.upstreamSchemes) {
@@ -169,6 +186,7 @@ export function ruleSetFromConfig(
   mapLocalRaw?: unknown,
   latencyRaw?: unknown,
   headerRulesRaw?: unknown,
+  blockRaw?: unknown,
 ): RuleSet {
   const bodyRules = Array.isArray(bodyRulesRaw) && bodyRulesRaw.length > 0
     ? bodyRulesRaw.map(coerceBodyRule).filter((r): r is BodyRewriteRule => r !== null)
@@ -191,8 +209,11 @@ export function ruleSetFromConfig(
   const headerRules = Array.isArray(headerRulesRaw)
     ? headerRulesRaw.map(coerceHeaderRule).filter((r): r is HeaderRule => r !== null)
     : [];
+  const block = Array.isArray(blockRaw)
+    ? blockRaw.map(coerceBlockRule).filter((r): r is BlockRule => r !== null)
+    : [];
 
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block };
 }
 
 let ruleCounter = 0;
@@ -270,5 +291,17 @@ function coerceHeaderRule(raw: unknown): HeaderRule | null {
     op,
     name: o.name,
     value: typeof o.value === 'string' ? o.value : undefined,
+  };
+}
+
+function coerceBlockRule(raw: unknown): BlockRule | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.hostPattern !== 'string' || !o.hostPattern) return null;
+  return {
+    id: typeof o.id === 'string' ? o.id : nextRuleId(),
+    enabled: o.enabled !== false,
+    hostPattern: o.hostPattern,
+    pathPattern: typeof o.pathPattern === 'string' ? o.pathPattern : undefined,
   };
 }

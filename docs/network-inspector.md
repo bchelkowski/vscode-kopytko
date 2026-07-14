@@ -198,12 +198,29 @@ seedable from settings.
   response-direction header for matched hosts. The proxy-owned headers
   (`content-length`, `transfer-encoding`, `connection`, `host`) are protected
   and can't be changed. Affected flows are tagged `hdr`.
+- **Block** (`blockRules`) — when a rule's `hostPattern` + `pathPattern` match,
+  the proxy aborts the connection before reaching the upstream, so the device
+  sees a network reset (`ECONNRESET`) — for testing the channel's error/
+  timeout handling. Blocked flows are tagged `block`.
 
 Because the proxy edits bodies, it also handles the mechanics that keeps the
 bridge intact: it decodes gzip/deflate/br before rewriting, recomputes
 `Content-Length`, rewrites `Location`/`Content-Location` on redirects, strips
 `Secure`/downgrades `SameSite=None` on `Set-Cookie` (a device on HTTP would
 otherwise drop them), and drops `Strict-Transport-Security`.
+
+## Streaming responses
+
+Rewriting a body requires the whole body, so most responses are buffered
+before forwarding. But an **open-ended** response — Server-Sent Events
+(`text/event-stream`), or a chunked response with no `Content-Length` — never
+finishes, and buffering one would hang the device forever. Those are instead
+**passed through chunk-by-chunk** as they arrive (tagged `stream`), with a
+capped copy teed for display. To keep the https→http bridge intact, a
+no-`Content-Length` response is only streamed when no body-rewrite rule would
+have touched it (and never when it's compressed, since the device needs the
+decoded bytes); SSE always streams. A streamed flow appears in the list when
+its stream ends, and its captured body is best-effort/partial.
 
 ---
 
@@ -313,4 +330,5 @@ there's nothing to compare.
 | `kopytko.network.mapLocalRules` | `[]` | Serve a local file/inline body instead of the upstream on host/path match |
 | `kopytko.network.latencyRules` | `[]` | Delay matched responses by `delayMs` |
 | `kopytko.network.headerRules` | `[]` | Add/set/remove request or response headers for matched hosts |
+| `kopytko.network.blockRules` | `[]` | Abort matched requests (connection reset) to test the channel's error handling |
 | `kopytko.network.winDivertDir` | `""` | Windows only, usually unnecessary (a working WinDivert is bundled). Override folder with `WinDivert.dll`/`WinDivert64.sys` — machine-scoped, can't be set via workspace settings |

@@ -7,6 +7,7 @@
  */
 
 import type {
+  BlockRule,
   BodyRewriteRule,
   HeaderRule,
   LatencyRule,
@@ -16,7 +17,7 @@ import type {
   UpstreamSchemeRule,
 } from '../capture/rewrite/rules';
 
-export type { BodyRewriteRule, HeaderRule, LatencyRule, MapLocalRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
+export type { BlockRule, BodyRewriteRule, HeaderRule, LatencyRule, MapLocalRule, RuleSet, UpstreamScheme, UpstreamSchemeRule };
 
 /** Whether the automatic OS traffic redirect is applied. */
 export type RedirectStatus = 'off' | 'applying' | 'on' | 'unsupported' | 'error';
@@ -87,6 +88,10 @@ export interface SerializedFlow {
   servedBy?: 'upstream' | 'map-local';
   /** Milliseconds of artificial latency injected by a rule. */
   latencyInjectedMs?: number;
+  /** True when the response streamed through chunk-by-chunk; body capture is best-effort. */
+  streamed?: boolean;
+  /** True when a block rule aborted the request. */
+  blocked?: boolean;
   requestHeaders: Record<string, string | string[]>;
   responseHeaders: Record<string, string | string[]>;
   timings?: FlowTimings;

@@ -231,6 +231,8 @@ input[type="text"], select {
 .tag.https { background: #2d4d3a; color: #9fe0b5; }
 .tag.replay { background: #4d3a2d; color: #e0c49f; }
 .tag.local { background: #2d3a4d; color: #9fc0e0; }
+.tag.stream { background: #3a2d4d; color: #c9a9e0; }
+.tag.block { background: #4d2d2d; color: #e09f9f; }
 
 .detail-actions { display: flex; gap: 6px; margin-bottom: 8px; }
 .body-img { max-width: 100%; height: auto; border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3)); }
@@ -268,14 +270,14 @@ input[type="text"], select {
   word-break: break-all;
 }
 .rules-hint { font-size: 10px; font-weight: 400; opacity: 0.5; text-transform: none; margin-left: 6px; }
-.maplocal, .latency, .headerrule {
+.maplocal, .latency, .headerrule, .blockrule {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
   flex-wrap: wrap;
 }
-.maplocal input[type="text"], .latency input[type="text"], .headerrule input[type="text"] { flex: 1; min-width: 80px; }
+.maplocal input[type="text"], .latency input[type="text"], .headerrule input[type="text"], .blockrule input[type="text"] { flex: 1; min-width: 80px; }
 
 /* ── detail ── */
 .section { margin-bottom: 12px; }

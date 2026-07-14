@@ -1220,6 +1220,26 @@
               }
             }
           }
+        },
+        "kopytko.network.blockRules": {
+          "type": "array",
+          "default": [],
+          "description": "Abort matched requests before they reach the upstream — the device sees a connection reset, for testing the channel's network-error handling. Each item: { enabled?, hostPattern, pathPattern? }.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "hostPattern": {
+                "type": "string"
+              },
+              "pathPattern": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

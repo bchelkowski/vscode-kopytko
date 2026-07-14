@@ -6,6 +6,7 @@
 
 import './styles.css';
 import type {
+  BlockRule,
   BodyRewriteRule,
   ExtMsg,
   FlowDetail,
@@ -321,12 +322,14 @@ function rowHtml(f: SerializedFlow): string {
   const up = f.upstreamScheme === 'https' ? '<span class="tag https" title="Bridged to HTTPS upstream">TLS</span>' : '';
   const rp = f.replayed ? '<span class="tag replay" title="User-initiated replay, not device traffic">replay</span>' : '';
   const local = f.servedBy === 'map-local' ? '<span class="tag local" title="Served from a map-local rule">local</span>' : '';
+  const stream = f.streamed ? '<span class="tag stream" title="Streamed through chunk-by-chunk; body capture is best-effort">stream</span>' : '';
+  const block = f.blocked ? '<span class="tag block" title="Aborted by a block rule">block</span>' : '';
   return `<div class="row${sel}" data-id="${f.id}">
     <span class="time">${fmtTime(f.startedWall)}</span>
     <span class="method ${f.method.toLowerCase()}">${esc(f.method)}</span>
     <span class="status ${statusClass}">${statusText}</span>
     <span class="path" title="${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}">${esc(f.path)}</span>
-    ${up}${rw}${hdr}${rp}${local}
+    ${up}${rw}${hdr}${rp}${local}${stream}${block}
     <span class="dur">${f.durationMs}ms</span>
     <span class="size">${fmtBytes(f.responseBytes)}</span>
   </div>`;
@@ -345,7 +348,9 @@ function renderDetail(): void {
 
   const servedNote = f.servedBy === 'map-local' ? ' · served locally' : '';
   const latencyNote = f.latencyInjectedMs ? ` · +${f.latencyInjectedMs} ms injected` : '';
-  const upstreamExtras = `${f.rewrittenBody ? ' · body rewritten' : ''}${f.rewrittenHeaders ? ' · headers rewritten' : ''}${servedNote}${latencyNote}`;
+  const streamNote = f.streamed ? ' · streamed' : '';
+  const blockNote = f.blocked ? ' · blocked' : '';
+  const upstreamExtras = `${f.rewrittenBody ? ' · body rewritten' : ''}${f.rewrittenHeaders ? ' · headers rewritten' : ''}${servedNote}${latencyNote}${streamNote}${blockNote}`;
   const overview = `<table class="kv">
     <tr><td>URL</td><td>${esc(f.upstreamScheme)}://${esc(originKey(f))}${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}</td></tr>
     <tr><td>Method</td><td>${esc(f.method)}</td></tr>
@@ -905,6 +910,17 @@ function renderRules(): void {
     )
     .join('');
 
+  const blockRows = (r.block ?? [])
+    .map(
+      (rule, i) => `<div class="blockrule" data-i="${i}">
+      <input type="checkbox" data-f="enabled" ${rule.enabled ? 'checked' : ''} title="Enabled">
+      <input type="text" data-f="hostPattern" placeholder="host" value="${esc(rule.hostPattern ?? '')}">
+      <input type="text" data-f="pathPattern" placeholder="path (blank = all)" value="${esc(rule.pathPattern ?? '')}">
+      <button class="link del-block" data-i="${i}">✕</button>
+    </div>`,
+    )
+    .join('');
+
   panel.innerHTML = `
   <div class="rules-inner">
     <h3>Body rewrite rules</h3>
@@ -933,6 +949,10 @@ function renderRules(): void {
     <h3>Header rules <span class="rules-hint">add / set / remove request or response headers</span></h3>
     <div id="header-rules">${headerRows}</div>
     <button class="link" id="add-header">+ add header rule</button>
+
+    <h3>Block <span class="rules-hint">abort matched requests — the device sees a connection reset</span></h3>
+    <div id="block-rules">${blockRows}</div>
+    <button class="link" id="add-block">+ add block rule</button>
 
     <div class="rules-actions">
       <button id="apply-rules">Apply rules</button>
@@ -1010,8 +1030,20 @@ function collectRulesFromDom(): RuleSet {
     });
   });
 
+  const block: BlockRule[] = [];
+  document.querySelectorAll('#block-rules .blockrule').forEach((row) => {
+    const get = (f: string) => row.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+    const existing = state.rules.block?.[Number((row as HTMLElement).dataset.i)];
+    block.push({
+      id: existing?.id ?? `block-${Date.now()}-${block.length}`,
+      enabled: !!get('enabled')?.checked,
+      hostPattern: get('hostPattern')?.value ?? '',
+      pathPattern: get('pathPattern')?.value || undefined,
+    });
+  });
+
   const def = (byId('default-scheme') as HTMLSelectElement).value as UpstreamScheme;
-  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules };
+  return { bodyRules, upstreamSchemes, defaultUpstreamScheme: def, mapLocal, latency, headerRules, block };
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -1249,6 +1281,10 @@ function wireEvents(): void {
       state.rules = collectRulesFromDom();
       (state.rules.headerRules ??= []).push({ id: `header-${Date.now()}`, enabled: true, direction: 'response', op: 'set', name: '' });
       renderRules();
+    } else if (t.id === 'add-block') {
+      state.rules = collectRulesFromDom();
+      (state.rules.block ??= []).push({ id: `block-${Date.now()}`, enabled: true, hostPattern: '' });
+      renderRules();
     } else if (t.classList.contains('del-body')) {
       state.rules = collectRulesFromDom();
       state.rules.bodyRules.splice(Number(t.dataset.i), 1);
@@ -1268,6 +1304,10 @@ function wireEvents(): void {
     } else if (t.classList.contains('del-header')) {
       state.rules = collectRulesFromDom();
       state.rules.headerRules?.splice(Number(t.dataset.i), 1);
+      renderRules();
+    } else if (t.classList.contains('del-block')) {
+      state.rules = collectRulesFromDom();
+      state.rules.block?.splice(Number(t.dataset.i), 1);
       renderRules();
     }
   });

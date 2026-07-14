@@ -395,6 +395,97 @@ describe('network/CaptureProxy', () => {
     expect(flow.responseBodyTruncated).to.equal(true);
   });
 
+  it('streams a Server-Sent-Events response through instead of buffering (no hang) and tags it', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write('data: one\n\n');
+      res.write('data: two\n\n');
+      res.end();
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+
+    expect(res.body).to.contain('data: one');
+    expect(res.body).to.contain('data: two');
+    expect(flow.streamed).to.equal(true);
+    expect(flow.status).to.equal(200);
+    expect(flow.responseBody?.toString()).to.contain('data: one'); // teed capture
+  });
+
+  it('streams a no-content-length binary response through', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/octet-stream' }); // chunked, no length
+      res.write(Buffer.from([1, 2, 3]));
+      res.end(Buffer.from([4, 5, 6]));
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+    expect(flow.streamed).to.equal(true);
+    expect(flow.responseBytes).to.equal(6);
+  });
+
+  it('does NOT stream a text response that a body rule would rewrite (bridge stays intact)', async () => {
+    upstream = await startUpstream((_req, res) => {
+      // Chunked JSON (no content-length) that contains an https:// link.
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"u":"https://api.test/x"}');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' }); // built-in https→http rule matches
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const flow = await flowP;
+    // Buffered + rewritten, not streamed.
+    expect(flow.streamed).to.equal(undefined);
+    expect(res.body).to.equal('{"u":"http://api.test/x"}');
+  });
+
+  it('block rule aborts the connection and records a blocked flow without contacting the upstream', async () => {
+    let upstreamHits = 0;
+    upstream = await startUpstream((_req, res) => {
+      upstreamHits++;
+      res.writeHead(200);
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      block: [{ id: 'b', enabled: true, hostPattern: '127.0.0.1', pathPattern: '/blocked' }],
+    });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    let reqErrored = false;
+    try {
+      await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, { path: '/blocked' });
+    } catch {
+      reqErrored = true; // connection reset by the block
+    }
+    const flow = await flowP;
+
+    expect(reqErrored).to.equal(true);
+    expect(upstreamHits).to.equal(0);
+    expect(flow.blocked).to.equal(true);
+    expect(flow.error).to.contain('Blocked by rule');
+  });
+
   it('records a 502 flow when the upstream is unreachable', async () => {
     proxy = new CaptureProxy({ port: 0 });
     proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });

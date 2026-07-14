@@ -31,6 +31,10 @@ export interface FlowRecord {
   servedBy?: 'upstream' | 'map-local';
   /** Milliseconds of artificial latency injected by a rule (separate from measured timings). */
   latencyInjectedMs?: number;
+  /** True when the response was passed through chunk-by-chunk (not buffered); body capture is best-effort. */
+  streamed?: boolean;
+  /** True when a block rule aborted the request before it reached the upstream. */
+  blocked?: boolean;
   requestHeaders: Record<string, string | string[]>;
   responseHeaders: Record<string, string | string[]>;
   requestBody?: Buffer;
@@ -69,6 +73,8 @@ export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
     rewrittenHeaders: rec.rewrittenHeaders,
     servedBy: rec.servedBy,
     latencyInjectedMs: rec.latencyInjectedMs,
+    streamed: rec.streamed,
+    blocked: rec.blocked,
     requestHeaders: rec.requestHeaders,
     responseHeaders: rec.responseHeaders,
     timings: rec.timings,

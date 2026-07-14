@@ -787,6 +787,52 @@ renders hits, and a hit click selects + scrolls to the flow; and all three
 new rule types add, fill, and round-trip through Apply into the `set-rules`
 payload.
 
+## Streaming pass-through + block rules (2026-07-14)
+
+Two follow-ups after the four-phase upgrade.
+
+**Streaming — the buffering model's one real correctness gap.** Every
+response was `Buffer.concat`'d on `end` before forwarding, so an open-ended
+response (SSE, or chunked with no `Content-Length`) never fired `end` and hung
+the device forever. Fix: `shouldStream()` decides per-response, and
+`streamUpstream()` forwards chunks as they arrive (teeing a capped copy),
+emitting the flow on `end`/`close`. The decision is deliberately conservative
+so it can't break the https→http bridge:
+- **Always stream SSE** (`text/event-stream`) — buffering it is a guaranteed
+  hang; accept that streamed bodies are not rewritten.
+- **Stream a no-`Content-Length` response only when `hasMatchingBodyRules` is
+  false** — i.e. nothing would have rewritten it. Because the built-in
+  https→http rule matches *every* text response, in practice this means only
+  binary/non-text no-length responses stream; text stays buffered and
+  rewritten. Exactly the safe split.
+- **Never stream a compressed response** — we strip `Content-Encoding` in
+  `rewriteResponseHeaders`, so the device must get decoded bytes, which needs
+  buffering. `content-encoding` present and not `identity` → buffer.
+- Streamed responses omit `Content-Length` (unknown up front) and rely on
+  `Connection: close` framing, which the bridge already forces.
+- **Trade-off accepted**: a never-ending SSE stream's flow row appears only
+  when the stream finally closes (the emit-once flow model has no live-update
+  path). The point was to stop the *device* hanging, which streaming does; a
+  live-updating row would need a flow-update protocol — deferred. Also:
+  backpressure is not handled (`sink.write` return ignored) — fine on LAN with
+  a capped tee, but a huge stream could grow Node's socket buffer.
+- `DeviceSink` gained `write()` (and `end()`'s body is now optional) so the
+  same abstraction serves buffered, streamed, and replay (no-op) paths.
+
+**Block rules** are the small one: `findBlock` in `handleRequest` (before body
+collection) → `recordBlocked` calls `res.destroy()` to reset the device
+connection (`ECONNRESET`) and emits a `blocked`-tagged flow. Map-local already
+covered "return a fake status/body"; block covers "no response at all", which
+is what you need to test client timeout/retry paths. Block is checked only on
+the device path, not replay (replay bypasses `handleRequest`), which is
+correct — a user-initiated replay shouldn't be blocked.
+
+Both verified: proxy tests prove SSE/binary-no-length stream through (device
+receives the data, flow tagged `streamed`), a rewrite-target chunked JSON does
+NOT stream (stays buffered + rewritten), and a block rule resets the client
+connection with zero upstream hits. Webview harness confirmed the `stream`/
+`block` row tags, overview notes, and the block rules editor round-trip.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

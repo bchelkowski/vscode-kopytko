@@ -70,6 +70,7 @@ export function registerNetwork(
         cfg.get('network.mapLocalRules'),
         cfg.get('network.latencyRules'),
         cfg.get('network.headerRules'),
+        cfg.get('network.blockRules'),
       ),
     };
   };
