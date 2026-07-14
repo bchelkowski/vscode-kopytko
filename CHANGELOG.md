@@ -1,6 +1,17 @@
 # Changelog
 
 
+## [1.10.0] - 2026-07-14
+
+### Added
+- Network Inspector breakpoints — intercept & edit requests/responses
+- Network Inspector — compare two flows (line diff)
+- Network Inspector streaming pass-through + block rules
+- Network Inspector advanced extras — map-local, latency, header rules, binary preview, search
+- Network Inspector workflow tools — copy/cURL, replay, pause, filter chips
+- Network Inspector timing waterfall — per-phase request timings
+- Network Inspector perf pass — incremental rendering, memory caps, upstream keep-alive
+
 ## [1.9.0] - 2026-07-13
 
 ### Added
