@@ -5,6 +5,7 @@
  */
 
 import './styles.css';
+import { diffLines } from '../textDiff';
 import type {
   BlockRule,
   BodyRewriteRule,
@@ -40,6 +41,10 @@ const state: {
   filter: string;
   statusChips: Set<string>;
   methodChips: Set<string>;
+  /** Flow marked as the "A" side for a comparison, if any. */
+  diffBaseId: string | null;
+  /** When set, the detail pane shows a diff of these two flows instead of one flow. */
+  diffView: { aId: string; bId: string } | null;
   maxEntries: number;
   rules: RuleSet;
   view: WebviewState;
@@ -53,6 +58,8 @@ const state: {
   filter: '',
   statusChips: new Set(),
   methodChips: new Set(),
+  diffBaseId: null,
+  diffView: null,
   maxEntries: 5000,
   rules: { bodyRules: [], upstreamSchemes: [], defaultUpstreamScheme: 'https' },
   view: { enabled: false, paused: false, redirectStatus: 'off', proxyPort: 8888 },
@@ -337,6 +344,10 @@ function rowHtml(f: SerializedFlow): string {
 
 function renderDetail(): void {
   const el = byId('detail');
+  if (state.diffView) {
+    renderDiff(el);
+    return;
+  }
   const id = state.selectedId;
   if (!id) {
     el.innerHTML = '<div class="empty">Select a request to inspect it.</div>';
@@ -361,10 +372,17 @@ function renderDetail(): void {
     <tr><td>Client</td><td>${esc(f.clientIp)}</td></tr>
   </table>`;
 
+  const diffBtn =
+    state.diffBaseId && state.diffBaseId !== id
+      ? `<button class="secondary" data-diff-run title="Compare this request with the one marked for diff">Diff against marked</button>`
+      : '';
+  const markLabel = state.diffBaseId === id ? 'Marked for diff ✓' : 'Mark for diff';
   const actions = `<div class="detail-actions">
     <button class="secondary" data-copy="url">Copy URL</button>
     <button class="secondary" data-copy="curl">Copy as cURL</button>
     <button class="secondary" data-replay title="Re-send this request through the proxy as a new flow">Replay</button>
+    <button class="secondary" data-diff-mark>${markLabel}</button>
+    ${diffBtn}
   </div>`;
 
   const responseIsBinary = d?.responseBodyEncoding === 'base64';
@@ -387,6 +405,95 @@ function renderDetail(): void {
       if (details.open) ensureBodyContent(details, d, f);
     });
   });
+}
+
+// ── diff view ────────────────────────────────────────────────────────────────
+
+function flowLabel(f: SerializedFlow): string {
+  const status = f.error ? 'ERR' : String(f.status || '—');
+  return `${f.method} ${f.host}${f.path} · ${status}`;
+}
+
+function headersToText(headers: Record<string, string | string[]>): string {
+  return Object.entries(headers)
+    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+    .sort()
+    .join('\n');
+}
+
+/** Body text for diffing — undefined for binary (base64) bodies, which aren't line-diffable. */
+function diffBodyText(detail: FlowDetail | undefined, kind: 'request' | 'response'): string | undefined {
+  if (kind === 'request') return detail?.requestBody ?? '';
+  if (detail?.responseBodyEncoding === 'base64') return undefined;
+  return detail?.responseBody ?? '';
+}
+
+function renderDiff(el: HTMLElement): void {
+  const { aId, bId } = state.diffView!;
+  const a = state.byId.get(aId);
+  const b = state.byId.get(bId);
+  if (!a || !b) {
+    // One of the flows was trimmed out of the buffer — bail back to normal.
+    state.diffView = null;
+    renderDetail();
+    return;
+  }
+  const da = state.details.get(aId);
+  const db = state.details.get(bId);
+  // Bodies load lazily — request any missing detail and show a placeholder;
+  // the `flow-detail` handler re-renders the diff once both arrive.
+  for (const [id, d] of [[aId, da], [bId, db]] as const) {
+    if (!d) vscode.postMessage({ kind: 'select-flow', id });
+  }
+
+  const header = `<div class="diff-head">
+    <div><span class="diff-tag a">A</span> ${esc(flowLabel(a))}</div>
+    <div><span class="diff-tag b">B</span> ${esc(flowLabel(b))}</div>
+    <button class="secondary" data-diff-close>Close diff</button>
+  </div>`;
+
+  if (!da || !db) {
+    el.innerHTML = header + '<div class="empty">Loading bodies…</div>';
+    return;
+  }
+
+  const summaryA = `${a.method} http://${a.host}${a.path}${a.query ? '?' + a.query : ''}\nstatus: ${a.error ? a.error : `${a.status} ${a.statusText}`}\nsize: req ${a.requestBytes} · resp ${a.responseBytes}`;
+  const summaryB = `${b.method} http://${b.host}${b.path}${b.query ? '?' + b.query : ''}\nstatus: ${b.error ? b.error : `${b.status} ${b.statusText}`}\nsize: req ${b.requestBytes} · resp ${b.responseBytes}`;
+
+  const reqBodyA = diffBodyText(da, 'request');
+  const reqBodyB = diffBodyText(db, 'request');
+  const respBodyA = diffBodyText(da, 'response');
+  const respBodyB = diffBodyText(db, 'response');
+
+  el.innerHTML =
+    header +
+    diffSection('Summary', summaryA, summaryB) +
+    diffSection('Request headers', headersToText(a.requestHeaders), headersToText(b.requestHeaders)) +
+    diffSection('Response headers', headersToText(a.responseHeaders), headersToText(b.responseHeaders)) +
+    diffSectionMaybeBinary('Request body', reqBodyA, reqBodyB) +
+    diffSectionMaybeBinary('Response body', respBodyA, respBodyB);
+}
+
+function diffSectionMaybeBinary(title: string, a: string | undefined, b: string | undefined): string {
+  if (a === undefined || b === undefined) {
+    return `<details class="dsec"><summary>${esc(title)}</summary><div class="section-body"><div class="hint">Binary body — not line-diffable.</div></div></details>`;
+  }
+  return diffSection(title, a, b);
+}
+
+function diffSection(title: string, aText: string, bText: string): string {
+  const rows = diffLines(aText, bText);
+  const changed = rows.some((r) => r.op !== 'equal');
+  const body = rows
+    .map((r) => {
+      const sign = r.op === 'add' ? '+' : r.op === 'del' ? '-' : ' ';
+      return `<div class="diff-line ${r.op}">${esc(sign + ' ' + r.text)}</div>`;
+    })
+    .join('');
+  return `<details class="dsec"${changed ? ' open' : ''}>
+    <summary>${esc(title)}${changed ? '<span class="count">changed</span>' : '<span class="count">identical</span>'}</summary>
+    <div class="section-body"><div class="diff-block">${body || '<div class="hint">(empty)</div>'}</div></div>
+  </details>`;
 }
 
 /** Parsed query-string section — one row per parameter. Hidden when empty. */
@@ -1172,6 +1279,7 @@ function wireEvents(): void {
     const row = (e.target as HTMLElement).closest<HTMLElement>('.row');
     if (row) {
       state.selectedId = row.dataset.id!;
+      state.diffView = null; // selecting a row exits the diff view
       if (!state.details.has(state.selectedId)) {
         vscode.postMessage({ kind: 'select-flow', id: state.selectedId });
       }
@@ -1193,6 +1301,21 @@ function wireEvents(): void {
     const replayBtn = target.closest<HTMLElement>('[data-replay]');
     if (replayBtn && state.selectedId) {
       vscode.postMessage({ kind: 'replay-flow', id: state.selectedId });
+      return;
+    }
+    if (target.closest('[data-diff-mark]') && state.selectedId) {
+      state.diffBaseId = state.diffBaseId === state.selectedId ? null : state.selectedId;
+      renderDetail();
+      return;
+    }
+    if (target.closest('[data-diff-run]') && state.selectedId && state.diffBaseId) {
+      state.diffView = { aId: state.diffBaseId, bId: state.selectedId };
+      renderDetail();
+      return;
+    }
+    if (target.closest('[data-diff-close]')) {
+      state.diffView = null;
+      renderDetail();
       return;
     }
     const copyBodyBtn = target.closest<HTMLElement>('[data-copy-body]');
@@ -1388,10 +1511,12 @@ window.addEventListener('message', (ev) => {
       dropFlows(msg.ids);
       scheduleTreeFlush();
       break;
-    case 'flow-detail':
+    case 'flow-detail': {
       state.details.set(msg.detail.id, msg.detail);
-      if (state.selectedId === msg.detail.id) renderDetail();
+      const inDiff = state.diffView && (state.diffView.aId === msg.detail.id || state.diffView.bId === msg.detail.id);
+      if (state.selectedId === msg.detail.id || inDiff) renderDetail();
       break;
+    }
     case 'state':
       state.view = msg.state;
       renderState();

@@ -833,6 +833,26 @@ NOT stream (stays buffered + rewritten), and a block rule resets the client
 connection with zero upstream hits. Webview harness confirmed the `stream`/
 `block` row tags, overview notes, and the block rules editor round-trip.
 
+## Compare two flows (2026-07-14)
+
+Line-level diff between any two captured flows. The diff algorithm lives in a
+pure `src/client/network/textDiff.ts` (not under `webview/`, so it has no CSS
+import and unit-tests directly via tsx; the webview bundles it through
+esbuild). `diffLines` trims the common prefix/suffix cheaply, then runs an
+O(n·m) LCS only over the changed middle, with a 4M-cell guard that degrades to
+"all deleted then all added" rather than hang on a pathological middle.
+
+Webview: `state.diffBaseId` (the marked "A" flow) + `state.diffView`
+(`{aId,bId}`). `renderDetail` short-circuits to `renderDiff` when `diffView`
+is set. Diff sections: summary, request/response headers (rendered as sorted
+`k: v` lines), request/response bodies. Bodies load lazily, so `renderDiff`
+requests any missing `flow-detail` and the `flow-detail` handler re-renders
+the diff once both arrive (checks `diffView.aId/bId`, not just `selectedId`).
+Binary (base64) response bodies aren't line-diffable — noted, not diffed.
+Selecting any row clears `diffView` (exits the diff). Verified in the harness:
+mark→run shows A/B tags, per-section changed/identical, correct add/del lines,
+and close returns to the normal detail pane.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

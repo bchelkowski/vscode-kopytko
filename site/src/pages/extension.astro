@@ -520,6 +520,7 @@ const kopytkoRcExample = `// .kopytkorc
               'Workflow tools — copy URL / copy as cURL / copy body, one-click replay through the proxy (with confirmation for state-changing methods), pause recording without dropping the redirect, timestamps, and status/method filter chips',
               'Map-local, latency-injection, header and block rules (block aborts a matched request so you can test error handling); image response preview + hex; parsed query-param and cookie views; and a search across every captured request that jumps straight to the flow',
               'Streaming pass-through — Server-Sent Events and chunked no-length responses forward chunk-by-chunk instead of buffering, so a live stream never hangs the device',
+              'Compare any two captured requests — a line-level diff of summary, headers and bodies to spot exactly what changed between them',
               'Built to stay fast under load — frame-batched incremental list updates, a dual entry-count + byte-budget memory cap, and pooled upstream connections (no per-request TLS handshake to origins)',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">

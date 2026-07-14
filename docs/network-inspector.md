@@ -246,6 +246,16 @@ whole list, and the buffer is bounded twice over — by entry count
 oldest entries first. Selection and already-loaded bodies survive hiding and
 restoring the panel tab.
 
+### Compare two flows
+
+The Overview action bar has **Mark for diff** — mark one request, then open
+another and click **Diff against marked** to see a line-level comparison of
+the two: summary (method/URL/status/size), request and response headers, and
+request and response bodies. Each section is labeled *changed* or *identical*
+and shows a unified add/remove diff (A is the marked flow, B the current one).
+Binary bodies aren't line-diffable and are noted as such. Selecting any row or
+clicking **Close diff** returns to the normal detail view.
+
 ### Copy & replay
 
 The detail pane's Overview offers **Copy URL** (the effective upstream URL —
