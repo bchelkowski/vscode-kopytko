@@ -178,8 +178,8 @@ Roku Devices) with buttons for quick navigation, top to bottom:
 | **Device Manager** | Opens the Device Manager (remote control, scripts, web admin) — see [device-manager.md](./device-manager.md) |
 | **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
 | **Network Inspector** | Opens the Network Inspector tab (`kopytko.network.open`) — see [network-inspector.md](./network-inspector.md) |
-| **Deep Linking** | Opens the Deep Linking tab |
 | **SceneGraph Tree** | Opens the SceneGraph Tree tab (`kopytko.nodes.open`) — see below |
+| **Deep Linking** | Opens the Deep Linking tab |
 | **Perfetto** | Opens the Perfetto tracing tab (`kopytko.perfetto.open`) |
 | **Roku Pay Web Services** | Opens the Roku Pay Web Services tab — see [roku-pay.md](./roku-pay.md) |
 
