@@ -1,6 +1,17 @@
 # Changelog
 
 
+## [1.10.3] - 2026-07-16
+
+### Added
+- Tools sidebar — move SceneGraph Tree above Deep Linking
+- SceneGraph Tree — All/Roots/UI collections, XML and chart views
+- Network Inspector — row context menu, block/unblock, button contrast fix
+
+### Maintenance
+- Update dependencies; align engines.vscode with @types/vscode 1.125
+- Bump kopytko-roku-device to v1.2.0
+
 ## [1.10.2] - 2026-07-16
 
 ### Added
