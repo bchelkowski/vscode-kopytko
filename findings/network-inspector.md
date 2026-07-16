@@ -1178,3 +1178,63 @@ cache and re-fetches.
   `resolveWinDivertDir.ts` itself is unit-tested, but the real
   `context.extensionUri`-based path (different between F5 Extension Dev Host
   and an installed VSIX) has not been exercised on real hardware yet.
+
+## Button legibility, row context menu, block/unblock (2026-07-16)
+
+Three small usability fixes: `button.secondary`'s text color was nearly
+identical to the page's own body text (`--vscode-button-secondaryForeground`
+fallback `#ccc` vs. `--vscode-editor-foreground` fallback `#cccccc`) with no
+border to compensate, so action buttons read as plain text. Fixed by giving
+`button`/`button.secondary` a `1px solid var(--vscode-panel-border, ...)`
+border — the same token already used everywhere else in this stylesheet
+(chips, `.dsec`, `#ctx-menu`), rather than inventing a new color.
+
+**Generalized the copy-only context menu into a real action menu.** `CtxItem`
+was `{label, text}` (always posts `copy-text`); changed to `{label, onClick}`
+so `showCtxMenu` can host arbitrary actions. `copyMenuItemsFor`/`treeCopyItems`
+now just wrap `vscode.postMessage({kind:'copy-text', ...})` in `onClick` via a
+small `copyItem()` helper — no behavior change for the existing detail-pane
+copy menu. `flowActionItems(f)` builds the same action list the detail pane's
+action bar shows (Copy URL always; Copy as cURL/Replay/Mark-for-diff/Diff-
+against-marked only when `!f.pending`, mirroring the exact guard the action
+bar already used; Block/Unblock always) and is now the single source of truth
+for both surfaces — the row `contextmenu` listener on `#tree` and the detail
+pane's buttons stay in sync by construction rather than by convention.
+Right-clicking a row also selects it first (extracted the existing
+row-selection logic into `selectRow()`, shared with the plain `click`
+listener) so the detail pane and any diff-mark state are consistent with
+whatever the menu is about to act on.
+
+**Block/Unblock reuses the existing `BlockRule`/`set-rules` model with zero
+protocol changes** — `blockFlow()` appends an exact `{hostPattern: f.host,
+pathPattern: f.path}` rule; `isFlowBlocked()` is just `findBlock(state.rules,
+f.host, f.path)` (imported as a **runtime** function, not just a type, from
+`../capture/rewrite/rules` — that module has zero `vscode`/Node imports, the
+same property `protocol.ts` already relies on for its type-only re-export, so
+esbuild happily bundles the real matching logic into the browser). The one
+non-obvious design choice: **Unblock deletes an exact host+path match but
+only disables a broader one** (`rule.hostPattern === f.host && rule.pathPattern
+=== f.path` → remove; otherwise → `enabled: false`). Without this split,
+clicking Unblock on a request that happens to fall under a `*`-glob rule you
+built manually in the Rules panel would silently delete that rule and unblock
+every other request it also covered — disabling instead keeps it visible and
+reversible in the Rules panel.
+
+**Verified in the same throwaway static-file harness pattern used throughout
+this file** (loopback Python `http.server` subclass with an explicit
+filename allowlist, serving the real bundled `out/network-webview/main.js`,
+fed fake `init` messages and a stubbed `acquireVsCodeApi().postMessage` that
+echoes a `rules` message back after `set-rules` — mirrors what
+`NetworkController.setRules()` does). One harness-only gotcha hit while
+testing: `renderRules()` returns early without touching the DOM whenever
+`state.rulesOpen` is false, so driving the Rules panel's inputs via raw DOM
+script *while it's actually closed* silently edits stale markup left over
+from the last time it was open — always check `#rules-panel` `style.display`
+before scripting its inputs rather than blindly toggling `#btn-rules`.
+Confirmed via the harness: border now present on toolbar/detail buttons
+(`getComputedStyle` border != none); right-click on a completed row lists
+Copy URL/Copy as cURL/Replay/Mark for diff/Block; right-click on a pending
+row lists only Copy URL/Block; Block adds a new enabled rule and flips the
+label to Unblock everywhere; Unblock against that same rule removes it
+entirely; Unblock against a pre-existing broader `*.example.com` rule
+disables it (`enabled: false`) rather than deleting it.

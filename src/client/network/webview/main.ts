@@ -7,6 +7,7 @@
 import './styles.css';
 import { tryFormatXml } from '../bodyFormat';
 import { diffLines } from '../textDiff';
+import { findBlock, matchHost, matchPath } from '../capture/rewrite/rules';
 import type {
   BlockRule,
   BodyRewriteRule,
@@ -419,6 +420,44 @@ function syncPendingTicker(): void {
   }
 }
 
+// ── block / unblock quick action ────────────────────────────────────────────
+//
+// Reuses the existing BlockRule model and set-rules round-trip (same message
+// the Rules panel's Apply button sends) — purely forward-looking (does a
+// *future* matching request get blocked), independent of the historical
+// `blocked` tag a completed row already carries.
+
+/** Whether a currently-enabled block rule would match this flow's host+path. */
+function isFlowBlocked(f: SerializedFlow): boolean {
+  return !!findBlock(state.rules, f.host, f.path);
+}
+
+function persistRules(rules: RuleSet): void {
+  state.rules = rules;
+  vscode.postMessage({ kind: 'set-rules', rules });
+  renderDetail();
+  if (state.rulesOpen) renderRules();
+}
+
+function blockFlow(f: SerializedFlow): void {
+  const block = [...(state.rules.block ?? []), { id: `block-${Date.now()}`, enabled: true, hostPattern: f.host, pathPattern: f.path }];
+  persistRules({ ...state.rules, block });
+}
+
+/**
+ * Removes exact host+path rules this quick action would have created;
+ * merely disables a broader rule (e.g. a `*` host glob set up manually in the
+ * Rules panel) so unblocking one request can't silently unblock others too.
+ */
+function unblockFlow(f: SerializedFlow): void {
+  const block = (state.rules.block ?? []).flatMap((rule) => {
+    if (!rule.enabled || !matchHost(rule.hostPattern, f.host) || !matchPath(rule.pathPattern, f.path)) return [rule];
+    if (rule.hostPattern === f.host && rule.pathPattern === f.path) return [];
+    return [{ ...rule, enabled: false }];
+  });
+  persistRules({ ...state.rules, block });
+}
+
 function renderDetail(): void {
   const el = byId('detail');
   if (state.diffView) {
@@ -457,6 +496,10 @@ function renderDetail(): void {
       ? `<button class="secondary" data-diff-run title="Compare this request with the one marked for diff">Diff against marked</button>`
       : '';
   const markLabel = state.diffBaseId === id ? 'Marked for diff ✓' : 'Mark for diff';
+  const blocked = isFlowBlocked(f);
+  const blockTitle = blocked
+    ? 'Remove/disable the block rule matching this host + path'
+    : 'Add a block rule for this host + path — future matching requests are reset';
   // Replay/diff need the completed exchange (captured body, final response) —
   // for an in-flight flow only Copy URL is meaningful.
   const actions = `<div class="detail-actions">
@@ -465,6 +508,7 @@ function renderDetail(): void {
     <button class="secondary" data-replay title="Re-send this request through the proxy as a new flow">Replay</button>
     <button class="secondary" data-diff-mark>${markLabel}</button>
     ${diffBtn}`}
+    <button class="secondary" data-block-toggle title="${blockTitle}">${blocked ? 'Unblock' : 'Block'}</button>
   </div>`;
 
   const responseIsBinary = d?.responseBodyEncoding === 'base64';
@@ -1045,7 +1089,13 @@ function gotoFindMatch(details: HTMLDetailsElement, delta: number): void {
 
 interface CtxItem {
   label: string;
-  text: string;
+  onClick: () => void;
+}
+
+/** Builds a copy-to-clipboard `CtxItem` — clipboard goes through the host
+ * (`vscode.env.clipboard`) since webview `navigator.clipboard` permission is flaky. */
+function copyItem(label: string, text: string): CtxItem {
+  return { label, onClick: () => vscode.postMessage({ kind: 'copy-text', text }) };
 }
 
 function hideCtxMenu(): void {
@@ -1062,9 +1112,7 @@ function showCtxMenu(x: number, y: number, items: CtxItem[]): void {
     btn.type = 'button';
     btn.textContent = item.label;
     btn.addEventListener('click', () => {
-      // Clipboard goes through the host (`vscode.env.clipboard`) — webview
-      // navigator.clipboard permission is flaky, host-side always works.
-      vscode.postMessage({ kind: 'copy-text', text: item.text });
+      item.onClick();
       hideCtxMenu();
     });
     menu.appendChild(btn);
@@ -1088,14 +1136,10 @@ function copyMenuItemsFor(target: HTMLElement): CtxItem[] | null {
     if (cells.length >= 2) {
       const key = cells[0].textContent?.trim() ?? '';
       const value = cells[1].textContent?.trim() ?? '';
-      return [
-        { label: 'Copy key', text: key },
-        { label: 'Copy value', text: value },
-        { label: 'Copy key: value', text: `${key}: ${value}` },
-      ];
+      return [copyItem('Copy key', key), copyItem('Copy value', value), copyItem('Copy key: value', `${key}: ${value}`)];
     }
     // Single-cell rows (e.g. Set-Cookie lines) only have a value.
-    if (cells.length === 1) return [{ label: 'Copy value', text: cells[0].textContent?.trim() ?? '' }];
+    if (cells.length === 1) return [copyItem('Copy value', cells[0].textContent?.trim() ?? '')];
   }
   return null;
 }
@@ -1122,13 +1166,9 @@ function treeCopyItems(node: HTMLElement): CtxItem[] | null {
     if (value === undefined) return null;
   }
   const valueText = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-  if (path.length === 0) return [{ label: 'Copy value', text: valueText }]; // root has no key
+  if (path.length === 0) return [copyItem('Copy value', valueText)]; // root has no key
   const key = String(path[path.length - 1]);
-  return [
-    { label: 'Copy key', text: key },
-    { label: 'Copy value', text: valueText },
-    { label: 'Copy key: value', text: `${key}: ${valueText}` },
-  ];
+  return [copyItem('Copy key', key), copyItem('Copy value', valueText), copyItem('Copy key: value', `${key}: ${valueText}`)];
 }
 
 // ── rules panel ───────────────────────────────────────────────────────────────
@@ -1539,6 +1579,50 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** Selects a row (highlight + detail pane), exiting any diff view — shared by row click and right-click. */
+function selectRow(row: HTMLElement): void {
+  state.selectedId = row.dataset.id!;
+  state.diffView = null;
+  if (!state.details.has(state.selectedId)) {
+    vscode.postMessage({ kind: 'select-flow', id: state.selectedId });
+  }
+  byId('tree').querySelector('.row.selected')?.classList.remove('selected');
+  row.classList.add('selected');
+  renderDetail();
+}
+
+/**
+ * The full set of per-request actions, in the same order and under the same
+ * conditions as the detail pane's action bar — used to build both that bar's
+ * buttons (via the data-attribute click handlers below) and the row context
+ * menu, so right-clicking a row offers everything the detail pane does.
+ */
+function flowActionItems(f: SerializedFlow): CtxItem[] {
+  const items: CtxItem[] = [{ label: 'Copy URL', onClick: () => vscode.postMessage({ kind: 'copy-flow', id: f.id, what: 'url' }) }];
+  if (!f.pending) {
+    items.push({ label: 'Copy as cURL', onClick: () => vscode.postMessage({ kind: 'copy-flow', id: f.id, what: 'curl' }) });
+    items.push({ label: 'Replay', onClick: () => vscode.postMessage({ kind: 'replay-flow', id: f.id }) });
+    items.push({
+      label: state.diffBaseId === f.id ? 'Unmark for diff' : 'Mark for diff',
+      onClick: () => {
+        state.diffBaseId = state.diffBaseId === f.id ? null : f.id;
+        renderDetail();
+      },
+    });
+    if (state.diffBaseId && state.diffBaseId !== f.id) {
+      items.push({
+        label: 'Diff against marked',
+        onClick: () => {
+          state.diffView = { aId: state.diffBaseId!, bId: f.id };
+          renderDetail();
+        },
+      });
+    }
+  }
+  items.push(isFlowBlocked(f) ? { label: 'Unblock', onClick: () => unblockFlow(f) } : { label: 'Block', onClick: () => blockFlow(f) });
+  return items;
+}
+
 // ── events ──────────────────────────────────────────────────────────────────
 
 function wireEvents(): void {
@@ -1622,17 +1706,19 @@ function wireEvents(): void {
       return;
     }
     const row = (e.target as HTMLElement).closest<HTMLElement>('.row');
-    if (row) {
-      state.selectedId = row.dataset.id!;
-      state.diffView = null; // selecting a row exits the diff view
-      if (!state.details.has(state.selectedId)) {
-        vscode.postMessage({ kind: 'select-flow', id: state.selectedId });
-      }
-      // Selection only moves a highlight — two class swaps, not a rebuild.
-      byId('tree').querySelector('.row.selected')?.classList.remove('selected');
-      row.classList.add('selected');
-      renderDetail();
-    }
+    if (row) selectRow(row);
+  });
+
+  // Full action parity with the detail pane's action bar — right-click a
+  // row without needing to select it and hunt for the button first.
+  byId('tree').addEventListener('contextmenu', (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('.row');
+    if (!row) return; // origin headers etc. — fall through to the native menu
+    e.preventDefault();
+    const f = state.byId.get(row.dataset.id!);
+    if (!f) return;
+    selectRow(row);
+    showCtxMenu(e.clientX, e.clientY, flowActionItems(f));
   });
 
   // <details> `toggle` doesn't bubble — a capturing listener catches every
@@ -1724,6 +1810,11 @@ function wireEvents(): void {
     if (target.closest('[data-diff-close]')) {
       state.diffView = null;
       renderDetail();
+      return;
+    }
+    if (target.closest('[data-block-toggle]') && state.selectedId) {
+      const f = state.byId.get(state.selectedId);
+      if (f) (isFlowBlocked(f) ? unblockFlow : blockFlow)(f);
       return;
     }
     const copyBodyBtn = target.closest<HTMLElement>('[data-copy-body]');

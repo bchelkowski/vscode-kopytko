@@ -30,7 +30,7 @@ body {
 button {
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
-  border: none;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
   border-radius: 2px;
   padding: 3px 10px;
   cursor: pointer;
@@ -40,6 +40,7 @@ button {
 button.secondary {
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
 }
 button:hover { opacity: 0.9; }
 button.link {

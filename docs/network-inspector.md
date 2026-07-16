@@ -309,6 +309,24 @@ anything other than GET/HEAD/OPTIONS asks for confirmation first, since it
 repeats a state-changing request. Each body section also has a **Copy**
 button for the raw body text.
 
+Right-clicking a request row opens a context menu with every action above
+plus **Mark for diff**/**Diff against marked** — the same actions as the
+detail pane's action bar, available without selecting the row first (it also
+gets selected for you). Copy as cURL, Replay, and the diff actions are
+omitted for a request still in flight.
+
+### Block / Unblock a single request
+
+Both the detail pane's action bar and the row context menu have a **Block**
+action (**Unblock** once active) for the currently-selected request. Block
+adds an exact host+path entry to the same `blockRules` used by the Rules
+panel (see above) — the device gets a connection reset for any future
+request matching that host and path. Unblock removes that entry again, or —
+if the request happens to match a broader rule you set up manually in the
+Rules panel (e.g. a `*` host glob) — disables that rule instead of deleting
+it, so undoing one request's block never silently unblocks others that rule
+also covers.
+
 A toolbar **Search** button opens an overlay that scans *every* buffered
 request (URL, headers, and text bodies — binary bodies are skipped) and lists
 matches with a snippet; clicking a result jumps to that flow, expanding its
