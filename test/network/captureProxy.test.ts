@@ -815,6 +815,20 @@ describe('network/CaptureProxy', () => {
     expect(flow.timings).to.equal(undefined);
   });
 
+  it('error flows retain the request body (headers-only error flows are useless for debugging)', async () => {
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowP = nextFlow(proxy);
+    await requestThroughProxy(proxy.port, '127.0.0.1:9', { method: 'POST', body: '{"poll":"payload"}' }); // nothing listening
+    const flow = await flowP;
+
+    expect(flow.error).to.be.a('string');
+    expect(flow.requestBody?.toString()).to.equal('{"poll":"payload"}');
+    expect(flow.requestBytes).to.equal('{"poll":"payload"}'.length);
+  });
+
   it('a fresh (non-reused) connection failure surfaces immediately, with no retry', async () => {
     proxy = new CaptureProxy({ port: 0 });
     proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });

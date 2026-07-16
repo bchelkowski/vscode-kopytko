@@ -1083,6 +1083,86 @@ track connected sockets and `.destroy()` them explicitly before `close()`,
 or the callback never fires and the test times out with no useful error
 message pointing at the real cause.
 
+**Follow-up (same day): the stale-pool diagnosis is likely wrong or
+incomplete.** New evidence from the user's macOS machine (marketplace build):
+identical `read ETIMEDOUT` at ~11-13s, and — critically — **it persists with
+`upstreamKeepAlive: false`** (config is read at `enable()` time, so the test
+is valid if capture was toggled off/on after the change). That means fresh,
+non-pooled, non-SO_KEEPALIVE connections also die ~11-13s into the long-poll
+wait, which no stale-reuse or keepalive-probe theory explains — an idle
+established connection with nothing being transmitted cannot spontaneously
+`ETIMEDOUT`; something must be retransmitting unacknowledged data. Same
+signature on two OSes also rules out OS-specific TCP keepalive parameters
+(Windows probes at 1s×10 ≈ 11s, macOS at 75s×8 ≈ 600s — they couldn't both
+land on 11-13s). Revised suspicion: the path between proxy and origin kills
+>10s-quiet flows, with DNS pinning (`dnsBypass.ts`'s `resolve4`, which skips
+the OS resolver — VPN/split-DNS networks can return a different IP than
+curl/Charles get) as the prime extension-specific difference. The retry fix
+above is kept (it's correct for genuine stale-pool errors and never masks
+fresh-connection failures) but probably does not fix the user's symptom —
+the retried attempt would hold >10s again and die the same way.
+A throwaway standalone diagnostic script (plain-node, zero-dep; run on the
+affected machine, not kept in the repo) isolated the variables: OS-DNS vs
+pinned-resolve4 × TCP keepalive on/off against the real endpoint. First
+real-endpoint run on the Mac ruled DNS out (OS resolver and `resolve4`
+return the same IPs) but was otherwise inconclusive — the shell-quoted body
+arrived mangled, the server rejected it instantly with 400, and the >10s
+hold never engaged (lesson: read the request body byte-for-byte from a
+file; a large JSON body with a token does not survive shell quoting, and an
+instant 4xx means the long-poll never engaged, so the run proves nothing).
+
+**RESOLVED (same day, conclusive): the killer is SO_KEEPALIVE probing with
+Node's 1s default delay, on a network path that swallows keepalive probes.**
+The diagnostic run against the real endpoint (valid file-read body,
+long-poll actually engaging, reproduced twice) split perfectly: scenarios
+with `setKeepAlive(true, 1000)` died with `read ETIMEDOUT` at ~11.5s;
+scenarios without it held the full ~30s and returned 200 — on both OS-DNS
+and pinned-IP connections (DNS fully exonerated). Mechanism: the agents were
+built with `keepAliveMsecs: 1000` (Node's default), so the OS starts
+keepalive probing 1s into any quiet period. A long-poll sits quiet for up to
+30s; on this corporate path the probes go unanswered (middlebox swallows
+them — while actual data still flows fine, since scenario A/C's 30s response
+arrives intact), and ~10s of unacknowledged probes makes the OS kill the
+healthy in-flight connection. Short requests never idle >1s → never probe →
+never die. Charles doesn't enable aggressive keepalive probing → unaffected.
+
+This also explains why it originally *looked* like a stale-pooled-socket
+problem (the first Windows-side diagnosis above): Node applies
+`keepAliveMsecs` in `keepSocketAlive()` — i.e. when a socket enters the
+**reuse pool** — while brand-new sockets keep the OS-default probe delay
+(hours). So only *reused* sockets carried the 1s probe delay, and only they
+died mid-poll: perfectly correlated with reuse, but causally unrelated to
+staleness. It also retro-explains the earlier "still fails with
+`upstreamKeepAlive: false`" data point as an invalid test (the setting is
+read at `enable()` time; it almost certainly wasn't re-applied), since
+without the pooled-socket `setKeepAlive` there is nothing left to kill the
+connection — as scenario A (fresh socket, no keepalive) proved by holding
+30s just fine.
+
+**Fix**: `keepAliveMsecs: 60_000` on both agents — pooling stays, probing
+stays for genuinely idle pooled sockets, but probes can never start inside a
+realistic long-poll hold. The reused-socket single-retry (above) stays as
+defense in depth: with the 1s probe delay gone it should rarely fire, and
+when it does it's a genuine dead pooled socket that a fresh retry fixes.
+
+**Lesson**: Node's `http.Agent` default `keepAliveMsecs: 1000` is far more
+aggressive than the OS keepalive default (typically 2 hours) and is applied
+to every pooled socket. On networks that don't answer keepalive probes, that
+default converts any >1s-quiet in-flight request (long-polls especially)
+into a spurious `read ETIMEDOUT` roughly 10-12s after the quiet starts.
+
+**Observability gap found while getting that body: error flows dropped the
+request body entirely.** `finishError` built its `FlowRecord` with
+`requestBytes: 0`, no `requestBody`, and no `FlowBodies` emit — so an ERR
+flow showed request headers only, and replay/copy-as-cURL/on-disk `.req`
+persistence were all empty for exactly the requests one most needs to
+reproduce. The body was already in scope (`meta.originalRequestBody`, set
+unconditionally after `collectBody`). Fixed: error flows now carry the
+capped original request body + `requestBytes`, and emit the full body via
+`flowBodies` for disk persistence. (If a request-rewrite rule fired, the
+*sent* body isn't in `finishError`'s scope — the original is recorded, which
+is the more useful one for debugging anyway.)
+
 ## In-flight (pending) flows: `'flow'` became an upsert-by-id, end to end (2026-07-16)
 
 Requests now appear in the panel the moment they arrive (muted italic row,

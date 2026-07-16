@@ -122,8 +122,16 @@ export class CaptureProxy extends EventEmitter {
     this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.onIntercept = options.onIntercept;
     const keepAlive = options.keepAlive ?? true;
-    this.httpAgent = new http.Agent({ keepAlive, keepAliveMsecs: 1000 });
-    this.httpsAgent = new https.Agent({ keepAlive, keepAliveMsecs: 1000 });
+    // keepAliveMsecs is the SO_KEEPALIVE probe delay Node applies to pooled
+    // sockets — its 1000ms default starts OS keepalive probing 1s into any
+    // quiet period. A long-poll held open by the server sits quiet far longer
+    // than that, and on networks whose middleboxes silently swallow keepalive
+    // probes (observed live: corporate path, probes unanswered), ~10s of
+    // unacknowledged probes makes the OS kill the HEALTHY in-flight request
+    // with read ETIMEDOUT. 60s keeps probing available for genuinely idle
+    // pooled sockets while never firing inside a realistic long-poll hold.
+    this.httpAgent = new http.Agent({ keepAlive, keepAliveMsecs: 60_000 });
+    this.httpsAgent = new https.Agent({ keepAlive, keepAliveMsecs: 60_000 });
   }
 
   setRules(rules: RuleSet): void {
@@ -819,6 +827,12 @@ export class CaptureProxy extends EventEmitter {
     } catch {
       // ignore secondary failures
     }
+    // The device's original request body — a failed request's body is often
+    // exactly what's needed to reproduce/debug the failure, so error flows
+    // must not drop it. (If a rewrite rule changed the body, the *sent* body
+    // isn't in scope here; the original is the more useful one regardless.)
+    const reqBody = meta.originalRequestBody;
+    const reqCap = reqBody && reqBody.length > 0 ? capBuffer(reqBody, this.maxBodyBytes) : undefined;
     const rec: FlowRecord = {
       id: meta.id,
       startedWall: meta.startedWall,
@@ -831,17 +845,19 @@ export class CaptureProxy extends EventEmitter {
       statusText: '',
       contentType: '',
       durationMs: Date.now() - meta.startedWall,
-      requestBytes: 0,
+      requestBytes: reqBody?.length ?? 0,
       responseBytes: 0,
       clientIp: meta.clientIp,
       upstreamScheme: 'https',
       rewrittenBody: false,
       requestHeaders: meta.requestHeaders,
       responseHeaders: {},
+      requestBody: reqCap?.buf,
+      requestBodyTruncated: reqCap ? reqCap.truncated : false,
       error: err.message,
       replayed: meta.replayed,
     };
-    this.emit('flow', rec);
+    this.emit('flow', rec, flowBodies({ request: reqBody }));
   }
 
   /**
