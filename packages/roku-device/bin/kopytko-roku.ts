@@ -194,6 +194,7 @@ const ECP_OPS: Record<string, Handler> = {
     const scope = f.scope === 'roots' ? 'roots' : 'all';
     return ecp.querySgNodes(requireHost(config), config.port, scope);
   },
+  'app-ui': (f) => ecp.queryAppUi(requireHost(resolveConfig(f)), resolveConfig(f).port),
   'app-object-counts': (f) => ecp.queryAppObjectCounts(requireHost(resolveConfig(f)), requireFlag(f, 'app'), resolveConfig(f).port),
   'app-state': (f) => ecp.queryAppState(requireHost(resolveConfig(f)), requireFlag(f, 'app'), resolveConfig(f).port),
   'rendezvous-track': (f) => ecp.enableRendezvousTracking(requireHost(resolveConfig(f)), resolveConfig(f).port).then((trackingEnabled) => ({ trackingEnabled })),
@@ -283,8 +284,8 @@ async function discover(flags: CliFlags): Promise<SsdpDeviceFound[]> {
 }
 
 /**
- * Prints an op's result. Several ECP ops (chanperf, sgnodes, r2d2-bitmaps,
- * graphics-frame-rate, registry, tv-channels, tv-active-channel) return the
+ * Prints an op's result. Several ECP ops (chanperf, sgnodes, app-ui,
+ * r2d2-bitmaps, graphics-frame-rate, registry, tv-channels, tv-active-channel) return the
  * device's raw XML body as a plain string rather than a parsed object —
  * `--json` is meaningless for those (JSON-escaping an XML document just
  * produces an unreadable quoted blob with literal `\n`/`\t`), so a string
@@ -335,7 +336,7 @@ ECP OPS
   keypress|keydown|keyup --key <KEY>, text --text "...",
   exit-app --app <id> [--force], tv-channels, tv-active-channel,
   registry --app <id>, chanperf, sgnodes [--scope all|roots] [--node-id <id>],
-  app-object-counts --app <id>, app-state --app <id>,
+  app-ui, app-object-counts --app <id>, app-state --app <id>,
   rendezvous-track|rendezvous-untrack|rendezvous-query,
   fwbeacons-track|fwbeacons-untrack --app <id>, fwbeacons-query,
   graphics-frame-rate, r2d2-bitmaps,

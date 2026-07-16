@@ -51,7 +51,7 @@ Kopytko-ecosystem- and editor-unaware per the package architecture rules in the 
 
 ### Output
 
-Ops that return a device's raw XML body (`chanperf`, `sgnodes`, `r2d2-bitmaps`,
+Ops that return a device's raw XML body (`chanperf`, `sgnodes`, `app-ui`, `r2d2-bitmaps`,
 `graphics-frame-rate`, `registry`, `tv-channels`, `tv-active-channel`) always print
 that XML as-is, **`--json` included** — JSON-escaping an XML document just produces an
 unreadable quoted blob with literal `\n`/`\t`, so `--json` is a no-op for these ops by
@@ -95,6 +95,7 @@ for the underlying endpoint each one calls.
 | `registry` | `--app <id>` | Requires developer mode |
 | `chanperf` | | Requires developer mode |
 | `sgnodes` | `[--scope all\|roots] [--node-id <id>]` | `--node-id` overrides `--scope` |
+| `app-ui` | | Rendered UI tree of the foreground app; fails with `No active app` when nothing is running |
 | `app-object-counts` | `--app <id>` | Requires developer mode |
 | `app-state` | `--app <id>` | |
 | `rendezvous-track` / `rendezvous-untrack` / `rendezvous-query` | | Query drains the device's event queue |

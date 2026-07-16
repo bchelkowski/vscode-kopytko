@@ -67,7 +67,7 @@ function makeManifest(id: string): SessionManifest {
     startedWall: 0,
     endedWall: null,
     device: { ip: '1.2.3.4', modelName: 'Ultra' },
-    app: { id: 'dev', title: 'DAZN', version: '3.30.3' },
+    app: { id: 'dev', title: 'Acme', version: '3.30.3' },
     collectors: [{ type: 'mem-cpu', intervalMs: 1000 }],
     streams: {},
   };
@@ -91,8 +91,8 @@ const memCpuSample = (wall: number, mem: number): DiagnosticSample => ({
 describe('diagnostics storage', () => {
   describe('buildSessionId', () => {
     it('produces a filesystem-safe id with app label', () => {
-      const id = buildSessionId(new Date('2026-06-26T07:30:05').getTime(), 'DAZN Live!');
-      expect(id).to.match(/^2026-06-26_07-30-05__DAZN-Live$/);
+      const id = buildSessionId(new Date('2026-06-26T07:30:05').getTime(), 'Acme Live!');
+      expect(id).to.match(/^2026-06-26_07-30-05__Acme-Live$/);
     });
   });
 

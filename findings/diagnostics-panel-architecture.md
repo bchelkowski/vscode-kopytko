@@ -211,7 +211,7 @@ device. The **actual** live response from `GET /query/app-state/<appId>`
 (verified via `curl` against the dev Ultra, firmware 15.2.4) is:
 ```xml
 <app-state>
-  <app-id>dev</app-id><app-title>DAZN</app-title><app-version>3.30.5</app-version>
+  <app-id>dev</app-id><app-title>Acme</app-title><app-version>3.30.5</app-version>
   <app-dev-id>...</app-dev-id>
   <state>background</state>
   <status>OK</status>
@@ -348,8 +348,8 @@ verified the mechanism live against the dev Ultra:
 **`GET /query/registry/<anyChannelId>` returns a `<plugins>` field listing
 every channel id on the device signed with the same developer key** —
 identical regardless of *which* of those ids you query it with. Confirmed:
-`/query/registry/dev`, `/query/registry/268970` ("DAZN - PROD TESTER"), and
-`/query/registry/158987` ("DAZN Live Sports Streaming") all returned the same
+`/query/registry/dev`, `/query/registry/268970` ("Acme - PROD TESTER"), and
+`/query/registry/158987` ("Acme Live Sports Streaming") all returned the same
 `<plugins>158987,268970,dev</plugins>`. Querying any channel signed with a
 *different* key (a regular store app, or e.g. "Binge Tester" id `852522`
 which — despite the similar-sounding name — turned out NOT to share the dev

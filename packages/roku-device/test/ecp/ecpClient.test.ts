@@ -791,6 +791,58 @@ describe('EcpClient', () => {
     });
   });
 
+  describe('queryAppUi', () => {
+    it('sends GET /query/app-ui and returns the raw XML body', async () => {
+      let requestedUrl = '';
+      const xml = '<app-ui>\n\t<status>OK</status>\n\t<topscreen>\n\t\t<plugin id="dev" name="Acme" />\n\t\t<screen type="SGScreen" focused="true"><MainScene /></screen>\n\t</topscreen>\n</app-ui>';
+      const { server, port } = await createTestServer((req, res) => {
+        requestedUrl = req.url || '';
+        res.writeHead(200);
+        res.end(xml);
+      });
+
+      try {
+        const body = await client.queryAppUi('127.0.0.1', port);
+        expect(requestedUrl).to.equal('/query/app-ui');
+        expect(body).to.equal(xml);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws on non-200 status', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(500);
+        res.end();
+      });
+
+      try {
+        await client.queryAppUi('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.include('HTTP 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws with the device error text on an in-band FAILED response', async () => {
+      const { server, port } = await createTestServer((_req, res) => {
+        res.writeHead(200);
+        res.end('<app-ui>\n<status>FAILED</status>\n<error>No active app</error>\n</app-ui>');
+      });
+
+      try {
+        await client.queryAppUi('127.0.0.1', port);
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect((err as Error).message).to.equal('app-ui: No active app');
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
   describe('querySgNodesById', () => {
     it('sends GET /query/sgnodes/nodes?node-id=<id>', async () => {
       let requestedUrl = '';
@@ -1330,7 +1382,7 @@ describe('EcpClient', () => {
       '<fwbeacons>',
       '\t<tracking-enabled>true</tracking-enabled>',
       '\t<plugin-id>dev</plugin-id>',
-      '\t<plugin-title>DAZN</plugin-title>',
+      '\t<plugin-title>Acme</plugin-title>',
       '\t<drop-count>0</drop-count>',
       '\t<interval-drop-count>0</interval-drop-count>',
       '\t<count>2</count>',
@@ -1430,7 +1482,7 @@ describe('EcpClient', () => {
       const { server, port } = await createTestServer((_req, res) => {
         res.writeHead(200);
         res.end(
-          '<app-state><app-id>dev</app-id><app-title>DAZN</app-title><app-version>3.30.5</app-version>' +
+          '<app-state><app-id>dev</app-id><app-title>Acme</app-title><app-version>3.30.5</app-version>' +
           '<app-dev-id>abc123</app-dev-id><state>active</state><status>OK</status></app-state>',
         );
       });
@@ -1689,13 +1741,13 @@ describe('EcpClient', () => {
       const { server, port } = await createTestServer((req, res) => {
         requestPath = req.url;
         res.writeHead(200);
-        res.end('<active-app><app id="dev" type="appl" version="3.30.5">DAZN</app></active-app>');
+        res.end('<active-app><app id="dev" type="appl" version="3.30.5">Acme</app></active-app>');
       });
 
       try {
         const app = await client.queryActiveApp('127.0.0.1', port);
         expect(requestPath).to.equal('/query/active-app');
-        expect(app).to.deep.equal({ id: 'dev', name: 'DAZN', type: 'appl', version: '3.30.5' });
+        expect(app).to.deep.equal({ id: 'dev', name: 'Acme', type: 'appl', version: '3.30.5' });
       } finally {
         await closeServer(server);
       }
@@ -1745,7 +1797,7 @@ describe('EcpClient', () => {
         res.writeHead(200);
         res.end(
           '<player error="false" state="play">' +
-          '<plugin bandwidth="12000000 bps" id="dev" name="DAZN"/>' +
+          '<plugin bandwidth="12000000 bps" id="dev" name="Acme"/>' +
           '<format audio="aac" captions="none" container="dash" drm="widevine" video="hevc"/>' +
           '<position>1198000 ms</position><duration>7422000 ms</duration>' +
           '<is_live>false</is_live></player>',
@@ -1757,7 +1809,7 @@ describe('EcpClient', () => {
         expect(requestPath).to.equal('/query/media-player');
         expect(info.state).to.equal('play');
         expect(info.error).to.equal(false);
-        expect(info.plugin).to.deep.equal({ id: 'dev', name: 'DAZN', bandwidth: '12000000 bps' });
+        expect(info.plugin).to.deep.equal({ id: 'dev', name: 'Acme', bandwidth: '12000000 bps' });
         expect(info.format).to.deep.equal({
           audio: 'aac', video: 'hevc', drm: 'widevine', captions: 'none', container: 'dash',
         });

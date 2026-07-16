@@ -1,6 +1,6 @@
 # Roku Device API — Verified Findings
 
-All findings below were verified live against a **Roku Ultra (model 4850X, firmware 15.2.4.3442, serial X02800C5FKLV)** running a sideloaded DAZN dev app.
+All findings below were verified live against a **Roku Ultra (model 4850X, firmware 15.2.4.3442, serial X02800C5FKLV)** running a sideloaded Acme dev app.
 
 > **Code location (since 2026-07-03):** all implementations of these protocols live in
 > `packages/roku-device/` (npm: `kopytko-roku-device`) — `EcpClient` in `src/ecp/ecpClient.ts`,
@@ -43,7 +43,7 @@ Standard Roku HTTP API. All commands are `GET` or `POST`, no auth required for m
 | `/query/icon/<appId>` | GET | Channel icon as raw image bytes (`Content-Type: image/png` or jpeg). Implemented as `EcpClient.queryAppIcon()` via `httpGetBuffer` — the string-accumulating `httpGet` corrupts binary bodies, so a `Buffer`-based variant was added to `net/httpClient.ts` (2026-07-03, Deep Linking panel). |
 
 **Live-verified against the Roku Ultra 4850X on 192.168.137.46 (2026-07-04):**
-- `POST /launch/dev?contentId=…&mediaType=episode` → `200`, DAZN transitioned to `<state>active</state>` per `/query/app-state/dev` within ~3s.
+- `POST /launch/dev?contentId=…&mediaType=episode` → `200`, Acme transitioned to `<state>active</state>` per `/query/app-state/dev` within ~3s.
 - `POST /input?contentId=…&mediaType=series` while `dev` was already foreground → `200`.
 - `POST /launch/999999999` (unregistered app id) → `404` with an **empty body** — confirms `launchApp`'s error-message formatting must not append a dangling separator when the body is blank (already covered by a unit test, now also confirmed live).
 - `GET /query/icon/12` (Netflix) → `200`, `Content-Type: image/jpeg`, real JPEG magic bytes (`ffd8ffe0…`) — confirms icons are not uniformly PNG and `queryAppIcon()`'s header-derived `contentType` (rather than a hardcoded assumption) is required.
@@ -58,7 +58,7 @@ Response format when tracking is active and events are queued:
   <data>
     <tracking-enabled>true</tracking-enabled>
     <plugin-id>dev</plugin-id>
-    <plugin-title>DAZN</plugin-title>
+    <plugin-title>Acme</plugin-title>
     <drop-count>0</drop-count>
     <count>3</count>
     <item><id>1</id><start-tm>100</start-tm><end-tm>118</end-tm><line-number>42</line-number><file>pkg:/components/Foo.brs</file></item>
@@ -105,7 +105,7 @@ epoch-ms `<timestamp>` — no year-guessing needed, unlike the port-8085 log for
 <fwbeacons>
 	<tracking-enabled>true</tracking-enabled>
 	<plugin-id>dev</plugin-id>
-	<plugin-title>DAZN</plugin-title>
+	<plugin-title>Acme</plugin-title>
 	<drop-count>0</drop-count>
 	<interval-drop-count>0</interval-drop-count>
 	<count>11</count>
@@ -148,7 +148,7 @@ device (`curl http://192.168.2.2:8060/query/app-object-counts/dev`):
 <app-object-counts>
 <timestamp>1782995684112</timestamp>
 <channel-id>dev</channel-id>
-<channel-title>DAZN</channel-title>
+<channel-title>Acme</channel-title>
 <channel-version>3.30.5</channel-version>
 <objects>
   <objects-count>12589</objects-count>
@@ -159,7 +159,7 @@ device (`curl http://192.168.2.2:8060/query/app-object-counts/dev`):
       <num-bytes-physical>118644</num-bytes-physical><num-bytes-logical>84208</num-bytes-logical></object>
     <object><type>roSGNode</type><subtype>Font</subtype><count>157</count>
       <num-bytes-physical>6940</num-bytes-physical><num-bytes-logical>6940</num-bytes-logical></object>
-    <!-- … one <object> per type, ~85 entries on the DAZN dev app … -->
+    <!-- … one <object> per type, ~85 entries on the Acme dev app … -->
   </objects>
 </objects>
 <status>OK</status>
@@ -210,7 +210,7 @@ behavior on the non-TV Ultra.
 ### `GET /query/active-app` and `GET /query/media-player` (2026-07-06 — media-player NOT yet verified live)
 
 - `/query/active-app` → `EcpClient.queryActiveApp()`. `<active-app><app id="dev" type="appl"
-  version="…">DAZN</app></active-app>`; the home screen may report `<app>Roku</app>` with no
+  version="…">Acme</app></active-app>`; the home screen may report `<app>Roku</app>` with no
   attributes (older firmware) — `id` is optional in `ActiveAppInfo`. An earlier live probe
   (2026-07-04, reboot testing) saw `id="562859" ui-location="home"` for the home screen, so
   the attribute set varies by state/firmware — parser only relies on `id/type/version`.
@@ -222,6 +222,43 @@ behavior on the non-TV Ultra.
   device during playback before trusting `validate_streaming` assertions in the RASP runner**
   — same lesson as the 2026-07-01 `queryAppState` `<channel-state>` bug: a docs-derived shape
   is a hypothesis, not a fact.
+
+### `GET /query/app-ui` — rendered UI node tree (2026-07-16, live-verified)
+
+Implemented as `EcpClient.queryAppUi()` + CLI op `app-ui`. Returns the **rendered UI tree of the
+foreground app** — the same hierarchy `sgnodes all` shows, but only what the screen is actually
+displaying, wrapped differently and with different attributes:
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<app-ui>
+	<status>OK</status>
+	<topscreen>
+		<plugin id="dev" name="Acme" />
+		<screen type="SGScreen" focused="true">
+			<MainScene children="0" extends="Scene" focused="true" focusable="true" rcid="0" bounds="{0, 0, 1280, 720}">
+				<AppView children="6" extends="AcmeGroup" name="app" ... index="0">
+				...
+```
+
+Key differences from `/query/sgnodes/all` (both verified against the same live app state):
+- Wrapper is `<app-ui><status/><topscreen><plugin/><screen>` — **no** `<channel-title>`, no
+  `node-count` attribute, no `<timestamp>`. Channel name is the `<plugin name="...">` attribute.
+- Nodes carry `index` (child position) and rendered attrs like `text`, `bounds`, `translation` —
+  but **no `_sn`/`osref`/`bscref`** reference-count attributes.
+- **Failure is in-band with HTTP 200**: with no dev app running the body is
+  `<app-ui><status>FAILED</status><error>No active app</error></app-ui>` — `queryAppUi()` detects
+  `<status>FAILED</status>` and throws with the `<error>` text (`app-ui: No active app`).
+- `query/api-ui` (a plausible misremembering of the path) is a plain **404** — as are
+  `query/ui`, `query/apiui`, `query/api_ui`, `query/screen`, `query/focus` (all probed live).
+
+Also verified the same day: `?count_only=true&sizes=true` on `/query/sgnodes/all` is **ignored**
+by firmware 15.2.4 — the response is byte-for-byte identical with or without the params, so they
+were deliberately not added to `querySgNodes`. Both sgnodes scopes wrap the tree in an outer
+`<sgnodes>` element carrying `<timestamp>/<channel-id>/<channel-title>/<channel-version>` before
+the `<All_Nodes>`/`<Root_Nodes>` container.
+
+---
 
 ## Port 8080 — SceneGraph Debug Server
 
@@ -295,7 +332,7 @@ Fields:
       <count>35</count>
       <num-bytes-static>9800</num-bytes-static>
     </node>
-    <!-- ...45 entries total for DAZN dev app... -->
+    <!-- ...45 entries total for Acme dev app... -->
   </nodes>
 </sg-nodes>
 ```
@@ -312,7 +349,7 @@ Returns XML with one element per live node. Very verbose; roots-only (`roots`) i
 <Root_Nodes node-count="64">
   <MainScene children="0" extends="Scene" focused="true" bounds="{0,0,1920,1080}" _sn="2" osref="4" bscref="2" />
   <NewRelicService extends="Node" _sn="1" osref="2" bscref="18" />
-  <DaznAccountEntitlementSetModel extends="Node" name="tier_gold_de" _sn="6" osref="2" bscref="0" />
+  <AcmeAccountEntitlementSetModel extends="Node" name="tier_gold_de" _sn="6" osref="2" bscref="0" />
   <BrowsePageNavigationModel extends="Node" _sn="7" osref="2" bscref="0" />
   <!-- ... -->
 </Root_Nodes>
@@ -586,11 +623,11 @@ Git Bash — WSL2 still cannot reach this hotspot range, see the network topolog
 
 | Method | Endpoint | Verification status |
 |---|---|---|
-| `exitApp(ip, appId, force?)` | `POST /exit-app/<appId>[/true]` | **Live-verified.** `POST /exit-app/dev` (no force) with DAZN foregrounded → `200`, `<exit-app><status>OK</status></exit-app>`. Device switched to the home screen (`/query/active-app` then reported `Roku Dynamic Menu`), and `/query/app-state/dev` afterward reported `<state>background</state>` — confirms this is an Instant Resume suspend, not a kill, matching the docs. Force (`/true`) variant not exercised (no reason to test destructively once the non-force path was confirmed). |
+| `exitApp(ip, appId, force?)` | `POST /exit-app/<appId>[/true]` | **Live-verified.** `POST /exit-app/dev` (no force) with Acme foregrounded → `200`, `<exit-app><status>OK</status></exit-app>`. Device switched to the home screen (`/query/active-app` then reported `Roku Dynamic Menu`), and `/query/app-state/dev` afterward reported `<state>background</state>` — confirms this is an Instant Resume suspend, not a kill, matching the docs. Force (`/true`) variant not exercised (no reason to test destructively once the non-force path was confirmed). |
 | `queryTvChannels` | `GET /query/tv-channels` | **Live-verified as expected-404.** Returns HTTP 404 on this Roku Ultra (not a TV model) — confirms `EcpClient`'s throw-on-non-200 behavior fires correctly on real (not just mocked) TV-only-endpoint rejection. The success response shape remains unverified since a Roku TV isn't available to test against. |
 | `queryTvActiveChannel` | `GET /query/tv-active-channel` | Same as above — live-verified 404 on non-TV hardware; success shape still unverified, needs a Roku TV. |
 | `queryGraphicsFrameRate` | `GET /query/graphics-frame-rate` | **Live-verified**, HTTP 200: `<graphics-frame-rate><fps>59.473724</fps><timestamp>…</timestamp><status>OK</status></graphics-frame-rate>`. Simple enough that a parser could be added later if a consumer needs it (not added — no current caller). |
-| `queryR2d2Bitmaps` (ECP) | `GET /query/r2d2-bitmaps` | **Live-verified**, HTTP 200: `<r2d2-bitmaps><timestamp>…</timestamp><channel-id>dev</channel-id><graphics-instances /><status>OK</status></r2d2-bitmaps>` (empty `<graphics-instances />` since DAZN wasn't rendering custom bitmaps at query time). Confirms this is **distinct from** `TextureCollector`'s `r2d2_bitmaps` **telnet console command** (port 8080) — same conceptual data, completely different response format (this is XML with a `<graphics-instances>` wrapper; the console command is plain text parsed by `parseR2d2Bitmaps`). Do not reuse that parser against this endpoint's output. |
+| `queryR2d2Bitmaps` (ECP) | `GET /query/r2d2-bitmaps` | **Live-verified**, HTTP 200: `<r2d2-bitmaps><timestamp>…</timestamp><channel-id>dev</channel-id><graphics-instances /><status>OK</status></r2d2-bitmaps>` (empty `<graphics-instances />` since Acme wasn't rendering custom bitmaps at query time). Confirms this is **distinct from** `TextureCollector`'s `r2d2_bitmaps` **telnet console command** (port 8080) — same conceptual data, completely different response format (this is XML with a `<graphics-instances>` wrapper; the console command is plain text parsed by `parseR2d2Bitmaps`). Do not reuse that parser against this endpoint's output. |
 | `querySgNodes(ip, port, scope)` scope param + `querySgNodesById` | `GET /query/sgnodes/{all\|roots}` and `GET /query/sgnodes/nodes?node-id=` | **Live-verified.** `roots` scope, HTTP 200: wraps nodes in `<Root_Nodes node-count="30">…</Root_Nodes>` — note the tag name differs from the `all` scope's `<All_Nodes>`, so `parseEcpSgNodes` (which specifically looks for `<All_Nodes>`) **cannot** be reused as-is for `roots`; a caller wanting typed roots data needs its own parser keyed on `<Root_Nodes>`. `querySgNodesById('192.168.1.20', '2')` → HTTP 200, wraps the match in `<Nodes_Nodes node-id="2" node-count="1">…</Nodes_Nodes>` — yet another distinct wrapper tag. Also confirms `test/diagnostics/fixtures/sgnodes-roots.raw.xml` is an **unrelated, still-unused** fixture — it's a port-8080 telnet `sgnodes roots` console dump (plain text, different shape entirely from this ECP endpoint's `<Root_Nodes>` XML). Wiring that fixture up is a separate, still-open gap in the 8080 console path, not something this ECP work touched. |
 
 ### Deliberately not implemented — confirmed absent from the current official docs

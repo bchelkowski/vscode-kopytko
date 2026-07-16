@@ -35,7 +35,7 @@ function makeDeps(device: typeof DEVICE | undefined) {
   return {
     deviceManager: { getActiveDevice: () => device },
     ecp: {
-      queryApps: sinon.stub().resolves([{ id: 'dev', name: 'DAZN', version: '3.30.3' }]),
+      queryApps: sinon.stub().resolves([{ id: 'dev', name: 'Acme', version: '3.30.3' }]),
       enableRendezvousTracking: sinon.stub().resolves(true),
       disableRendezvousTracking: sinon.stub().resolves(true),
       queryRendezvousEvents: sinon.stub().resolves({ events: [], dropCount: 0 }),
@@ -91,7 +91,7 @@ describe('DiagnosticsController', () => {
     expect(manifestEntry, 'manifest written').to.exist;
     expect(manifestEntry![0]).to.include('/ws/debug/');
     const manifest = JSON.parse(manifestEntry![1]);
-    expect(manifest.app.title).to.equal('DAZN');
+    expect(manifest.app.title).to.equal('Acme');
     expect(manifest.device.ip).to.equal('1.2.3.4');
     expect(manifest.collectors.map((c: any) => c.type)).to.include.members([
       'mem-cpu', 'node-counts', 'object-counts', 'rendezvous', 'fw-beacon',
@@ -161,8 +161,8 @@ describe('DiagnosticsController', () => {
       const clock = sinon.useFakeTimers();
       const deps = makeDeps(DEVICE);
       deps.ecp.queryApps.resolves([
-        { id: 'dev', name: 'DAZN', version: '3.30.3' },
-        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+        { id: 'dev', name: 'Acme', version: '3.30.3' },
+        { id: '268970', name: 'Acme - PROD TESTER', version: '3.30.5' },
       ]);
       const { sink } = makeFakeSink();
       const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
@@ -201,8 +201,8 @@ describe('DiagnosticsController', () => {
     it('defaults to "dev" and resolves the manifest app from the selected id', async () => {
       const deps = makeDeps(DEVICE);
       deps.ecp.queryApps.resolves([
-        { id: 'dev', name: 'DAZN', version: '3.30.3' },
-        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+        { id: 'dev', name: 'Acme', version: '3.30.3' },
+        { id: '268970', name: 'Acme - PROD TESTER', version: '3.30.5' },
       ]);
       const { sink, files } = makeFakeSink();
       const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
@@ -211,15 +211,15 @@ describe('DiagnosticsController', () => {
       await controller.startSession();
       const manifestEntry = [...files.entries()].find(([k]) => k.endsWith('session.json'));
       const manifest = JSON.parse(manifestEntry![1]);
-      expect(manifest.app.title).to.equal('DAZN');
+      expect(manifest.app.title).to.equal('Acme');
       await controller.stopSession();
     });
 
     it('setSelectedApp targets the new app id for the next session', async () => {
       const deps = makeDeps(DEVICE);
       deps.ecp.queryApps.resolves([
-        { id: 'dev', name: 'DAZN', version: '3.30.3' },
-        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
+        { id: 'dev', name: 'Acme', version: '3.30.3' },
+        { id: '268970', name: 'Acme - PROD TESTER', version: '3.30.5' },
       ]);
       const { sink, files } = makeFakeSink();
       const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
@@ -230,7 +230,7 @@ describe('DiagnosticsController', () => {
       await controller.startSession();
       const manifestEntry = [...files.entries()].find(([k]) => k.endsWith('session.json'));
       const manifest = JSON.parse(manifestEntry![1]);
-      expect(manifest.app.title).to.equal('DAZN - PROD TESTER');
+      expect(manifest.app.title).to.equal('Acme - PROD TESTER');
       await controller.stopSession();
     });
 
@@ -269,10 +269,10 @@ describe('DiagnosticsController', () => {
       const deps = makeDeps(DEVICE);
       deps.ecp.queryApps.resolves([
         { id: '12', name: 'Netflix', version: '1.0' },
-        { id: '268970', name: 'DAZN - PROD TESTER', version: '3.30.5' },
-        { id: '158987', name: 'DAZN Live Sports Streaming', version: '3.30.5' },
+        { id: '268970', name: 'Acme - PROD TESTER', version: '3.30.5' },
+        { id: '158987', name: 'Acme Live Sports Streaming', version: '3.30.5' },
         { id: '852522', name: 'Binge Tester', version: '3.30.304' },
-        { id: 'dev', name: 'DAZN', version: '3.30.5' },
+        { id: 'dev', name: 'Acme', version: '3.30.5' },
       ]);
       deps.ecp.queryRegistry.resolves(
         '<plugin-registry><registry><dev-id>x</dev-id><plugins>158987,268970,dev</plugins></registry></plugin-registry>',
@@ -296,7 +296,7 @@ describe('DiagnosticsController', () => {
       const controller = new DiagnosticsController(deps as any, sink, dummySocketFactory());
 
       const apps = await controller.listAvailableApps();
-      expect(apps).to.deep.equal([{ id: 'dev', title: 'DAZN', version: '3.30.3' }]);
+      expect(apps).to.deep.equal([{ id: 'dev', title: 'Acme', version: '3.30.3' }]);
     });
 
     it('listAvailableApps returns an empty array with no active device', async () => {

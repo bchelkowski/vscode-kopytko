@@ -102,7 +102,7 @@ await commands.addBreakpoints([{ filePath: 'pkg:/source/main.brs', lineNumber: 4
 
 const subsystems = [
   { name: 'SSDP discovery', port: 'UDP 1900', api: 'SsdpClient', desc: 'Active M-SEARCH scans + passive NOTIFY alive/byebye monitoring with per-IP debounce.' },
-  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, remote-control keys (keypress/keydown/keyup + Lit_ text entry), exit-app, active app, media-player state, registry, app state, chanperf, sgnodes (all/roots/by-id), object counts, r2d2-bitmaps, graphics-frame-rate, TV channel queries, rendezvous + beacon tracking, dev-password validation (digest auth).' },
+  { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, remote-control keys (keypress/keydown/keyup + Lit_ text entry), exit-app, active app, media-player state, registry, app state, chanperf, sgnodes (all/roots/by-id), app-ui (rendered UI tree), object counts, r2d2-bitmaps, graphics-frame-rate, TV channel queries, rendezvous + beacon tracking, dev-password validation (digest auth).' },
   { name: 'Discovery orchestration', port: '—', api: 'DeviceManager', desc: 'Merges SSDP, ECP health checks, persistence, and network-change events into one device list. Storage and network signals are injected interfaces.' },
   { name: 'SceneGraph debug console', port: 'TCP 8080', api: 'DebugConsoleClient', desc: 'Idle-framed request/response console (chanperf, sgnodes, r2d2_bitmaps, free) with exponential-backoff auto-reconnect.' },
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
@@ -118,6 +118,7 @@ kopytko-roku --help
 kopytko-roku ecp device-info --host 192.168.1.20
 kopytko-roku ecp keypress --host 192.168.1.20 --key Home
 kopytko-roku ecp launch --host 192.168.1.20 --app dev --param contentId=42
+kopytko-roku ecp app-ui --host 192.168.1.20
 
 # Developer web-admin
 kopytko-roku installer screenshot --host 192.168.1.20 --password secret --out shot.jpg

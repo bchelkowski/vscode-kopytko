@@ -54,22 +54,22 @@ X02800C5FKLV (Roku Ultra - 15.2.4.3442)
 			<num-bytes-static>280</num-bytes-static>
 		</node>
 		<node>
-			<type>DaznAccountEntitlementSetModel</type>
+			<type>AcmeAccountEntitlementSetModel</type>
 			<count>2</count>
 			<num-bytes-static>560</num-bytes-static>
 		</node>
 		<node>
-			<type>DaznButton</type>
+			<type>AcmeButton</type>
 			<count>1</count>
 			<num-bytes-static>280</num-bytes-static>
 		</node>
 		<node>
-			<type>DaznDialogOutlet</type>
+			<type>AcmeDialogOutlet</type>
 			<count>1</count>
 			<num-bytes-static>280</num-bytes-static>
 		</node>
 		<node>
-			<type>DaznSpinner</type>
+			<type>AcmeSpinner</type>
 			<count>1</count>
 			<num-bytes-static>1112</num-bytes-static>
 		</node>

@@ -138,7 +138,7 @@ relative to the workspace root). Each session is its own timestamped subfolder:
 
 ```
 debug/
-└── 2026-06-26_10-37-01__DAZN/
+└── 2026-06-26_10-37-01__Acme/
     ├── session.json        Manifest: schema, device, app, collectors, per-stream counts
     ├── mem-cpu.ndjson      One JSON event per line
     ├── node-counts.ndjson
@@ -269,7 +269,7 @@ alongside a **● Live** option for the live view.
 ### Session selector
 
 Each option is labelled `<appTitle>  <date>  (<duration>)`, e.g.
-`DAZN  2026-06-26 10:37  (5m 12s)`. The extension reads all `session.json`
+`Acme  2026-06-26 10:37  (5m 12s)`. The extension reads all `session.json`
 manifests under the output directory and sends them to the webview each time the
 panel opens or a session stops.
 

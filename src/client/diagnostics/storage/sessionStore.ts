@@ -7,7 +7,7 @@ export const SCHEMA_VERSION = 1;
 /** Metadata describing one recorded (or replayable) diagnostics session. */
 export interface SessionManifest {
   schemaVersion: number;
-  /** Folder name, e.g. `2026-06-26_07-30-00__DAZN`. */
+  /** Folder name, e.g. `2026-06-26_07-30-00__Acme`. */
   id: string;
   startedWall: number;
   endedWall: number | null;
@@ -34,7 +34,7 @@ function pad(n: number): string {
 
 /**
  * Builds a filesystem-safe session id from a timestamp and optional app label,
- * e.g. `2026-06-26_07-30-00__DAZN`.
+ * e.g. `2026-06-26_07-30-00__Acme`.
  */
 export function buildSessionId(wall: number, appLabel?: string): string {
   const d = new Date(wall);

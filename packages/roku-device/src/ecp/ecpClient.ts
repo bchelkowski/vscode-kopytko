@@ -82,7 +82,7 @@ export interface FwBeaconEcpEvent {
  * <fwbeacons>
  *   <tracking-enabled>true</tracking-enabled>
  *   <plugin-id>dev</plugin-id>
- *   <plugin-title>DAZN</plugin-title>
+ *   <plugin-title>Acme</plugin-title>
  *   <drop-count>0</drop-count>
  *   <interval-drop-count>0</interval-drop-count>
  *   <count>2</count>
@@ -132,7 +132,7 @@ export interface ActiveAppInfo {
  *
  * ```xml
  * <active-app>
- *   <app id="dev" type="appl" version="3.30.5">DAZN</app>
+ *   <app id="dev" type="appl" version="3.30.5">Acme</app>
  * </active-app>
  * ```
  * The home screen may report `<app>Roku</app>` with no attributes.
@@ -175,7 +175,7 @@ export interface MediaPlayerInfo {
  * Representative shape (attributes vary by firmware — parse leniently):
  * ```xml
  * <player error="false" state="play">
- *   <plugin bandwidth="…" id="dev" name="DAZN"/>
+ *   <plugin bandwidth="…" id="dev" name="Acme"/>
  *   <format audio="aac" captions="none" container="…" drm="none" video="hevc"/>
  *   <position>1198000 ms</position>
  *   <duration>7422000 ms</duration>
@@ -730,6 +730,31 @@ export class EcpClient {
   }
 
   /**
+   * Queries the rendered UI node tree of the foreground app via ECP
+   * (`GET /query/app-ui`). Returns the raw XML body
+   * (`<app-ui><status>OK</status><topscreen>…`) for the caller to parse.
+   *
+   * Unlike sgnodes, this endpoint reports failure in-band with HTTP 200 —
+   * `<status>FAILED</status><error>No active app</error>` when no app is
+   * running — so that case throws with the device-reported error text.
+   */
+  async queryAppUi(
+    ip: string,
+    port: number = DEFAULT_ECP_PORT,
+  ): Promise<string> {
+    const { statusCode, body } = await httpGet(
+      `http://${ip}:${port}/query/app-ui`,
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (statusCode !== 200) throw new Error(`app-ui: HTTP ${statusCode}`);
+    if (/<status>\s*FAILED\s*<\/status>/i.test(body)) {
+      const error = body.match(/<error>([^<]*)<\/error>/i)?.[1]?.trim();
+      throw new Error(`app-ui: ${error || 'device reported FAILED'}`);
+    }
+    return body;
+  }
+
+  /**
    * Queries SceneGraph nodes matching a specific node id via ECP
    * (`/query/sgnodes/nodes?node-id=<id>`). Returns the raw XML body for the
    * caller to parse.
@@ -867,7 +892,7 @@ export class EcpClient {
    * Verified live response shape (Roku Ultra, firmware 15.2.4):
    * ```xml
    * <app-state>
-   *   <app-id>dev</app-id><app-title>DAZN</app-title><app-version>3.30.5</app-version>
+   *   <app-id>dev</app-id><app-title>Acme</app-title><app-version>3.30.5</app-version>
    *   <app-dev-id>...</app-dev-id>
    *   <state>background</state>
    *   <status>OK</status>

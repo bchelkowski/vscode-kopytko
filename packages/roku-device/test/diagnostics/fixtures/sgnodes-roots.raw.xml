@@ -5,8 +5,8 @@ X02800C5FKLV (Roku Ultra - 15.2.4.3442)
 	<MainScene children="0" extends="Scene" focused="true" focusable="true" rcid="0" bounds="{0, 0, 1920, 1080}" _sn="2" osref="4" bscref="2" />
 	<ContentEntitlementsService extends="Node" rcid="0" _sn="3" osref="1" bscref="1" />
 	<PubbyService extends="Node" rcid="0" _sn="4" osref="2" bscref="0" />
-	<DaznAccountEntitlementSetModel extends="Node" name="ppv_t_zayas_boots" rcid="0" _sn="5" osref="2" bscref="0" />
-	<DaznAccountEntitlementSetModel extends="Node" name="tier_gold_de" rcid="0" _sn="6" osref="2" bscref="0" />
+	<AcmeAccountEntitlementSetModel extends="Node" name="ppv_t_zayas_boots" rcid="0" _sn="5" osref="2" bscref="0" />
+	<AcmeAccountEntitlementSetModel extends="Node" name="tier_gold_de" rcid="0" _sn="6" osref="2" bscref="0" />
 	<BrowsePageNavigationModel extends="Node" rcid="0" _sn="7" osref="2" bscref="0" />
 	<BrowsePageNavigationModel extends="Node" rcid="0" _sn="8" osref="2" bscref="0" />
 	<BrowsePageNavigationModel extends="Node" rcid="0" _sn="9" osref="2" bscref="0" />

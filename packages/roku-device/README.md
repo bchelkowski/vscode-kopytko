@@ -125,6 +125,7 @@ Every `EcpClient` method, mapped to its endpoint (default port 8060 unless noted
 | `queryChanperf` | `GET /query/chanperf` | Per-channel CPU/memory (raw XML) |
 | `querySgNodes` | `GET /query/sgnodes/{all\|roots}` | SceneGraph node tree, all nodes or only un-parented roots (raw XML) |
 | `querySgNodesById` | `GET /query/sgnodes/nodes?node-id=` | SceneGraph nodes matching one node id (raw XML) |
+| `queryAppUi` | `GET /query/app-ui` | Rendered UI node tree of the foreground app (raw XML; throws `app-ui: No active app` when nothing is running) |
 | `queryR2d2Bitmaps` | `GET /query/r2d2-bitmaps` | GPU texture/bitmap memory (raw XML, dev mode) |
 | `queryGraphicsFrameRate` | `GET /query/graphics-frame-rate` | Recent rendered FPS, Roku OS 12.0+ (raw XML, dev mode) |
 | `queryAppObjectCounts` | `GET /query/app-object-counts/{appId}` | BrightScript object counts/memory (raw XML) |

@@ -5,7 +5,7 @@ const FIXTURE = `<?xml version="1.0" encoding="UTF-8" ?>
 <sgnodes>
 <timestamp>1782720357639</timestamp>
 <channel-id>dev</channel-id>
-<channel-title>DAZN</channel-title>
+<channel-title>Acme</channel-title>
 <All_Nodes node-count="5">
 <MainScene children="1" extends="Scene" _sn="1">
 <AppView children="2" extends="Group" name="app" _sn="2">

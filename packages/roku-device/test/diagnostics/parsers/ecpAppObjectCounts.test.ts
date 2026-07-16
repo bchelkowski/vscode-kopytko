@@ -5,7 +5,7 @@ import { parseEcpAppObjectCounts } from '../../../src/diagnostics/parsers/ecpApp
 const FIXTURE = `<app-object-counts>
 <timestamp>1782995684112</timestamp>
 <channel-id>dev</channel-id>
-<channel-title>DAZN</channel-title>
+<channel-title>Acme</channel-title>
 <channel-version>3.30.5</channel-version>
 <objects>
 <objects-count>12589</objects-count>
