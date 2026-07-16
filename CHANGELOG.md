@@ -1,6 +1,15 @@
 # Changelog
 
 
+## [1.10.5] - 2026-07-16
+
+### Added
+- Network Inspector — show diff-marked row in the request list
+- SceneGraph Tree XML view — copy menu + find widget
+
+### Fixed
+- Fully disable SO_KEEPALIVE on in-flight upstream requests in Network Inspector
+
 ## [1.10.4] - 2026-07-16
 
 ### Fixed
