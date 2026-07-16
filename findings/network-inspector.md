@@ -1083,6 +1083,72 @@ track connected sockets and `.destroy()` them explicitly before `close()`,
 or the callback never fires and the test times out with no useful error
 message pointing at the real cause.
 
+## In-flight (pending) flows: `'flow'` became an upsert-by-id, end to end (2026-07-16)
+
+Requests now appear in the panel the moment they arrive (muted italic row,
+`…` status, live elapsed ticker) and update in place on completion — closing
+the long-standing "a streamed/long-poll flow appears only when it finally
+closes" trade-off documented under "Streaming pass-through" above. The design
+is deliberately *not* a new message kind; invariants that must hold:
+
+- **The flow id is pre-allocated in `handleRequest`/`replay` and threaded
+  through `RequestMeta.id`.** Every terminal emitter that carries a `meta`
+  (`finishUpstream`, `streamUpstream`'s `finalize`, `serveMapLocal`,
+  `recordBlocked`, the response-breakpoint abort record, `finishError`) uses
+  `meta.id` — **never call `nextFlowId()` in a terminal path**. The only
+  remaining `nextFlowId()` call sites are `handleRequest`, `replay`, and the
+  two meta-less paths (`recordUnparseableRequest`, `recordClientError`),
+  which are also the only exchanges with *no* pending phase. Blocked-by-rule
+  requests also skip the pending emit (the block check runs first) so a
+  blocked flow never flashes. `forward()`'s `retriedAuto`/`retriedStale`
+  re-entries reuse the same `meta`, so a retry can never mint a second id or
+  a second pending row.
+- **`'flow'` is an upsert by id at every layer.** Proxy emits pending →
+  terminal with the same id; `NetworkController.onFlow` merges a known id in
+  place (`Object.assign` on the shared record — keeps `flows[]` position with
+  no splice) and **bypasses the pause/device-IP gates for known ids** — the
+  gates were decided at admission, and dropping a completion would strand a
+  pending row forever (this exact case: pending admitted → user pauses →
+  completion arrives). Byte accounting is delta-based (subtract old
+  `flowCost`, add new); `delete existing.pending` is required because
+  `Object.assign` can't remove keys. Webview `ingestFlow` mirrors the same
+  upsert; `flushTree` handles the row-already-in-DOM cases (update in place,
+  or *remove* when the completion no longer passes the active status chip),
+  and `updateFlowRow` re-homes the row when `originKey` changed (an `auto`
+  scheme resolves its real upstream only at completion).
+- **Ordering races self-heal via the append fallback**: a pending flow
+  evicted by the ring/byte caps, or wiped by `clear()`, makes the completion
+  an unknown id again → it simply appends. Accepted quirk (documented in
+  docs/network-inspector.md): Clear during an in-flight request re-lists
+  that request when it completes.
+- **Persistence stays completion-only** — the NDJSON store is append-only
+  with one immutable line per flow, so `persistFlow` is skipped for
+  `pending` records at both onFlow call sites. HAR export filters pending
+  out; `controller.replay()` throws on a pending id (no captured body yet).
+- **The webview's "bodies are immutable per flow" detail-cache assumption
+  no longer holds for pending-era fetches.** A detail cached while the flow
+  was pending is invalidated on the completing upsert AND on `init` resync
+  (tracked via a `prevPendingIds` set captured before the rebuild — the flow
+  may have completed while the panel was hidden). The `init` handler also
+  re-requests the selected flow's detail when missing, which additionally
+  fixed a small pre-existing gap: a `flow-detail` reply lost to `_post`'s
+  hidden-panel drop previously left body sections silently absent until the
+  user re-clicked the row.
+- **Test-suite ripple**: the `nextFlow` helper in captureProxy.test.ts now
+  resolves on the first *non-pending* emit (kept every existing test green
+  untouched); tests that count `'flow'` emits to detect retries must count
+  terminal emits only. The pending-before-upload test proves the emit fires
+  before the request body finishes (chunked POST with the second chunk gated
+  on the pending emit's promise).
+
+Verified in the browser harness (static-server approach above) against the
+real bundle: pending row renders (`…`/ticker/`—` size), completion flips the
+row in place with selection kept and posts a detail re-fetch, status chips
+ignore pending rows and re-check on completion (404 under a 2xx chip removes
+the row; 200 keeps it), the ticker self-cancels when the last pending flow
+resolves, and the hide→restore `init` resync drops the pending-era detail
+cache and re-fetches.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

@@ -246,8 +246,10 @@ finishes, and buffering one would hang the device forever. Those are instead
 capped copy teed for display. To keep the https→http bridge intact, a
 no-`Content-Length` response is only streamed when no body-rewrite rule would
 have touched it (and never when it's compressed, since the device needs the
-decoded bytes); SSE always streams. A streamed flow appears in the list when
-its stream ends, and its captured body is best-effort/partial.
+decoded bytes); SSE always streams. A streamed flow shows as an **in-flight
+row** from the moment the request arrives (see below) and gains its final
+status/`stream` tag when the stream ends; its captured body is
+best-effort/partial.
 
 ---
 
@@ -266,12 +268,24 @@ requests that never got a response) and by method (`GET POST PUT DELETE
 other`); chips combine with the text filter, and an empty chip group means
 no restriction.
 
+**Requests appear the moment they arrive, not when they finish.** An accepted
+request immediately shows as a muted, italic **in-flight row** — status `…`, a
+live elapsed-time counter instead of a duration, request headers already
+inspectable in the detail pane — and updates in place (same row, selection
+kept) when the exchange completes. This makes long-polls, SSE streams, slow
+endpoints, and breakpoint-paused requests visible *while* they run instead of
+only after. In-flight rows ignore the status chips (they have no status yet)
+and are re-checked against them on completion; they're excluded from HAR
+export and can't be replayed or diffed until they finish. A **Clear** issued
+while a request is in flight re-lists that request when it completes — the
+exchange did happen after the clear.
+
 The list stays responsive under heavy traffic: live requests are batched per
-animation frame and appended as individual rows rather than re-rendering the
-whole list, and the buffer is bounded twice over — by entry count
-(`maxEntries`) and by an approximate byte budget (`maxBufferBytes`), evicting
-oldest entries first. Selection and already-loaded bodies survive hiding and
-restoring the panel tab.
+animation frame and appended/updated as individual rows rather than
+re-rendering the whole list, and the buffer is bounded twice over — by entry
+count (`maxEntries`) and by an approximate byte budget (`maxBufferBytes`),
+evicting oldest entries first. Selection and already-loaded bodies survive
+hiding and restoring the panel tab.
 
 ### Compare two flows
 

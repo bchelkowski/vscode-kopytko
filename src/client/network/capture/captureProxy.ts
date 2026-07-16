@@ -84,11 +84,17 @@ function nextInterceptId(): string {
 
 /**
  * Emits:
- *  - `'flow'`   (rec: FlowRecord, bodies?: FlowBodies) — one completed (or
- *               errored) exchange. `rec`'s buffers are capped at
- *               `maxBodyBytes`; `bodies` carries the full pre-cap bytes for
- *               listeners that persist them (absent when there's nothing
- *               beyond what the record already holds).
+ *  - `'flow'`   (rec: FlowRecord, bodies?: FlowBodies) — fires TWICE per
+ *               accepted exchange: once with `pending: true` as soon as a
+ *               parseable, non-blocked request arrives (headers only, no
+ *               status/bodies yet), then once more with the SAME `id` (and
+ *               `pending` absent) when the exchange terminates — listeners
+ *               must upsert by id. Blocked-by-rule, unparseable, and
+ *               client-error exchanges emit only the terminal record.
+ *               `rec`'s buffers are capped at `maxBodyBytes`; `bodies`
+ *               carries the full pre-cap bytes for listeners that persist
+ *               them (absent when there's nothing beyond what the record
+ *               already holds).
  *  - `'error'`  (err: Error) — server-level error
  */
 export class CaptureProxy extends EventEmitter {
@@ -177,6 +183,7 @@ export class CaptureProxy extends EventEmitter {
     }
 
     const meta: RequestMeta = {
+      id: nextFlowId(),
       startedWall,
       clientIp,
       method: (req.method ?? 'GET').toUpperCase(),
@@ -190,6 +197,12 @@ export class CaptureProxy extends EventEmitter {
       this.recordBlocked(res, target, meta);
       return;
     }
+
+    // The request is accepted: surface it immediately as an in-flight row —
+    // before the request body is even collected, so long uploads, long-polls,
+    // and streams are visible while they run. The terminal record below
+    // reuses meta.id and replaces this one.
+    this.emit('flow', this.buildPendingRecord(target, meta));
 
     const tBodyStart = performance.now();
     collectBody(req)
@@ -246,6 +259,37 @@ export class CaptureProxy extends EventEmitter {
       .catch((err) => {
         this.finishError(res, target, meta, err instanceof Error ? err : new Error(String(err)));
       });
+  }
+
+  /**
+   * In-flight placeholder emitted the moment a request is accepted — request
+   * metadata only, with zeroed response fields. The terminal record emitted
+   * with the same `meta.id` replaces it. `upstreamScheme` shows the first
+   * attempt (`auto` starts on https); the terminal record corrects it.
+   */
+  private buildPendingRecord(target: Target, meta: RequestMeta): FlowRecord {
+    return {
+      id: meta.id,
+      startedWall: meta.startedWall,
+      method: meta.method,
+      host: target.hostname,
+      port: target.clientPort,
+      path: target.path,
+      query: target.query,
+      status: 0,
+      statusText: '',
+      contentType: '',
+      durationMs: 0,
+      requestBytes: 0,
+      responseBytes: 0,
+      clientIp: meta.clientIp,
+      upstreamScheme: resolveUpstreamScheme(target.hostname, this.rules) === 'http' ? 'http' : 'https',
+      rewrittenBody: false,
+      requestHeaders: meta.requestHeaders,
+      responseHeaders: {},
+      replayed: meta.replayed,
+      pending: true,
+    };
   }
 
   private async forward(
@@ -430,7 +474,7 @@ export class CaptureProxy extends EventEmitter {
       const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
       const teedBody = retainable && teed.length > 0 ? Buffer.concat(teed) : undefined;
       const rec: FlowRecord = {
-        id: nextFlowId(),
+        id: meta.id,
         startedWall: meta.startedWall,
         method: meta.method,
         host: target.hostname,
@@ -511,7 +555,7 @@ export class CaptureProxy extends EventEmitter {
       // already gone
     }
     const rec: FlowRecord = {
-      id: nextFlowId(),
+      id: meta.id,
       startedWall: meta.startedWall,
       method: meta.method,
       host: target.hostname,
@@ -546,7 +590,7 @@ export class CaptureProxy extends EventEmitter {
     marks: TimingMarks,
   ): FlowRecord {
     return {
-      id: nextFlowId(),
+      id: meta.id,
       startedWall: meta.startedWall,
       method: meta.method,
       host: target.hostname,
@@ -670,7 +714,7 @@ export class CaptureProxy extends EventEmitter {
     const reqCap = capBuffer(reqBodyToSend, this.maxBodyBytes);
     const resCap = capBuffer(outBody, this.maxBodyBytes);
     const rec: FlowRecord = {
-      id: nextFlowId(),
+      id: meta.id,
       startedWall: meta.startedWall,
       method: meta.method,
       host: target.hostname,
@@ -741,7 +785,7 @@ export class CaptureProxy extends EventEmitter {
     const retainResponse = body.length > 0 && (isTextContentType(contentType) || isImageContentType(contentType));
     const resCap = capBuffer(body, this.maxBodyBytes);
     const rec: FlowRecord = {
-      id: nextFlowId(),
+      id: meta.id,
       startedWall: meta.startedWall,
       method: meta.method,
       host: target.hostname,
@@ -776,7 +820,7 @@ export class CaptureProxy extends EventEmitter {
       // ignore secondary failures
     }
     const rec: FlowRecord = {
-      id: nextFlowId(),
+      id: meta.id,
       startedWall: meta.startedWall,
       method: meta.method,
       host: target.hostname,
@@ -816,12 +860,15 @@ export class CaptureProxy extends EventEmitter {
       query: rec.query,
     };
     const meta: RequestMeta = {
+      id: nextFlowId(),
       startedWall: Date.now(),
       clientIp: '127.0.0.1',
       method: rec.method,
       requestHeaders: { ...rec.requestHeaders },
       replayed: true,
     };
+    // A replay shows an in-flight row too, same as device traffic.
+    this.emit('flow', this.buildPendingRecord(target, meta));
     const scheme = resolveUpstreamScheme(rec.host, this.rules);
     void this.forward({ ...NOOP_SINK }, target, rec.requestBody ?? Buffer.alloc(0), scheme, meta);
   }
@@ -912,6 +959,12 @@ export class CaptureProxy extends EventEmitter {
 }
 
 interface RequestMeta {
+  /**
+   * Flow id, allocated up front so the pending record and the terminal
+   * record share it (the panel upserts by id). Terminal emitters that carry
+   * a `meta` must use this — never call `nextFlowId()` themselves.
+   */
+  id: string;
   startedWall: number;
   clientIp: string;
   method: string;

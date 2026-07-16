@@ -527,6 +527,7 @@ const kopytkoRcExample = `// .kopytkorc
               'Workflow tools — copy URL / copy as cURL / copy body, one-click replay through the proxy (with confirmation for state-changing methods), pause recording without dropping the redirect, timestamps, and status/method filter chips',
               'Map-local, latency-injection, header and block rules (block aborts a matched request so you can test error handling); image response preview + hex; parsed query-param and cookie views; and a search across every captured request that jumps straight to the flow',
               'Streaming pass-through — Server-Sent Events and chunked no-length responses forward chunk-by-chunk instead of buffering, so a live stream never hangs the device',
+              'In-flight rows — a request appears the instant it arrives with a live elapsed-time counter and inspectable request headers, then updates in place when it completes, so long-polls, streams, slow endpoints and breakpoint-paused requests are visible while they run',
               'Compare any two captured requests — a line-level diff of summary, headers and bodies to spot exactly what changed between them',
               'Breakpoints — pause a matched request or response mid-flight, edit its method/status/headers/body live, then continue or abort (with an auto-continue timeout so nothing hangs)',
               'Built to stay fast under load — frame-batched incremental list updates, a dual entry-count + byte-budget memory cap, and pooled upstream connections (no per-request TLS handshake to origins)',

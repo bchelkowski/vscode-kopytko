@@ -209,6 +209,10 @@ input[type="text"], select {
 .status.redir { color: #5aa9e6; }
 .status.warn { color: #d6a45a; }
 .status.err { color: #e06c75; }
+.status.pending { color: var(--vscode-descriptionForeground, #999); }
+
+/* In-flight rows — visually muted until the exchange completes. */
+.row.pending { opacity: 0.75; font-style: italic; }
 
 .path { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .time {

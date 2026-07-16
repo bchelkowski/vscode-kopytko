@@ -128,6 +128,11 @@ export interface SerializedFlow {
   timings?: FlowTimings;
   /** True when this flow is a user-initiated replay, not device traffic. */
   replayed?: boolean;
+  /**
+   * True while the exchange is still in flight — a later `flow` message with
+   * the same `id` (and this field absent) replaces it when it finishes.
+   */
+  pending?: true;
   error?: string;
 }
 
@@ -149,6 +154,7 @@ export interface FlowDetail {
 // ── Extension → Webview ──────────────────────────────────────────────────────
 export type ExtMsg =
   | { kind: 'init'; state: WebviewState; history: SerializedFlow[]; rules: RuleSet; maxEntries: number; intercepts: InterceptPayload[] }
+  /** A new flow, OR an in-place update of an already-sent id (in-flight → completed) — upsert by `entry.id`. */
   | { kind: 'flow'; entry: SerializedFlow }
   /** Oldest flows evicted from the host buffer (count or byte cap) — drop them client-side too. */
   | { kind: 'trim'; ids: string[] }

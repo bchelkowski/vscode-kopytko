@@ -56,7 +56,9 @@ export interface NetworkControllerDeps {
 
 /**
  * Emits:
- *  - `'flow'`    (entry: SerializedFlow)
+ *  - `'flow'`    (entry: SerializedFlow) — a new flow, or an in-place update
+ *                of an already-emitted id (`pending` in-flight record →
+ *                terminal record); consumers upsert by `entry.id`
  *  - `'trimmed'` (ids: string[]) — oldest flows evicted by the count/byte caps
  *  - `'state'`   (state: WebviewState)
  *  - `'rules'`   (rules: RuleSet)
@@ -160,6 +162,7 @@ export class NetworkController extends EventEmitter {
   async replay(id: string): Promise<void> {
     const rec = this.byId.get(id);
     if (!rec) throw new Error('Request is no longer in the capture buffer.');
+    if (rec.pending) throw new Error('Request is still in flight — wait for it to complete before replaying.');
     if (!this.proxy) throw new Error('Enable capture to replay requests.');
     const fullBody = rec.requestBodyTruncated
       ? await this.deps.sessionStore?.readBody(id, 'req').catch(() => null)
@@ -386,6 +389,25 @@ export class NetworkController extends EventEmitter {
   // ── data ──────────────────────────────────────────────────────────────────
 
   private onFlow(rec: FlowRecord, bodies?: FlowBodies): void {
+    // A known id is the second half of an already-recorded exchange (the
+    // proxy emits pending → terminal with the same id): merge in place and
+    // skip the gates below — they were decided when the pending record was
+    // admitted, and dropping a completion here would strand a pending row.
+    // If the pending record was evicted (or cleared) first, the id is
+    // unknown again and the completion simply appends via the miss path.
+    const existing = this.byId.get(rec.id);
+    if (existing) {
+      this.bufferBytes -= flowCost(existing);
+      Object.assign(existing, rec);
+      // Completed records omit `pending`; Object.assign can't remove keys.
+      if (!rec.pending) delete existing.pending;
+      this.bufferBytes += flowCost(existing);
+      // Persistence stays completion-only — a pending record has no bodies
+      // and no final status, and the NDJSON store is append-only.
+      if (!rec.pending) void this.persistFlow(existing, bodies);
+      this.emit('flow', toSerializedFlow(existing));
+      return;
+    }
     // Replays are user-initiated: they bypass both the pause gate and the
     // device-IP filter (their clientIp is a loopback placeholder anyway).
     if (this.paused && !rec.replayed) return;
@@ -423,8 +445,9 @@ export class NetworkController extends EventEmitter {
     this.bufferBytes += flowCost(rec);
     // Persist metadata + full bodies to the session folder. Fire-and-forget —
     // recording must never wait on (or die with) disk I/O. Deliberately only
-    // for flows that passed the pause/device-filter gates above.
-    void this.persistFlow(rec, bodies);
+    // for flows that passed the pause/device-filter gates above, and only
+    // once complete (the terminal upsert above persists in-flight flows).
+    if (!rec.pending) void this.persistFlow(rec, bodies);
 
     const trimmed: string[] = [];
     while (this.flows.length > this._maxEntries) {
@@ -477,7 +500,9 @@ export class NetworkController extends EventEmitter {
       log: {
         version: '1.2',
         creator: { name: 'Kopytko Network Inspector', version: '1' },
-        entries: this.flows.map((rec) => harEntry(rec)),
+        // In-flight flows have no response yet — a HAR entry for them would
+        // be a lie (status 0, empty timings), so they're simply left out.
+        entries: this.flows.filter((rec) => !rec.pending).map((rec) => harEntry(rec)),
       },
     };
   }

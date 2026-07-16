@@ -200,7 +200,9 @@ function methodChipOf(f: SerializedFlow): string {
 }
 
 function passesFilter(f: SerializedFlow): boolean {
-  if (state.statusChips.size > 0 && !state.statusChips.has(statusChipOf(f))) return false;
+  // In-flight flows have no status yet — status chips can't classify them,
+  // so they stay visible and get re-checked when the completion arrives.
+  if (state.statusChips.size > 0 && !f.pending && !state.statusChips.has(statusChipOf(f))) return false;
   if (state.methodChips.size > 0 && !state.methodChips.has(methodChipOf(f))) return false;
   if (!state.filter) return true;
   const q = state.filter.toLowerCase();
@@ -239,6 +241,7 @@ function renderTree(): void {
     parts.push(originGroupHtml(origin, flows.map((f) => rowHtml(f)).join(''), flows.length));
   }
   tree.innerHTML = parts.join('');
+  syncPendingTicker();
 }
 
 function originGroupHtml(origin: string, rows: string, count: number): string {
@@ -297,11 +300,22 @@ function flushTree(): void {
   pendingTrimIds = [];
 
   for (const f of flows) {
-    if (passesFilter(f)) appendFlowRow(tree, f);
+    // A `flow` message is an upsert: a row may already exist for this id
+    // (the in-flight placeholder) — update it in place, or remove it when
+    // the completion no longer passes the active filter (e.g. a 404
+    // arriving while only the 2xx chip is on).
+    const row = tree.querySelector<HTMLElement>(`.row[data-id="${CSS.escape(f.id)}"]`);
+    if (row) {
+      if (passesFilter(f)) updateFlowRow(tree, row, f);
+      else removeFlowRow(tree, f.id);
+    } else if (passesFilter(f)) {
+      appendFlowRow(tree, f);
+    }
   }
   for (const id of trims) removeFlowRow(tree, id);
 
   if (!tree.firstElementChild) renderTree(); // last group removed → empty state
+  syncPendingTicker();
 }
 
 function appendFlowRow(tree: HTMLElement, f: SerializedFlow): void {
@@ -315,6 +329,19 @@ function appendFlowRow(tree: HTMLElement, f: SerializedFlow): void {
   }
   group.querySelector('.origin-rows')!.insertAdjacentHTML('beforeend', rowHtml(f));
   updateGroupCount(group);
+}
+
+function updateFlowRow(tree: HTMLElement, row: HTMLElement, f: SerializedFlow): void {
+  const group = row.closest<HTMLElement>('.origin');
+  // The origin key can change between the in-flight row and the completion —
+  // an `auto` scheme resolves its real upstream (https→http fallback) only at
+  // completion, which moves an explicit :443 between "host" and "host:443".
+  if (group && group.dataset.origin !== originKey(f)) {
+    removeFlowRow(tree, f.id);
+    appendFlowRow(tree, f);
+    return;
+  }
+  row.outerHTML = rowHtml(f); // rowHtml re-applies .selected from state.selectedId
 }
 
 function removeFlowRow(tree: HTMLElement, id: string): void {
@@ -341,24 +368,55 @@ function fmtTime(wallMs: number): string {
 
 function rowHtml(f: SerializedFlow): string {
   const sel = f.id === state.selectedId ? ' selected' : '';
-  const statusClass = f.error ? 'err' : f.status >= 400 ? 'warn' : f.status >= 300 ? 'redir' : 'ok';
-  const statusText = f.error ? 'ERR' : String(f.status || '—');
-  const rw = f.rewrittenBody ? '<span class="tag" title="Response body rewritten">rw</span>' : '';
-  const hdr = f.rewrittenHeaders ? '<span class="tag" title="Headers changed by a rule">hdr</span>' : '';
+  const statusClass = f.pending ? 'pending' : f.error ? 'err' : f.status >= 400 ? 'warn' : f.status >= 300 ? 'redir' : 'ok';
+  const statusText = f.pending ? '…' : f.error ? 'ERR' : String(f.status || '—');
+  // Result tags (rewrites, map-local, stream, block) can't be known while the
+  // exchange is still in flight — only the request-side TLS/replay tags show.
+  const rw = !f.pending && f.rewrittenBody ? '<span class="tag" title="Response body rewritten">rw</span>' : '';
+  const hdr = !f.pending && f.rewrittenHeaders ? '<span class="tag" title="Headers changed by a rule">hdr</span>' : '';
   const up = f.upstreamScheme === 'https' ? '<span class="tag https" title="Bridged to HTTPS upstream">TLS</span>' : '';
   const rp = f.replayed ? '<span class="tag replay" title="User-initiated replay, not device traffic">replay</span>' : '';
-  const local = f.servedBy === 'map-local' ? '<span class="tag local" title="Served from a map-local rule">local</span>' : '';
-  const stream = f.streamed ? '<span class="tag stream" title="Streamed through chunk-by-chunk; body capture is best-effort">stream</span>' : '';
-  const block = f.blocked ? '<span class="tag block" title="Aborted by a block rule">block</span>' : '';
-  return `<div class="row${sel}" data-id="${f.id}">
+  const local = !f.pending && f.servedBy === 'map-local' ? '<span class="tag local" title="Served from a map-local rule">local</span>' : '';
+  const stream = !f.pending && f.streamed ? '<span class="tag stream" title="Streamed through chunk-by-chunk; body capture is best-effort">stream</span>' : '';
+  const block = !f.pending && f.blocked ? '<span class="tag block" title="Aborted by a block rule">block</span>' : '';
+  const dur = f.pending
+    ? `<span class="dur pending-dur" data-started="${f.startedWall}">…</span>`
+    : `<span class="dur">${f.durationMs}ms</span>`;
+  const size = f.pending ? '<span class="size">—</span>' : `<span class="size">${fmtBytes(f.responseBytes)}</span>`;
+  return `<div class="row${sel}${f.pending ? ' pending' : ''}" data-id="${f.id}">
     <span class="time">${fmtTime(f.startedWall)}</span>
     <span class="method ${f.method.toLowerCase()}">${esc(f.method)}</span>
     <span class="status ${statusClass}">${statusText}</span>
     <span class="path" title="${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}">${esc(f.path)}</span>
     ${up}${rw}${hdr}${rp}${local}${stream}${block}
-    <span class="dur">${f.durationMs}ms</span>
-    <span class="size">${fmtBytes(f.responseBytes)}</span>
+    ${dur}
+    ${size}
   </div>`;
+}
+
+// ── in-flight elapsed ticker ─────────────────────────────────────────────────
+//
+// While any pending row exists, a 1s interval refreshes just the elapsed-time
+// text of `.pending-dur` cells — no re-render. Self-cancels once the last
+// pending flow resolves. Synced from renderTree/flushTree, which every list
+// mutation funnels through.
+
+let pendingTicker: ReturnType<typeof setInterval> | undefined;
+
+function syncPendingTicker(): void {
+  const anyPending = state.flows.some((f) => f.pending);
+  if (anyPending && pendingTicker === undefined) {
+    pendingTicker = setInterval(() => {
+      document.querySelectorAll<HTMLElement>('.pending-dur').forEach((el) => {
+        const started = Number(el.dataset.started);
+        if (started > 0) el.textContent = `${((Date.now() - started) / 1000).toFixed(1)}s`;
+      });
+      syncPendingTicker();
+    }, 1000);
+  } else if (!anyPending && pendingTicker !== undefined) {
+    clearInterval(pendingTicker);
+    pendingTicker = undefined;
+  }
 }
 
 function renderDetail(): void {
@@ -381,27 +439,32 @@ function renderDetail(): void {
   const streamNote = f.streamed ? ' · streamed' : '';
   const blockNote = f.blocked ? ' · blocked' : '';
   const upstreamExtras = `${f.rewrittenBody ? ' · body rewritten' : ''}${f.rewrittenHeaders ? ' · headers rewritten' : ''}${servedNote}${latencyNote}${streamNote}${blockNote}`;
+  const statusCell = f.pending ? 'pending…' : f.error ? esc(f.error) : `${f.status} ${esc(f.statusText)}`;
+  const durationCell = f.pending ? 'in flight' : `${f.durationMs} ms`;
+  const sizeCell = f.pending ? '—' : `req ${fmtBytes(f.requestBytes)} · resp ${fmtBytes(f.responseBytes)}`;
   const overview = `<table class="kv">
     <tr><td>URL</td><td>${esc(f.upstreamScheme)}://${esc(originKey(f))}${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}</td></tr>
     <tr><td>Method</td><td>${esc(f.method)}</td></tr>
-    <tr><td>Status</td><td>${f.error ? esc(f.error) : `${f.status} ${esc(f.statusText)}`}</td></tr>
+    <tr><td>Status</td><td>${statusCell}</td></tr>
     <tr><td>Upstream</td><td>${f.upstreamScheme.toUpperCase()}${upstreamExtras}</td></tr>
-    <tr><td>Duration</td><td>${f.durationMs} ms</td></tr>
-    <tr><td>Size</td><td>req ${fmtBytes(f.requestBytes)} · resp ${fmtBytes(f.responseBytes)}</td></tr>
+    <tr><td>Duration</td><td>${durationCell}</td></tr>
+    <tr><td>Size</td><td>${sizeCell}</td></tr>
     <tr><td>Client</td><td>${esc(f.clientIp)}</td></tr>
-  </table>`;
+  </table>${f.pending ? '<div class="hint">Response pending — this view updates when the request completes.</div>' : ''}`;
 
   const diffBtn =
     state.diffBaseId && state.diffBaseId !== id
       ? `<button class="secondary" data-diff-run title="Compare this request with the one marked for diff">Diff against marked</button>`
       : '';
   const markLabel = state.diffBaseId === id ? 'Marked for diff ✓' : 'Mark for diff';
+  // Replay/diff need the completed exchange (captured body, final response) —
+  // for an in-flight flow only Copy URL is meaningful.
   const actions = `<div class="detail-actions">
     <button class="secondary" data-copy="url">Copy URL</button>
-    <button class="secondary" data-copy="curl">Copy as cURL</button>
+    ${f.pending ? '' : `<button class="secondary" data-copy="curl">Copy as cURL</button>
     <button class="secondary" data-replay title="Re-send this request through the proxy as a new flow">Replay</button>
     <button class="secondary" data-diff-mark>${markLabel}</button>
-    ${diffBtn}
+    ${diffBtn}`}
   </div>`;
 
   const responseIsBinary = d?.responseBodyEncoding === 'base64';
@@ -1800,6 +1863,21 @@ function wireEvents(): void {
 // ── message handling ──────────────────────────────────────────────────────────
 
 function ingestFlow(f: SerializedFlow): void {
+  // Upsert: a known id is the completion (or update) of an in-flight flow —
+  // replace it in place, no growth, and drop any detail fetched while it was
+  // pending (bodies exist only once the exchange completes, so a cached
+  // pending detail is stale the moment the terminal record lands).
+  if (state.byId.has(f.id)) {
+    for (let i = state.flows.length - 1; i >= 0; i--) {
+      if (state.flows[i].id === f.id) {
+        state.flows[i] = f;
+        break;
+      }
+    }
+    state.byId.set(f.id, f);
+    if (!f.pending) state.details.delete(f.id);
+    return;
+  }
   state.flows.push(f);
   state.byId.set(f.id, f);
   // Mirror the host's ring buffer so a long visible session can't grow the
@@ -1847,6 +1925,7 @@ window.addEventListener('message', (ev) => {
       // (bodies are immutable per flow, so the cache stays valid).
       const prevSelected = state.selectedId;
       const prevDetails = state.details;
+      const prevPendingIds = new Set([...state.byId.values()].filter((f) => f.pending).map((f) => f.id));
       pendingFlows = [];
       pendingTrimIds = [];
       state.flows = [];
@@ -1856,8 +1935,25 @@ window.addEventListener('message', (ev) => {
         state.byId.set(f.id, f);
       }
       state.selectedId = prevSelected && state.byId.has(prevSelected) ? prevSelected : null;
-      state.details = new Map([...prevDetails].filter(([id]) => state.byId.has(id)));
+      // Bodies are immutable once a flow completes, so cached details stay
+      // valid across the rebuild — EXCEPT details fetched while the flow was
+      // still pending (`prevPendingIds`): the flow may have completed while
+      // the panel was hidden, making that cache stale. Dropping them just
+      // causes a clean re-fetch on the next select.
+      state.details = new Map(
+        [...prevDetails].filter(([id]) => {
+          const cur = state.byId.get(id);
+          return cur !== undefined && !cur.pending && !prevPendingIds.has(id);
+        }),
+      );
       state.intercepts = msg.intercepts ?? [];
+      // The selected flow's detail may be missing now — dropped above as
+      // pending-era, or its `flow-detail` reply was lost while the panel was
+      // hidden (`_post` drops messages then). Re-request instead of silently
+      // rendering body sections as absent.
+      if (state.selectedId && !state.details.has(state.selectedId) && !state.byId.get(state.selectedId)?.pending) {
+        vscode.postMessage({ kind: 'select-flow', id: state.selectedId });
+      }
       renderState();
       renderTree();
       renderDetail();
@@ -1869,6 +1965,12 @@ window.addEventListener('message', (ev) => {
       ingestFlow(msg.entry);
       pendingFlows.push(msg.entry);
       scheduleTreeFlush();
+      // The selected flow just completed: refresh the detail pane (and
+      // re-fetch bodies — the pending-era detail cache was just dropped).
+      if (state.selectedId === msg.entry.id && !msg.entry.pending) {
+        if (!state.details.has(msg.entry.id)) vscode.postMessage({ kind: 'select-flow', id: msg.entry.id });
+        renderDetail();
+      }
       break;
     case 'trim':
       dropFlows(msg.ids);

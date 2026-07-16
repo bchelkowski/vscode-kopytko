@@ -54,8 +54,32 @@ function requestThroughProxy(
   });
 }
 
+/** Next *terminal* flow — skips the `pending: true` in-flight emit that now
+ * precedes every accepted exchange (see the pending-flow tests below). */
 function nextFlow(proxy: CaptureProxy): Promise<FlowRecord> {
-  return new Promise((resolve) => proxy.once('flow', resolve));
+  return new Promise((resolve) => {
+    const onFlow = (rec: FlowRecord): void => {
+      if (rec.pending) return;
+      proxy.off('flow', onFlow);
+      resolve(rec);
+    };
+    proxy.on('flow', onFlow);
+  });
+}
+
+/** Collects the next `n` flow emits — pending AND terminal, in order. */
+function collectFlows(proxy: CaptureProxy, n: number): Promise<FlowRecord[]> {
+  return new Promise((resolve) => {
+    const flows: FlowRecord[] = [];
+    const onFlow = (rec: FlowRecord): void => {
+      flows.push(rec);
+      if (flows.length === n) {
+        proxy.off('flow', onFlow);
+        resolve(flows);
+      }
+    };
+    proxy.on('flow', onFlow);
+  });
 }
 
 describe('network/CaptureProxy', () => {
@@ -454,9 +478,14 @@ describe('network/CaptureProxy', () => {
     proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
     await proxy.start();
 
-    const pair = new Promise<{ rec: FlowRecord; bodies?: FlowBodies }>((resolve) =>
-      proxy.once('flow', (rec: FlowRecord, bodies?: FlowBodies) => resolve({ rec, bodies })),
-    );
+    const pair = new Promise<{ rec: FlowRecord; bodies?: FlowBodies }>((resolve) => {
+      const onFlow = (rec: FlowRecord, bodies?: FlowBodies): void => {
+        if (rec.pending) return; // the in-flight emit carries no bodies
+        proxy.off('flow', onFlow);
+        resolve({ rec, bodies });
+      };
+      proxy.on('flow', onFlow);
+    });
     const bigRequest = 'B'.repeat(32);
     await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, {
       method: 'POST',
@@ -792,7 +821,9 @@ describe('network/CaptureProxy', () => {
     await proxy.start();
 
     let flowCount = 0;
-    proxy.on('flow', () => flowCount++);
+    proxy.on('flow', (rec: FlowRecord) => {
+      if (!rec.pending) flowCount++; // terminal emits only — the in-flight emit isn't a retry
+    });
 
     await requestThroughProxy(proxy.port, '127.0.0.1:9'); // nothing listening, never a pooled socket
     // Give a would-be (incorrect) retry a moment to surface as a second flow.
@@ -912,5 +943,220 @@ describe('network/CaptureProxy', () => {
 
     const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
     expect(res.headers.connection).to.equal('close');
+  });
+
+  // ── in-flight (pending) flow emission ───────────────────────────────────────
+
+  it('emits a pending flow first, then a terminal flow with the same id', async () => {
+    upstream = await startUpstream((_req, res) => {
+      setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end('ok');
+      }, 30);
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowsP = collectFlows(proxy, 2);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, { path: '/slow?a=1' });
+    const [first, second] = await flowsP;
+
+    expect(first.pending).to.equal(true);
+    expect(first.status).to.equal(0);
+    expect(first.method).to.equal('GET');
+    expect(first.host).to.equal('127.0.0.1');
+    expect(first.path).to.equal('/slow');
+    expect(first.query).to.equal('a=1');
+    expect(Object.keys(first.requestHeaders)).to.not.be.empty;
+    expect(second.id).to.equal(first.id);
+    expect(second.pending).to.equal(undefined);
+    expect(second.status).to.equal(200);
+  });
+
+  it('emits the pending flow before the request body has finished uploading', async () => {
+    upstream = await startUpstream((req, res) => {
+      req.on('data', () => undefined);
+      req.on('end', () => {
+        res.writeHead(200);
+        res.end('ok');
+      });
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const pendingP = new Promise<FlowRecord>((resolve) => {
+      const onFlow = (rec: FlowRecord): void => {
+        if (!rec.pending) return;
+        proxy.off('flow', onFlow);
+        resolve(rec);
+      };
+      proxy.on('flow', onFlow);
+    });
+    const terminalP = nextFlow(proxy);
+
+    // Send the body in two chunks with the pending emit awaited in between —
+    // proof the flow surfaces while the upload is still in progress.
+    const done = new Promise<void>((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port: proxy.port,
+          method: 'POST',
+          path: '/upload',
+          headers: { host: `127.0.0.1:${upstream!.port}`, 'content-length': '8' },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () => resolve());
+        },
+      );
+      req.on('error', reject);
+      req.write('firs');
+      void pendingP.then(() => req.end('tpar')); // 4 + 4 = the declared content-length of 8
+    });
+
+    const pending = await pendingP;
+    expect(pending.pending).to.equal(true);
+    expect(pending.method).to.equal('POST');
+    await done;
+    const terminal = await terminalP;
+    expect(terminal.id).to.equal(pending.id);
+    expect(terminal.status).to.equal(200);
+  });
+
+  it('a blocked request emits exactly one flow — no pending placeholder flashes for it', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200);
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({
+      ...defaultRuleSet(),
+      defaultUpstreamScheme: 'http',
+      block: [{ id: 'b', enabled: true, hostPattern: '127.0.0.1', pathPattern: '/blocked' }],
+    });
+    await proxy.start();
+
+    const emits: FlowRecord[] = [];
+    proxy.on('flow', (rec: FlowRecord) => emits.push(rec));
+
+    try {
+      await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`, { path: '/blocked' });
+    } catch {
+      // connection reset by the block — expected
+    }
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(emits).to.have.length(1);
+    expect(emits[0].pending).to.equal(undefined);
+    expect(emits[0].blocked).to.equal(true);
+  });
+
+  it('an unparseable request emits exactly one flow, with no pending phase', async () => {
+    proxy = new CaptureProxy({ port: 0 });
+    await proxy.start();
+
+    const emits: FlowRecord[] = [];
+    proxy.on('flow', (rec: FlowRecord) => emits.push(rec));
+
+    // HTTP/1.0 with no Host header reaches handleRequest but can't be parsed
+    // into a target (HTTP/1.1 without Host is rejected by Node's parser first).
+    await sendRawRequest(proxy.port, 'GET / HTTP/1.0\r\n\r\n');
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(emits).to.have.length(1);
+    expect(emits[0].pending).to.equal(undefined);
+    expect(emits[0].status).to.equal(400);
+  });
+
+  it('auto-mode https→http fallback still emits exactly one pending and one terminal flow', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'auto' }); // https attempt fails against the plain-http upstream, retries http
+    await proxy.start();
+
+    const emits: FlowRecord[] = [];
+    proxy.on('flow', (rec: FlowRecord) => emits.push(rec));
+
+    const res = await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(res.status).to.equal(200);
+    expect(emits).to.have.length(2);
+    expect(emits[0].pending).to.equal(true);
+    expect(emits[1].pending).to.equal(undefined);
+    expect(emits[1].id).to.equal(emits[0].id);
+    expect(emits[1].upstreamScheme).to.equal('http');
+  });
+
+  it('an errored exchange reuses the pending flow id', async () => {
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowsP = collectFlows(proxy, 2);
+    await requestThroughProxy(proxy.port, '127.0.0.1:9'); // nothing listening
+    const [pending, terminal] = await flowsP;
+
+    expect(pending.pending).to.equal(true);
+    expect(terminal.id).to.equal(pending.id);
+    expect(terminal.error).to.be.a('string');
+  });
+
+  it('replay() emits a pending flow and a terminal flow, both replay-tagged, same id', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200);
+      res.end('ok');
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const original = await (async () => {
+      const p = nextFlow(proxy);
+      await requestThroughProxy(proxy.port, `127.0.0.1:${upstream!.port}`);
+      return p;
+    })();
+
+    const flowsP = collectFlows(proxy, 2);
+    proxy.replay(original);
+    const [pending, terminal] = await flowsP;
+
+    expect(pending.pending).to.equal(true);
+    expect(pending.replayed).to.equal(true);
+    expect(terminal.id).to.equal(pending.id);
+    expect(terminal.id).to.not.equal(original.id);
+    expect(terminal.replayed).to.equal(true);
+    expect(terminal.status).to.equal(200);
+  });
+
+  it('a streamed (SSE) response gets a pending flow up front and a terminal streamed flow on close', async () => {
+    upstream = await startUpstream((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write('data: one\n\n');
+      res.end();
+    });
+
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    const flowsP = collectFlows(proxy, 2);
+    await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+    const [pending, terminal] = await flowsP;
+
+    expect(pending.pending).to.equal(true);
+    expect(terminal.id).to.equal(pending.id);
+    expect(terminal.streamed).to.equal(true);
   });
 });

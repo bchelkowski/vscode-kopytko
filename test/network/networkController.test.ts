@@ -508,6 +508,141 @@ describe('network/NetworkController', () => {
     expect(controller.getState().redirectStatus).to.equal('off');
   });
 
+  describe('in-flight (pending) flows', () => {
+    it('upserts the terminal record over the pending one, preserving buffer position', async () => {
+      const { controller, proxy } = make({});
+      await controller.enable();
+      const emitted: Array<{ id: string; pending?: true; status: number }> = [];
+      controller.on('flow', (f: { id: string; pending?: true; status: number }) => emitted.push(f));
+
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0, durationMs: 0 }));
+      proxy.emit('flow', rec({ id: 'b' }));
+      proxy.emit('flow', rec({ id: 'a', status: 200, durationMs: 42 }));
+
+      const history = controller.getHistory();
+      expect(history.map((f) => f.id)).to.deep.equal(['a', 'b']); // merged in place, arrival order kept
+      expect(history[0].status).to.equal(200);
+      expect(history[0].pending).to.equal(undefined); // Object.assign can't remove keys — must be deleted
+      expect(emitted.filter((f) => f.id === 'a')).to.have.length(2);
+      expect(emitted[0].pending).to.equal(true);
+      expect(emitted[2].pending).to.equal(undefined);
+    });
+
+    it('a completion for a known id merges even when the pause gate is on', async () => {
+      const { controller, proxy } = make({});
+      await controller.enable();
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+      controller.setPaused(true);
+      proxy.emit('flow', rec({ id: 'a', status: 200 }));
+
+      const history = controller.getHistory();
+      expect(history).to.have.length(1);
+      expect(history[0].status).to.equal(200);
+      expect(history[0].pending).to.equal(undefined);
+    });
+
+    it('a pending flow dropped while paused appends exactly one completed entry after unpause', async () => {
+      const { controller, proxy } = make({});
+      await controller.enable();
+      controller.setPaused(true);
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+      expect(controller.getHistory()).to.have.length(0);
+      controller.setPaused(false);
+      proxy.emit('flow', rec({ id: 'a', status: 200 }));
+
+      const history = controller.getHistory();
+      expect(history).to.have.length(1);
+      expect(history[0].pending).to.equal(undefined);
+    });
+
+    it('a pending flow evicted by the entry cap re-appends when its completion arrives', async () => {
+      const { controller, proxy } = make({ config: makeConfig({ maxEntries: 1 }) });
+      await controller.enable();
+      const trimmed: string[] = [];
+      controller.on('trimmed', (ids: string[]) => trimmed.push(...ids));
+
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+      proxy.emit('flow', rec({ id: 'b' })); // evicts pending a
+      expect(trimmed).to.deep.equal(['a']);
+      proxy.emit('flow', rec({ id: 'a', status: 200 })); // unknown id again → appends (evicts b)
+
+      const history = controller.getHistory();
+      expect(history).to.have.length(1);
+      expect(history[0].id).to.equal('a');
+      expect(history[0].status).to.equal(200);
+    });
+
+    it('clear() while a flow is in flight: the completion appends one lone completed flow', async () => {
+      const { controller, proxy } = make({});
+      await controller.enable();
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+      controller.clear();
+      expect(controller.getHistory()).to.have.length(0);
+      proxy.emit('flow', rec({ id: 'a', status: 200 }));
+
+      const history = controller.getHistory();
+      expect(history).to.have.length(1);
+      expect(history[0].pending).to.equal(undefined);
+    });
+
+    it('buildHar() leaves pending flows out', async () => {
+      const { controller, proxy } = make({});
+      await controller.enable();
+      proxy.emit('flow', rec({ id: 'done' }));
+      proxy.emit('flow', rec({ id: 'inflight', pending: true, status: 0 }));
+
+      const har = controller.buildHar() as { log: { entries: unknown[] } };
+      expect(har.log.entries).to.have.length(1);
+    });
+
+    it('replay() refuses a flow that is still in flight', async () => {
+      const { controller, proxy } = make({});
+      await controller.enable();
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+
+      let threw: unknown;
+      try { await controller.replay('a'); } catch (e) { threw = e; }
+      expect(threw).to.be.instanceOf(Error);
+      expect((threw as Error).message).to.contain('in flight');
+    });
+
+    it('upserts adjust the byte budget by the cost delta, not by re-adding', async () => {
+      // Correct accounting: A completes at ~22 KB (20 KB body + 2 KB flat),
+      // B at ~7 KB → ~29 KB total, under the 30 KB budget, nothing evicted.
+      // Broken accounting (add-without-subtract) would carry A's stale 2 KB
+      // pending cost too, cross the budget, and evict A.
+      const { controller, proxy } = make({ config: makeConfig({ maxBufferBytes: 30 * 1024 }) });
+      await controller.enable();
+      const trimmed: string[] = [];
+      controller.on('trimmed', (ids: string[]) => trimmed.push(...ids));
+
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+      proxy.emit('flow', rec({ id: 'a', responseBody: Buffer.alloc(20 * 1024, 'x') }));
+      proxy.emit('flow', rec({ id: 'b', pending: true, status: 0 }));
+      proxy.emit('flow', rec({ id: 'b', responseBody: Buffer.alloc(5 * 1024, 'x') }));
+
+      expect(trimmed).to.deep.equal([]);
+      expect(controller.getHistory().map((f) => f.id)).to.deep.equal(['a', 'b']);
+    });
+
+    it('persists a flow only once, on completion', async () => {
+      const { store, files } = makeStore();
+      const { controller, proxy } = make({ sessionStore: store });
+      await controller.enable();
+
+      proxy.emit('flow', rec({ id: 'a', pending: true, status: 0 }));
+      await flushAsync();
+      expect(files.has(`${store.sessionDir!}/flows.ndjson`)).to.equal(false);
+
+      proxy.emit('flow', rec({ id: 'a', status: 200 }), { request: Buffer.from('req-bytes') });
+      await flushAsync();
+      const ndjson = files.get(`${store.sessionDir!}/flows.ndjson`)!.toString();
+      expect(ndjson.trim().split('\n')).to.have.length(1);
+      expect(ndjson).to.contain('"id":"a"');
+      expect(files.get(`${store.sessionDir!}/bodies/a.req`)!.toString()).to.equal('req-bytes');
+    });
+  });
+
   describe('session store integration', () => {
     it('enable() starts a session; flows and full bodies persist; disable() finalizes', async () => {
       const { store, files } = makeStore();

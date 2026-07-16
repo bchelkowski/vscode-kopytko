@@ -49,6 +49,11 @@ export interface FlowRecord {
   timings?: FlowTimings;
   /** True when this flow is a user-initiated replay, not device traffic. */
   replayed?: boolean;
+  /**
+   * True while the exchange is still in flight — a terminal record with the
+   * same `id` (and this field absent) replaces it when the exchange finishes.
+   */
+  pending?: true;
   error?: string;
 }
 
@@ -92,6 +97,7 @@ export function toSerializedFlow(rec: FlowRecord): SerializedFlow {
     responseHeaders: rec.responseHeaders,
     timings: rec.timings,
     replayed: rec.replayed,
+    pending: rec.pending,
     error: rec.error,
   };
 }
