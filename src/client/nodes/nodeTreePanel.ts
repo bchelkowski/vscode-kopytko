@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import type { EcpClient } from 'kopytko-roku-device';
 import type { DeviceManager } from 'kopytko-roku-device';
-import type { ExtMsg, WebMsg } from './webview/protocol';
+import type { ExtMsg, NodeCollection, WebMsg } from './webview/protocol';
 
 const VIEW_TYPE = 'kopytkoNodeTree';
-const TITLE     = 'SG Node Tree';
+const TITLE     = 'SceneGraph Tree';
 
 export interface NodeTreeDeps {
   deviceManager: DeviceManager;
@@ -12,8 +12,10 @@ export interface NodeTreeDeps {
 }
 
 /**
- * Singleton editor-tab panel that fetches /query/sgnodes/all from the
- * active Roku device and renders it as a treemap or collapsible dendrogram.
+ * Singleton editor-tab panel that fetches a SceneGraph node collection from
+ * the active Roku device — all nodes (`/query/sgnodes/all`), root nodes
+ * (`/query/sgnodes/roots`), or the rendered UI tree (`/query/app-ui`) — and
+ * renders it as formatted XML or an icicle chart.
  */
 export class NodeTreePanel {
   private static _instance: NodeTreePanel | undefined;
@@ -52,7 +54,7 @@ export class NodeTreePanel {
     this.panel.webview.html = this._buildHtml(this.panel.webview);
 
     this.panel.webview.onDidReceiveMessage((msg: WebMsg) => {
-      if (msg.kind === 'refresh') void this._fetch();
+      if (msg.kind === 'refresh') void this._fetch(msg.collection);
     });
 
     this.panel.onDidDispose(() => {
@@ -60,12 +62,12 @@ export class NodeTreePanel {
     });
 
     NodeTreePanel._instance = this;
-    void this._fetch();
+    void this._fetch('all');
   }
 
   // ── fetch ─────────────────────────────────────────────────────────────────
 
-  private async _fetch(): Promise<void> {
+  private async _fetch(collection: NodeCollection): Promise<void> {
     this._post({ kind: 'loading' });
 
     const device = this.deps.deviceManager.getActiveDevice();
@@ -75,13 +77,17 @@ export class NodeTreePanel {
     }
 
     try {
-      const xml = await this.deps.ecp.querySgNodes(device.ip, device.port);
+      const xml = collection === 'ui'
+        ? await this.deps.ecp.queryAppUi(device.ip, device.port)
+        : await this.deps.ecp.querySgNodes(device.ip, device.port, collection);
 
-      // Extract channel title from XML
-      const titleMatch = xml.match(/<channel-title>([^<]*)<\/channel-title>/);
-      const channelTitle = titleMatch?.[1] ?? '';
+      // sgnodes responses carry <channel-title>; app-ui carries <plugin name="…">.
+      const channelTitle =
+        xml.match(/<channel-title>([^<]*)<\/channel-title>/)?.[1]
+        ?? xml.match(/<plugin\b[^>]*\bname="([^"]*)"/)?.[1]
+        ?? '';
 
-      this._post({ kind: 'tree', xml, device: device.ip, channelTitle });
+      this._post({ kind: 'tree', xml, device: device.ip, channelTitle, collection });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this._post({ kind: 'error', message: msg });
@@ -110,18 +116,28 @@ export class NodeTreePanel {
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp}; img-src ${csp} data:;">
   <link href="${styleUri}" rel="stylesheet">
-  <title>SG Node Tree</title>
+  <title>SceneGraph Tree</title>
 </head>
 <body>
   <div id="toolbar">
     <div class="status-dot" id="status-dot"></div>
     <span id="channel-label">No device</span>
-    <button id="btn-refresh" title="Fetch latest node tree from device">Refresh</button>
+    <div class="seg-group" id="collection-group" title="Node collection to fetch">
+      <button data-collection="all" class="active">All</button>
+      <button data-collection="roots">Roots</button>
+      <button data-collection="ui">UI</button>
+    </div>
+    <div class="seg-group" id="view-group" title="Visual representation">
+      <button data-view="xml" class="active">XML</button>
+      <button data-view="chart">Chart</button>
+    </div>
+    <button id="btn-refresh" title="Fetch the selected node collection from the device">Refresh</button>
     <span id="node-count"></span>
   </div>
   <div id="breadcrumb-bar"></div>
   <div id="main">
     <canvas id="ic-canvas"></canvas>
+    <pre id="xml-view" tabindex="0"></pre>
     <div id="overlay" class="visible"><span>Loading…</span></div>
     <div id="tooltip"></div>
   </div>

@@ -787,6 +787,39 @@ this file is the de-facto webview-architecture reference:
   them from VS Code's webview keyboard handling (clipboard shortcuts /
   workbench re-dispatch); prefer target checks in the document-level handler.
 
+## SceneGraph Tree: collections + XML/chart views (2026-07-16)
+
+The "SG Node Tree" panel became "SceneGraph Tree" with a collection selector
+(All `/query/sgnodes/all`, Roots `/query/sgnodes/roots`, UI `/query/app-ui`)
+and an XML-vs-chart view toggle (XML is the default). Non-obvious notes:
+
+- **The webview owns all UI state** (`collection`, `viewMode`, `lastXml`);
+  the host (`nodeTreePanel.ts`) is stateless per request — `WebMsg.refresh`
+  carries the collection, `ExtMsg.tree` echoes it back, and the webview
+  **drops responses whose `collection` doesn't match the current selection**
+  (guards the switch-while-fetching race; there's a second check inside the
+  deferred `setTimeout` parse since the user can switch during that tick too).
+- **Three different container elements** for the chart parser:
+  `<All_Nodes>` / `<Root_Nodes>` / app-ui's `<screen>` (inside `<topscreen>`)
+  — one `doc.querySelector('All_Nodes, Root_Nodes, screen')` covers all three
+  (XML DOM queries are case-sensitive, so `screen` can't collide with the SG
+  node types, which are all uppercase-initial).
+- **app-ui nodes have no `_sn`** — `buildNode()`'s existing
+  `attrs['_sn'] ?? (tagName + Math.random())` fallback already handles it.
+  Channel title comes from `<plugin name="…">` there, not `<channel-title>`
+  (sgnodes); `_fetch()` tries both regexes.
+- **`queryAppUi` throws in-band failures** (`app-ui: No active app` when
+  nothing runs in the foreground) — no special handling needed in the panel,
+  the generic error overlay path covers it.
+- The XML view reuses `tryFormatXml` from `src/client/network/bodyFormat.ts`
+  (import-free by design, bundles into any webview) plus a local one-regex
+  tokenizer for syntax colors. The formatted HTML is cached per fetch via an
+  `xmlRendered` flag so XML↔chart toggling doesn't re-highlight a ~130 KB
+  document every time.
+- View mode is deliberately **not persisted** (user decision): a reopened
+  panel always starts XML + All and re-fetches; `retainContextWhenHidden`
+  still preserves state across tab hide/show within the panel's lifetime.
+
 ## Directory layout
 
 **Since 2026-07-03 the transport/parsers/collectors layers live in `packages/roku-device/`

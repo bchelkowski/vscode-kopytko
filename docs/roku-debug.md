@@ -237,7 +237,7 @@ These features could be built on top of the socket-based debug protocol and Roku
 | **Rendezvous tracking** | ~~Implemented~~ — see [Rendezvous tracking](#rendezvous-tracking) section above and [diagnostics.md](./diagnostics.md). | — |
 | **Channel performance panel** | ~~Implemented~~ — see [diagnostics.md](./diagnostics.md) (Memory/CPU charts, ECP `chanperf`). | — |
 | **Profiling (Perfetto)** | ~~Implemented~~ — see the Kopytko Perfetto panel in [diagnostics.md](./diagnostics.md). | — |
-| **SceneGraph Inspector** | ~~Implemented~~ — see the Node Tree Explorer (`kopytko.nodes.open`). | — |
+| **SceneGraph Inspector** | ~~Implemented~~ — see the SceneGraph Tree (`kopytko.nodes.open`). | — |
 | **Remote file system** | Browse and download files from `tmp:/` and `cachefs:/` via ECP. | Low |
 | **Log streaming panel** | Always-on output channel streaming device syslog, independent of debug sessions. | Low |
 | **Component library debugging** | `lib:/<name>/<path>` breakpoints for multi-component-library projects. | High |

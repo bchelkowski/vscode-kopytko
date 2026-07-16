@@ -1,6 +1,6 @@
 /**
  * Kopytko Tools — sidebar quick-nav webview. Three buttons that open the
- * Diagnostics panel, the Perfetto tracing tab, and the SceneGraph Node Tree
+ * Diagnostics panel, the Perfetto tracing tab, and the SceneGraph Tree
  * tab. No data flows in — each button just posts an 'open' message and the
  * extension host executes the corresponding reveal command.
  */
@@ -57,7 +57,7 @@ const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
   { target: 'diagnostics', title: 'Diagnostics', desc: 'Live charts — memory, CPU, nodes, textures' },
   { target: 'network', title: 'Network Inspector', desc: 'Capture HTTP requests, responses & metrics' },
   { target: 'deepLinking', title: 'Deep Linking', desc: 'Launch channels with contentId params' },
-  { target: 'nodes', title: 'Node Tree', desc: 'SceneGraph node chart' },
+  { target: 'nodes', title: 'SceneGraph Tree', desc: 'SceneGraph nodes as XML or chart' },
   { target: 'perfetto', title: 'Perfetto', desc: 'App tracing timeline' },
   { target: 'rokuPay', title: 'Roku Pay Web Services', desc: 'Validate, cancel, refund — cloud API' },
 ];

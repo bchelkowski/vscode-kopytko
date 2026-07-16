@@ -179,7 +179,7 @@ Roku Devices) with buttons for quick navigation, top to bottom:
 | **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
 | **Network Inspector** | Opens the Network Inspector tab (`kopytko.network.open`) — see [network-inspector.md](./network-inspector.md) |
 | **Deep Linking** | Opens the Deep Linking tab |
-| **Node Tree** | Opens the SceneGraph Node Tree Explorer (`kopytko.nodes.open`) |
+| **SceneGraph Tree** | Opens the SceneGraph Tree tab (`kopytko.nodes.open`) — see below |
 | **Perfetto** | Opens the Perfetto tracing tab (`kopytko.perfetto.open`) |
 | **Roku Pay Web Services** | Opens the Roku Pay Web Services tab — see [roku-pay.md](./roku-pay.md) |
 
@@ -190,6 +190,44 @@ extension's runtime-inspection tools.
 
 Source: `src/client/nav/` (`views/navViewProvider.ts`, `webview/main.ts`,
 `webview/styles.css`), registered via `src/client/activation/nav.ts`.
+
+---
+
+## SceneGraph Tree tab
+
+An editor-tab panel (`kopytko.nodes.open`, "Kopytko: Open SceneGraph Tree")
+that fetches a live SceneGraph node collection from the active device and
+shows it in one of two views. The toolbar has two segmented controls:
+
+**Collection** — which nodes to fetch:
+
+| Collection | Endpoint | Contents |
+|---|---|---|
+| **All** (default) | `GET /query/sgnodes/all` | Every node the app has created, as a hierarchy |
+| **Roots** | `GET /query/sgnodes/roots` | Only un-parented root nodes (flat list) |
+| **UI** | `GET /query/app-ui` | The rendered UI tree of the foreground app (screen contents only, with `text`/`bounds`/`index` attributes) |
+
+The UI collection fails with *"No active app"* when nothing is running in the
+foreground — the device reports this in-band and the panel surfaces it as the
+error overlay.
+
+**View** — how to render the fetched XML:
+
+- **XML** (default) — the response as a formatted, syntax-colored document.
+  Selectable/copyable text.
+- **Chart** — the existing icicle/flame chart (Canvas 2D + D3 partition):
+  click a node to focus its subtree, double-click to go back up, hover for an
+  attribute tooltip, breadcrumb + type legend.
+
+Switching collections re-fetches from the device; switching views re-renders
+the already-fetched XML locally. The chosen view is shared across collection
+switches but is not persisted — a reopened panel starts fresh (XML + All) and
+fetches anew. Responses that arrive after the user has already switched to a
+different collection are discarded.
+
+Source: `src/client/nodes/` (`nodeTreePanel.ts`, `webview/`), registered via
+`src/client/activation/nodes.ts`. XML formatting reuses `tryFormatXml` from
+`src/client/network/bodyFormat.ts`.
 
 ---
 

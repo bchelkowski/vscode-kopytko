@@ -209,7 +209,8 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Bottom-panel webview with live D3 charts — memory/CPU/nodes/objects/textures, rendezvous + beacon overlays, app-state shading | ✅ | [diagnostics.md](./diagnostics.md) |
 | In-panel node / object / rendezvous / texture lists (click-to-open-file on the node & rendezvous rows) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Record any channel sharing the sideloaded dev key, not just "dev" | ✅ | [diagnostics.md](./diagnostics.md) |
-| Tools sidebar — quick-nav buttons, top to bottom: Device Manager, Diagnostics, Network Inspector, Deep Linking, Node Tree, Perfetto, Roku Pay Web Services | ✅ | [diagnostics.md](./diagnostics.md) |
+| SceneGraph Tree tab — All (`/query/sgnodes/all`), Roots (`/query/sgnodes/roots`), and UI (`/query/app-ui`) collections, rendered as formatted XML (default) or an icicle chart; the chosen view persists across collection switches | ✅ | [diagnostics.md](./diagnostics.md) |
+| Tools sidebar — quick-nav buttons, top to bottom: Device Manager, Diagnostics, Network Inspector, Deep Linking, SceneGraph Tree, Perfetto, Roku Pay Web Services | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
 

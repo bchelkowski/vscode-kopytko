@@ -65,18 +65,22 @@ body { display: flex; flex-direction: column; }
 
 .sep { flex: 1; }
 
-#search {
-  background: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #cccccc);
-  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.4));
-  border-radius: 2px;
-  padding: 2px 6px;
-  font-size: 11px;
-  font-family: inherit;
-  width: 160px;
+/* ── segmented controls (collection + view mode) ─────────────────────────── */
+
+.seg-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
+  border-radius: 3px;
+  overflow: hidden;
 }
-#search:focus { outline: 1px solid var(--vscode-focusBorder, #007fd4); }
-#search::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+.seg-group button {
+  border-radius: 0;
+  padding: 3px 9px;
+}
+.seg-group button + button {
+  border-left: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
+}
 
 /* ── buttons ─────────────────────────────────────────────────────────────── */
 
@@ -157,11 +161,32 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
   overflow: hidden;
 }
 
-#ic-canvas, #tree-svg, #overlay {
+#ic-canvas, #xml-view, #overlay {
   grid-area: stack;
   width: 100%;
   height: 100%;
 }
+
+/* ── XML view ────────────────────────────────────────────────────────────── */
+
+#xml-view {
+  display: none;
+  overflow: auto;
+  padding: 8px 12px;
+  margin: 0;
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+  line-height: 1.45;
+  white-space: pre;
+  user-select: text;
+  tab-size: 2;
+}
+#xml-view:focus { outline: none; }
+#xml-view .x-tag   { color: var(--vscode-symbolIcon-classForeground, #4ec9b0); }
+#xml-view .x-attr  { color: var(--vscode-symbolIcon-propertyForeground, #9cdcfe); }
+#xml-view .x-value { color: var(--vscode-debugTokenExpression-string, #ce9178); }
+#xml-view .x-text  { color: var(--vscode-editor-foreground, #cccccc); }
+#xml-view .x-punct { color: var(--vscode-descriptionForeground, #808080); }
 
 /* ── legend bar ──────────────────────────────────────────────────────────── */
 

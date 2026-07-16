@@ -1,13 +1,18 @@
 /**
- * SG Node Tree Explorer — Icicle (flame chart).
+ * SceneGraph Tree — formatted XML view + icicle (flame chart).
  *
- * Canvas 2D + D3 partition. Fixed ROW_H per depth level.
+ * Three node collections (All /query/sgnodes/all, Roots /query/sgnodes/roots,
+ * UI /query/app-ui) × two visual representations. XML is the default view;
+ * the chosen view is shared across collection switches.
+ *
+ * Chart: Canvas 2D + D3 partition, fixed ROW_H per depth level.
  * Click → focus subtree.  Double-click → go up.
  */
 
 import './styles.css';
 import { hierarchy, partition as d3partition } from 'd3-hierarchy';
-import type { ExtMsg, WebMsg } from './protocol';
+import { tryFormatXml } from '../../network/bodyFormat';
+import type { ExtMsg, NodeCollection, WebMsg } from './protocol';
 
 declare function acquireVsCodeApi(): { postMessage(msg: WebMsg): void };
 const vscode = acquireVsCodeApi();
@@ -29,6 +34,8 @@ interface Rect {
   depth: number;
 }
 
+type ViewMode = 'xml' | 'chart';
+
 // ── DOM ───────────────────────────────────────────────────────────────────────
 
 const mainEl        = document.getElementById('main')!;
@@ -40,8 +47,15 @@ const nodeCountEl   = document.getElementById('node-count')!;
 const channelLabel  = document.getElementById('channel-label')!;
 const statusDot     = document.getElementById('status-dot')!;
 const btnRefresh    = document.getElementById('btn-refresh') as HTMLButtonElement;
+const xmlView       = document.getElementById('xml-view')!;
 const ic            = document.getElementById('ic-canvas') as HTMLCanvasElement;
 const ctx           = ic.getContext('2d')!;
+const collectionButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('#collection-group button'),
+);
+const viewButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('#view-group button'),
+);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -49,6 +63,11 @@ const MAX_ROWS = 6;
 const ROW_H    = 26;
 
 // ── State ─────────────────────────────────────────────────────────────────────
+
+let collection: NodeCollection = 'all';
+let viewMode:  ViewMode        = 'xml';
+let lastXml:   string | null   = null;
+let xmlRendered = false;
 
 let root:      SgNode | null = null;
 let focus:     SgNode | null = null;
@@ -149,16 +168,18 @@ function parseXml(xml: string): SgNode | null {
   try {
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parseerror,parsererror')) return null;
-    const all = doc.querySelector('All_Nodes');
-    if (!all) return null;
-    const tops = Array.from(all.children).map(buildNode);
+    // Container element per collection: <All_Nodes> (sgnodes/all),
+    // <Root_Nodes> (sgnodes/roots), <screen> inside <topscreen> (app-ui).
+    const container = doc.querySelector('All_Nodes, Root_Nodes, screen');
+    if (!container) return null;
+    const tops = Array.from(container.children).map(buildNode);
     if (!tops.length) return null;
     if (tops.length === 1) return tops[0];
     const r: SgNode = { type: 'SceneGraph', sn: 'root', attrs: {}, children: tops, size: 0 };
     r.size = 1 + tops.reduce((s, c) => s + c.size, 0);
     return r;
   } catch (e) {
-    console.error('[NodeTree] parseXml error', e);
+    console.error('[SceneGraphTree] parseXml error', e);
     return null;
   }
 }
@@ -175,6 +196,57 @@ function buildNode(el: Element): SgNode {
     size: 1 + children.reduce((s, c) => s + c.size, 0),
   };
   return n;
+}
+
+// ── XML view rendering ────────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Lightweight XML syntax colorization. Tokenizes tags/declarations with one
+ * regex pass and emits spans; everything between tags renders as plain text.
+ * Not a validator — unparseable input just comes out less colorful.
+ */
+function highlightXml(src: string): string {
+  const tagRe = /<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<(\/?)([\w:.-]+)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+  let out = '';
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(src)) !== null) {
+    if (m.index > last) out += `<span class="x-text">${escapeHtml(src.slice(last, m.index))}</span>`;
+    if (m[2] === undefined) {
+      // <?xml …?> declaration or <!-- comment -->
+      out += `<span class="x-punct">${escapeHtml(m[0])}</span>`;
+    } else {
+      const [, close, name, attrs, selfClose] = m;
+      const attrHtml = escapeHtml(attrs).replace(
+        /([\w:.-]+)=(&quot;.*?&quot;)/g,
+        '<span class="x-attr">$1</span><span class="x-punct">=</span><span class="x-value">$2</span>',
+      );
+      out += `<span class="x-punct">&lt;${close}</span><span class="x-tag">${name}</span>` +
+             attrHtml +
+             `<span class="x-punct">${selfClose}&gt;</span>`;
+    }
+    last = tagRe.lastIndex;
+  }
+  if (last < src.length) out += `<span class="x-text">${escapeHtml(src.slice(last))}</span>`;
+  return out;
+}
+
+function renderXml(): void {
+  if (!lastXml) return;
+  if (!xmlRendered) {
+    xmlView.innerHTML = highlightXml(tryFormatXml(lastXml) ?? lastXml);
+    xmlRendered = true;
+  }
+  hideOverlay();
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -202,7 +274,7 @@ function computeRects(node: SgNode): Rect[] {
       .filter(d => d.depth < MAX_ROWS && (d.x1 - d.x0) >= 1)
       .map(d => ({ x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, node: d.data, depth: d.depth }));
   } catch (e) {
-    console.error('[NodeTree] layout error', e);
+    console.error('[SceneGraphTree] layout error', e);
     return [];
   }
 }
@@ -241,7 +313,7 @@ function draw(): void {
       ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
     }
   } catch (e) {
-    console.error('[NodeTree] draw error', e);
+    console.error('[SceneGraphTree] draw error', e);
   }
 }
 
@@ -316,10 +388,30 @@ function render(): void {
   updateLegend();
 }
 
+// ── View mode ─────────────────────────────────────────────────────────────────
+
+function applyViewMode(): void {
+  const xml = viewMode === 'xml';
+  ic.style.display            = xml ? 'none' : '';
+  xmlView.style.display       = xml ? 'block' : 'none';
+  breadcrumbBar.style.display = xml ? 'none' : '';
+  legendBar.style.display     = xml ? 'none' : '';
+  hideTip();
+  viewButtons.forEach(b => b.classList.toggle('active', b.dataset.view === viewMode));
+
+  if (xml) {
+    renderXml();
+  } else if (root) {
+    render();
+  } else if (lastXml) {
+    showOverlay('Could not parse the node tree — check the Output channel.');
+  }
+}
+
 // ── Resize observer ───────────────────────────────────────────────────────────
 
 new ResizeObserver(() => {
-  if (!root) return;
+  if (!root || viewMode !== 'chart') return;
   resize();
   rects = computeRects(focus ?? root);
   scheduleDraw();
@@ -384,33 +476,35 @@ window.addEventListener('message', e => {
   switch (msg.kind) {
     case 'loading':
       statusDot.className = 'status-dot loading';
-      showOverlay('Fetching node tree…', true);
+      showOverlay('Fetching nodes…', true);
       break;
 
     case 'tree': {
+      // A response for a collection the user has already switched away from.
+      if (msg.collection !== collection) return;
       showOverlay('Parsing…');
       // Defer heavy work to next tick so overlay renders first.
       setTimeout(() => {
-        const parsed = parseXml(msg.xml);
-        if (!parsed) {
-          statusDot.className = 'status-dot error';
-          showOverlay('Could not parse node tree — check the Output channel.');
-          return;
-        }
-        root = parsed;
+        if (msg.collection !== collection) return;
+        lastXml = msg.xml;
+        xmlRendered = false;
+        root = parseXml(msg.xml);
         focus = null;
         colorMap.clear();
         lastHover = null;
+
+        if (!root && viewMode === 'chart') {
+          statusDot.className = 'status-dot error';
+          showOverlay('Could not parse the node tree — check the Output channel.');
+          return;
+        }
+
         statusDot.className = 'status-dot ok';
         channelLabel.textContent = msg.channelTitle
           ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
-        nodeCountEl.textContent = `${root.size - 1} nodes`;
-        resize();
-        rects = computeRects(root);
+        nodeCountEl.textContent = root ? `${root.size - 1} nodes` : '';
         hideOverlay();
-        scheduleDraw();
-        updateBreadcrumb();
-        updateLegend();
+        applyViewMode();
       }, 0);
       break;
     }
@@ -422,14 +516,36 @@ window.addEventListener('message', e => {
   }
 });
 
-// ── Refresh button ────────────────────────────────────────────────────────────
+// ── Toolbar controls ──────────────────────────────────────────────────────────
 
-btnRefresh.addEventListener('click', () => {
+function requestFetch(): void {
   showOverlay('Fetching…', true);
-  vscode.postMessage({ kind: 'refresh' });
+  vscode.postMessage({ kind: 'refresh', collection });
+}
+
+collectionButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const next = btn.dataset.collection as NodeCollection;
+    if (next === collection) return;
+    collection = next;
+    collectionButtons.forEach(b => b.classList.toggle('active', b === btn));
+    requestFetch();
+  });
 });
+
+viewButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const next = btn.dataset.view as ViewMode;
+    if (next === viewMode) return;
+    viewMode = next;
+    applyViewMode();
+  });
+});
+
+btnRefresh.addEventListener('click', requestFetch);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 resize();
-showOverlay('Open via Command Palette:  Kopytko: Open Node Tree Explorer');
+applyViewMode();
+showOverlay('Open via Command Palette:  Kopytko: Open SceneGraph Tree');

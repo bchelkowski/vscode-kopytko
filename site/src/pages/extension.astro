@@ -580,20 +580,20 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
-    <!-- SceneGraph Node Tree Explorer -->
+    <!-- SceneGraph Tree -->
     <section>
-      <h2 class="text-2xl font-bold text-white mb-3">SceneGraph Node Tree Explorer</h2>
+      <h2 class="text-2xl font-bold text-white mb-3">SceneGraph Tree</h2>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div>
           <p class="text-slate-400 leading-relaxed mb-4">
-            An editor-tab panel that fetches <code class="text-violet-300">/query/sgnodes/all</code> from the active Roku device and renders the live scene tree as a D3 icicle chart — every node, its type, and its depth in the hierarchy, at a glance.
+            An editor-tab panel that fetches a live SceneGraph node collection from the active Roku device — <strong class="text-white">All</strong> (<code class="text-violet-300">/query/sgnodes/all</code>), <strong class="text-white">Roots</strong> (<code class="text-violet-300">/query/sgnodes/roots</code>), or <strong class="text-white">UI</strong> (<code class="text-violet-300">/query/app-ui</code>, the rendered tree of the foreground app) — and shows it as a formatted, syntax-colored XML document (default) or a D3 icicle chart.
           </p>
           <ul class="space-y-2 text-sm">
             {[
-              'Click a node to focus its subtree; double-click to go back up',
-              'Hover any node for a tooltip with its type, id, and field count',
-              'Refresh button re-queries the device for the current tree without reopening the tab',
-              'Reads the same ECP endpoint the Diagnostics panel\'s Node Counts chart summarizes, but shows the full live tree instead of counts',
+              'Three node collections: every created node, only un-parented roots, or exactly what the screen is rendering',
+              'XML view: formatted and colorized, selectable/copyable — the response as a readable document',
+              'Chart view: click a node to focus its subtree, double-click to go back up, hover for an attribute tooltip',
+              'The chosen view sticks while you switch collections; Refresh re-queries the device without reopening the tab',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">
                 <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
@@ -603,8 +603,8 @@ const kopytkoRcExample = `// .kopytkorc
           </ul>
         </div>
         <Screenshot
-          alt="SceneGraph Node Tree Explorer"
-          placeholder="Editor tab showing a D3 icicle chart of the live SceneGraph node tree, with a tooltip open on a hovered node showing its type and id"
+          alt="SceneGraph Tree"
+          placeholder="Editor tab showing a formatted XML view of the live SceneGraph node tree, with All/Roots/UI collection buttons and an XML/Chart view toggle in the toolbar"
         />
       </div>
     </section>
@@ -715,7 +715,7 @@ const kopytkoRcExample = `// .kopytkorc
               ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
               ['Read registry', '', 'View device registry sections in a virtual document'],
               ['Remove device', '', 'Remove a manually-added or stale device from the list'],
-              ['Open Node Tree Explorer', '', 'Fetch /query/sgnodes/all and render the live SceneGraph node tree'],
+              ['Open SceneGraph Tree', '', 'Fetch a node collection (sgnodes all/roots or app-ui) and show it as formatted XML or an icicle chart'],
               ['Open Deep Linking', '', 'Launch channels with contentId / roInput deep-link parameters'],
               ['Open Device Manager', '', 'Reveal the Remote Control view (remote, device actions, saved text)'],
               ['Open Roku Pay Web Services', '', 'Call Roku Pay cloud endpoints with saved credential profiles and a request history'],

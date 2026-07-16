@@ -1569,7 +1569,7 @@
       },
       {
         "command": "kopytko.nodes.open",
-        "title": "Open Node Tree Explorer",
+        "title": "Open SceneGraph Tree",
         "icon": "$(type-hierarchy)",
         "category": "Kopytko"
       },

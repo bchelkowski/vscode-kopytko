@@ -3,7 +3,7 @@ import type { WebMsg } from '../webview/protocol';
 
 /**
  * WebviewViewProvider for the "Kopytko Tools" sidebar panel — buttons that
- * reveal the Diagnostics panel, the Perfetto tab, the Node Tree tab, the
+ * reveal the Diagnostics panel, the Perfetto tab, the SceneGraph Tree tab, the
  * Deep Linking tab, the Device Manager, and the Roku Pay Web Services tab.
  * Purely navigational: no data flows in, it only relays button clicks to
  * the corresponding reveal command.
