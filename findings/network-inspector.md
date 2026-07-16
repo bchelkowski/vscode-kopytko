@@ -1151,6 +1151,23 @@ to every pooled socket. On networks that don't answer keepalive probes, that
 default converts any >1s-quiet in-flight request (long-polls especially)
 into a spurious `read ETIMEDOUT` roughly 10-12s after the quiet starts.
 
+**Follow-up: `keepAliveMsecs: 60_000` was NOT sufficient on macOS
+(v1.10.4 still showed the ERR flows there).** A kernel-level check on Linux
+(`ss -tno` reading the live keepalive timer during a held reused-socket
+request) proved the agent config does what it claims on Linux — timer armed
+at 59s counting down vs ~1s probe cadence with the old default — so the
+setting itself applies; whatever macOS/Electron does differently was not
+worth chasing further. Hardened instead to the configuration the live A/B
+diagnostic actually proved good on the affected Mac network:
+`socket.setKeepAlive(false)` in `forward()`'s `'socket'` handler, i.e.
+SO_KEEPALIVE fully off for every in-flight upstream request, fresh or
+reused (the surviving diagnostic scenarios had keepalive entirely off, not
+merely delayed). Sequencing note: the agent re-arms keepalive when a socket
+is *freed* (`keepSocketAlive`), so pool-idle sockets still get 60s-delay
+probing — harmless and even useful (reaps dead pooled sockets), and every
+new request disables it again before its quiet window starts. Dead pooled
+sockets that slip through are caught by the reused-socket single-retry.
+
 **Observability gap found while getting that body: error flows dropped the
 request body entirely.** `finishError` built its `FlowRecord` with
 `requestBytes: 0`, no `requestBody`, and no `FlowBodies` emit — so an ERR

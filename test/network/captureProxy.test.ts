@@ -815,6 +815,29 @@ describe('network/CaptureProxy', () => {
     expect(flow.timings).to.equal(undefined);
   });
 
+  it('disables SO_KEEPALIVE on the upstream socket while a request is in flight', async () => {
+    const orig = net.Socket.prototype.setKeepAlive;
+    let disabled = false;
+    net.Socket.prototype.setKeepAlive = function (enable?: boolean, delay?: number) {
+      if (enable === false) disabled = true;
+      return orig.call(this, enable, delay);
+    };
+    try {
+      upstream = await startUpstream((_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end('ok');
+      });
+      proxy = new CaptureProxy({ port: 0 });
+      proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+      await proxy.start();
+
+      await requestThroughProxy(proxy.port, `127.0.0.1:${upstream.port}`);
+      expect(disabled).to.equal(true);
+    } finally {
+      net.Socket.prototype.setKeepAlive = orig;
+    }
+  });
+
   it('error flows retain the request body (headers-only error flows are useless for debugging)', async () => {
     proxy = new CaptureProxy({ port: 0 });
     proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });

@@ -349,6 +349,16 @@ export class CaptureProxy extends EventEmitter {
     );
 
     upstreamReq.on('socket', (socket) => {
+      // No SO_KEEPALIVE probing while a request is in flight. Node arms
+      // keepalive on pooled sockets (Agent.keepSocketAlive), and on network
+      // paths whose middleboxes swallow keepalive probes, ~10 unanswered
+      // probes make the OS kill a HEALTHY held-open request (long-polls
+      // especially) with read ETIMEDOUT — verified live against a real
+      // long-poll endpoint: identical connections survived a 30s hold with
+      // keepalive off and died at ~11.5s with it on. Dead pooled sockets
+      // don't need probes to be caught: the reused-socket retry below
+      // recovers them on first failed use.
+      socket.setKeepAlive(false);
       if (!socket.connecting) {
         marks.reused = true;
         return;
