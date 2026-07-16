@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.4] - 2026-07-16
+
+### Fixed
+- Network Inspector — long-polls no longer die as spurious ETIMEDOUT; error flows keep the request body
+
 ## [1.10.3] - 2026-07-16
 
 ### Added
