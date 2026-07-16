@@ -188,6 +188,90 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
 #xml-view .x-text  { color: var(--vscode-editor-foreground, #cccccc); }
 #xml-view .x-punct { color: var(--vscode-descriptionForeground, #808080); }
 
+/* Find matches (CSS Custom Highlight API — see webview/main.ts). */
+::highlight(sg-find) {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234,92,0,0.33));
+}
+::highlight(sg-find-current) {
+  background: var(--vscode-editor-findMatchBackground, rgba(234,92,0,0.66));
+  color: var(--vscode-editor-foreground, #ffffff);
+}
+
+/* ── find widget ─────────────────────────────────────────────────────────── */
+
+.find-bar {
+  display: none;
+  position: absolute;
+  top: 6px;
+  right: 16px;
+  z-index: 20;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.35));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.36);
+}
+#find-input {
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  width: 190px;
+  outline: none;
+}
+#find-input:focus       { outline: 1px solid var(--vscode-focusBorder, #007fd4); }
+#find-input.no-match    { outline: 1px solid var(--vscode-inputValidation-errorBorder, #be1100); }
+#find-input::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+.find-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  min-width: 64px;
+  text-align: center;
+  white-space: nowrap;
+}
+.find-btn {
+  background: transparent;
+  color: var(--vscode-icon-foreground, #cccccc);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1;
+}
+.find-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.12)); }
+
+/* ── context menu ────────────────────────────────────────────────────────── */
+
+.ctx-menu {
+  display: none;
+  position: fixed;
+  z-index: 50;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--vscode-menu-background, #252526);
+  color: var(--vscode-menu-foreground, #cccccc);
+  border: 1px solid var(--vscode-menu-border, rgba(128,128,128,0.35));
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  font-size: 12px;
+}
+.ctx-item {
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctx-item:hover {
+  background: var(--vscode-menu-selectionBackground, #04395e);
+  color: var(--vscode-menu-selectionForeground, #ffffff);
+}
+.ctx-item.disabled { opacity: 0.4; cursor: default; }
+.ctx-item.disabled:hover { background: transparent; color: inherit; }
+
 /* ── legend bar ──────────────────────────────────────────────────────────── */
 
 #legend-bar {

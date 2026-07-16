@@ -12,4 +12,5 @@ export type ExtMsg =
   | { kind: 'error'; message: string };
 
 export type WebMsg =
-  | { kind: 'refresh'; collection: NodeCollection };
+  | { kind: 'refresh'; collection: NodeCollection }
+  | { kind: 'copy'; text: string };

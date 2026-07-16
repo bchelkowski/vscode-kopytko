@@ -214,7 +214,10 @@ error overlay.
 **View** — how to render the fetched XML:
 
 - **XML** (default) — the response as a formatted, syntax-colored document.
-  Selectable/copyable text.
+  Selectable/copyable text, with a right-click menu (**Copy XML** copies the
+  whole document, **Copy Selection** copies the highlighted text — same as
+  Ctrl/Cmd+C) and a **Ctrl/Cmd+F** find widget (match count, Enter /
+  Shift+Enter to step through matches, Escape to close).
 - **Chart** — the existing icicle/flame chart (Canvas 2D + D3 partition):
   click a node to focus its subtree, double-click to go back up, hover for an
   attribute tooltip, breadcrumb + type legend.

@@ -55,6 +55,7 @@ export class NodeTreePanel {
 
     this.panel.webview.onDidReceiveMessage((msg: WebMsg) => {
       if (msg.kind === 'refresh') void this._fetch(msg.collection);
+      else if (msg.kind === 'copy') void vscode.env.clipboard.writeText(msg.text);
     });
 
     this.panel.onDidDispose(() => {

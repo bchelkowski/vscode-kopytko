@@ -5,6 +5,8 @@
  * UI /query/app-ui) × two visual representations. XML is the default view;
  * the chosen view is shared across collection switches.
  *
+ * XML view: formatted + syntax-coloured, with a right-click Copy XML / Copy
+ * Selection menu and a Ctrl/Cmd+F find widget (CSS Custom Highlight API).
  * Chart: Canvas 2D + D3 partition, fixed ROW_H per depth level.
  * Click → focus subtree.  Double-click → go up.
  */
@@ -68,6 +70,7 @@ let collection: NodeCollection = 'all';
 let viewMode:  ViewMode        = 'xml';
 let lastXml:   string | null   = null;
 let xmlRendered = false;
+let renderedXmlText = '';   // the formatted text currently shown in the XML view
 
 let root:      SgNode | null = null;
 let focus:     SgNode | null = null;
@@ -243,8 +246,10 @@ function highlightXml(src: string): string {
 function renderXml(): void {
   if (!lastXml) return;
   if (!xmlRendered) {
-    xmlView.innerHTML = highlightXml(tryFormatXml(lastXml) ?? lastXml);
+    renderedXmlText = tryFormatXml(lastXml) ?? lastXml;
+    xmlView.innerHTML = highlightXml(renderedXmlText);
     xmlRendered = true;
+    resetSearchIndex();
   }
   hideOverlay();
 }
@@ -397,14 +402,16 @@ function applyViewMode(): void {
   breadcrumbBar.style.display = xml ? 'none' : '';
   legendBar.style.display     = xml ? 'none' : '';
   hideTip();
+  hideCtxMenu();
   viewButtons.forEach(b => b.classList.toggle('active', b.dataset.view === viewMode));
 
   if (xml) {
     renderXml();
-  } else if (root) {
-    render();
-  } else if (lastXml) {
-    showOverlay('Could not parse the node tree — check the Output channel.');
+    if (findOpen) runSearch();
+  } else {
+    closeFind();
+    if (root) render();
+    else if (lastXml) showOverlay('Could not parse the node tree — check the Output channel.');
   }
 }
 
@@ -543,6 +550,226 @@ viewButtons.forEach(btn => {
 });
 
 btnRefresh.addEventListener('click', requestFetch);
+
+// ── Clipboard ─────────────────────────────────────────────────────────────────
+
+// Routed through the extension host (vscode.env.clipboard) rather than
+// navigator.clipboard so it works regardless of webview focus/permission state.
+function copyText(text: string): void {
+  if (text) vscode.postMessage({ kind: 'copy', text });
+}
+
+function selectionText(): string {
+  return window.getSelection()?.toString() ?? '';
+}
+
+// ── Context menu (XML view) ───────────────────────────────────────────────────
+
+const ctxMenu = document.createElement('div');
+ctxMenu.className = 'ctx-menu';
+ctxMenu.innerHTML =
+  '<div class="ctx-item" data-action="copy-xml">Copy XML</div>' +
+  '<div class="ctx-item" data-action="copy-selection">Copy Selection</div>';
+document.body.appendChild(ctxMenu);
+let ctxVisible = false;
+
+function hideCtxMenu(): void {
+  if (!ctxVisible) return;
+  ctxMenu.style.display = 'none';
+  ctxVisible = false;
+}
+
+function showCtxMenu(x: number, y: number): void {
+  const selItem = ctxMenu.querySelector<HTMLElement>('[data-action="copy-selection"]')!;
+  selItem.classList.toggle('disabled', !selectionText());
+  ctxMenu.style.display = 'block';
+  ctxVisible = true;
+  const mw = ctxMenu.offsetWidth, mh = ctxMenu.offsetHeight;
+  ctxMenu.style.left = `${Math.min(x, window.innerWidth  - mw - 4)}px`;
+  ctxMenu.style.top  = `${Math.min(y, window.innerHeight - mh - 4)}px`;
+}
+
+xmlView.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  showCtxMenu(e.clientX, e.clientY);
+});
+
+// preventDefault on mousedown so clicking the menu doesn't clear the selection
+// (Copy Selection needs it to survive the click).
+ctxMenu.addEventListener('mousedown', e => e.preventDefault());
+ctxMenu.addEventListener('click', e => {
+  const item = (e.target as HTMLElement).closest<HTMLElement>('.ctx-item');
+  if (!item || item.classList.contains('disabled')) return;
+  if (item.dataset.action === 'copy-xml')            copyText(renderedXmlText || lastXml || '');
+  else if (item.dataset.action === 'copy-selection') copyText(selectionText());
+  hideCtxMenu();
+});
+
+document.addEventListener('mousedown', e => {
+  if (ctxVisible && !ctxMenu.contains(e.target as Node)) hideCtxMenu();
+});
+
+// ── Find widget (XML view) ────────────────────────────────────────────────────
+
+// Uses the CSS Custom Highlight API so matches highlight without disturbing the
+// syntax-coloured spans; matches may span span boundaries (which DOM-wrapping
+// can't do). Available in the Chromium that hosts VS Code webviews.
+interface DomHighlight { add(r: Range): void; clear(): void; priority: number }
+type HighlightCtor = new (...ranges: Range[]) => DomHighlight;
+const hlWin = window as unknown as {
+  Highlight?: HighlightCtor;
+  CSS?: { highlights?: Map<string, DomHighlight> };
+};
+const findSupported = !!(hlWin.Highlight && hlWin.CSS?.highlights);
+const hlAll     = findSupported ? new hlWin.Highlight!() : null;
+const hlCurrent = findSupported ? new hlWin.Highlight!() : null;
+if (findSupported) {
+  hlCurrent!.priority = 1;   // paint the active match over the others
+  hlWin.CSS!.highlights!.set('sg-find', hlAll!);
+  hlWin.CSS!.highlights!.set('sg-find-current', hlCurrent!);
+}
+
+const findBar = document.createElement('div');
+findBar.className = 'find-bar';
+findBar.innerHTML =
+  '<input id="find-input" type="text" placeholder="Find" spellcheck="false" autocomplete="off" />' +
+  '<span id="find-count" class="find-count"></span>' +
+  '<button class="find-btn" data-find="prev" title="Previous match (Shift+Enter)">▲</button>' +
+  '<button class="find-btn" data-find="next" title="Next match (Enter)">▼</button>' +
+  '<button class="find-btn" data-find="close" title="Close (Escape)">✕</button>';
+mainEl.appendChild(findBar);
+const findInput = findBar.querySelector<HTMLInputElement>('#find-input')!;
+const findCount = findBar.querySelector<HTMLElement>('#find-count')!;
+
+// Flat text index of the rendered XML → maps global offsets back to text nodes.
+let idxNodes: { node: Text; start: number }[] = [];
+let idxText  = '';
+let idxDirty = true;
+let matches: { start: number; end: number }[] = [];
+let matchCur = -1;
+let findOpen = false;
+
+function resetSearchIndex(): void { idxDirty = true; }
+
+function buildIndex(): void {
+  idxNodes = [];
+  let text = '';
+  const walker = document.createTreeWalker(xmlView, NodeFilter.SHOW_TEXT);
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    const t = n as Text;
+    idxNodes.push({ node: t, start: text.length });
+    text += t.data;
+  }
+  idxText = text;
+  idxDirty = false;
+}
+
+function locate(offset: number): { node: Text; offset: number } {
+  let lo = 0, hi = idxNodes.length - 1, ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (idxNodes[mid].start <= offset) { ans = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return { node: idxNodes[ans].node, offset: offset - idxNodes[ans].start };
+}
+
+function rangeFor(start: number, end: number): Range {
+  const s = locate(start), e = locate(end);
+  const r = document.createRange();
+  r.setStart(s.node, s.offset);
+  r.setEnd(e.node, e.offset);
+  return r;
+}
+
+function runSearch(): void {
+  if (!findSupported) return;
+  if (idxDirty) buildIndex();
+  hlAll!.clear();
+  matches = [];
+  const q = findInput.value;
+  if (q) {
+    const hay = idxText.toLowerCase();
+    const needle = q.toLowerCase();
+    for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+      matches.push({ start: i, end: i + needle.length });
+    }
+    for (const m of matches) hlAll!.add(rangeFor(m.start, m.end));
+  }
+  matchCur = matches.length ? 0 : -1;
+  findInput.classList.toggle('no-match', !!q && matches.length === 0);
+  showCurrentMatch();
+  updateFindCount();
+}
+
+function showCurrentMatch(): void {
+  if (!findSupported) return;
+  hlCurrent!.clear();
+  if (matchCur < 0) return;
+  const m = matches[matchCur];
+  const r = rangeFor(m.start, m.end);
+  hlCurrent!.add(r);
+  const rect = r.getBoundingClientRect();
+  const cont = xmlView.getBoundingClientRect();
+  if (rect.height && (rect.top < cont.top + 24 || rect.bottom > cont.bottom - 24)) {
+    xmlView.scrollTop += (rect.top - cont.top) - cont.height / 2 + rect.height / 2;
+  }
+}
+
+function updateFindCount(): void {
+  findCount.textContent = matches.length
+    ? `${matchCur + 1} of ${matches.length}`
+    : (findInput.value ? 'No results' : '');
+}
+
+function stepMatch(delta: number): void {
+  if (!matches.length) return;
+  matchCur = (matchCur + delta + matches.length) % matches.length;
+  showCurrentMatch();
+  updateFindCount();
+}
+
+function openFind(): void {
+  if (viewMode !== 'xml') return;
+  findOpen = true;
+  findBar.style.display = 'flex';
+  findInput.focus();
+  findInput.select();
+  runSearch();
+}
+
+function closeFind(): void {
+  if (!findOpen) return;
+  findOpen = false;
+  findBar.style.display = 'none';
+  if (findSupported) { hlAll!.clear(); hlCurrent!.clear(); }
+  matches = [];
+  matchCur = -1;
+}
+
+findInput.addEventListener('input', runSearch);
+findInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter')       { e.preventDefault(); stepMatch(e.shiftKey ? -1 : 1); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+});
+findBar.addEventListener('click', e => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('.find-btn');
+  if (!btn) return;
+  if (btn.dataset.find === 'prev')       stepMatch(-1);
+  else if (btn.dataset.find === 'next')  stepMatch(1);
+  else if (btn.dataset.find === 'close') closeFind();
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+    if (viewMode === 'xml' && findSupported) { e.preventDefault(); openFind(); }
+  } else if (e.key === 'Escape' && ctxVisible) {
+    hideCtxMenu();
+  }
+});
+
+xmlView.addEventListener('scroll', hideCtxMenu);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 

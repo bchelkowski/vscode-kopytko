@@ -820,6 +820,40 @@ and an XML-vs-chart view toggle (XML is the default). Non-obvious notes:
   panel always starts XML + All and re-fetches; `retainContextWhenHidden`
   still preserves state across tab hide/show within the panel's lifetime.
 
+### XML view copy + find (2026-07-16, same day)
+
+Added a right-click context menu (Copy XML / Copy Selection) and a Ctrl/Cmd+F
+find widget to the XML view. Non-obvious pieces:
+
+- **Find uses the CSS Custom Highlight API** (`new Highlight()` +
+  `CSS.highlights.set(name, hl)` + `::highlight(name)` in CSS), *not* DOM
+  wrapping. This is the only clean way to highlight matches that **span the
+  syntax-colour `<span>` boundaries** — a `Range.surroundContents()` throws on
+  a range that crosses element edges, and re-wrapping would destroy the
+  coloured spans. The API is feature-detected (`findSupported`); if absent,
+  Ctrl+F is a silent no-op (safe degrade). VS Code's Electron/Chromium has had
+  it since Chromium 105, so it's effectively always available.
+- **Two highlights, `sg-find` (all) + `sg-find-current`**, with
+  `hlCurrent.priority = 1` so the active match paints over the dim ones. There
+  is no DOM node to `scrollIntoView` — scroll the active match by reading
+  `Range.getBoundingClientRect()` vs the container's and nudging
+  `xmlView.scrollTop`.
+- **A flat text index** (`buildIndex()` walks `#xml-view` text nodes,
+  recording each node's cumulative start offset) maps a global match offset
+  back to `(Text node, offset)` via binary search (`locate()`), which
+  `rangeFor()` turns into a `Range`. The concatenated text equals the formatted
+  document exactly (verified: `unescape(stripSpans(highlightXml(x))) === x`),
+  so searching the flat string is identical to searching the visible document.
+  The index is rebuilt lazily (`idxDirty`) only when the XML re-renders.
+- **Clipboard is routed through the host** (`WebMsg.copy` →
+  `vscode.env.clipboard.writeText`) rather than `navigator.clipboard`, which is
+  focus/permission-sensitive in webviews. Copy XML sends the formatted
+  `renderedXmlText` (what's on screen), Copy Selection sends
+  `getSelection().toString()`. The context menu's `mousedown` handler
+  `preventDefault()`s so clicking it doesn't collapse the selection before
+  Copy Selection reads it. Plain Ctrl/Cmd+C still uses the browser's native
+  copy — no handler needed.
+
 ## Directory layout
 
 **Since 2026-07-03 the transport/parsers/collectors layers live in `packages/roku-device/`
