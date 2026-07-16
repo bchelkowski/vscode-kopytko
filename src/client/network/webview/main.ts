@@ -345,6 +345,13 @@ function updateFlowRow(tree: HTMLElement, row: HTMLElement, f: SerializedFlow): 
   row.outerHTML = rowHtml(f); // rowHtml re-applies .selected from state.selectedId
 }
 
+function refreshFlowRowById(id: string | null): void {
+  if (!id) return;
+  const f = state.flows.find((x) => x.id === id);
+  const row = byId('tree').querySelector<HTMLElement>(`.row[data-id="${CSS.escape(id)}"]`);
+  if (f && row) row.outerHTML = rowHtml(f);
+}
+
 function removeFlowRow(tree: HTMLElement, id: string): void {
   const row = tree.querySelector<HTMLElement>(`.row[data-id="${CSS.escape(id)}"]`);
   if (!row) return; // filtered out, or already gone — nothing to remove
@@ -380,6 +387,7 @@ function rowHtml(f: SerializedFlow): string {
   const local = !f.pending && f.servedBy === 'map-local' ? '<span class="tag local" title="Served from a map-local rule">local</span>' : '';
   const stream = !f.pending && f.streamed ? '<span class="tag stream" title="Streamed through chunk-by-chunk; body capture is best-effort">stream</span>' : '';
   const block = !f.pending && f.blocked ? '<span class="tag block" title="Aborted by a block rule">block</span>' : '';
+  const marked = f.id === state.diffBaseId ? '<span class="tag diff-marked" title="Marked for diff">◆ diff</span>' : '';
   const dur = f.pending
     ? `<span class="dur pending-dur" data-started="${f.startedWall}">…</span>`
     : `<span class="dur">${f.durationMs}ms</span>`;
@@ -389,7 +397,7 @@ function rowHtml(f: SerializedFlow): string {
     <span class="method ${f.method.toLowerCase()}">${esc(f.method)}</span>
     <span class="status ${statusClass}">${statusText}</span>
     <span class="path" title="${esc(f.path)}${f.query ? '?' + esc(f.query) : ''}">${esc(f.path)}</span>
-    ${up}${rw}${hdr}${rp}${local}${stream}${block}
+    ${up}${rw}${hdr}${rp}${local}${stream}${block}${marked}
     ${dur}
     ${size}
   </div>`;
@@ -1605,7 +1613,10 @@ function flowActionItems(f: SerializedFlow): CtxItem[] {
     items.push({
       label: state.diffBaseId === f.id ? 'Unmark for diff' : 'Mark for diff',
       onClick: () => {
+        const prevId = state.diffBaseId;
         state.diffBaseId = state.diffBaseId === f.id ? null : f.id;
+        refreshFlowRowById(prevId);
+        refreshFlowRowById(state.diffBaseId);
         renderDetail();
       },
     });
@@ -1798,7 +1809,10 @@ function wireEvents(): void {
       return;
     }
     if (target.closest('[data-diff-mark]') && state.selectedId) {
+      const prevId = state.diffBaseId;
       state.diffBaseId = state.diffBaseId === state.selectedId ? null : state.selectedId;
+      refreshFlowRowById(prevId);
+      refreshFlowRowById(state.diffBaseId);
       renderDetail();
       return;
     }
