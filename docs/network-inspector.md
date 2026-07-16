@@ -402,7 +402,7 @@ never deletes session files; without a workspace folder (and a relative
 | `kopytko.network.redirectPorts` | `[80]` | Device-side ports redirected into the proxy |
 | `kopytko.network.maxEntries` | `5000` | Ring-buffer cap before oldest requests drop |
 | `kopytko.network.maxBufferBytes` | `52428800` | Approximate memory budget for retained flows (bodies + overhead); oldest evicted when exceeded, `0` disables |
-| `kopytko.network.upstreamKeepAlive` | `true` | Pool proxy→origin connections instead of a fresh TCP/TLS handshake per request (device side always closes per request) |
+| `kopytko.network.upstreamKeepAlive` | `true` | Pool proxy→origin connections instead of a fresh TCP/TLS handshake per request (device side always closes per request). A pooled connection that goes stale mid-request (e.g. a long-poll held open across a network hop that silently drops it) is retried once automatically on a fresh connection rather than surfacing as an error — set to `false` only if an origin still misbehaves with reuse |
 | `kopytko.network.filterToActiveDevice` | `true` | Show only the active device's traffic (macOS/Linux only — always skipped on Windows) |
 | `kopytko.network.maxBodyBytes` | `262144` | Body bytes retained **in memory** for inline display/HAR — the full body is always forwarded to the device and persisted uncapped to the session folder |
 | `kopytko.network.outputDir` | `"debug"` | Folder (workspace-relative or absolute) where capture sessions are saved — manifest, `flows.ndjson`, and full body files per session |

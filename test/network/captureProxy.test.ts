@@ -786,6 +786,76 @@ describe('network/CaptureProxy', () => {
     expect(flow.timings).to.equal(undefined);
   });
 
+  it('a fresh (non-reused) connection failure surfaces immediately, with no retry', async () => {
+    proxy = new CaptureProxy({ port: 0 });
+    proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+    await proxy.start();
+
+    let flowCount = 0;
+    proxy.on('flow', () => flowCount++);
+
+    await requestThroughProxy(proxy.port, '127.0.0.1:9'); // nothing listening, never a pooled socket
+    // Give a would-be (incorrect) retry a moment to surface as a second flow.
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(flowCount).to.equal(1);
+  });
+
+  it('retries once on a fresh connection when a reused pooled socket goes stale, and the flow succeeds', async () => {
+    // Raw TCP server (not http.Server) so the test can precisely control what
+    // happens on a *second* request over an already-answered, pooled socket --
+    // simulating a keep-alive connection that died mid-idle (e.g. a network
+    // hop silently dropping it) without racing Node's own close detection.
+    const openSockets = new Set<net.Socket>();
+    const server = net.createServer((socket) => {
+      openSockets.add(socket);
+      socket.on('close', () => openSockets.delete(socket));
+      let respondedOnce = false;
+      let buf = '';
+      socket.on('data', (chunk: Buffer) => {
+        buf += chunk.toString();
+        if (!buf.includes('\r\n\r\n')) return;
+        buf = '';
+        if (!respondedOnce) {
+          respondedOnce = true;
+          const body = 'ok';
+          socket.write(`HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${body.length}\r\nConnection: keep-alive\r\n\r\n${body}`);
+        } else {
+          // A second request landing on this same reused socket: go dark
+          // instead of responding, producing a genuine "socket hang up" on
+          // the client -- exactly what a silently-dropped pooled connection
+          // looks like from the proxy's side.
+          socket.destroy();
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      proxy = new CaptureProxy({ port: 0 });
+      proxy.setRules({ ...defaultRuleSet(), defaultUpstreamScheme: 'http' });
+      await proxy.start();
+
+      const first = await requestThroughProxy(proxy.port, `127.0.0.1:${port}`);
+      expect(first.status).to.equal(200);
+
+      const flowP = nextFlow(proxy);
+      const second = await requestThroughProxy(proxy.port, `127.0.0.1:${port}`);
+      const flow = await flowP;
+
+      expect(second.status).to.equal(200);
+      expect(second.body).to.equal('ok');
+      expect(flow.error).to.equal(undefined);
+    } finally {
+      // The retried request's connection stays open (proxy-side keep-alive
+      // pooling) -- net.Server.close() waits for all sockets to close on
+      // their own, so destroy them explicitly rather than hang.
+      for (const s of openSockets) s.destroy();
+      await new Promise((r) => server.close(() => r(undefined)));
+    }
+  });
+
   it('replay() re-sends a captured request upstream and emits a replayed-tagged flow', async () => {
     const seen: Array<{ method: string; url: string; auth: string; body: string }> = [];
     upstream = await startUpstream((req, res) => {

@@ -1026,6 +1026,63 @@ hostnames+paths from rewriting entirely.
   excludes" section that round-trips through Apply into the `set-rules`
   payload.
 
+## Long-polling requests spuriously recorded as ETIMEDOUT (2026-07-16)
+
+A user with a long-polling endpoint (server holds the connection up to 30s,
+then returns; client immediately re-polls) saw some polls recorded in the
+panel as `ETIMEDOUT` even though the endpoint works correctly end-to-end —
+Charles proxying the same traffic showed no such errors. Confirmed from the
+user: the literal error text is `ETIMEDOUT`, firing consistently around
+**11-13s** (nowhere near the actual 30s poll duration), over the HTTPS bridge,
+fresh device-facing connection per poll.
+
+**Ruled out first**: grepped the whole proxy→origin path for any configured
+timeout — none exists. `breakpointTimeoutMs` (30s) only governs
+intercept/breakpoint auto-continue. The webview purely mirrors
+`FlowRecord.error` (`webview/main.ts:189,344-345`) with zero time-based
+inference — so a literal `ETIMEDOUT` string is unambiguously a **real**
+Node/libuv error on the upstream socket, not a UI artifact.
+
+**Root cause**: `forward()`'s proxy→origin request goes through a pooled,
+keep-alive `httpsAgent`/`httpAgent` (deliberate perf optimization — see "Perf
+& memory pass" above). The code already tracks whether a request landed on a
+reused pooled socket (`marks.reused`, set in the `'socket'` handler). A
+long-poll's defining trait — holding a connection essentially idle for up to
+30s waiting on the server — is exactly the window in which an intermediate
+network hop (VPN, corporate NAT/firewall) can silently drop a pooled
+connection without Node ever finding out. The *next* poll reuses that
+now-dead socket; writing to it eventually fails once the OS gives up,
+landing in the observed ~11-13s window. `forward()`'s error handler had retry
+logic only for the unrelated `auto` HTTPS→HTTP fallback case — a
+stale-reused-socket error went straight to `finishError()` and got recorded
+as a flow error, even though a plain retry on a fresh connection almost
+certainly succeeds (exactly why the app's own poll-retry loop already papers
+over it and "resolves in the end" from the user's point of view).
+
+This is precisely the failure mode `kopytko.network.upstreamKeepAlive` was
+already documented as an escape hatch for ("origins that misbehave with
+reuse" — see "Perf & memory pass" above) — but flipping it off disables
+pooling for every request, not just the rare dead-socket case.
+
+**Fix**: `forward()`'s `upstreamReq.on('error', ...)` handler now also
+retries once, on a fresh connection, specifically when `marks.reused` was
+true for the failed attempt (`retriedStale` flag, mirroring the existing
+`retriedAuto` pattern one branch above). A **fresh** (non-reused) connection
+that errors still surfaces immediately — only a reused socket's failure gets
+the benefit of the doubt, so a genuinely broken origin is never masked.
+
+**Test-writing gotcha hit along the way**: the regression test needs a real
+socket that answers once, then goes dark on reuse — a plain `http.Server`
+can't do this (respond, then simulate "went dark" on the exact same
+already-answered connection) without racing Node's own close detection, so
+the test uses a raw `net.createServer` with hand-written HTTP/1.1 response
+bytes instead. That test then hung on cleanup: the *retry's* fresh connection
+stays open (proxy-side keep-alive), and `net.Server.close()` waits for every
+open socket to close on its own rather than forcing them — so the test must
+track connected sockets and `.destroy()` them explicitly before `close()`,
+or the callback never fires and the test times out with no useful error
+message pointing at the real cause.
+
 ## Verification gaps / TODO for a later pass
 
 - **On-device transparent redirect not exercised headlessly on macOS/Linux.**

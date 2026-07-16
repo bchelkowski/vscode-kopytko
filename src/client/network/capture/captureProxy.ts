@@ -307,12 +307,24 @@ export class CaptureProxy extends EventEmitter {
     });
     upstreamReq.on('finish', () => (marks.sent = performance.now()));
 
-    let retried = false;
+    let retriedAuto = false;
+    let retriedStale = false;
     upstreamReq.on('error', (err) => {
       // For 'auto', a failed HTTPS attempt falls back to plaintext HTTP once.
-      if (scheme === 'auto' && attemptScheme === 'https' && !retried) {
-        retried = true;
+      if (scheme === 'auto' && attemptScheme === 'https' && !retriedAuto) {
+        retriedAuto = true;
         void this.forward(sink, target, reqBodyToSend, 'http', meta);
+        return;
+      }
+      // A pooled keep-alive socket can go stale during a long-held request
+      // (e.g. a long-poll) if a network hop silently drops it mid-idle —
+      // Node doesn't detect this until the next write/read on it fails. Retry
+      // once on a fresh connection rather than surfacing a spurious error for
+      // what a plain retry would resolve. Only for reused sockets: a freshly
+      // connected socket erroring is a real failure and must still surface.
+      if (marks.reused && !retriedStale) {
+        retriedStale = true;
+        void this.forward(sink, target, reqBodyToSend, scheme, meta);
         return;
       }
       this.finishError(sink, target, meta, err);
