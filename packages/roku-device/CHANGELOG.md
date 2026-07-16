@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.0] - 2026-07-16
+
+### Added
+- Add queryAppUi (GET /query/app-ui) to EcpClient and CLI
+
 ## [1.1.0] - 2026-07-06
 
 ### Added
