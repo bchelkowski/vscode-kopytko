@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.10.2] - 2026-07-16
+
+### Added
+- Network Inspector — show in-flight requests live
+
+### Fixed
+- Retry stale pooled upstream connections in Network Inspector
+
 ## [1.10.1] - 2026-07-14
 
 ### Added
