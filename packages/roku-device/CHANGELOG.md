@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.1] - 2026-07-17
+
+### Added
+- RALE TrackerTask client for live SceneGraph editing
+
 ## [1.2.0] - 2026-07-16
 
 ### Added
