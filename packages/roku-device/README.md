@@ -29,6 +29,7 @@ Requires Node.js >= 24. No runtime dependencies beyond `ws` (Perfetto streaming)
 | Diagnostics parsers + collectors | 8060/8080 | `parseChanperf`, `parseSgNodesCounts`, `parseR2d2Bitmaps`, …, `PollingCollector` and 10 concrete collectors |
 | BrightScript remote debug protocol | TCP 8081 | `ProtocolClient`, `IOClient`, `DebugCommands`, `BinaryReader`/`BinaryWriter`, protocol constants/types |
 | Perfetto trace streaming | WS 8060 | `PerfettoWebSocketClient` — quiet-window framing over `ws://…/perfetto-session` |
+| RALE TrackerTask client | TCP dynamic (49152–65535) | `RaleTrackerClient`, `FrameDecoder`/`encodeRequest` — live SceneGraph node editing through an injected RALE TrackerTask |
 | Developer web-admin automation | HTTP 80 | `InstallerClient` — install/delete/rekey/package/screenshot/profiling-data/update/reboot |
 
 ## Quick examples
@@ -75,6 +76,35 @@ await ecp.sendInput('192.168.1.20', { contentId: 'movie-123', mediaType: 'movie'
 // Fetch a channel's icon (GET /query/icon/{appId}) — raw bytes + content type
 const { data, contentType } = await ecp.queryAppIcon('192.168.1.20', '12');
 ```
+
+### Edit SceneGraph nodes on a running app (RALE TrackerTask)
+
+Requires Roku's RALE `TrackerTask` to be injected and started in the (dev)
+channel. The client activates it with an ECP input, the task opens a TCP
+server on the device at the requested port, and commands flow as
+`[start]{json}[end]`-framed JSON with uuid-correlated responses:
+
+```ts
+import { EcpClient, RaleTrackerClient } from 'kopytko-roku-device';
+
+const rale = new RaleTrackerClient({ host: '192.168.1.20', ecp: new EcpClient() });
+const { raleVersion } = await rale.connect();   // ECP activate → TCP connect → init
+await rale.hideSelectorView();                  // don't draw the red selector on the TV
+
+// setField writes to the *selected* node — always selectNode first.
+// Paths are {child: index} chains rooted at the scene.
+const { node } = await rale.selectNode([{ child: 0 }, { child: 2 }]);
+console.log(node.item.subtype);                 // e.g. "Label" — verify before writing
+await rale.setField('text', 'Hello from RALE'); // JSON-native values; omit the type arg
+await rale.setField('visible', true);
+
+rale.close();                                   // task returns to awaiting activation
+```
+
+In-band TrackerTask errors (`Invalid Path`, `Invalid Field Type or Value`, …)
+reject the command's promise. The task only serves dev-signed channels, and the
+init handshake must complete within ~3 s of activation — `connect()` handles
+the sequencing and retries on a fresh port.
 
 Keys and values are `encodeURIComponent`-encoded (helper: `buildEcpQueryString`).
 Non-2xx responses throw with the device's status and response body — a `403`

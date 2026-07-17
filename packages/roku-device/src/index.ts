@@ -6,6 +6,7 @@
 //   - SceneGraph debug console client (TCP 8080)
 //   - BrightScript remote debug protocol (TCP 8081 + dynamic IO port)
 //   - Diagnostics parsers + polling collectors (chanperf, sgnodes, textures, …)
+//   - RALE TrackerTask client — live SceneGraph node editing (dynamic TCP port)
 //   - Perfetto trace streaming (WebSocket on 8060)
 //   - Developer web-admin automation — install/rekey/package/screenshot/reboot (HTTP 80)
 //
@@ -89,6 +90,22 @@ export { BinaryReader, BinaryWriter } from './debug-protocol/binaryIO';
 export { ProtocolClient, type ProtocolClientEvents } from './debug-protocol/protocolClient';
 export { IOClient } from './debug-protocol/ioClient';
 export { DebugCommands } from './debug-protocol/commands';
+
+// RALE TrackerTask client (live SceneGraph editing; dynamic TCP port)
+export { encodeRequest, FrameDecoder, type RaleFrame } from './rale/frame';
+export {
+  RaleTrackerClient,
+  type RaleEcpInput,
+  type RaleInitInfo,
+  type RaleItemList,
+  type RaleNodeData,
+  type RaleNodeItem,
+  type RalePathSegment,
+  type RaleSelectNodeResult,
+  type RaleSocket,
+  type RaleSocketFactory,
+  type RaleTrackerOptions,
+} from './rale/raleTrackerClient';
 
 // Perfetto trace streaming
 export { PerfettoWebSocketClient } from './perfetto/webSocketClient';
