@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.6] - 2026-07-17
+
+### Added
+- SceneGraph Tree - Edit mode with live device updates
+
 ## [1.10.5] - 2026-07-16
 
 ### Added
