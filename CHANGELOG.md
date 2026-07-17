@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.7] - 2026-07-17
+
+### Maintenance
+- Bump kopytko-roku-device to v1.2.1
+
 ## [1.10.6] - 2026-07-17
 
 ### Added
