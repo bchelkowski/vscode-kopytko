@@ -57,7 +57,7 @@
     "kopytko-brightscript-parser": "^1.2.0",
     "kopytko-formatter": "^1.1.13",
     "kopytko-linter": "^1.6.7",
-    "kopytko-roku-device": "^1.2.0",
+    "kopytko-roku-device": "^1.2.1",
     "vscode-languageclient": "^10.1.0",
     "vscode-languageserver": "^10.1.0",
     "vscode-languageserver-textdocument": "^1.0.12",
