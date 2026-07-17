@@ -228,9 +228,67 @@ switches but is not persisted — a reopened panel starts fresh (XML + All) and
 fetches anew. Responses that arrive after the user has already switched to a
 different collection are discarded.
 
+### Edit mode (RALE TrackerTask)
+
+On the **UI collection + XML view**, the **Edit** toolbar button turns the XML
+document editable and pushes field changes to the *running* app, RALE-style.
+
+**Prerequisite:** Roku's RALE `TrackerTask` must already be injected and
+started in the app (the extension does not inject it). On Edit, the panel
+activates the task with an ECP input (`POST /input?rale=true&port=<N>`), the
+task opens a TCP server on the device at that port, and the panel connects and
+initializes — the status chip shows the detected RALE version. If the task
+isn't present, the connect times out with *"TrackerTask not responding — is it
+injected and running in the app?"*.
+
+While editing:
+
+- **Navigation is blocked** — collection buttons, view buttons, and Refresh
+  are disabled until you exit Edit mode.
+- The XML becomes an editable surface (transparent `<textarea>` over the
+  syntax-highlighted layer, so colors survive typing). The find widget closes.
+- Edits are validated as you type (300 ms debounce): the status chip shows
+  *no changes* / *N field change(s)* / *invalid XML* / a structural-change
+  error. **Only field-value changes and new attributes are supported** —
+  adding/removing/renaming/reordering elements, deleting attributes, or
+  touching synthetic attributes (`_sn`, `osref`, `bscref`, `_psn`, `extends`,
+  `index`, `children`, `bounds`, `sceneRect`, `focused`) is rejected with the
+  offending location.
+- **Apply** (or **Ctrl+Enter**) pushes the diff: per edit, the panel resolves
+  the target against the device's *real* child lists (app-ui shows only
+  renderable nodes, so its indices can't be used directly — each level is
+  matched by subtype, node id, and position among same-subtype siblings),
+  selects the node, verifies its subtype (and id, when present) actually
+  matches what the editor shows — a mismatch fails that edit rather than
+  writing to the wrong node — then issues a TrackerTask `setField`. Values are
+  typed from the baseline (a `visible="true"` edit stays boolean; colors stay
+  strings; vectors in either markup `[0,0]` or app-ui `{0, 0}` form are sent
+  as real arrays — the device silently ignores curly text sent as a string).
+  Edits that apply but won't stick get a warning — e.g. `translation` on a
+  LayoutGroup child, which the parent layout overwrites on its next pass.
+- After an apply the panel re-fetches `/query/app-ui` so the view shows the
+  device's real new state. On partial failure your text is kept and re-diffed
+  against the fresh baseline, so failed edits stay marked; the chip lists the
+  first failure.
+- **Exit Edit** discards unapplied changes (it warns and needs a second click
+  when the editor is dirty). Closing the panel or losing the socket also ends
+  the session. Edit can be re-entered at any time: the panel remembers the
+  session's device-side port (newer TrackerTasks keep serving on it for the
+  app's lifetime and ignore re-activation) and reconnects to it directly,
+  falling back to a fresh ECP activation when the port no longer answers.
+
+Note: initializing the tracker appends its own helper nodes (selector view,
+guides) to the scene, so a subsequent UI fetch shows a few extra RALE nodes at
+the end of the scene's children. The panel calls `hideSelectorView` after
+connecting so no red selector rectangle is drawn on the TV.
+
 Source: `src/client/nodes/` (`nodeTreePanel.ts`, `webview/`), registered via
 `src/client/activation/nodes.ts`. XML formatting reuses `tryFormatXml` from
-`src/client/network/bodyFormat.ts`.
+`src/client/network/bodyFormat.ts`; the field diff lives in
+`src/client/nodes/webview/xmlDiff.ts`, and the TrackerTask protocol client is
+`RaleTrackerClient` in `kopytko-roku-device` (see
+`packages/roku-device/README.md` and `findings/roku-device-api.md` for the
+wire protocol).
 
 ---
 

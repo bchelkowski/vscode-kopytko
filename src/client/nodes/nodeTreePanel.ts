@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import type { EcpClient } from 'kopytko-roku-device';
 import type { DeviceManager } from 'kopytko-roku-device';
+import { RaleTrackerClient, type RaleItemList } from 'kopytko-roku-device';
+import { resolveRalePath, subtypeCompatible, type ItemListFetcher } from './ralePathResolver';
 import type { ExtMsg, NodeCollection, WebMsg } from './webview/protocol';
+import type { FieldEdit } from './webview/xmlDiff';
 
 const VIEW_TYPE = 'kopytkoNodeTree';
 const TITLE     = 'SceneGraph Tree';
@@ -56,9 +59,14 @@ export class NodeTreePanel {
     this.panel.webview.onDidReceiveMessage((msg: WebMsg) => {
       if (msg.kind === 'refresh') void this._fetch(msg.collection);
       else if (msg.kind === 'copy') void vscode.env.clipboard.writeText(msg.text);
+      else if (msg.kind === 'edit-enter') void this._enterEdit();
+      else if (msg.kind === 'edit-exit') this._exitEdit();
+      else if (msg.kind === 'apply-edits') void this._applyEdits(msg.edits);
     });
 
     this.panel.onDidDispose(() => {
+      this._rale?.close();
+      this._rale = null;
       NodeTreePanel._instance = undefined;
     });
 
@@ -101,6 +109,143 @@ export class NodeTreePanel {
     }
   }
 
+  // ── Edit mode (RALE TrackerTask) ──────────────────────────────────────────
+
+  private _rale: RaleTrackerClient | null = null;
+
+  /** Activate the injected TrackerTask and open the edit connection. */
+  private async _enterEdit(): Promise<void> {
+    const device = this.deps.deviceManager.getActiveDevice();
+    if (!device) {
+      this._post({ kind: 'edit-state', active: false, error: 'No active Roku device. Select a device first.' });
+      return;
+    }
+
+    this._rale?.close();
+    // Newer TrackerTasks (3.4.0+) keep serving on their original port forever
+    // and ignore re-activation, so the last session's port — persisted across
+    // panel and VS Code restarts — is tried first (see RaleTrackerOptions).
+    const portKey = `kopytko.rale.port.${device.ip}`;
+    const rale = new RaleTrackerClient({
+      host: device.ip,
+      ecpPort: device.port,
+      ecp: this.deps.ecp,
+      reusePort: this.context.globalState.get<number>(portKey),
+    });
+    this._rale = rale;
+
+    try {
+      const info = await rale.connect();
+      void this.context.globalState.update(portKey, rale.port);
+      // Best effort — without this the task draws a red selector rectangle
+      // on the TV for every node we select while applying edits.
+      await rale.hideSelectorView().catch(() => undefined);
+
+      rale.on('close', () => {
+        if (this._rale !== rale) return;
+        this._rale = null;
+        this._post({ kind: 'edit-state', active: false, error: 'Connection to TrackerTask lost.' });
+      });
+
+      this._post({ kind: 'edit-state', active: true, raleVersion: info.raleVersion });
+    } catch (err) {
+      if (this._rale === rale) this._rale = null;
+      rale.close();
+      void this.context.globalState.update(portKey, undefined); // stale port
+      const message = err instanceof Error ? err.message : String(err);
+      this._post({ kind: 'edit-state', active: false, error: message });
+    }
+  }
+
+  private _exitEdit(): void {
+    this._rale?.close();
+    this._rale = null;
+    this._post({ kind: 'edit-state', active: false });
+  }
+
+  /**
+   * Apply field edits through the TrackerTask: select each target node by
+   * path, verify it is the node the user thinks it is (subtype + id), then
+   * set the field. Partial failures are reported per edit.
+   */
+  private async _applyEdits(edits: FieldEdit[]): Promise<void> {
+    const rale = this._rale;
+    if (!rale || !rale.connected) {
+      this._post({
+        kind: 'apply-result',
+        ok: false,
+        applied: 0,
+        failures: edits.map(e => ({ field: e.field, path: e.path, message: 'Not connected to TrackerTask.' })),
+      });
+      return;
+    }
+
+    const failures: { field: string; path: number[]; message: string }[] = [];
+    const warnings: string[] = [];
+    let applied = 0;
+
+    // getItemList responses cached per apply — edits usually share prefixes.
+    const itemListCache = new Map<string, RaleItemList>();
+    const fetchItemList: ItemListFetcher = async (path) => {
+      const key = path.map(seg => ('child' in seg ? seg.child : `f:${seg.field}`)).join('/');
+      const hit = itemListCache.get(key);
+      if (hit) return hit;
+      const result = await rale.getItemList(path);
+      itemListCache.set(key, result);
+      return result;
+    };
+
+    for (const edit of edits) {
+      try {
+        const resolved = await resolveRalePath(edit.steps, fetchItemList);
+        if (!resolved.ok) {
+          failures.push({ field: edit.field, path: edit.path, message: resolved.error });
+          continue;
+        }
+        const selected = await rale.selectNode(resolved.path);
+        const item = selected.node?.item;
+        if (!subtypeCompatible(edit.subtype, item?.subtype)) {
+          failures.push({
+            field: edit.field,
+            path: edit.path,
+            message: `Target mismatch: expected <${edit.subtype}> but the device has `
+              + `<${item?.subtype ?? 'unknown'}> at that path. Refresh and retry.`,
+          });
+          continue;
+        }
+        if (edit.id && item.id && item.id !== edit.id) {
+          failures.push({
+            field: edit.field,
+            path: edit.path,
+            message: `Target mismatch: expected node id "${edit.id}" but found "${item.id}". Refresh and retry.`,
+          });
+          continue;
+        }
+        await rale.setField(edit.field, edit.wireValue);
+        applied++;
+
+        // A LayoutGroup owns its children's positions — the layout pass
+        // overwrites a manual translation almost immediately (verified on
+        // device). The set succeeds, so warn rather than fail.
+        const parent = edit.steps[edit.steps.length - 2];
+        if (edit.field === 'translation' && parent?.subtype === 'LayoutGroup') {
+          const label = edit.id ? `"${edit.id}"` : `<${edit.subtype}>`;
+          warnings.push(
+            `translation of ${label} is managed by its parent LayoutGroup — the layout will overwrite it`,
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        failures.push({ field: edit.field, path: edit.path, message });
+      }
+    }
+
+    this._post({ kind: 'apply-result', ok: failures.length === 0, applied, failures, warnings });
+
+    // Show the device's real new state (also resets the webview baseline).
+    if (applied > 0) await this._fetch('ui');
+  }
+
   // ── HTML ──────────────────────────────────────────────────────────────────
 
   private _buildHtml(webview: vscode.Webview): string {
@@ -133,12 +278,17 @@ export class NodeTreePanel {
       <button data-view="chart">Chart</button>
     </div>
     <button id="btn-refresh" title="Fetch the selected node collection from the device">Refresh</button>
+    <button id="btn-edit" disabled
+            title="Edit node fields on the running app via RALE TrackerTask (UI collection, XML view only)">Edit</button>
+    <button id="btn-apply" class="hidden" title="Apply field changes to the running app (Ctrl+Enter)">Apply</button>
+    <span id="edit-chip" class="hidden"></span>
     <span id="node-count"></span>
   </div>
   <div id="breadcrumb-bar"></div>
   <div id="main">
     <canvas id="ic-canvas"></canvas>
     <pre id="xml-view" tabindex="0"></pre>
+    <textarea id="xml-editor" spellcheck="false" autocomplete="off" wrap="off"></textarea>
     <div id="overlay" class="visible"><span>Loading…</span></div>
     <div id="tooltip"></div>
   </div>

@@ -854,6 +854,62 @@ find widget to the XML view. Non-obvious pieces:
   Copy Selection reads it. Plain Ctrl/Cmd+C still uses the browser's native
   copy — no handler needed.
 
+### Edit mode — RALE TrackerTask (2026-07-17)
+
+The UI-collection XML view gained an **Edit** mode that pushes field changes to
+the running app through an already-injected RALE TrackerTask (wire protocol:
+`findings/roku-device-api.md`, "RALE TrackerTask wire protocol"; client:
+`RaleTrackerClient` in `kopytko-roku-device`). Implementation notes:
+
+- **Overlay editor technique**: a `<textarea id="xml-editor">` shares the
+  `grid-area: stack` with `<pre id="xml-view">`. The textarea's text is
+  `color: transparent` (caret + selection visible); the pre underneath paints
+  the glyphs. **Both layers must have byte-identical font/padding/line-height/
+  white-space/tab-size metrics or the caret drifts.** The textarea is the
+  scroll surface (`#main.editing #xml-view { overflow: hidden }`), synced via
+  its `scroll` event. Because the glyphs live in the pre, it must repaint on
+  **every keystroke** (rAF-throttled `repaintHighlightLayer()`), not on the
+  300 ms validation debounce — a transparent textarea with a stale layer means
+  invisible typing. Docs > 300 KB drop syntax colors (`textContent`) to keep
+  typing responsive.
+- **Blocked navigation** is both `disabled` attributes *and* `if (editMode)
+  return;` guards in the collection/view/refresh click handlers. The find
+  widget closes on entry (its Highlight ranges target the pre's text nodes,
+  which the editor repaints constantly); `pointer-events: none` on the pre
+  kills the custom context menu in edit mode, giving the textarea the native
+  cut/copy/paste menu instead.
+- **Baseline discipline**: the diff baseline (`editBaseline`, a `LiteEl` tree)
+  is parsed from `renderedXmlText` — the *formatted* text the user actually
+  edits — never from the raw device XML, so paths always match what's on
+  screen. `xmlDiff.ts` keeps DOM types out of the diff core (structural
+  `DomElementLike`) so it unit-tests under plain Node (`test/nodes/xmlDiff.test.ts`).
+- **Post-apply refresh rebases the editor**: on full success the editor is
+  reseeded from the fresh `/query/app-ui` fetch; on partial failure the user's
+  text is kept and re-diffed against the new baseline, so failed edits stay
+  marked dirty instead of being wiped (`keepEditorOnRefresh`).
+- **Exit-while-dirty** uses a two-click arm/confirm (`exitArmed`) because
+  webviews have no `window.confirm`.
+- **Reconnect uses port reuse**: `_enterEdit` persists the session port in
+  `globalState` (`kopytko.rale.port.<ip>`) and passes it as `reusePort` to the
+  next client; cleared when a connect fully fails. Rationale in
+  `findings/roku-device-api.md` (TrackerTask 3.4.0 never exits its serve loop).
+- **Value typing** (`coerceFieldValue`) infers the wire type from the
+  *baseline* value, not the new one — `text="123"` on a string field must stay
+  a string. The host omits the `setField` `type` arg entirely so the task uses
+  plain `setFields` (see the protocol findings for why an explicit type causes
+  removeField/addField churn).
+- **App-ui indices can't address device nodes directly** (app-ui is
+  renderable-only; RALE indices count all children — see the RALE gotchas in
+  `findings/roku-device-api.md`). Each `FieldEdit` therefore carries `steps`
+  ({subtype, id?, ordinal-among-same-subtype}) computed by `xmlDiff.ts`, and
+  the host resolves them level-by-level against `getItemList` via
+  `src/client/nodes/ralePathResolver.ts` (per-apply response cache). Matching
+  is **id-first** (app-ui tags are representations — plain Groups print as
+  `<RenderableNode>`; `subtypeCompatible()` maps that), falling back to the
+  same-subtype ordinal. The host still verifies the final target with
+  `selectNode` (compatible subtype + id) before `setField`, so any residual
+  drift fails safe as a per-edit error.
+
 ## Directory layout
 
 **Since 2026-07-03 the transport/parsers/collectors layers live in `packages/roku-device/`

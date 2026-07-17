@@ -638,3 +638,157 @@ Checked the full page structure (all H2/H3 headings) on 2026-07-06; none of thes
 - **`/query/screensaver`, `/query/textedit-state`, `/query/audio-device`** — these show up in older third-party/community ECP writeups but are **not present anywhere** on the current official developer.roku.com ECP page (checked both the endpoint tables and every section heading). Do not implement these from memory/training data alone — if a future task wants them, re-fetch the official page first to confirm they've been (re-)documented, or get a live device response sample.
 - **ECP-2 WebSocket session/subscription endpoints** (`ecp-session-id` header, subscribe-style session negotiation) — not documented on the official page at all.
 - No callbacks: the iframe fires no "loaded" or "ready" events back. The time-range scroll command retries internally (~20×/200 ms) until the trace is ready.
+
+---
+
+## RALE TrackerTask wire protocol (2026-07-17, verified against TrackerTask v3.2.0 source)
+
+The RALE TrackerTask ships as readable BrightScript inside the app package
+(a `TrackerTask.xml` component), so the whole protocol is inspectable — everything
+below was read directly from a real v3.2.0 copy, not inferred. Client
+implementation: `packages/roku-device/src/rale/` (`RaleTrackerClient` + the
+`frame.ts` codec). The community gist `jeanbenitez/e3775db60ed65867be76cbe5cff8ef2b`
+matches what we verified.
+
+### Activation — the task listens, but only after an ECP poke
+
+The task's `tracker()` loop blocks on `wait(0, inputPort)` for an `roInputEvent`.
+Send ECP `POST /input?rale=true&port=<N>` (any non-Invalid `rale` value works;
+`port` picked from the task's configured 49152–65535 range). The task then:
+
+- **Refuses non-dev channels** unless the input also carries `nonDev=true`
+  (`appInfo.IsDev()` check) — sideloaded dev builds are fine.
+- Opens an `roStreamSocket`, `listen(4)` **on the device** at `<N>`, and waits
+  **3000 ms** for the first socket event; no event → socket closed, back to
+  waiting for ECP input. So activation → TCP connect → `init` must be one fast
+  sequence. After any disconnect the task loops back to waiting for ECP input —
+  re-activation always works, no reboot needed.
+
+### Framing
+
+- **Client → device**: `[start]{"uuid":"…","command":"…","args":{…}}[end]` — plain
+  JSON inside the markers. The device splits its buffer on `[start]` and strips
+  `[end]`, then `ParseJson`s each piece; a piece that fails to parse is silently
+  dropped (**no error response**). The receive loop reads ≤16 KB per 10 ms burst —
+  keep requests small, and **always include `args`** (handlers dereference it
+  unguarded; a missing `args` would crash the task thread).
+- **Device → client**: `[start][uuid:<len>]<uuid><json>[end]`, where `<len>` is the
+  uuid's character count. Large responses arrive in multiple TCP packets — buffer
+  until `[end]`. Errors are in-band: `{"error":{"message":"…"}}`.
+
+### Session/command semantics (the non-obvious parts)
+
+- First command must be `init`. Response: `{raleVersion, sessionid}`. Side effects:
+  appends a SelectorView + Guides node to the scene (so later `/query/app-ui`
+  fetches show extra RALE nodes at the scene-children tail) and re-arms selector
+  drawing. Send `{logVerbosity: -1}` in init args — the handler does
+  `if args.logVerbosity >= 0` and BrightScript's Invalid-vs-integer comparison is
+  a runtime hazard; -1 skips it safely.
+- **`setField` has no path argument** — it writes to `m.currentNode`, whatever the
+  last `selectNode {path}` selected. The apply sequence is always
+  `selectNode` → `setField`. Conveniently `selectNode` returns
+  `{path, node: {item: {subtype, id, childrenCount, …}}}` — use it to verify the
+  target before writing.
+- `selectNode` also draws a red selector rectangle on the TV unless
+  `hideSelectorView` was called after init (the `m.showSelectorView` gate).
+- Paths are arrays of `{child: index}` (or `{field: "name"}` for descending into
+  AA/array fields), rooted at `m.top.GetScene()`. The ECP app-ui XML nests
+  `<topscreen><screen><SceneSubtype>…` — so an app-ui child-index chain maps to a
+  RALE path by dropping the leading segment (the scene element itself).
+  `appUiPathToRalePath()` in `src/client/nodes/nodeTreePanel.ts` does exactly
+  that; the selectNode subtype check catches any drift.
+- `setField` args: `{field, value}` with optional `type`. **Omit `type`** when the
+  field already exists: with a type the task does `removeField` + `addField` when
+  the declared type differs from `getFieldType()` (churn, and removeField fails on
+  built-in interface fields anyway); without it, it's a plain
+  `setFields({field: value})` and SceneGraph coerces the JSON-native value.
+  Recognized `type` aliases (`RALE_parseType`): int/num/number→integer,
+  roFloat→float, text/str→string, boolean→bool, roSGNode→node ("node" **creates a
+  new node** of subtype `value`!), array/arr, object/associativearray→assocarray.
+- Command map (v3.2.0): init, show/hideSelectorView, selectNode, updateNode,
+  getNodeData, getItemList, getNodeTree, getNodeById, getNodeByName, addChild,
+  removeChild, moveChild, setField, removeField, setFocus, selectFocusedNode,
+  setBoundingRect, registry ops, ruler ops, setLogVerbosity/Format, log.
+- **Response key casing is inconsistent — dot-notation keys arrive lowercase.**
+  BrightScript stores AA keys assigned via dot notation in lowercase, and the
+  TrackerTask mixes literal AAs (`{item: …}` → `"item"`) with dot assignments
+  (`item.childList = …` → serialized as `"childlist"`; `result.childlist`,
+  `"fieldlist"`, `"layout"` likewise lowercase). So `getItemList` responds with
+  `"childlist"`, NOT `"childList"`. This bit us for real: the resolver read
+  `.childList`, got undefined, and every apply failed with "Could not locate
+  <AppView>". `RaleTrackerClient.getItemList` normalizes (accepts both
+  casings, since key style could drift across TrackerTask versions).
+  PowerShell-based protocol probing does NOT catch this class of bug —
+  PS property access is case-insensitive.
+
+### Two on-device gotchas (2026-07-17, found in live testing)
+
+- **Reconnect = reuse the original port; activation only works once per app
+  launch on newer tasks.** Verified live against TrackerTask **v3.4.0** (note:
+  the version on the device can differ from the copy in the repo — v3.4.0 was
+  running while the local TrackerTask.xml said 3.2.0): once a client has
+  connected, the serve loop **never exits** — not on graceful FIN, not on RST.
+  The listener stays alive on the original port serving new connections
+  (re-`init` on it works, same sessionid), while the task never returns to
+  `wait(0, inputPort)`, so re-activation on a *new* port is silently ignored.
+  Client strategy (implemented in `RaleTrackerClient`): try a **direct TCP
+  connect + init to the last session's port first** (`reusePort` option; the
+  panel persists it in `globalState` per device ip), fall back to the ECP
+  activation flow. On older v3.2.0-style tasks the loop DOES exit on a socket
+  *error* (`if closed or not connection.eOK()` — `closed` is a dead local, and
+  a graceful FIN doesn't trip `eOK()`), so `teardown()` closes with
+  `net.Socket.resetAndDestroy()` (RST): the stale port then refuses, and the
+  activation fallback works. If neither path connects (e.g. a 3.2.0 task
+  wedged by a pre-fix graceful close), the only recovery is relaunching the
+  channel.
+- **First activation per app launch is flaky in apps with their own `roInput`**
+  (observed on the Acme dev build, 2026-07-17): the TrackerTask node exists
+  (visible in `sgnodes all`) but `POST /input?rale=…` sometimes never reaches
+  it — activation failed across several consecutive ECP relaunches (including
+  40 rapid attempts through a full boot), yet succeeded right after the user's
+  own app restart earlier the same day. Roku delivers ECP input events to only
+  one `roInput` instance per app (the most recently created), so an app that
+  creates its own `roInput` (deep links/transport) can starve the tracker's —
+  suspected but not conclusively proven. Practical upshot: if Edit can't
+  connect, restart the channel (from the IDE/deploy, not just ECP relaunch)
+  and try again immediately; once ONE session connects, the port-reuse
+  strategy keeps every later session working for the app's lifetime.
+- **ECP app-ui child indices ≠ RALE child indices.** `/query/app-ui` renders
+  only *renderable* nodes; the task's `getChildList` uses
+  `node.getChildren(-1, 0)` — every child, Tasks/Timers/ContentNodes included.
+  Any `{child: index}` path computed from app-ui positions drifts as soon as a
+  node has non-renderable children interleaved ("Invalid Path" / subtype
+  mismatch on some nodes but not others). The app-ui children are an
+  order-preserving **subsequence** of the device children, so resolve each
+  level against `getItemList {path}` (child `item.index` is the authoritative
+  device index): match by subtype, prefer a unique `item.id` match, fall back
+  to the ordinal among same-subtype siblings — implemented in
+  `src/client/nodes/ralePathResolver.ts`.
+- **app-ui tags are representations, not always real subtypes: plain `Group`
+  nodes print as `<RenderableNode>`** (verified live on the Acme home screen —
+  `container`/`heroContainer` Groups all appeared as `<RenderableNode
+  name="…">` while custom components like `Hero`/`RouterOutlet` and other
+  built-ins like `LayoutGroup`/`Poster`/`Label` print their real subtype).
+  Consequences for resolution: match by **node id first** across all children
+  (ids are the reliable anchor; the Acme chain to any node is fully named in
+  practice), and gate subtype checks through `subtypeCompatible()` which maps
+  app-ui `RenderableNode` ↔ device `Group`. The final `selectNode`
+  verification must use the same relaxed check or every Group-ancestor edit
+  fails with a false "target mismatch".
+- **Vector fields: app-ui prints `{333, 222}`, markup uses `[333,222]`, and
+  SceneGraph silently IGNORES the curly form set as a string** (verified live
+  on a Poster's `translation`: curly string → no effect; bracket string →
+  applied; JSON number array → applied). So `setField` values for vector-ish
+  fields must be sent as real JSON number arrays — `coerceFieldValue` in
+  `xmlDiff.ts` parses both `{x, y}` and `[x,y]` text into arrays. A silently
+  ignored set still returns a normal field-list response — there is no error
+  signal from the device for a bad value type.
+- **A LayoutGroup owns its children's `translation`** — a manual set succeeds
+  but the layout pass overwrites it (verified: same array set persisted on a
+  plain-Group child, snapped back on a LayoutGroup child). The panel emits an
+  apply *warning* for translation edits whose direct parent step is a
+  LayoutGroup.
+- `getFieldList` responses (in selectNode/getNodeData/setField results) are an
+  **object keyed by field id** — `{ translation: { item: {…} }, … }` — not an
+  array; and object-valued fields serialize as `value: "{object}"` (useless
+  for verification — read app-ui attributes instead).

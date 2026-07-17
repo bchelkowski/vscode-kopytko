@@ -108,6 +108,7 @@ const subsystems = [
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
   { name: 'Remote debug protocol', port: 'TCP 8081', api: 'ProtocolClient, DebugCommands, IOClient', desc: 'Binary socket-based debugger: threads, stack traces, variables, breakpoints, step control, app output via the dynamic IO port.' },
   { name: 'Perfetto streaming', port: 'WS 8060', api: 'PerfettoWebSocketClient, enablePerfettoTracing', desc: 'Streams raw Perfetto TracePacket protobuf from ws://device:8060/perfetto-session with a quiet-window stop.' },
+  { name: 'RALE TrackerTask client', port: 'TCP 49152–65535', api: 'RaleTrackerClient, FrameDecoder', desc: 'Live SceneGraph editing through an injected RALE TrackerTask: ECP-input activation, [start]/[end]-framed JSON commands (selectNode, setField, getNodeTree, …) with uuid correlation.' },
   { name: 'Web-admin automation', port: 'HTTP 80', api: 'InstallerClient', desc: 'Digest-auth automation of the developer web-admin page: install/delete/rekey/package a channel, screenshot, profiling data, OS update check, reboot.' },
 ];
 
@@ -146,6 +147,22 @@ await installer.downloadProfilingData('192.168.1.20', password, './out/channel.b
 
 // Update tab
 await installer.checkForUpdate('192.168.1.20', password);`;
+
+const raleExample = `import { EcpClient, RaleTrackerClient } from 'kopytko-roku-device';
+
+// Requires Roku's RALE TrackerTask injected and started in the (dev) channel.
+const rale = new RaleTrackerClient({ host: '192.168.1.20', ecp: new EcpClient() });
+const { raleVersion } = await rale.connect(); // ECP activate -> TCP connect -> init
+await rale.hideSelectorView();                // no red selector rectangle on the TV
+
+// setField writes to the *selected* node — always selectNode first.
+const { node } = await rale.selectNode([{ child: 0 }, { child: 2 }]);
+if (node.item.subtype === 'Label') {
+  await rale.setField('text', 'Hello from RALE');
+  await rale.setField('visible', true);
+}
+
+rale.close(); // the task returns to awaiting activation`;
 ---
 <Layout title="Roku Device" activePage="roku-device">
   <!-- Page header -->
@@ -244,6 +261,13 @@ await installer.checkForUpdate('192.168.1.20', password);`;
       <h2 class="text-xl font-bold text-white mb-2">Web-admin automation</h2>
       <p class="text-slate-400 text-sm mb-4">Drives the developer web-admin page (<code class="text-rose-300">http://&lt;device-ip&gt;/</code>) the same way a browser would — install/delete/rekey/package a channel, capture a screenshot, download profiling data, or check for updates and reboot. Surfaced in the extension through the Device Manager's Device view.</p>
       <CodePanel code={installerExample} lang="typescript" />
+    </section>
+
+    <!-- RALE TrackerTask -->
+    <section>
+      <h2 class="text-xl font-bold text-white mb-2">RALE TrackerTask client</h2>
+      <p class="text-slate-400 text-sm mb-4">Talks to an injected Roku Advanced Layout Editor <code class="text-rose-300">TrackerTask</code> to edit SceneGraph nodes on a <em>running</em> app: an ECP input activates the task, which opens a TCP server on the device; commands are <code class="text-rose-300">[start]&#123;json&#125;[end]</code>-framed JSON with uuid-correlated, chunked responses. Powers the extension's SceneGraph Tree Edit mode.</p>
+      <CodePanel code={raleExample} lang="typescript" />
     </section>
 
     <!-- CLI -->

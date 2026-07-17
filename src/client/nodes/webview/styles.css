@@ -188,6 +188,76 @@ button.active:hover { background: var(--vscode-button-hoverBackground, #1177bb);
 #xml-view .x-text  { color: var(--vscode-editor-foreground, #cccccc); }
 #xml-view .x-punct { color: var(--vscode-descriptionForeground, #808080); }
 
+/* ── Edit mode (textarea + highlight overlay) ────────────────────────────── */
+
+/* The textarea stacks over #xml-view via the same grid area. Text is painted
+   by the highlighted <pre> underneath; the textarea shows only the caret and
+   selection, so both layers MUST share identical font/padding/whitespace
+   metrics or the caret drifts off the glyphs. The textarea is the scroll
+   surface in edit mode; the pre follows via a scroll listener. */
+#xml-editor {
+  display: none;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 8px 12px;
+  margin: 0;
+  border: none;
+  resize: none;
+  outline: none;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--vscode-editor-foreground, #cccccc);
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+}
+#xml-editor::selection {
+  background: var(--vscode-editor-selectionBackground, rgba(38,79,120,0.7));
+  color: transparent;
+}
+#main.editing #xml-editor { display: block; }
+#main.editing #xml-view {
+  overflow: hidden;            /* follows the textarea's scroll position */
+  user-select: none;           /* selection lives in the textarea layer */
+  pointer-events: none;
+}
+
+#btn-edit.active {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.hidden { display: none !important; }
+
+#edit-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+#edit-chip.dirty {
+  border-color: var(--vscode-charts-blue, #4fc1ff);
+  color: var(--vscode-charts-blue, #4fc1ff);
+}
+#edit-chip.invalid {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-errorForeground, #f48771);
+}
+#edit-chip.ok {
+  border-color: var(--vscode-charts-green, #81C784);
+  color: var(--vscode-charts-green, #81C784);
+}
+
 /* Find matches (CSS Custom Highlight API — see webview/main.ts). */
 ::highlight(sg-find) {
   background: var(--vscode-editor-findMatchHighlightBackground, rgba(234,92,0,0.33));

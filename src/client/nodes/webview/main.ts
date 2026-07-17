@@ -14,6 +14,7 @@
 import './styles.css';
 import { hierarchy, partition as d3partition } from 'd3-hierarchy';
 import { tryFormatXml } from '../../network/bodyFormat';
+import { diffTrees, domToLite, type FieldEdit, type LiteEl } from './xmlDiff';
 import type { ExtMsg, NodeCollection, WebMsg } from './protocol';
 
 declare function acquireVsCodeApi(): { postMessage(msg: WebMsg): void };
@@ -49,6 +50,10 @@ const nodeCountEl   = document.getElementById('node-count')!;
 const channelLabel  = document.getElementById('channel-label')!;
 const statusDot     = document.getElementById('status-dot')!;
 const btnRefresh    = document.getElementById('btn-refresh') as HTMLButtonElement;
+const btnEdit       = document.getElementById('btn-edit') as HTMLButtonElement;
+const btnApply      = document.getElementById('btn-apply') as HTMLButtonElement;
+const editChip      = document.getElementById('edit-chip')!;
+const xmlEditor     = document.getElementById('xml-editor') as HTMLTextAreaElement;
 const xmlView       = document.getElementById('xml-view')!;
 const ic            = document.getElementById('ic-canvas') as HTMLCanvasElement;
 const ctx           = ic.getContext('2d')!;
@@ -76,6 +81,14 @@ let root:      SgNode | null = null;
 let focus:     SgNode | null = null;
 let rects:     Rect[]        = [];
 let rafId:     number | null = null;
+
+// Edit mode (RALE TrackerTask) — see the "Edit mode" section below.
+let editMode        = false;
+let editConnecting  = false;
+let editBaseline: LiteEl | null = null;
+let pendingEdits: FieldEdit[] | null = null;
+let keepEditorOnRefresh = false;
+let exitArmed = false;   // Exit-while-dirty needs a second click
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 
@@ -404,6 +417,7 @@ function applyViewMode(): void {
   hideTip();
   hideCtxMenu();
   viewButtons.forEach(b => b.classList.toggle('active', b.dataset.view === viewMode));
+  updateEditButton();
 
   if (xml) {
     renderXml();
@@ -511,7 +525,9 @@ window.addEventListener('message', e => {
           ? `${msg.channelTitle} @ ${msg.device}` : msg.device;
         nodeCountEl.textContent = root ? `${root.size - 1} nodes` : '';
         hideOverlay();
-        applyViewMode();
+        if (editMode) onTreeWhileEditing();
+        else applyViewMode();
+        updateEditButton();
       }, 0);
       break;
     }
@@ -519,6 +535,18 @@ window.addEventListener('message', e => {
     case 'error':
       statusDot.className = 'status-dot error';
       showOverlay(`⚠ ${msg.message}`);
+      if (editConnecting) {
+        editConnecting = false;
+        updateEditButton();
+      }
+      break;
+
+    case 'edit-state':
+      onEditState(msg.active, msg.raleVersion, msg.error);
+      break;
+
+    case 'apply-result':
+      onApplyResult(msg.ok, msg.applied, msg.failures, msg.warnings ?? []);
       break;
   }
 });
@@ -532,16 +560,19 @@ function requestFetch(): void {
 
 collectionButtons.forEach(btn => {
   btn.addEventListener('click', () => {
+    if (editMode) return; // navigation is blocked while editing
     const next = btn.dataset.collection as NodeCollection;
     if (next === collection) return;
     collection = next;
     collectionButtons.forEach(b => b.classList.toggle('active', b === btn));
+    updateEditButton();
     requestFetch();
   });
 });
 
 viewButtons.forEach(btn => {
   btn.addEventListener('click', () => {
+    if (editMode) return; // navigation is blocked while editing
     const next = btn.dataset.view as ViewMode;
     if (next === viewMode) return;
     viewMode = next;
@@ -549,7 +580,10 @@ viewButtons.forEach(btn => {
   });
 });
 
-btnRefresh.addEventListener('click', requestFetch);
+btnRefresh.addEventListener('click', () => {
+  if (editMode) return; // navigation is blocked while editing
+  requestFetch();
+});
 
 // ── Clipboard ─────────────────────────────────────────────────────────────────
 
@@ -763,13 +797,283 @@ findBar.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-    if (viewMode === 'xml' && findSupported) { e.preventDefault(); openFind(); }
+    if (viewMode === 'xml' && findSupported && !editMode) { e.preventDefault(); openFind(); }
   } else if (e.key === 'Escape' && ctxVisible) {
     hideCtxMenu();
   }
 });
 
 xmlView.addEventListener('scroll', hideCtxMenu);
+
+// ── Edit mode (RALE TrackerTask) ──────────────────────────────────────────────
+//
+// Available on the UI collection + XML view only. While active, navigation
+// (collections, views, refresh) is blocked; the read-only <pre> becomes the
+// highlight layer under a transparent <textarea>. Edits are validated with
+// DOMParser + diffTrees on a debounce; Apply posts the field edits to the
+// extension host, which drives the TrackerTask connection.
+
+function updateEditButton(): void {
+  const available = collection === 'ui' && viewMode === 'xml' && !!lastXml;
+  btnEdit.disabled = !editMode && (!available || editConnecting);
+}
+
+function setChip(text: string | null, cls: '' | 'dirty' | 'invalid' | 'ok' = ''): void {
+  if (text === null) {
+    editChip.classList.add('hidden');
+    return;
+  }
+  editChip.classList.remove('hidden', 'dirty', 'invalid', 'ok');
+  if (cls) editChip.classList.add(cls);
+  editChip.textContent = text;
+  editChip.title = text;
+}
+
+/** Parse XML text into the LiteEl tree rooted at the app-ui <screen>. */
+function liteFromText(text: string): LiteEl | null {
+  try {
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    if (doc.querySelector('parseerror,parsererror')) return null;
+    const container = doc.querySelector('screen');
+    if (!container) return null;
+    return domToLite(container);
+  } catch {
+    return null;
+  }
+}
+
+btnEdit.addEventListener('click', () => {
+  if (editMode) requestExitEdit();
+  else requestEnterEdit();
+});
+
+function requestEnterEdit(): void {
+  if (editConnecting) return;
+  editConnecting = true;
+  updateEditButton();
+  showOverlay('Connecting to TrackerTask…', true);
+  vscode.postMessage({ kind: 'edit-enter' });
+}
+
+function requestExitEdit(): void {
+  if (pendingEdits?.length && !exitArmed) {
+    exitArmed = true;
+    setChip('Unapplied changes — click Exit again to discard', 'invalid');
+    return;
+  }
+  vscode.postMessage({ kind: 'edit-exit' });
+  leaveEditUi(null);
+}
+
+function onEditState(active: boolean, raleVersion?: string, error?: string): void {
+  editConnecting = false;
+  if (active) {
+    enterEditUi(raleVersion);
+  } else if (editMode) {
+    // Connection lost (or host-side exit) while editing.
+    leaveEditUi(error ?? null);
+  } else {
+    // Failed to connect.
+    hideOverlay();
+    setChip(error ? `⚠ ${error}` : null, 'invalid');
+    updateEditButton();
+  }
+}
+
+function enterEditUi(raleVersion?: string): void {
+  editMode = true;
+  exitArmed = false;
+  keepEditorOnRefresh = false;
+  pendingEdits = null;
+  closeFind();
+  hideCtxMenu();
+  hideOverlay();
+
+  renderXml(); // make sure renderedXmlText/pre match the baseline
+  editBaseline = liteFromText(renderedXmlText);
+  xmlEditor.value = renderedXmlText;
+  xmlEditor.scrollTop = xmlView.scrollTop;
+  xmlEditor.scrollLeft = xmlView.scrollLeft;
+
+  mainEl.classList.add('editing');
+  collectionButtons.forEach(b => { b.disabled = true; });
+  viewButtons.forEach(b => { b.disabled = true; });
+  btnRefresh.disabled = true;
+  btnEdit.textContent = 'Exit Edit';
+  btnEdit.classList.add('active');
+  btnEdit.title = 'Exit Edit mode (discards unapplied changes)';
+  btnApply.classList.remove('hidden');
+  btnApply.disabled = true;
+  setChip(raleVersion ? `RALE ${raleVersion} — no changes` : 'no changes');
+  updateEditButton();
+  xmlEditor.focus();
+
+  if (!editBaseline) {
+    setChip('⚠ Could not parse the current tree — refresh and retry', 'invalid');
+  }
+}
+
+function leaveEditUi(error: string | null): void {
+  editMode = false;
+  exitArmed = false;
+  pendingEdits = null;
+  editBaseline = null;
+  keepEditorOnRefresh = false;
+  if (editDebounce !== null) { clearTimeout(editDebounce); editDebounce = null; }
+
+  mainEl.classList.remove('editing');
+  collectionButtons.forEach(b => { b.disabled = false; });
+  viewButtons.forEach(b => { b.disabled = false; });
+  btnRefresh.disabled = false;
+  btnEdit.textContent = 'Edit';
+  btnEdit.classList.remove('active');
+  btnEdit.title = 'Edit node fields on the running app via RALE TrackerTask (UI collection, XML view only)';
+  btnApply.classList.add('hidden');
+  setChip(error ? `⚠ ${error}` : null, error ? 'invalid' : '');
+
+  // Restore the read-only render of the baseline.
+  xmlRendered = false;
+  renderXml();
+  updateEditButton();
+}
+
+// ── validation (debounced on input) ──────────────────────────────────────────
+
+let editDebounce: ReturnType<typeof setTimeout> | null = null;
+let highlightScheduled = false;
+
+/**
+ * The textarea's own text is transparent — the <pre> underneath paints the
+ * glyphs — so it must repaint on every keystroke, not on the validation
+ * debounce. rAF-throttled; very large documents drop syntax colors for a
+ * plain-text layer to keep typing responsive.
+ */
+function scheduleHighlight(): void {
+  if (highlightScheduled) return;
+  highlightScheduled = true;
+  requestAnimationFrame(() => {
+    highlightScheduled = false;
+    if (!editMode) return;
+    repaintHighlightLayer(xmlEditor.value);
+  });
+}
+
+const PLAIN_TEXT_THRESHOLD = 300_000;
+
+function repaintHighlightLayer(text: string): void {
+  if (text.length > PLAIN_TEXT_THRESHOLD) xmlView.textContent = text;
+  else xmlView.innerHTML = highlightXml(text);
+  resetSearchIndex();
+  xmlView.scrollTop = xmlEditor.scrollTop;
+  xmlView.scrollLeft = xmlEditor.scrollLeft;
+}
+
+xmlEditor.addEventListener('input', () => {
+  exitArmed = false;
+  scheduleHighlight();
+  if (editDebounce !== null) clearTimeout(editDebounce);
+  editDebounce = setTimeout(validateEdits, 300);
+});
+
+xmlEditor.addEventListener('scroll', () => {
+  xmlView.scrollTop = xmlEditor.scrollTop;
+  xmlView.scrollLeft = xmlEditor.scrollLeft;
+});
+
+xmlEditor.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    applyEdits();
+  }
+});
+
+function validateEdits(): void {
+  editDebounce = null;
+  if (!editMode) return;
+
+  const text = xmlEditor.value;
+  pendingEdits = null;
+  btnApply.disabled = true;
+
+  if (!editBaseline) {
+    setChip('⚠ No baseline to diff against — refresh and retry', 'invalid');
+    return;
+  }
+  const edited = liteFromText(text);
+  if (!edited) {
+    setChip('invalid XML', 'invalid');
+    return;
+  }
+  const result = diffTrees(editBaseline, edited);
+  if (!result.ok) {
+    setChip(result.error, 'invalid');
+    return;
+  }
+  if (result.edits.length === 0) {
+    setChip('no changes');
+    return;
+  }
+  pendingEdits = result.edits;
+  btnApply.disabled = false;
+  setChip(`${result.edits.length} field change(s) — Apply to push`, 'dirty');
+}
+
+// ── apply ─────────────────────────────────────────────────────────────────────
+
+btnApply.addEventListener('click', applyEdits);
+
+function applyEdits(): void {
+  if (!editMode || !pendingEdits?.length) return;
+  const edits = pendingEdits;
+  pendingEdits = null;
+  btnApply.disabled = true;
+  setChip(`Applying ${edits.length} change(s)…`);
+  vscode.postMessage({ kind: 'apply-edits', edits });
+}
+
+function onApplyResult(
+  ok: boolean,
+  applied: number,
+  failures: { field: string; path: number[]; message: string }[],
+  warnings: string[],
+): void {
+  if (!editMode) return;
+  if (ok) {
+    keepEditorOnRefresh = false;
+    if (warnings.length > 0) {
+      setChip(`Applied ${applied} change(s) — ⚠ ${warnings[0]}`, 'dirty');
+    } else {
+      setChip(`Applied ${applied} change(s)`, 'ok');
+    }
+  } else {
+    // Keep the user's text through the post-apply refresh so failed edits
+    // re-diff against the device's new state instead of being wiped.
+    keepEditorOnRefresh = true;
+    const first = failures[0];
+    setChip(
+      `Applied ${applied}, ${failures.length} failed — ${first.field}: ${first.message}`,
+      'invalid',
+    );
+  }
+}
+
+/** A post-apply refresh arrived while editing: rebase the editor on it. */
+function onTreeWhileEditing(): void {
+  if (!lastXml) return;
+  renderedXmlText = tryFormatXml(lastXml) ?? lastXml;
+  editBaseline = liteFromText(renderedXmlText);
+
+  if (keepEditorOnRefresh) {
+    keepEditorOnRefresh = false;
+    repaintHighlightLayer(xmlEditor.value);
+    validateEdits(); // re-diff the kept text against the new baseline
+  } else {
+    xmlEditor.value = renderedXmlText;
+    repaintHighlightLayer(renderedXmlText);
+    xmlRendered = true;
+    if (!editChip.classList.contains('ok')) setChip('no changes');
+  }
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
