@@ -4,7 +4,10 @@
  * *all* of a device's port-80 traffic transparently by matching its source IP
  * at the packet level, so no hostname knowledge is ever needed.
  *  - **Linux**: a dedicated `KOPYTKO_NET` nat chain (flushed/deleted on revert).
- *  - **macOS**: a dedicated pf anchor `kopytko-net` (flushed on revert).
+ *  - **macOS**: a dedicated pf anchor `kopytko-net` (flushed on revert),
+ *    applied and reverted by a persistent, self-terminating elevated helper
+ *    (`redirect/mac/`) so a capture session needs only one admin-password
+ *    prompt instead of one per toggle.
  *  - **Windows**: an elevated WinDivert companion process
  *    (`redirect/windows/`), since Windows has no `iptables`/`pf` equivalent —
  *    `netsh portproxy` only catches traffic already addressed to this
@@ -27,16 +30,23 @@ export interface RedirectOptions {
 export type ElevatedRunner = (label: string, commands: string[]) => Promise<void>;
 
 /**
- * Windows equivalent of `ElevatedRunner`, but not the same shape: unlike the
- * one-shot Linux/macOS command batches, Windows real transparent redirect
- * (WinDivert, see `redirect/windows/`) is a supervised persistent process
- * with its own elevation + IPC lifecycle. Injectable for tests; the real
- * implementation is `redirect/windows/companionSupervisor.ts`.
+ * Equivalent of `ElevatedRunner` for a *supervised* redirect: unlike the
+ * one-shot Linux command batches, this is a persistent process with its own
+ * elevation + control-channel lifecycle. Windows needs this because the
+ * redirect *is* the WinDivert handles held by a live process
+ * (`redirect/windows/companionSupervisor.ts`). macOS uses the same shape for
+ * a different reason: `pf` state doesn't need a live process, but a
+ * persistent, self-terminating root helper (`redirect/mac/macHelperSupervisor.ts`)
+ * lets `disable()` skip the second admin-password prompt an `ElevatedRunner`
+ * would otherwise require. Injectable for tests.
  */
-export interface WindowsRedirectDriver {
+export interface SupervisedRedirectDriver {
   enable(options: RedirectOptions): Promise<void>;
   disable(): Promise<void>;
 }
+
+/** Alias kept for existing Windows call sites/tests — same shape as `SupervisedRedirectDriver`. */
+export type WindowsRedirectDriver = SupervisedRedirectDriver;
 
 export class RedirectUnsupportedError extends Error {}
 
@@ -52,7 +62,9 @@ export class RedirectController {
     private readonly runElevated: ElevatedRunner,
     private readonly platform: NodeJS.Platform = process.platform,
     /** Real Windows redirect, when available. Undefined keeps win32 `unsupported` (the manual hosts-file flow). */
-    private readonly windowsDriver?: WindowsRedirectDriver,
+    private readonly windowsDriver?: SupervisedRedirectDriver,
+    /** Persistent mac helper, when available. Undefined falls back to the plain one-shot `ElevatedRunner` path (two prompts per session instead of one). */
+    private readonly macDriver?: SupervisedRedirectDriver,
   ) {}
 
   get isApplied(): boolean {
@@ -83,6 +95,14 @@ export class RedirectController {
       return;
     }
 
+    if (this.platform === 'darwin' && this.macDriver) {
+      await this.macDriver.enable(options);
+      this.applied = true;
+      this.appliedPlatform = this.platform;
+      this.appliedOptions = options;
+      return;
+    }
+
     const commands = buildSetupCommands(this.platform, options);
     if (commands.length === 0) {
       throw new RedirectUnsupportedError(`Traffic redirect is not supported on ${this.platform}.`);
@@ -99,6 +119,17 @@ export class RedirectController {
     if (this.appliedPlatform === 'win32' && this.windowsDriver) {
       try {
         await this.windowsDriver.disable();
+      } finally {
+        this.applied = false;
+        this.appliedPlatform = null;
+        this.appliedOptions = null;
+      }
+      return;
+    }
+
+    if (this.appliedPlatform === 'darwin' && this.macDriver) {
+      try {
+        await this.macDriver.disable();
       } finally {
         this.applied = false;
         this.appliedPlatform = null;

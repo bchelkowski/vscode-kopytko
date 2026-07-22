@@ -52,7 +52,9 @@ backends are seen fully decrypted because TLS terminates **at the proxy**.
 | Rule model (body rules, upstream schemes) | `src/client/network/capture/rewrite/rules.ts` |
 | Hosts-file DNS bypass for the proxy's own upstream requests | `src/client/network/dnsBypass.ts` |
 | OS redirect apply/revert | `src/client/network/redirect/redirectController.ts` |
-| Elevated runner (writes + runs command batches, macOS/Linux) | `src/client/network/redirect/elevate.ts` |
+| Elevated runner (writes + runs one-shot command batches, macOS/Linux) | `src/client/network/redirect/elevate.ts` |
+| macOS persistent-helper script generator | `src/client/network/redirect/mac/macHelperScript.ts` |
+| macOS persistent-helper supervisor (launch, FIFO control, heartbeat) | `src/client/network/redirect/mac/macHelperSupervisor.ts` |
 | Windows WinDivert companion script generator | `src/client/network/redirect/windows/companionScript.ts` |
 | Windows WinDivert companion supervisor (spawn, pipe IPC, heartbeat) | `src/client/network/redirect/windows/companionSupervisor.ts` |
 | Windows gateway-IP detection (used by the companion) | `src/client/network/discovery/gatewayIp.ts` |
@@ -88,10 +90,59 @@ teardown never touches your own firewall config:
 | **macOS** | dedicated pf anchor `kopytko-net`, `rdr` device :80 → `127.0.0.1:proxy` | flush that anchor only |
 | **Windows** | elevated WinDivert companion process, packet-level redirect into loopback | closing the companion's WinDivert handles (any process exit) |
 
-One elevated prompt (macOS admin dialog / Linux `pkexec` / Windows UAC)
-applies the whole redirect when you flip the toggle on. Teardown is
-idempotent and also runs when the panel closes or the extension deactivates,
-so quitting VS Code restores networking even if you never toggled off.
+**macOS gets one elevated prompt per capture session, not one per toggle.**
+A persistent, self-terminating root helper applies the `pf` rules once on
+enable and stays running to revert them on disable, so there's no second
+`osascript … with administrator privileges` dialog — see
+[macOS: single-elevation persistent helper](#macos-single-elevation-persistent-helper)
+below. Linux keeps the simpler one-shot `pkexec` path on both enable and
+disable (most desktops' default polkit rules cache admin auth for a few
+minutes, so a fast toggle often avoids the second prompt for free — see
+`findings/network-inspector.md` for why that wasn't built into the codebase).
+Windows also gets exactly one UAC prompt per session, for the same reason as
+macOS but a different mechanism — see
+[Windows: transparent redirect (WinDivert)](#windows-transparent-redirect-windivert).
+Teardown is idempotent on every platform and also runs when the panel closes
+or the extension deactivates, so quitting VS Code restores networking even if
+you never toggled off.
+
+---
+
+## macOS: single-elevation persistent helper
+
+`pf` doesn't need a live process to keep a redirect active — `pfctl -a
+kopytko-net -F all` is a plain one-shot root command, runnable at any time.
+So unlike Windows (where the redirect *is* the WinDivert handles a process
+holds open), a persistent helper on macOS exists **only** to avoid asking for
+the admin password twice per session.
+
+Flipping the panel's toggle on macOS:
+
+1. Before elevation, the extension creates a per-session control channel
+   unprivileged: a POSIX FIFO (`mkfifo`, mode `600`) for the `stop` command,
+   plus a heartbeat file it will keep stamping with the current time.
+2. One `osascript … with administrator privileges` call
+   (`redirect/mac/macHelperScript.ts`) runs the exact same `pfctl` setup
+   commands the one-shot path uses, then **backgrounds a watchdog** and exits
+   — the admin dialog only needs to be answered once, since `do shell
+   script` returns as soon as the (now-backgrounded) script exits, not when
+   the watchdog itself finishes.
+3. The watchdog keeps running as root for the rest of the session, reading
+   the FIFO for a `stop` command and comparing the heartbeat file's
+   timestamp against the current time every second.
+4. **Disable** writes `stop` to the FIFO — no new elevation. The already-root
+   watchdog runs the `pfctl` teardown and exits on its own.
+5. If the heartbeat file goes stale for more than 15 seconds (VS Code
+   crashed, or the extension host died without a clean `disable()`), the
+   watchdog tears the redirect down and exits by itself — the same
+   self-healing property Windows' companion process has, closing what was
+   previously an open gap on macOS (crash residue used to persist until the
+   next explicit `disable()`).
+
+Every command the helper runs is logged to `helper.log` under the
+extension's global storage folder, same as the one-shot path's script.
+
+---
 
 ---
 

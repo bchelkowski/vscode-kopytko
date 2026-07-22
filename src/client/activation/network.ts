@@ -8,6 +8,7 @@ import { RedirectController, RedirectUnsupportedError } from '../network/redirec
 import { createElevatedRunner } from '../network/redirect/elevate';
 import { WindowsCompanionDriver } from '../network/redirect/windows/companionSupervisor';
 import { resolveWinDivertDir } from '../network/redirect/windows/resolveWinDivertDir';
+import { MacHelperDriver } from '../network/redirect/mac/macHelperSupervisor';
 import { ruleSetFromConfig } from '../network/capture/rewrite/rules';
 import { findGatewayIp } from '../network/discovery/gatewayIp';
 import type { DiscoveryServices } from './discovery';
@@ -52,7 +53,13 @@ export function registerNetwork(
         })
       : undefined;
 
-  const redirect = new RedirectController(createElevatedRunner(scriptDir, log), process.platform, windowsDriver);
+  // Persistent, self-terminating root helper on macOS: one admin-password
+  // prompt per capture session instead of one per toggle. `pf` itself needs
+  // no live process, so this exists purely to avoid the second prompt — see
+  // redirect/mac/macHelperScript.ts for why that still needs a watchdog.
+  const macDriver = process.platform === 'darwin' ? new MacHelperDriver({ scriptDir, log }) : undefined;
+
+  const redirect = new RedirectController(createElevatedRunner(scriptDir, log), process.platform, windowsDriver, macDriver);
 
   const readConfig = (): NetworkConfig => {
     const cfg = vscode.workspace.getConfiguration('kopytko');

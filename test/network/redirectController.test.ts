@@ -6,6 +6,7 @@ import {
   buildTeardownCommands,
   type ElevatedRunner,
   type RedirectOptions,
+  type SupervisedRedirectDriver,
   type WindowsRedirectDriver,
 } from '../../src/client/network/redirect/redirectController';
 
@@ -165,6 +166,75 @@ describe('network/RedirectController', () => {
 
       await ctrl.disable();
       expect(calls).to.deep.equal([]);
+    });
+  });
+
+  describe('mac driver (persistent helper)', () => {
+    function fakeMacDriver(): { driver: SupervisedRedirectDriver; calls: string[] } {
+      const calls: string[] = [];
+      const driver: SupervisedRedirectDriver = {
+        enable: (options) => {
+          calls.push(`enable:${options.rokuIp}:${options.proxyPort}`);
+          return Promise.resolve();
+        },
+        disable: () => {
+          calls.push('disable');
+          return Promise.resolve();
+        },
+      };
+      return { driver, calls };
+    }
+
+    it('delegates to the injected macDriver instead of the shell-command runner, on both enable and disable', async () => {
+      const { runner, calls: shellCalls } = fakeRunner();
+      const { driver, calls } = fakeMacDriver();
+      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
+
+      await ctrl.enable(OPTS);
+      expect(ctrl.isApplied).to.equal(true);
+      expect(calls).to.deep.equal(['enable:192.168.137.42:8888']);
+      expect(shellCalls).to.have.length(0);
+
+      await ctrl.disable();
+      expect(ctrl.isApplied).to.equal(false);
+      expect(calls).to.deep.equal(['enable:192.168.137.42:8888', 'disable']);
+      expect(shellCalls).to.have.length(0);
+    });
+
+    it('propagates the macDriver enable() failure and leaves nothing applied', async () => {
+      const { runner } = fakeRunner();
+      const driver: SupervisedRedirectDriver = {
+        enable: () => Promise.reject(new Error('helper failed to start')),
+        disable: () => Promise.resolve(),
+      };
+      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
+
+      let threw: unknown;
+      try {
+        await ctrl.enable(OPTS);
+      } catch (err) {
+        threw = err;
+      }
+      expect((threw as Error).message).to.equal('helper failed to start');
+      expect(ctrl.isApplied).to.equal(false);
+    });
+
+    it('disable() without a prior enable() is a no-op and never calls the mac driver', async () => {
+      const { runner } = fakeRunner();
+      const { driver, calls } = fakeMacDriver();
+      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
+
+      await ctrl.disable();
+      expect(calls).to.deep.equal([]);
+    });
+
+    it('falls back to the one-shot ElevatedRunner on darwin when no macDriver is injected', async () => {
+      const { runner, calls } = fakeRunner();
+      const ctrl = new RedirectController(runner, 'darwin');
+
+      await ctrl.enable(OPTS);
+      await ctrl.disable();
+      expect(calls).to.have.length(2);
     });
   });
 });

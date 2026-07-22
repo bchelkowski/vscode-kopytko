@@ -1256,14 +1256,16 @@ cache and re-fetches.
 - The `auto` fallback (https attempt fails → http) is tested against a
   plaintext upstream; real-TLS `auto` behavior is covered transitively by
   the live https bridge.
-- **Crash-residue is not proactively cleaned up on activation** for
-  macOS/Linux — if VS Code crashes while capture is on, the OS-level
-  redirect survives until the extension runs teardown again, which only
-  happens via an explicit disable/dispose/deactivate. A future pass could
-  call `redirect.disable()` defensively once at activation. Windows doesn't
-  have this gap — the WinDivert companion's redirect dies with the process
-  by construction, and self-terminates on its own if the extension host
-  goes silent.
+- **Crash-residue is not proactively cleaned up on activation** for Linux —
+  if VS Code crashes while capture is on, the `iptables` chain survives
+  until the extension runs teardown again, which only happens via an
+  explicit disable/dispose/deactivate. A future pass could call
+  `redirect.disable()` defensively once at activation, or give Linux the
+  same persistent-watchdog treatment macOS got (see "macOS single-elevation
+  persistent helper" below). **macOS no longer has this gap** — the
+  persistent helper's watchdog self-terminates (reverting the `pf` anchor)
+  within ~15s of losing the extension host's heartbeat, the same property
+  Windows' WinDivert companion already had.
 - **The mandatory `TerminateProcess`-mid-capture kill test for the WinDivert
   companion** (Task Manager "End Task" during an active capture, confirming
   Windows recovers instantly with zero lingering redirect) still has not
@@ -1335,3 +1337,88 @@ row lists only Copy URL/Block; Block adds a new enabled rule and flips the
 label to Unblock everywhere; Unblock against that same rule removes it
 entirely; Unblock against a pre-existing broader `*.example.com` rule
 disables it (`enabled: false`) rather than deleting it.
+
+## macOS single-elevation persistent helper (2026-07-22)
+
+Previously, macOS showed a separate `osascript … with administrator
+privileges` dialog on both `enable()` and `disable()`, because each called
+`ElevatedRunner` independently and each spawn is its own one-shot
+authorization with no memory of the earlier one. Added
+`redirect/mac/macHelperScript.ts` + `macHelperSupervisor.ts` (a
+`SupervisedRedirectDriver`, the same shape `WindowsRedirectDriver` already
+had — renamed the interface itself to `SupervisedRedirectDriver` with
+`WindowsRedirectDriver` kept as a type alias for zero breakage) so a capture
+session needs only one prompt.
+
+- **Why a persistent helper and not `sudo -v` caching.** `pf` state needs no
+  live process — `pfctl -a kopytko-net -F all` is a plain one-shot root
+  command, runnable at any time by any root process. The alternative
+  considered was switching macOS elevation to run batches via `sudo`
+  (instead of `do shell script … with administrator privileges`) and
+  leaning on `sudo`'s ~5 min timestamp-cache grace period. Rejected: only
+  helps within that window (a longer session still double-prompts), needs a
+  new GUI askpass helper (a spawned child has no TTY for `sudo` to prompt on
+  inline), and whether the cached ticket is even shared between two separate
+  `execFile` invocations depends on `sudo`'s `tty_tickets` session-scoping —
+  not provable by reading code, would need live verification. The
+  persistent-helper approach has no time limit and no such open question.
+- **FIFO, not a Unix socket.** `mkfifo` is POSIX and guaranteed present on
+  stock macOS; `nc`/`socat` aren't guaranteed, and there's no `/bin/sh`
+  primitive to open a Unix socket without shelling out to one of them. The
+  FIFO carries exactly one command (`stop`), parsed via a plain `case`
+  statement — never `eval` — so even a garbage write to it (600 perms should
+  prevent that from another local user anyway) can't produce code execution,
+  only a spurious self-teardown at worst.
+- **Open-FIFO-blocks-until-writer gotcha.** Opening a FIFO read-only (`<
+  fifo`) blocks until a writer opens it — and that block happens *before*
+  any `read -t` timeout applies, so a naive read-only watchdog loop would
+  never even start iterating (and thus never check the heartbeat) until
+  `disable()` sent something. Fixed with the standard portable trick:
+  `exec 3<>"$CMD_FIFO"` opens it read-write on an unused fd, making the
+  watchdog its own permanent writer too, so the open never blocks and
+  `read -t 1 -r cmd <&3` inside the loop is genuinely non-blocking per
+  iteration.
+- **Heartbeat baseline gotcha.** The watchdog only starts running *after*
+  the admin-password dialog is answered, which can take arbitrarily long
+  while a user types. If the watchdog trusted the heartbeat-file timestamp
+  Node wrote *before* elevation ran, a slow password entry alone (> 15s)
+  would make the watchdog think Node had already gone silent and
+  self-terminate immediately. Fixed by having the watchdog stamp its own
+  fresh timestamp into the heartbeat file the moment it starts (before
+  entering the FIFO loop), establishing the baseline only once the watchdog
+  itself is actually running.
+- **Permission model is simpler than Windows' pipe SACL problem, and in the
+  opposite direction.** Windows had to lower the named pipe's mandatory
+  integrity label so a non-elevated process could reach an elevated one
+  ("lower reads higher" — blocked by default, needed an explicit fix, see
+  the "Windows, revisited" entry below). Here it's "higher (root) reads a
+  lower-owned object" — always allowed by plain Unix DAC — so the FIFO just
+  needs mode `600` owned by the invoking user (created *before* elevation,
+  unprivileged) and no ACL workaround is needed at all.
+- **No readiness-poll step needed, unlike Windows.** The Windows companion
+  needs `waitForStatusFile` because `Start-Process -Verb RunAs` returns as
+  soon as UAC is accepted, before the elevated process has actually opened
+  its WinDivert handles. macOS's `do shell script … with administrator
+  privileges` is already synchronous — `osascript` doesn't return until the
+  `/bin/sh` script exits — and the generated script only exits *after*
+  `pfctl` setup succeeds and the watchdog is backgrounded, so a resolved
+  `execFile` call already means "ready." `waitForStopped` (a short poll on
+  `disable()` for the `stopped` status, non-fatal on timeout since the
+  watchdog's own heartbeat-timeout is the real backstop) is the only place
+  this design still polls a file.
+- **Setup failures reported through the status file, not just a nonzero
+  exit.** The generated script wraps the `pfctl` setup commands in `if !
+  ( set -e; ...); then write_status 'failed'; exit 1; fi` — POSIX/bash
+  exempt an `if` condition (even negated) from an enclosing `set -e`, so
+  this cleanly distinguishes "setup failed" (status file says `failed`,
+  `execFile` also rejects with the script's stderr) from "helper never
+  started at all."
+- **Linux stays on the two-`pkexec`-call path**, deliberately not given the
+  same treatment yet: no custom polkit `.policy` file is shipped, so
+  `pkexec` runs under the generic `org.freedesktop.policykit.pkexec.run-program`
+  action, whose default authorization on most desktops is `auth_admin_keep`
+  — an admin-auth cache lasting a few minutes. Back-to-back `pkexec` calls
+  from the same session often already avoid the second prompt for free.
+  This is distro/config-dependent and not something this codebase controls,
+  so it's not a proven fix, but it lowers the value of building the FIFO/
+  watchdog machinery for Linux right now.
