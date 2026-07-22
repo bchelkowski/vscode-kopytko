@@ -130,7 +130,7 @@ The selected environment is used by:
 
 ### Upload to device
 
-The **Upload to Device** button (☁↑ cloud-upload icon) appears as an inline button on each online device, between the active device toggle and the favorite toggle. Clicking it:
+The **Upload to Device** button (☁↑ cloud-upload icon) appears as an inline button on each online device, between the active device toggle and the favorite toggle. It also always appears on the **active** device, even if its health-check state hasn't confirmed it online yet (e.g. right after selecting it or right after extension startup) — the underlying command surfaces a clear error if the device turns out to be unreachable. The Debug button follows the same visibility rule. Clicking it:
 
 1. Reads the device's IP, stored password, and selected environment
 2. Runs `kopytko start` to build and deploy the project to the device

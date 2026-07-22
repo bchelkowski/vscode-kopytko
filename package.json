@@ -1655,12 +1655,12 @@
         },
         {
           "command": "kopytko.uploadToDevice",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "when": "view == kopytko.rokuDevices && (viewItem =~ /^rokuDevice.*-online/ || viewItem =~ /^rokuDevice.*-active/)",
           "group": "inline@2"
         },
         {
           "command": "kopytko.debugDevice",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "when": "view == kopytko.rokuDevices && (viewItem =~ /^rokuDevice.*-online/ || viewItem =~ /^rokuDevice.*-active/)",
           "group": "inline@3"
         },
         {
@@ -1685,12 +1685,12 @@
         },
         {
           "command": "kopytko.uploadToDevice",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "when": "view == kopytko.rokuDevices && (viewItem =~ /^rokuDevice.*-online/ || viewItem =~ /^rokuDevice.*-active/)",
           "group": "device@2"
         },
         {
           "command": "kopytko.debugDevice",
-          "when": "view == kopytko.rokuDevices && viewItem =~ /^rokuDevice.*-online/",
+          "when": "view == kopytko.rokuDevices && (viewItem =~ /^rokuDevice.*-online/ || viewItem =~ /^rokuDevice.*-active/)",
           "group": "device@3"
         },
         {

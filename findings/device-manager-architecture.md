@@ -1,5 +1,24 @@
 # Device Manager architecture notes
 
+## Roku Devices tree: `-online` and `-active` contextValue segments are independent
+
+`DeviceTreeItem.buildContextValue()` (`src/client/roku/views/deviceTreeItems.ts:43-49`)
+builds `contextValue` from independent optional segments: `-favorite`, `-online`,
+`-active`. Being the **active** device does not imply `-online` — a device can be
+set active while its `DeviceState` (`packages/roku-device/src/types.ts:1`) is
+`unknown`/`pending`/`offline` (the `selectDevice` `when` clause has no online
+requirement, and health checks are async/cached for 5 min, so a just-selected or
+just-launched device commonly lags behind reality). Any `package.json`
+`view/item/context` `when` clause gating a button on `-online` alone will hide
+that button for an active-but-not-yet-confirmed-online device. Upload/Debug were
+fixed to match on `-online || -active` (`package.json`, `kopytko.uploadToDevice`/
+`kopytko.debugDevice` entries) since their command handlers
+(`src/client/activation/commands.ts:156-232`) already surface a clear error if
+the device turns out unreachable — showing the button and letting the action
+fail is better UX than hiding it on a state flag that can be stale. Before adding
+a new device-row button gated on device state, check whether it should also fire
+for the active device regardless of confirmed online-ness.
+
 ## Merging sidebar views without losing user layout state
 
 VS Code remembers per-view-id state (position, pinned/unpinned, collapsed/expanded)
