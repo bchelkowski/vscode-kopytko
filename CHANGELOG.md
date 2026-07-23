@@ -1,6 +1,17 @@
 # Changelog
 
 
+## [1.10.8] - 2026-07-23
+
+### Added
+- Reuse the macOS Network Inspector helper across the whole session
+- Single admin prompt per macOS Network Inspector capture session
+
+### Fixed
+- Humanize Roku Pay's /Date(ms)/ tokens in the response viewer
+- Stop Network Inspector's mac helper from hanging on a dead FIFO
+- Show Upload/Debug buttons for active device regardless of online state
+
 ## [1.10.7] - 2026-07-17
 
 ### Maintenance
