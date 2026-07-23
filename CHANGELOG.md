@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.9] - 2026-07-23
+
+### Fixed
+- Stop mac helper's repeated pf reload from breaking Internet Sharing NAT
+
 ## [1.10.8] - 2026-07-23
 
 ### Added
