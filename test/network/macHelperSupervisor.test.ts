@@ -6,16 +6,20 @@ import { MacHelperDriver, type MacHelperSupervisorDeps } from '../../src/client/
 import type { RedirectOptions } from '../../src/client/network/redirect/redirectController';
 
 const OPTS: RedirectOptions = { rokuIp: '192.168.137.46', proxyPort: 8888, ports: [80] };
+const OTHER_OPTS: RedirectOptions = { rokuIp: '192.168.137.99', proxyPort: 9999, ports: [80, 443] };
 
 function makeDeps(overrides: Partial<MacHelperSupervisorDeps> = {}): {
   deps: MacHelperSupervisorDeps;
   scriptDir: string;
   runElevatedCalls: Array<{ scriptPath: string; label: string }>;
-  stopCalls: string[];
+  commandCalls: Array<{ fifoPath: string; command: string; options?: RedirectOptions }>;
+  /** Drives what waitForStatus resolves to next — defaults to echoing back the first `accept` value. */
+  statusQueue: Array<string | null>;
 } {
   const scriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kopytko-mac-helper-test-'));
   const runElevatedCalls: Array<{ scriptPath: string; label: string }> = [];
-  const stopCalls: string[] = [];
+  const commandCalls: Array<{ fifoPath: string; command: string; options?: RedirectOptions }> = [];
+  const statusQueue: Array<string | null> = [];
 
   const deps: MacHelperSupervisorDeps = {
     scriptDir,
@@ -28,13 +32,16 @@ function makeDeps(overrides: Partial<MacHelperSupervisorDeps> = {}): {
     writeHeartbeat: () => {
       /* no-op in tests */
     },
-    sendStop: async (fifoPath: string) => {
-      stopCalls.push(fifoPath);
+    sendCommand: async (fifoPath: string, command, options) => {
+      commandCalls.push({ fifoPath, command, options });
     },
-    waitForStopped: async () => true,
+    waitForStatus: async (_statusPath: string, accept: string[]) => {
+      if (statusQueue.length > 0) return statusQueue.shift()!;
+      return accept[0]; // default: happy path, confirms whatever was expected
+    },
     ...overrides,
   };
-  return { deps, scriptDir, runElevatedCalls, stopCalls };
+  return { deps, scriptDir, runElevatedCalls, commandCalls, statusQueue };
 }
 
 describe('network/redirect/mac/MacHelperDriver', () => {
@@ -48,19 +55,103 @@ describe('network/redirect/mac/MacHelperDriver', () => {
       expect(runElevatedCalls).to.have.length(1);
       expect(runElevatedCalls[0].label).to.contain('enable traffic capture');
     } finally {
-      await driver.disable(); // clears the heartbeat interval so it doesn't outlive the test
+      await driver.teardown(); // clears the heartbeat interval so it doesn't outlive the test
     }
   });
 
-  it('a full enable()+disable() cycle triggers exactly one elevated launch', async () => {
-    const { deps, runElevatedCalls, stopCalls } = makeDeps();
+  it('a full enable()+disable() cycle triggers exactly one elevated launch and sends "revert" (not "stop")', async () => {
+    const { deps, runElevatedCalls, commandCalls } = makeDeps();
     const driver = new MacHelperDriver(deps);
 
     await driver.enable(OPTS);
     await driver.disable();
 
     expect(runElevatedCalls).to.have.length(1);
-    expect(stopCalls).to.have.length(1);
+    expect(commandCalls).to.deep.equal([{ fifoPath: commandCalls[0].fifoPath, command: 'revert', options: undefined }]);
+    await driver.teardown();
+  });
+
+  it('re-enabling with the same options after a disable() reuses the helper via "apply" — no second elevated launch', async () => {
+    const { deps, runElevatedCalls, commandCalls } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+
+    await driver.enable(OPTS);
+    await driver.disable();
+    await driver.enable(OPTS);
+    await driver.disable();
+    await driver.enable(OPTS);
+
+    expect(runElevatedCalls).to.have.length(1); // only the very first enable() ever elevated
+    expect(commandCalls.map((c) => c.command)).to.deep.equal(['revert', 'apply', 'revert', 'apply']);
+    await driver.teardown();
+  });
+
+  it('switching to a different device/ports also reuses the helper via "apply" with the new options — no re-elevation', async () => {
+    const { deps, runElevatedCalls, commandCalls } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+
+    await driver.enable(OPTS);
+    await driver.enable(OTHER_OPTS); // switched active device mid-session, still "applied"
+
+    expect(runElevatedCalls).to.have.length(1); // no second prompt for the device switch
+    const applyCalls = commandCalls.filter((c) => c.command === 'apply');
+    expect(applyCalls).to.have.length(1);
+    expect(applyCalls[0].options).to.deep.equal(OTHER_OPTS);
+    await driver.teardown();
+  });
+
+  it('disable() then enabling with different options still reuses via "apply", carrying the new options', async () => {
+    const { deps, runElevatedCalls, commandCalls } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+
+    await driver.enable(OPTS);
+    await driver.disable();
+    await driver.enable(OTHER_OPTS);
+
+    expect(runElevatedCalls).to.have.length(1);
+    expect(commandCalls.map((c) => c.command)).to.deep.equal(['revert', 'apply']);
+    expect(commandCalls[1].options).to.deep.equal(OTHER_OPTS);
+    await driver.teardown();
+  });
+
+  it('falls back to a fresh elevated launch when the running helper does not confirm "apply" in time (e.g. it already self-terminated)', async () => {
+    const { deps, runElevatedCalls, statusQueue } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+    await driver.enable(OPTS);
+    await driver.disable();
+
+    statusQueue.push(null); // apply confirmation times out
+    await driver.enable(OPTS);
+
+    expect(runElevatedCalls).to.have.length(2);
+    await driver.teardown();
+  });
+
+  it('falls back to a fresh elevated launch when the helper rejects the apply payload (status: failed)', async () => {
+    const { deps, runElevatedCalls, statusQueue } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+    await driver.enable(OPTS);
+
+    statusQueue.push('failed'); // e.g. malformed options somehow reached validation
+    await driver.enable(OTHER_OPTS);
+
+    expect(runElevatedCalls).to.have.length(2);
+    await driver.teardown();
+  });
+
+  it('falls back to a fresh elevated launch when sending "apply" itself fails (FIFO gone)', async () => {
+    const { deps, runElevatedCalls } = makeDeps({
+      sendCommand: async (_fifoPath, command) => {
+        if (command === 'apply') throw new Error('ENOENT: no such file or directory');
+      },
+    });
+    const driver = new MacHelperDriver(deps);
+    await driver.enable(OPTS);
+    await driver.disable();
+    await driver.enable(OPTS);
+
+    expect(runElevatedCalls).to.have.length(2);
+    await driver.teardown();
   });
 
   it('enable(): surfaces the elevated launch failure with the log path for debugging', async () => {
@@ -82,16 +173,26 @@ describe('network/redirect/mac/MacHelperDriver', () => {
     expect((threw as Error).message).to.contain(path.join(scriptDir, 'mac-helper', 'helper.log'));
   });
 
-  it('disable(): a no-op before enable() never sends a stop signal', async () => {
-    const { deps, stopCalls } = makeDeps();
+  it('disable(): a no-op before enable() never sends a command', async () => {
+    const { deps, commandCalls } = makeDeps();
     const driver = new MacHelperDriver(deps);
     await driver.disable();
-    expect(stopCalls).to.have.length(0);
+    expect(commandCalls).to.have.length(0);
   });
 
-  it('disable(): still tears down its own state even if the stop signal itself fails to send', async () => {
-    const { deps, stopCalls } = makeDeps({
-      sendStop: async () => {
+  it('disable(): is idempotent — a second disable() does not re-send "revert"', async () => {
+    const { deps, commandCalls } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+    await driver.enable(OPTS);
+    await driver.disable();
+    await driver.disable();
+    expect(commandCalls.filter((c) => c.command === 'revert')).to.have.length(1);
+    await driver.teardown();
+  });
+
+  it('disable(): does not throw when the revert signal itself fails to send (heartbeat timeout is the backstop)', async () => {
+    const { deps, commandCalls } = makeDeps({
+      sendCommand: async () => {
         throw new Error('no reader on the FIFO — helper already gone');
       },
     });
@@ -105,21 +206,41 @@ describe('network/redirect/mac/MacHelperDriver', () => {
       threw = err;
     }
     expect(threw).to.equal(undefined);
-    expect(stopCalls).to.have.length(0); // sendStop threw before recording
-
-    // A second enable() must not be blocked by leftover state from the failed disable.
-    await driver.enable(OPTS);
-    await driver.disable();
+    expect(commandCalls).to.have.length(0);
+    // teardown() (not disable()) is the only thing that clears the heartbeat
+    // interval by design — must still be reachable here, not orphaned by the
+    // failed revert above.
+    await driver.teardown();
   });
 
-  it('disable(): does not throw when the helper never confirms "stopped" in time (heartbeat timeout is the backstop)', async () => {
-    const { deps } = makeDeps({ waitForStopped: async () => false });
+  it('teardown(): a no-op before enable() never sends a command', async () => {
+    const { deps, commandCalls } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+    await driver.teardown();
+    expect(commandCalls).to.have.length(0);
+  });
+
+  it('teardown(): sends "stop", clears the heartbeat, and a later enable() always elevates fresh (no reuse across a hard stop)', async () => {
+    const { deps, runElevatedCalls, commandCalls } = makeDeps();
+    const driver = new MacHelperDriver(deps);
+    await driver.enable(OPTS);
+    await driver.teardown();
+
+    expect(commandCalls.map((c) => c.command)).to.deep.equal(['stop']);
+
+    await driver.enable(OPTS);
+    expect(runElevatedCalls).to.have.length(2);
+    await driver.teardown();
+  });
+
+  it('teardown(): does not throw when the helper never confirms "stopped" in time', async () => {
+    const { deps } = makeDeps({ waitForStatus: async () => null });
     const driver = new MacHelperDriver(deps);
     await driver.enable(OPTS);
 
     let threw: unknown;
     try {
-      await driver.disable();
+      await driver.teardown();
     } catch (err) {
       threw = err;
     }
@@ -136,6 +257,6 @@ describe('network/redirect/mac/MacHelperDriver', () => {
     const driver = new MacHelperDriver(deps);
     expect(heartbeatWrites).to.equal(0);
     await driver.enable(OPTS);
-    await driver.disable();
+    await driver.teardown();
   });
 });

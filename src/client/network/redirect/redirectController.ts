@@ -6,8 +6,10 @@
  *  - **Linux**: a dedicated `KOPYTKO_NET` nat chain (flushed/deleted on revert).
  *  - **macOS**: a dedicated pf anchor `kopytko-net` (flushed on revert),
  *    applied and reverted by a persistent, self-terminating elevated helper
- *    (`redirect/mac/`) so a capture session needs only one admin-password
- *    prompt instead of one per toggle.
+ *    (`redirect/mac/`) that stays alive across capture on/off toggles, so a
+ *    whole VS Code session needs only one admin-password prompt — see
+ *    `dispose()` for how it's still guaranteed to exit when the extension
+ *    actually shuts down.
  *  - **Windows**: an elevated WinDivert companion process
  *    (`redirect/windows/`), since Windows has no `iptables`/`pf` equivalent —
  *    `netsh portproxy` only catches traffic already addressed to this
@@ -43,6 +45,16 @@ export type ElevatedRunner = (label: string, commands: string[]) => Promise<void
 export interface SupervisedRedirectDriver {
   enable(options: RedirectOptions): Promise<void>;
   disable(): Promise<void>;
+  /**
+   * Hard stop, distinct from `disable()`. Only the mac driver currently
+   * implements this: its `disable()` deliberately leaves the helper process
+   * alive (reverted but ready to re-`apply` without a new prompt) so
+   * `RedirectController.dispose()` needs a separate way to actually kill it
+   * once at extension deactivate. Drivers that already fully stop on
+   * `disable()` (e.g. Windows) can omit this — `dispose()` falls back to
+   * `disable()` when it's absent.
+   */
+  teardown?(): Promise<void>;
 }
 
 /** Alias kept for existing Windows call sites/tests — same shape as `SupervisedRedirectDriver`. */
@@ -50,7 +62,8 @@ export type WindowsRedirectDriver = SupervisedRedirectDriver;
 
 export class RedirectUnsupportedError extends Error {}
 
-const PF_ANCHOR = 'kopytko-net';
+/** Exported so `redirect/mac/macHelperScript.ts` can build the same anchor name into its runtime-parameterized apply logic. */
+export const PF_ANCHOR = 'kopytko-net';
 const IPT_CHAIN = 'KOPYTKO_NET';
 
 export class RedirectController {
@@ -63,7 +76,7 @@ export class RedirectController {
     private readonly platform: NodeJS.Platform = process.platform,
     /** Real Windows redirect, when available. Undefined keeps win32 `unsupported` (the manual hosts-file flow). */
     private readonly windowsDriver?: SupervisedRedirectDriver,
-    /** Persistent mac helper, when available. Undefined falls back to the plain one-shot `ElevatedRunner` path (two prompts per session instead of one). */
+    /** Persistent mac helper, when available. Undefined falls back to the plain one-shot `ElevatedRunner` path (a fresh prompt on every enable and disable). */
     private readonly macDriver?: SupervisedRedirectDriver,
   ) {}
 
@@ -152,6 +165,27 @@ export class RedirectController {
       this.appliedPlatform = null;
       this.appliedOptions = null;
     }
+  }
+
+  /**
+   * Hard teardown for extension deactivate / panel dispose — unlike
+   * `disable()`, this guarantees no supervised driver process (e.g. the mac
+   * persistent helper) outlives VS Code, even if it was left idle (reverted
+   * but alive) by an earlier ordinary `disable()`. Safe to call regardless
+   * of current applied state.
+   */
+  async dispose(): Promise<void> {
+    if (this.platform === 'darwin' && this.macDriver?.teardown) {
+      try {
+        await this.macDriver.teardown();
+      } finally {
+        this.applied = false;
+        this.appliedPlatform = null;
+        this.appliedOptions = null;
+      }
+      return;
+    }
+    await this.disable();
   }
 }
 

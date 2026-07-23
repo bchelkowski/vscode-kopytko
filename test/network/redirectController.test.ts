@@ -108,6 +108,15 @@ describe('network/RedirectController', () => {
       expect(ctrl.isApplied).to.equal(false);
       expect(calls).to.have.length(0);
     });
+
+    it('dispose() behaves exactly like disable() when there is no macDriver.teardown() to prefer (e.g. Linux)', async () => {
+      const { runner, calls } = fakeRunner();
+      const ctrl = new RedirectController(runner, 'linux');
+      await ctrl.enable(OPTS);
+      await ctrl.dispose();
+      expect(calls).to.have.length(2);
+      expect(ctrl.isApplied).to.equal(false);
+    });
   });
 
   describe('windows driver (WinDivert)', () => {
@@ -181,6 +190,10 @@ describe('network/RedirectController', () => {
           calls.push('disable');
           return Promise.resolve();
         },
+        teardown: () => {
+          calls.push('teardown');
+          return Promise.resolve();
+        },
       };
       return { driver, calls };
     }
@@ -235,6 +248,48 @@ describe('network/RedirectController', () => {
       await ctrl.enable(OPTS);
       await ctrl.disable();
       expect(calls).to.have.length(2);
+    });
+
+    it('dispose() calls macDriver.teardown() (a hard stop) instead of disable(), and clears applied state', async () => {
+      const { runner, calls: shellCalls } = fakeRunner();
+      const { driver, calls } = fakeMacDriver();
+      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
+
+      await ctrl.enable(OPTS);
+      await ctrl.dispose();
+
+      expect(calls).to.deep.equal(['enable:192.168.137.42:8888', 'teardown']);
+      expect(ctrl.isApplied).to.equal(false);
+      expect(shellCalls).to.have.length(0);
+    });
+
+    it('dispose() is safe to call even when the redirect was never applied (e.g. capture already off)', async () => {
+      const { runner } = fakeRunner();
+      const { driver, calls } = fakeMacDriver();
+      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
+
+      await ctrl.dispose();
+      expect(calls).to.deep.equal(['teardown']);
+    });
+
+    it('dispose() falls back to disable() when the injected macDriver has no teardown()', async () => {
+      const { runner } = fakeRunner();
+      const calls: string[] = [];
+      const driver: SupervisedRedirectDriver = {
+        enable: () => {
+          calls.push('enable');
+          return Promise.resolve();
+        },
+        disable: () => {
+          calls.push('disable');
+          return Promise.resolve();
+        },
+      };
+      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
+
+      await ctrl.enable(OPTS);
+      await ctrl.dispose();
+      expect(calls).to.deep.equal(['enable', 'disable']);
     });
   });
 });

@@ -1422,3 +1422,163 @@ session needs only one prompt.
   This is distro/config-dependent and not something this codebase controls,
   so it's not a proven fix, but it lowers the value of building the FIFO/
   watchdog machinery for Linux right now.
+
+## macOS helper: reused across toggles, not just one capture session (2026-07-22, same day)
+
+The single-elevation helper above still prompted on **every** `enable()` —
+"one prompt per capture session" turned out to be the wrong bar once actually
+used: a user toggling capture on/off repeatedly within one VS Code session
+(the normal workflow while iterating on a channel) still saw a prompt every
+time they flipped it on. Confirmed with the user (via a scoped
+`AskUserQuestion`, given the real trade-off below) that the right bar is "one
+prompt per VS Code session," and extended the helper accordingly.
+
+**A few specific claims in the entry directly above this one are now stale**
+— left in place as an accurate record of what shipped first, corrected here:
+the FIFO no longer carries only `stop`; `waitForStopped` no longer exists
+(generalized into `waitForStatus`); and there is now a readiness-poll step
+for the *reuse* path even though the *initial* launch still doesn't need one.
+
+- **Protocol: `apply`/`revert`/`stop`, not just `stop`.** `disable()` now
+  sends `revert` (flushes the pf anchor, `do_revert()`) and deliberately
+  **does not exit the watchdog** — it keeps listening. A later `enable()`
+  with the exact same `RedirectOptions` (rokuIp + proxyPort + ports, compared
+  with a plain `optionsEqual`) sends `apply` (`do_apply()`, re-runs the same
+  `pfctl` setup) instead of relaunching elevated. Only `stop` still removes
+  the FIFO and exits the process — reserved for the real hard-teardown path
+  (below) and the heartbeat-timeout self-termination.
+- **Heartbeat must keep running across `disable()`, not just while
+  "applied."** The whole point is that the helper survives idle between
+  toggles, so the heartbeat `setInterval` is now tied to the *helper's*
+  lifetime (started on launch, stopped only by `teardown()`), not to whether
+  the redirect is currently applied. Getting this wrong (clearing the
+  interval on every `disable()`, as the first version did) would make the
+  watchdog self-terminate ~15s after every toggle-off — defeating the reuse
+  entirely, since by the time the user toggles back on the helper would
+  already be gone.
+- **A genuinely new failure mode: an idle root process outliving VS Code.**
+  Because the helper now survives `disable()`, an ordinary toggle-off is no
+  longer enough to guarantee it exits — something has to. Added a distinct
+  hard-stop path: `MacHelperDriver.teardown()` (sends `stop`, clears the
+  heartbeat, clears session state — unlike `disable()`), a new optional
+  `teardown?()` on `SupervisedRedirectDriver` (`redirectController.ts`), and
+  `RedirectController.dispose()`, which prefers `macDriver.teardown()` when
+  present and falls back to plain `disable()` for every other
+  driver/platform (Windows' companion already fully exits on `disable()`, so
+  it doesn't need the distinction). `NetworkController.dispose()` now calls
+  both `this.disable()` **and** `this.deps.redirect.dispose()` — the latter
+  unconditionally, since `disable()` short-circuits as a no-op when capture
+  is already off, but an idle helper could still exist and need killing.
+  Without this, closing VS Code (or just the Network Inspector panel) while
+  capture happened to be toggled off would leak a live root process — a
+  strictly worse outcome than the original single-shot design, which never
+  had a live process to leak once `disable()` returned.
+- **Options-change detection forces a fresh prompt, on purpose.** If
+  `enable()` is called with different `rokuIp`/`proxyPort`/`ports` (switched
+  active device, or changed `kopytko.network.redirectPorts`) than the
+  currently-running helper, the driver calls its own `teardown()` on the old
+  session first (a `stop` over the *old* FIFO, no elevation needed for that
+  step) and then launches fresh — which **does** need a new prompt, since
+  the `pfctl` rules are baked into the helper's script at launch time and
+  can't be updated in place without also updating the running `do_apply()`
+  body, which isn't worth the complexity for what should be a rare event
+  (changing device/ports mid-session).
+- **Reuse needs a poll; the very first launch still doesn't.** `apply`/
+  `revert` are async FIFO round-trips with no equivalent of `do shell
+  script`'s blocking return, so the Node side now has a generic
+  `waitForStatus(statusPath, accept: string[], timeoutMs)` that polls until
+  the status file matches one of an explicit accept-list (`['ready']` for
+  apply, `['reverted']` for revert, `['stopped']` for teardown) — the
+  accept-list matters to avoid a stale-read race: right after sending
+  `apply`, the status file still shows the *previous* state (`reverted`)
+  until the watchdog's `read -t 1` loop actually picks the command up (up to
+  ~1s later), so a naive "any non-empty read is done" check would report
+  false success immediately. The very first `enable()` still avoids this
+  entirely — its `osascript … with administrator privileges` call is
+  synchronous and only returns once `do_apply()` inside the script has
+  already run and the watchdog is backgrounded, so a resolved `execFile`
+  call already means "ready," same as before.
+- **Fallback on a dead/unresponsive reuse attempt is silent-to-the-user but
+  logged.** If `apply` either fails to send (FIFO gone — helper already
+  self-terminated) or doesn't confirm `ready` within the timeout (helper
+  wedged, or self-terminated between the send and the poll), `enable()`
+  transparently falls through to a full fresh elevated launch rather than
+  throwing — the user just sees one more password prompt than expected, with
+  the reason logged to the output channel, instead of a hard failure for
+  what's fundamentally a best-effort optimization.
+
+## macOS helper: device/port switches also reuse the helper (2026-07-22, same day, second follow-up)
+
+**Supersedes the "Options-change detection forces a fresh prompt, on
+purpose" bullet in the entry directly above** — that was the actual shipped
+behavior for about an hour before the user asked, correctly, why switching
+devices still re-prompted when nothing else did. The bar moved from "one
+prompt per VS Code session unless you switch device/ports" to "one prompt
+per VS Code session, full stop" (confirmed via `AskUserQuestion`, given the
+real added complexity below).
+
+- **`apply` now carries its target instead of assuming the launch-time
+  one.** The FIFO line changed from a bare `apply` to `apply <rokuIp>
+  <proxyPort> <ports>` (comma-joined). `do_apply()` in `macHelperScript.ts`
+  became a 3-argument shell function (`$1`/`$2`/`$3`) that rebuilds the
+  `rdr` rules from whatever it's given *at call time* — both for the very
+  first (synchronous, pre-background) apply and every later FIFO-driven one
+  — rather than each apply replaying a batch of commands frozen into the
+  script text back when it was generated. `do_revert()` needed no such
+  change: `buildMacTeardown` already ignores its `RedirectOptions` argument
+  (`pfctl -a kopytko-net -F all` flushes the whole anchor regardless of what
+  was in it), so reverting was always option-independent.
+- **This moves real validation responsibility into a root-owned shell
+  script — treated as defense-in-depth, not the primary guarantee.** The
+  TypeScript `RedirectOptions` type already constrains `proxyPort`/`ports`
+  to `number` and `rokuIp` to a device-discovery-sourced string, so in
+  practice these values are never attacker-controlled. But now that they
+  cross a privilege boundary (unprivileged Node → already-root shell) at
+  *runtime* instead of being fixed into a script at generation time and
+  elevated as a whole unit, `do_apply` validates their shape before ever
+  interpolating them into a `pfctl`/`awk` invocation: `rokuIp` must match
+  the glob `[0-9]*.[0-9]*.[0-9]*.[0-9]*` (loose dotted-quad shape — not a
+  full range check per octet, which was judged not worth the added
+  complexity given the input's real provenance), `proxyPort` and every
+  comma-separated port must be all-digits (`case ... in ''|*[!0-9]*)`, the
+  classic POSIX "reject anything but digits" idiom). Any failure writes
+  `write_status 'failed'` and `return 1` *before* the `pfctl` subshell ever
+  runs — verified directly (not just by reading the code) by extracting the
+  real generated `do_apply` body into a throwaway harness with `pfctl`/`awk`
+  stubbed to capture their invocations: a valid two-port call produced
+  exactly the expected `rdr pass ...` lines and the right `pfctl -a
+  kopytko-net -f -` invocation; an invalid IP, a non-numeric proxy port, a
+  non-numeric port within the list, and an empty ports string all correctly
+  exited 1 with `status=failed` and **zero** calls into the stubbed `pfctl`.
+- **Values are still passed as separate `read` fields, never `eval`'d or
+  shell-interpolated as one blob.** The watchdog's command loop already read
+  multiple fields (`read -t 1 -r cmd rokuIp proxyPort portsCsv <&3`) — POSIX
+  `read` assigns unmatched trailing variables to empty string when a command
+  like `revert`/`stop` supplies no arguments, so there's no stale-value
+  bleed-through from a previous iteration to worry about. `PF_ANCHOR` itself
+  stays a script-generation-time constant (never influenced by the FIFO), so
+  only the redirect *target* is runtime-parameterized, not the anchor name
+  or any other structural part of the pf rules.
+- **A real bug this surfaced: a test with a dangling `setInterval` hung the
+  whole suite.** While rewriting `macHelperSupervisor.test.ts` for this
+  change, one test (`disable(): ... revert signal itself fails to send`)
+  called `enable()` (starting the heartbeat `setInterval`) and `disable()`
+  but never `teardown()` — harmless under the *previous* design (where
+  `disable()` itself always cleared the heartbeat, since it was a full stop
+  at the time), but fatal under the new one, where `disable()` deliberately
+  leaves the heartbeat running so the helper can be reused. `.mocharc.json`
+  has no `--exit`, so Node kept the process alive waiting on that one
+  interval and `npm test` never returned — no failing assertion, no error,
+  just an indefinite hang. General lesson for this codebase: any test that
+  calls a `MacHelperDriver.enable()` must reach a `teardown()` (not just
+  `disable()`) before the test ends, in a `try`/`finally` or unconditionally
+  at the end, or it leaks a live timer into the test process.
+- **Net effect on the "asymmetry" note in the very first entry of this
+  section:** Windows' `disable()` still fully exits its companion (a fresh
+  UAC prompt every `enable()`), which was flagged there as a documented,
+  deliberate scope decision (the user asked specifically about macOS). That
+  gap is now wider between the two platforms than when this file's macOS
+  section was first written, since macOS has since gone from "no reprompt on
+  disable" all the way to "no reprompt ever, mid-session" while Windows is
+  unchanged — worth a mention if a future session is asked to extend the
+  same treatment to Windows.

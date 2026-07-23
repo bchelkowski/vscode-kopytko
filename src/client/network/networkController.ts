@@ -509,6 +509,12 @@ export class NetworkController extends EventEmitter {
 
   dispose(): void {
     void this.disable();
+    // A hard stop distinct from disable(): guarantees no supervised redirect
+    // driver (e.g. the mac persistent helper, which deliberately stays alive
+    // — reverted but ready to reapply without a new prompt — across ordinary
+    // toggle-offs) outlives VS Code. Safe to call even if disable() above was
+    // a no-op because capture was already off.
+    void this.deps.redirect.dispose();
   }
 
   private emitState(): void {

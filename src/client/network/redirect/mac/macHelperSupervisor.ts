@@ -1,16 +1,31 @@
 /**
  * Node-side counterpart to `macHelperScript.ts`: writes and launches the
- * helper elevated, then supervises it for the lifetime of a capture session —
+ * helper elevated, then supervises it for the rest of the VS Code session —
  * a heartbeat file so the helper can detect and self-terminate if this
- * process (or all of VS Code) disappears without a clean `disable()`, and a
- * FIFO `stop` command for the ordinary teardown path.
+ * process (or all of VS Code) disappears without a clean `teardown()`, and a
+ * FIFO `apply`/`revert`/`stop` control channel.
+ *
+ * Only the *first* `enable()` of the whole VS Code session needs a new
+ * elevated launch. Once the helper is up, `disable()` sends `revert`
+ * (flushes the pf anchor but leaves the watchdog running) and every later
+ * `enable()` — even for a *different* device or ports — sends `apply
+ * <rokuIp> <proxyPort> <ports>` over the FIFO instead of relaunching
+ * elevated, since `do_apply` in `macHelperScript.ts` rebuilds the pf rules
+ * from whatever values it's given at the time, not from what was baked into
+ * the script at generation time. A prompt only reappears if the running
+ * helper is actually gone (heartbeat lapsed, crash, or the reapply itself
+ * fails/times out) — see `enable()` below. `teardown()` is a distinct hard
+ * stop for when the extension actually shuts down, so the elevated helper
+ * never outlives VS Code.
  *
  * Unlike the Windows companion (`redirect/windows/companionSupervisor.ts`),
- * `enable()` needs no separate readiness poll: `osascript … with
- * administrator privileges` (`buildElevatedInvocation`, reused from
- * `elevate.ts`) already blocks until the script exits, and the script itself
- * only exits after setup succeeds and the watchdog is backgrounded — so a
- * resolved launch call already implies "ready".
+ * the *initial* `enable()` needs no separate readiness poll: `osascript …
+ * with administrator privileges` (`buildElevatedInvocation`, reused from
+ * `elevate.ts`) already blocks until the script exits, and the script only
+ * exits after the initial setup succeeds and the watchdog is backgrounded —
+ * so a resolved launch call already implies "ready." Reusing an existing
+ * session (`apply`/`revert`) does need a poll, since those are async FIFO
+ * commands with no equivalent blocking call.
  *
  * Implements `SupervisedRedirectDriver` so `RedirectController` can use it as
  * a drop-in for the darwin branch, exactly like the Windows driver.
@@ -33,19 +48,23 @@ export interface MacHelperSupervisorDeps {
   runElevated?: (scriptPath: string, label: string) => Promise<void>;
   /** Overridable for tests — real implementation stamps the heartbeat file with the current epoch-seconds. */
   writeHeartbeat?: (heartbeatPath: string) => void;
-  /** Overridable for tests — real implementation writes `stop\n` to the FIFO. */
-  sendStop?: (fifoPath: string) => Promise<void>;
-  /** Overridable for tests — real implementation is `fs.readFileSync` polling the status file. */
-  waitForStopped?: (statusPath: string, timeoutMs: number) => Promise<boolean>;
+  /** Overridable for tests — real implementation writes `<command>\n` to the FIFO, or `apply <rokuIp> <proxyPort> <ports>\n` when options are given. */
+  sendCommand?: (fifoPath: string, command: 'apply' | 'revert' | 'stop', options?: RedirectOptions) => Promise<void>;
+  /** Overridable for tests — real implementation is `fs.readFileSync` polling the status file until it matches one of `accept`. */
+  waitForStatus?: (statusPath: string, accept: string[], timeoutMs: number) => Promise<string | null>;
 }
 
 interface Session {
   cmdFifoPath: string;
   statusPath: string;
+  heartbeatPath: string;
+  options: RedirectOptions;
+  applied: boolean;
 }
 
 const HEARTBEAT_INTERVAL_MS = Math.floor((HEARTBEAT_TIMEOUT_SEC * 1000) / 3);
-const STOP_CONFIRM_TIMEOUT_MS = 5_000;
+/** Generous relative to the watchdog's 1s FIFO poll — apply/revert/stop are all near-instant `pfctl` calls. */
+const CONFIRM_TIMEOUT_MS = 5_000;
 
 export class MacHelperDriver implements SupervisedRedirectDriver {
   private session: Session | null = null;
@@ -57,9 +76,96 @@ export class MacHelperDriver implements SupervisedRedirectDriver {
     this.deps.log?.(msg);
   }
 
+  /**
+   * Reuses the running helper (no new prompt) for any options, including a
+   * different device/ports than last time — `apply` carries the new values
+   * to the watchdog at runtime. Only falls back to a fresh elevated launch
+   * (best-effort teardown of whatever's left first — the heartbeat timeout
+   * is the backstop if that fails) when the running helper turns out to be
+   * unreachable or doesn't confirm in time.
+   */
   async enable(options: RedirectOptions): Promise<void> {
-    await this.teardownSession();
+    if (this.session) {
+      if (await this.tryReapply(options)) return;
+      this.log('Mac helper reuse failed; relaunching with a new prompt.');
+      await this.teardown();
+    }
 
+    await this.launchFresh(options);
+  }
+
+  /** Reverts the redirect but leaves the helper (and its heartbeat) running so a later enable() can reuse it. */
+  async disable(): Promise<void> {
+    if (!this.session || !this.session.applied) return;
+
+    const sendCommand = this.deps.sendCommand ?? defaultSendCommand;
+    try {
+      await sendCommand(this.session.cmdFifoPath, 'revert');
+    } catch (err) {
+      this.log(`Mac helper revert signal failed (heartbeat timeout will still tear it down if it's gone): ${(err as Error).message}`);
+      return;
+    }
+
+    const waitForStatus = this.deps.waitForStatus ?? defaultWaitForStatus;
+    const status = await waitForStatus(this.session.statusPath, ['reverted'], CONFIRM_TIMEOUT_MS);
+    if (status !== 'reverted') {
+      this.log(`Mac helper did not confirm revert in time (status: ${status ?? 'none'}).`);
+    }
+    this.session.applied = false;
+  }
+
+  /** Hard stop: reverts and exits the helper. Call once at extension deactivate/panel dispose — never on an ordinary toggle-off. */
+  async teardown(): Promise<void> {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    const session = this.session;
+    this.session = null;
+    if (!session) return;
+
+    const sendCommand = this.deps.sendCommand ?? defaultSendCommand;
+    try {
+      await sendCommand(session.cmdFifoPath, 'stop');
+    } catch (err) {
+      // Not fatal: with the heartbeat interval already cleared above, the
+      // watchdog's own heartbeat timeout (if it's still alive at all) is the
+      // backstop that guarantees it eventually tears itself down anyway.
+      this.log(`Mac helper stop signal failed (heartbeat timeout will still tear it down): ${(err as Error).message}`);
+      return;
+    }
+
+    const waitForStatus = this.deps.waitForStatus ?? defaultWaitForStatus;
+    const status = await waitForStatus(session.statusPath, ['stopped'], CONFIRM_TIMEOUT_MS);
+    if (status !== 'stopped') {
+      this.log('Mac helper did not confirm full teardown in time; relying on its own heartbeat-timeout self-termination.');
+    }
+  }
+
+  /** Sends `apply <options>` to the running helper and waits for it to confirm. Returns false if the helper is unreachable/stale. */
+  private async tryReapply(options: RedirectOptions): Promise<boolean> {
+    const session = this.session!;
+    const sendCommand = this.deps.sendCommand ?? defaultSendCommand;
+    try {
+      await sendCommand(session.cmdFifoPath, 'apply', options);
+    } catch (err) {
+      this.log(`Mac helper is unreachable (${(err as Error).message}); it has likely already self-terminated.`);
+      return false;
+    }
+
+    const waitForStatus = this.deps.waitForStatus ?? defaultWaitForStatus;
+    const status = await waitForStatus(session.statusPath, ['ready', 'failed'], CONFIRM_TIMEOUT_MS);
+    if (status !== 'ready') {
+      this.log(`Mac helper did not confirm re-apply in time (status: ${status ?? 'none'}).`);
+      return false;
+    }
+    session.options = options;
+    session.applied = true;
+    this.log('Mac helper redirect re-applied without a new prompt.');
+    return true;
+  }
+
+  private async launchFresh(options: RedirectOptions): Promise<void> {
     const sessionDir = path.join(this.deps.scriptDir, 'mac-helper');
     fs.mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
 
@@ -111,41 +217,10 @@ export class MacHelperDriver implements SupervisedRedirectDriver {
       throw new Error(`Traffic-capture helper failed to start: ${detail}. Check ${logPath}.`);
     }
 
-    this.session = { cmdFifoPath, statusPath };
+    this.session = { cmdFifoPath, statusPath, heartbeatPath, options, applied: true };
     const writeHeartbeat = this.deps.writeHeartbeat ?? defaultWriteHeartbeat;
     this.heartbeatTimer = setInterval(() => writeHeartbeat(heartbeatPath), HEARTBEAT_INTERVAL_MS);
     this.log('Mac helper ready. Heartbeat started.');
-  }
-
-  async disable(): Promise<void> {
-    await this.teardownSession();
-  }
-
-  private async teardownSession(): Promise<void> {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-    const session = this.session;
-    this.session = null;
-    if (!session) return;
-
-    const sendStop = this.deps.sendStop ?? defaultSendStop;
-    try {
-      await sendStop(session.cmdFifoPath);
-    } catch (err) {
-      // Not fatal: the watchdog's own heartbeat timeout (now that we've
-      // stopped writing to it) is the backstop that guarantees the redirect
-      // still comes down even if the stop signal itself couldn't be sent.
-      this.log(`Mac helper stop signal failed (heartbeat timeout will still tear it down): ${(err as Error).message}`);
-      return;
-    }
-
-    const waitForStopped = this.deps.waitForStopped ?? defaultWaitForStopped;
-    const stopped = await waitForStopped(session.statusPath, STOP_CONFIRM_TIMEOUT_MS);
-    if (!stopped) {
-      this.log('Mac helper did not confirm teardown in time; relying on its own heartbeat-timeout self-termination.');
-    }
   }
 }
 
@@ -191,9 +266,10 @@ function defaultRunElevated(scriptPath: string, label: string): Promise<void> {
   });
 }
 
-function defaultSendStop(fifoPath: string): Promise<void> {
+function defaultSendCommand(fifoPath: string, command: 'apply' | 'revert' | 'stop', options?: RedirectOptions): Promise<void> {
+  const line = command === 'apply' && options ? `apply ${options.rokuIp} ${options.proxyPort} ${options.ports.join(',')}\n` : `${command}\n`;
   return new Promise((resolve, reject) => {
-    fs.writeFile(fifoPath, 'stop\n', (err) => {
+    fs.writeFile(fifoPath, line, (err) => {
       if (err) {
         reject(err);
         return;
@@ -203,17 +279,18 @@ function defaultSendStop(fifoPath: string): Promise<void> {
   });
 }
 
-async function defaultWaitForStopped(statusPath: string, timeoutMs: number): Promise<boolean> {
+async function defaultWaitForStatus(statusPath: string, accept: string[], timeoutMs: number): Promise<string | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      if (fs.readFileSync(statusPath, 'utf8').trim() === 'stopped') return true;
+      const status = fs.readFileSync(statusPath, 'utf8').trim();
+      if (accept.includes(status)) return status;
     } catch {
       /* not written yet */
     }
-    await sleep(150);
+    await sleep(100);
   }
-  return false;
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {

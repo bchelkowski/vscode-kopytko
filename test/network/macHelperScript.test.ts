@@ -13,13 +13,61 @@ const BASE = {
 };
 
 describe('network/redirect/mac/buildMacHelperScript', () => {
-  it('embeds the exact same pf setup/teardown commands the one-shot ElevatedRunner path uses', () => {
+  it('embeds the initial rokuIp/proxyPort/ports as literal shell variables for the synchronous first apply', () => {
     const script = buildMacHelperScript(BASE);
-    expect(script).to.contain('kopytko-net');
-    expect(script).to.contain('rdr pass');
-    expect(script).to.contain('127.0.0.1 port 8888');
+    expect(script).to.contain("INITIAL_ROKU_IP='192.168.137.46'");
+    expect(script).to.contain('INITIAL_PROXY_PORT=8888');
+    expect(script).to.contain("INITIAL_PORTS='80'");
+    expect(script).to.contain('do_apply "$INITIAL_ROKU_IP" "$INITIAL_PROXY_PORT" "$INITIAL_PORTS"');
+  });
+
+  it('joins multiple ports into a single comma-separated INITIAL_PORTS value', () => {
+    const script = buildMacHelperScript({ ...BASE, ports: [80, 443, 8060] });
+    expect(script).to.contain("INITIAL_PORTS='80,443,8060'");
+  });
+
+  it("do_apply builds the same rdr rule shape as the one-shot path, from its runtime arguments (not baked-in values)", () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain('rokuIp="$1"');
+    expect(script).to.contain('proxyPort="$2"');
+    expect(script).to.contain('portsCsv="$3"');
+    expect(script).to.contain('rdr pass inet proto tcp from $rokuIp to any port $port -> 127.0.0.1 port $proxyPort');
+    expect(script).to.contain('pfctl -a "$PF_ANCHOR" -f -');
     expect(script).to.contain('pfctl -e');
-    expect(script).to.contain('pfctl -a kopytko-net -F all');
+  });
+
+  it('inserts the pf anchor reference using a shell variable (PF_ANCHOR), not a value baked in per-call', () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain("PF_ANCHOR='kopytko-net'");
+    expect(script).to.contain('pfctl -s Anchor 2>/dev/null | grep -q "$PF_ANCHOR"');
+    expect(script).to.contain('rdr-anchor \\"" anchor "\\""');
+  });
+
+  it('rejects a rokuIp that is not dotted-quad shaped before touching pfctl, so garbage can never reach a root shell command', () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain('case "$rokuIp" in');
+    expect(script).to.contain('[0-9]*.[0-9]*.[0-9]*.[0-9]*) : ;;');
+    expect(script).to.contain("Rejected apply: invalid rokuIp");
+  });
+
+  it('rejects a non-numeric proxyPort before touching pfctl', () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain("''|*[!0-9]*)");
+    expect(script).to.contain('Rejected apply: invalid proxyPort');
+  });
+
+  it('rejects an empty or non-numeric individual port within the comma list', () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain("Rejected apply: empty ports");
+    expect(script).to.contain("Rejected apply: invalid port");
+  });
+
+  it('every rejection path writes status \'failed\' and returns without ever reaching pfctl', () => {
+    const script = buildMacHelperScript(BASE);
+    const doApplyBody = script.slice(script.indexOf('do_apply() {'), script.indexOf('do_revert() {'));
+    const rejections = doApplyBody.split("write_status 'failed'").length - 1;
+    expect(rejections).to.be.at.least(3); // rokuIp, proxyPort, ports(empty), port-in-list
+    expect(doApplyBody.match(/return 1/g)?.length).to.equal(rejections);
   });
 
   it('embeds every configured path as a double-quoted shell variable', () => {
@@ -36,10 +84,15 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
     expect(script).to.contain('LOG_FILE="/tmp/weird \\"\\$HOME\\" path/helper.log"');
   });
 
+  it("escapes an embedded single quote in the initial rokuIp so it can't break out of its literal", () => {
+    const script = buildMacHelperScript({ ...BASE, rokuIp: "192.168.1.5'; rm -rf /" });
+    expect(script).to.contain(`INITIAL_ROKU_IP='192.168.1.5'\\''; rm -rf /'`);
+  });
+
   it('opens the FIFO read-write on an unused fd so the watchdog never blocks waiting for a writer', () => {
     const script = buildMacHelperScript(BASE);
     expect(script).to.contain('exec 3<>"$CMD_FIFO"');
-    expect(script).to.contain('read -t 1 -r cmd <&3');
+    expect(script).to.contain('read -t 1 -r cmd rokuIp proxyPort portsCsv <&3');
   });
 
   it('stamps a fresh heartbeat baseline the moment the watchdog starts, before trusting the heartbeat file', () => {
@@ -58,14 +111,40 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
     expect(script).to.contain('teardown_and_exit');
   });
 
-  it('only recognizes the "stop" command — never eval\'s FIFO input', () => {
+  it('recognizes exactly apply/revert/stop — never eval\'s FIFO input', () => {
     const script = buildMacHelperScript(BASE);
     expect(script).to.contain('case "$cmd" in');
     expect(script).to.contain('stop)');
+    expect(script).to.contain('revert)');
+    expect(script).to.contain('apply)');
     expect(script).to.not.contain('eval');
   });
 
-  it('backgrounds the watchdog and exits the top-level script promptly (so the elevation call resolves quickly)', () => {
+  it('revert flushes the anchor but does not exit the watchdog (stays alive for a later apply)', () => {
+    const script = buildMacHelperScript(BASE);
+    const doRevertBody = script.slice(script.indexOf('do_revert() {'), script.indexOf("write_status 'starting'"));
+    expect(doRevertBody).to.contain('pfctl -a kopytko-net -F all');
+    expect(doRevertBody).to.contain("write_status 'reverted'");
+    expect(doRevertBody).to.not.contain('exit');
+    expect(script).to.contain("revert) log 'Revert command received.'; do_revert ;;");
+  });
+
+  it('apply forwards the FIFO-supplied rokuIp/proxyPort/ports straight into do_apply, and can be re-triggered without exiting', () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain('apply) log \'Apply command received.\'; do_apply "$rokuIp" "$proxyPort" "$portsCsv" || true ;;');
+  });
+
+  it('only "stop" removes the FIFO and exits the watchdog', () => {
+    const script = buildMacHelperScript(BASE);
+    expect(script).to.contain("stop) log 'Stop command received.'; teardown_and_exit ;;");
+    const teardownBody = script.slice(script.indexOf('teardown_and_exit() {'), script.indexOf('(\n  # Fresh baseline'));
+    expect(teardownBody).to.contain('do_revert');
+    expect(teardownBody).to.contain("write_status 'stopped'");
+    expect(teardownBody).to.contain('rm -f "$CMD_FIFO"');
+    expect(teardownBody).to.contain('exit 0');
+  });
+
+  it('backgrounds the watchdog and exits the top-level script promptly after the initial apply (so the elevation call resolves quickly)', () => {
     const script = buildMacHelperScript(BASE);
     const backgroundIdx = script.indexOf(') </dev/null >>"$LOG_FILE" 2>&1 &');
     const exitIdx = script.lastIndexOf('exit 0');
@@ -73,17 +152,18 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
     expect(exitIdx).to.be.greaterThan(backgroundIdx);
   });
 
-  it('writes a status file distinguishing starting/ready/failed/stopped', () => {
+  it('writes a status file distinguishing starting/ready/reverted/stopped/failed', () => {
     const script = buildMacHelperScript(BASE);
     expect(script).to.contain("write_status 'starting'");
     expect(script).to.contain("write_status 'ready'");
-    expect(script).to.contain("write_status 'failed'");
+    expect(script).to.contain("write_status 'reverted'");
     expect(script).to.contain("write_status 'stopped'");
+    expect(script).to.contain("write_status 'failed'");
   });
 
-  it('reports setup failure via the status file instead of leaving the launcher to time out silently', () => {
+  it('reports the initial apply failure via the status file instead of leaving the launcher to time out silently', () => {
     const script = buildMacHelperScript(BASE);
-    expect(script).to.contain('if ! (');
-    expect(script).to.contain("write_status 'failed'");
+    expect(script).to.contain('if ! do_apply "$INITIAL_ROKU_IP" "$INITIAL_PROXY_PORT" "$INITIAL_PORTS"; then');
+    expect(script).to.contain('exit 1');
   });
 });
