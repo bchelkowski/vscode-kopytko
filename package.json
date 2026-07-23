@@ -1023,7 +1023,7 @@
           "default": [
             80
           ],
-          "description": "Device-side ports whose traffic is transparently redirected into the capture proxy (HTTP only)."
+          "description": "Device-side ports whose traffic is transparently redirected into the capture proxy. The proxy speaks plain HTTP only (no CA on the device, no TLS termination) — never add 443 or another TLS port here, it will make every connection on that port fail/timeout/reset instead of being captured."
         },
         "kopytko.network.maxEntries": {
           "type": "number",

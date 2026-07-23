@@ -39,7 +39,10 @@ backends are seen fully decrypted because TLS terminates **at the proxy**.
 > **Prerequisite:** the channel must actually issue `http://` requests (directly,
 > or because a rewritten backend response pointed it at `http://`). Traffic the
 > app makes over real HTTPS with hard-coded `https://` URLs and no rewrite is not
-> captured.
+> captured — it's simply invisible to this tool, not broken. **Do not try to
+> "fix" that by adding 443 to `kopytko.network.redirectPorts`** — the proxy has
+> no CA and cannot terminate TLS, so redirecting 443 into it doesn't capture
+> anything, it just makes every HTTPS connection on that port fail/timeout/reset.
 
 ---
 
@@ -507,7 +510,7 @@ never deletes session files; without a workspace folder (and a relative
 | Setting | Default | Purpose |
 |---|---|---|
 | `kopytko.network.proxyPort` | `8888` | Local port the capture proxy listens on |
-| `kopytko.network.redirectPorts` | `[80]` | Device-side ports redirected into the proxy |
+| `kopytko.network.redirectPorts` | `[80]` | Device-side ports redirected into the proxy. **Never add 443 (or another TLS port)** — the proxy speaks plain HTTP only, so a TLS `ClientHello` redirected into it just fails/times out/resets instead of being captured |
 | `kopytko.network.maxEntries` | `5000` | Ring-buffer cap before oldest requests drop |
 | `kopytko.network.maxBufferBytes` | `52428800` | Approximate memory budget for retained flows (bodies + overhead); oldest evicted when exceeded, `0` disables |
 | `kopytko.network.upstreamKeepAlive` | `true` | Pool proxy→origin connections instead of a fresh TCP/TLS handshake per request (device side always closes per request). A pooled connection that goes stale mid-request (e.g. a long-poll held open across a network hop that silently drops it) is retried once automatically on a fresh connection rather than surfacing as an error — set to `false` only if an origin still misbehaves with reuse |

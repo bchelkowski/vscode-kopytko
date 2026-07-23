@@ -43,6 +43,39 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
     expect(script).to.contain('rdr-anchor \\"" anchor "\\""');
   });
 
+  it('runs the /etc/pf.conf anchor-registration (full ruleset reload) exactly once, before the watchdog is backgrounded — never inside do_apply', () => {
+    // Regression test for a real incident: re-checking/re-inserting the
+    // anchor reference on every apply could spuriously re-trigger a full
+    // `pfctl -f -` reload of the main ruleset after our own revert, which
+    // clobbered macOS Internet Sharing's NAT anchor and broke HTTPS for the
+    // device until a reboot. See findings/network-inspector.md.
+    const script = buildMacHelperScript(BASE);
+
+    const ensureFnBody = script.slice(script.indexOf('ensure_anchor_referenced() {'), script.indexOf('do_apply() {'));
+    expect(ensureFnBody).to.contain('pfctl -s Anchor');
+    expect(ensureFnBody).to.contain('awk');
+    expect(ensureFnBody).to.contain('pfctl -f -');
+
+    const doApplyBody = script.slice(script.indexOf('do_apply() {'), script.indexOf('do_revert() {'));
+    expect(doApplyBody).to.not.contain('pfctl -s Anchor');
+    expect(doApplyBody).to.not.contain('awk');
+    expect(doApplyBody).to.not.contain('ensure_anchor_referenced');
+    // do_apply only ever touches its own anchor, never the main ruleset.
+    expect(doApplyBody).to.contain('pfctl -a "$PF_ANCHOR" -f -');
+
+    // Called exactly once in the whole script, in the synchronous top-level
+    // flow, before the initial do_apply — and specifically NOT from inside
+    // the FIFO command loop's "apply)" case.
+    const allOccurrences = script.split('ensure_anchor_referenced').length - 1;
+    expect(allOccurrences).to.equal(2); // the definition + exactly one call site
+    const callSiteIdx = script.indexOf('ensure_anchor_referenced\n');
+    const initialApplyIdx = script.indexOf('if ! do_apply "$INITIAL_ROKU_IP"');
+    const fifoApplyCaseIdx = script.indexOf('apply) log \'Apply command received.\'');
+    expect(callSiteIdx).to.be.greaterThan(-1);
+    expect(callSiteIdx).to.be.lessThan(initialApplyIdx);
+    expect(callSiteIdx).to.be.lessThan(fifoApplyCaseIdx); // runs before the watchdog loop even exists, definitely not inside it
+  });
+
   it('rejects a rokuIp that is not dotted-quad shaped before touching pfctl, so garbage can never reach a root shell command', () => {
     const script = buildMacHelperScript(BASE);
     expect(script).to.contain('case "$rokuIp" in');

@@ -161,6 +161,21 @@ describe('network/NetworkController', () => {
     expect(controller.getState().message).to.be.a('string');
   });
 
+  it('warns (but still redirects successfully) when redirectPorts includes 443 — the proxy cannot terminate TLS on that port', async () => {
+    const { controller } = make({ config: makeConfig({ redirectPorts: [80, 443] }) });
+    await controller.enable();
+    expect(controller.getState().redirectStatus).to.equal('on');
+    expect(controller.getState().message).to.be.a('string');
+    expect(controller.getState().message).to.contain('443');
+  });
+
+  it('does not warn when redirectPorts is the default (80 only)', async () => {
+    const { controller } = make({});
+    await controller.enable();
+    expect(controller.getState().redirectStatus).to.equal('on');
+    expect(controller.getState().message).to.equal(undefined);
+  });
+
   it('caps the ring buffer and prunes dropped ids', async () => {
     const { controller, proxy } = make({ config: makeConfig({ maxEntries: 3 }) });
     await controller.enable();

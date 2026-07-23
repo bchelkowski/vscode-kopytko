@@ -325,6 +325,15 @@ export class NetworkController extends EventEmitter {
       });
       this.redirectStatus = 'on';
       this.log('Traffic redirect applied.');
+      if (config.redirectPorts.includes(443)) {
+        // The proxy has no CA and cannot terminate TLS — redirecting 443
+        // into it doesn't capture HTTPS, it just breaks every connection on
+        // that port (fails/times out/resets). Not fatal to the redirect
+        // itself (pf/WinDivert accept the rule fine), so this is a
+        // non-blocking heads-up, not a thrown error.
+        this.message = 'Port 443 is in redirectPorts, but the capture proxy cannot terminate TLS — HTTPS connections on that port will fail, not be captured. Remove 443 from kopytko.network.redirectPorts.';
+        this.log(`WARNING: ${this.message}`);
+      }
     } catch (err) {
       if (err instanceof RedirectUnsupportedError) {
         this.redirectStatus = 'unsupported';

@@ -1661,3 +1661,77 @@ toggling, which is exactly what the user described doing.
   underlying mac-driver operations they `await` are strictly ordered), but a
   polished "ignore rapid double-clicks" UX fix at the panel layer is a
   separate, smaller follow-up if it comes up again.
+
+## macOS helper: a repeated full pf.conf reload was clobbering Internet Sharing's NAT (2026-07-23, same day, more serious follow-up)
+
+**Worse than the previous entry's bug, and directly caused by the same
+persistent-reuse redesign.** User report: with capture enabled, the Roku's
+HTTPS connections started failing (timeout/reset) — and unlike every other
+issue in this file, **toggling capture off did not fix it, only rebooting the
+Mac did.** That "only a reboot fixes it" detail was the key diagnostic
+signal: nothing this extension's own `disable()`/`revert` touches could
+explain a symptom that survives a full revert, which means something outside
+this extension's own tracked state got corrupted.
+
+**Root cause: `do_apply()` re-ran the `/etc/pf.conf` anchor-registration
+check on every single `apply`, not just the first launch.** That check
+(`pfctl -s Anchor | grep -q kopytko-net || { awk ... | pfctl -f - }`,
+originally `buildMacSetup` in `redirectController.ts`, carried over verbatim
+into `macHelperScript.ts`'s `do_apply`) is the *only* operation in this whole
+codebase with reach beyond our own anchor — the `awk`/`pfctl -f -` branch
+reloads macOS's **entire main pf ruleset** from `/etc/pf.conf`, not just
+`kopytko-net`'s own rules. In the original one-shot design this could only
+ever run once per machine in practice (the anchor's `/etc/pf.conf`
+*reference* is permanent once inserted, so the check should short-circuit
+every time after). But once `do_apply` became reusable — called from the
+FIFO on every toggle, not just at process launch — the check runs after
+every `revert` too. If `pfctl -s Anchor` stops listing `kopytko-net` as a
+*live* anchor once our own `-F all` flush empties it (plausible: `pfctl -s
+Anchor` reflects the kernel's currently-loaded anchor table, which is
+distinct from what's merely *referenced* in the pf.conf text — this is a
+real macOS/pf behavior difference that needed the user's own machine to
+surface, not something visible from source or from this repo's Linux/WSL
+test environment), then the very next `apply` after a `revert` spuriously
+fails that check and re-triggers the full reload — every single toggle
+cycle, forever, instead of once ever. A full reload of `/etc/pf.conf`
+triggered from outside Internet Sharing's own lifecycle management doesn't
+reliably cause Internet Sharing's NAT anchor to get reinstated afterward,
+even though the *reference* to it in the reloaded file is untouched — NAT
+for every device behind Internet Sharing (not just the Roku) breaks, and
+nothing short of a reboot re-initializes it.
+
+**Why this explains "HTTP still works, HTTPS breaks":** the `kopytko-net`
+anchor's only rule (`rdr pass ... to any port 80 -> 127.0.0.1:<proxyPort>`)
+redirects the Roku's port-80 traffic straight to loopback — it never needs
+NAT/routing out to the real internet at all, so it kept working even with
+Internet Sharing's NAT broken. HTTPS (443, never touched by our redirect)
+has no such shortcut — it needs the now-broken NAT path to reach anything
+outside this Mac, so it failed outright.
+
+**Fix:** split the anchor-registration bootstrap out of `do_apply` into its
+own `ensure_anchor_referenced()` function, called **exactly once**, in the
+script's synchronous top-level flow, before the watchdog is even
+backgrounded — never again from inside the FIFO command loop's `apply)`
+case. `do_apply` itself now only ever touches its own anchor (`pfctl -a
+"$PF_ANCHOR" -f -`), which is scoped and safe to call as many times as
+toggling happens. This matches what the *original* one-shot design actually
+did in practice (bootstrap effectively ran once per machine) rather than
+introducing a new "recheck every toggle" pattern that had no real reason to
+exist — the anchor reference doesn't change after the first successful
+insert, so there was never a need to re-verify it on every reapply.
+
+**Process note — this is the second real bug shipped in this reuse
+redesign within the same day** (the FIFO-hang bug above being the first).
+Both were only found because a real user hit them on real hardware and
+described precise, specific symptoms ("only fixed by rebooting" was what
+actually cracked this one) — neither was, or realistically could have been,
+caught by this repo's test suite, since `pfctl`'s actual kernel-level anchor
+tracking behavior and Internet Sharing's NAT management are both macOS
+system behaviors this repo cannot exercise from Linux/WSL. The regression
+test added (`macHelperScript.test.ts`) can only verify the *shape* of the
+fix (bootstrap called once, `do_apply` never touches `pfctl -s Anchor` or
+`awk`) — it cannot verify the underlying pf/Internet-Sharing interaction
+itself. Anything touching `pfctl` behavior beyond "does this shell script
+have the commands we intended" needs on-device verification before being
+trusted, no matter how carefully the shell logic is reasoned through
+statically.

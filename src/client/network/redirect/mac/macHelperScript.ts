@@ -12,6 +12,31 @@
  * required by the redirect mechanism the way Windows' WinDivert companion is
  * (see `redirect/windows/companionScript.ts`).
  *
+ * **The one-time `/etc/pf.conf` bootstrap runs exactly once, before the
+ * watchdog is even backgrounded — never again during FIFO-triggered
+ * reapply.** Registering the `kopytko-net` anchor (if it isn't already
+ * referenced) requires rewriting `/etc/pf.conf` and reloading the *entire*
+ * main ruleset (`awk ... | pfctl -f -`), which is the one operation in this
+ * script with system-wide reach: unlike `pfctl -a kopytko-net -f -` (scoped
+ * to just our own anchor), a full reload re-parses and reapplies whatever's
+ * in `/etc/pf.conf` for every anchor referenced there, including ones
+ * managed by other things — most importantly macOS's own Internet Sharing,
+ * whose NAT anchor is a hard prerequisite for this whole feature (see
+ * docs/network-inspector.md). Re-running that check-and-maybe-reload on
+ * every `apply` (which the very first version of this reuse design did) is
+ * a real, confirmed-in-the-field bug: after our own `revert` flushes the
+ * anchor, `pfctl -s Anchor` can stop listing it as live even though its
+ * `/etc/pf.conf` *reference* is still there — permanent, not a bug —
+ * spuriously re-triggering the full reload on the very next `apply`, over
+ * and over, once per toggle. A full pf reload triggered from outside
+ * Internet Sharing's own management doesn't reliably restore Internet
+ * Sharing's NAT anchor afterward, breaking every device's HTTPS (and
+ * anything else that isn't the specific host:port our own anchor
+ * redirects to loopback) until a reboot. Running the bootstrap once, up
+ * front, and never rechecking it for the life of the watchdog closes this
+ * off entirely — see `findings/network-inspector.md` for the full incident
+ * writeup.
+ *
  * Control channel is a POSIX FIFO carrying three commands — `apply <rokuIp>
  * <proxyPort> <ports>` (re-runs setup, possibly for a *different* device or
  * ports than the last apply), `revert` (flushes the anchor but keeps the
@@ -102,11 +127,24 @@ log() {
   printf '%s %s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$LOG_FILE" 2>/dev/null || true
 }
 
+# Registers the kopytko-net anchor in /etc/pf.conf if it isn't already
+# referenced there, reloading the *entire* main pf ruleset in the process.
+# Called exactly once, up front, below — never from do_apply. See the
+# top-of-file comment for why re-checking this on every apply was a real bug
+# (it could clobber Internet Sharing's own NAT anchor on every toggle).
+ensure_anchor_referenced() {
+  pfctl -s Anchor 2>/dev/null | grep -q "$PF_ANCHOR" || {
+    awk -v anchor="$PF_ANCHOR" '1; /^rdr-anchor/ && !x {print "rdr-anchor \\"" anchor "\\""; x=1}' /etc/pf.conf | pfctl -f -
+  }
+}
+
 # $1=rokuIp $2=proxyPort $3=ports (comma-separated). Re-runnable for a
 # different device/ports than the last call — validates its inputs before
-# ever handing them to pfctl/awk as root, since (unlike the rest of this
-# script) these three values arrive at runtime over the FIFO, not baked in
-# by the TypeScript side at generation time.
+# ever handing them to pfctl as root, since (unlike the rest of this script)
+# these three values arrive at runtime over the FIFO, not baked in by the
+# TypeScript side at generation time. Only ever touches our own anchor
+# (pfctl -a "$PF_ANCHOR" -f -) — never the main ruleset — so it's safe to
+# call as often as toggling happens.
 do_apply() {
   rokuIp="$1"
   proxyPort="$2"
@@ -152,9 +190,6 @@ do_apply() {
 
   if ! (
     set -e
-    pfctl -s Anchor 2>/dev/null | grep -q "$PF_ANCHOR" || {
-      awk -v anchor="$PF_ANCHOR" '1; /^rdr-anchor/ && !x {print "rdr-anchor \\"" anchor "\\""; x=1}' /etc/pf.conf | pfctl -f -
-    }
     printf '%s' "$rdrLines" | pfctl -a "$PF_ANCHOR" -f -
     pfctl -e 2>/dev/null || true
   ); then
@@ -175,6 +210,8 @@ ${teardownCommands.map((c) => `  ${c}`).join('\n')}
 
 write_status 'starting'
 log 'Kopytko Network Inspector helper starting.'
+
+ensure_anchor_referenced
 
 if ! do_apply "$INITIAL_ROKU_IP" "$INITIAL_PROXY_PORT" "$INITIAL_PORTS"; then
   exit 1
