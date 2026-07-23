@@ -1,8 +1,9 @@
 import { expect } from 'chai';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { MacHelperDriver, type MacHelperSupervisorDeps } from '../../src/client/network/redirect/mac/macHelperSupervisor';
+import { MacHelperDriver, defaultSendCommand, type MacHelperSupervisorDeps } from '../../src/client/network/redirect/mac/macHelperSupervisor';
 import type { RedirectOptions } from '../../src/client/network/redirect/redirectController';
 
 const OPTS: RedirectOptions = { rokuIp: '192.168.137.46', proxyPort: 8888, ports: [80] };
@@ -258,5 +259,66 @@ describe('network/redirect/mac/MacHelperDriver', () => {
     expect(heartbeatWrites).to.equal(0);
     await driver.enable(OPTS);
     await driver.teardown();
+  });
+
+  it('serializes overlapping calls instead of racing (e.g. two quick toggle clicks) — never interleaves a FIFO send with another', async () => {
+    const order: string[] = [];
+    const { deps } = makeDeps({
+      sendCommand: async (_fifoPath, command) => {
+        order.push(`send:${command}`);
+        await new Promise((resolve) => setTimeout(resolve, 20)); // simulate a slow FIFO round trip
+        order.push(`sent:${command}`);
+      },
+    });
+    const driver = new MacHelperDriver(deps);
+    await driver.enable(OPTS);
+    order.length = 0; // ignore the initial launch's own bookkeeping
+
+    // Fired concurrently, on purpose — this is exactly what two rapid toggle
+    // clicks (or RedirectController.enable()'s own "revert first" nested
+    // call overlapping an in-flight click) produce.
+    await Promise.all([driver.disable(), driver.enable(OPTS)]);
+
+    expect(order.length).to.be.greaterThan(0);
+    for (let i = 0; i < order.length; i += 2) {
+      expect(order[i]).to.match(/^send:/);
+      expect(order[i + 1]).to.equal(`sent:${order[i].slice('send:'.length)}`);
+    }
+    await driver.teardown();
+  });
+
+  it('defaultSendCommand rejects instead of hanging forever when the FIFO has no reader (the real hang this fixes)', async function () {
+    this.timeout(8000);
+    const scriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kopytko-mac-helper-realfifo-'));
+    const fifoPath = path.join(scriptDir, 'no-reader.fifo');
+    execFileSync('/usr/bin/mkfifo', ['-m', '600', fifoPath]);
+
+    try {
+      // No reader is ever opened on this FIFO — a plain fs.writeFile would
+      // block forever here without the timeout wrapper.
+      let threw: unknown;
+      try {
+        await defaultSendCommand(fifoPath, 'revert');
+      } catch (err) {
+        threw = err;
+      }
+      expect(threw).to.be.instanceOf(Error);
+      expect((threw as Error).message).to.contain('timed out');
+    } finally {
+      // The timeout only rejects our *promise* — it can't cancel the
+      // underlying OS-level open() call, which is still blocked waiting for
+      // a reader. Open one now so that write can finally rendezvous and
+      // complete, instead of leaving a permanently stuck libuv threadpool
+      // thread that would keep this test process from exiting cleanly.
+      await new Promise<void>((resolve, reject) => {
+        fs.open(fifoPath, 'r', (err, fd) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          fs.close(fd, () => resolve());
+        });
+      });
+    }
   });
 });

@@ -1582,3 +1582,82 @@ real added complexity below).
   disable" all the way to "no reprompt ever, mid-session" while Windows is
   unchanged — worth a mention if a future session is asked to extend the
   same treatment to Windows.
+
+## macOS helper: fixed a real hang-and-stuck-off bug from the persistent-helper redesign (2026-07-23)
+
+User-reported symptom after toggling capture off/on twice in quick
+succession ("disconnected and connected 2 times"): the panel showed capture
+as **off** and clicking the toggle back **on did nothing** — yet traffic was
+still being captured and the OS-level `pf` redirect was still active. UI
+state and real state had diverged, in the worst possible direction (silently
+still running while claiming to be off).
+
+**Root cause: `defaultSendCommand`'s FIFO write had no timeout.**
+`fs.writeFile(fifoPath, ...)` opens the FIFO for writing, which blocks at the
+OS level until a reader is present. The watchdog normally keeps one open for
+the whole session, but if it died uncleanly (killed, crashed, reclaimed on
+sleep/wake — anything short of reaching `teardown_and_exit`'s `rm -f
+"$CMD_FIFO"`), the FIFO file lingers on disk with zero readers, and that
+write hangs *forever* — no error, no timeout, nothing. This is the same
+class of gotcha as the open-FIFO-blocks-until-writer note earlier in this
+file, but on the Node side instead of the shell side, and nobody had put a
+bound on it.
+
+Tracing the actual failure chain against `networkController.ts`'s `disable()`:
+`this.enabled = false` is set **synchronously, before any `await`** (so the
+UI immediately reports "off"), then `await this.deps.redirect.disable()` is
+what hangs — meaning the `finally` block that stops the capture proxy and
+frees its port **never runs**. The proxy keeps listening and recording (matches
+"recording works"), and the `pf` anchor was never reverted (matches "traffic
+still redirected"). The next `enable()` call then tries to bind a *new* proxy
+instance to the same port the old, never-stopped one still holds — that's
+the "cannot toggle it on again" the user saw. One missing timeout, at the very
+bottom of the stack, explained every symptom.
+
+**Compounding gap: zero re-entrancy protection.** Nothing between the
+webview's toggle handler and `MacHelperDriver` serializes calls — two quick
+clicks (or `RedirectController.enable()`'s own "revert first if already
+applied" nested call overlapping an in-flight click) run concurrently and
+can read/write the same `session` fields out of order. Not the proximate
+cause of this specific report (a plain sequential disable-then-enable is
+enough to hit the FIFO-timeout bug above), but a real gap that makes hitting
+it — and corrupting state in less predictable ways — much easier under rapid
+toggling, which is exactly what the user described doing.
+
+**Fix, in `macHelperSupervisor.ts`:**
+- `defaultSendCommand` now races its `fs.writeFile` against a 3s timeout
+  (`SEND_TIMEOUT_MS`, `withTimeout()`) and rejects with a clear "no reader —
+  the helper is likely dead" error instead of hanging. The existing
+  catch/timeout-handling logic in `disable()`/`teardown()`/`tryReapply()`
+  already assumed sends could fail — it just never actually could before, so
+  that logic was true in principle but unreachable in this one specific way.
+- `MacHelperDriver` gained a private serial queue (`this.queue`, `serialize()`);
+  `enable()`/`disable()`/`teardown()` are now thin wrappers that run their
+  actual bodies (`enableLocked`/`disableLocked`/`teardownLocked`) through it,
+  so overlapping calls execute one at a time in call order instead of racing.
+  `enableLocked`'s internal re-launch path calls `teardownLocked()` directly
+  (not the public `teardown()`) — calling back into `serialize()` from
+  *inside* an already-serialized function would deadlock (it would enqueue
+  behind itself and then await a queue slot it's the one blocking).
+- Verified the actual hang (not just the timeout math) with a real
+  `mkfifo`'d pipe and no reader in `macHelperSupervisor.test.ts`:
+  `defaultSendCommand` rejects around 3000ms as expected. That test then
+  opens a reader in a `finally` to let the still-pending background
+  `fs.writeFile` finally rendezvous and complete — the timeout only rejects
+  the *promise*, it can't cancel the underlying blocked OS call, and leaving
+  it truly stuck would tie up a libuv threadpool thread for the rest of the
+  test process's life, which risks silently re-creating this file's earlier
+  "dangling timer hangs the whole suite" problem in a new form.
+- Added a serialization test that fires `disable()`/`enable()` concurrently
+  with an artificially slow fake `sendCommand` and asserts every `send:X`/
+  `sent:X` pair is contiguous in the observed order — i.e. never interleaved
+  with another command's send.
+- Not fixed here, intentionally: the webview toggle checkbox itself still
+  isn't disabled while a request is in flight, and `NetworkController`/
+  `RedirectController` still have no locking of their own. The
+  `MacHelperDriver`-level queue is enough to stop the shared FIFO/session
+  state from corrupting under overlap (concurrent `RedirectController`
+  calls' state fields converge to a self-consistent end value because the
+  underlying mac-driver operations they `await` are strictly ordered), but a
+  polished "ignore rapid double-clicks" UX fix at the panel layer is a
+  separate, smaller follow-up if it comes up again.

@@ -65,15 +65,44 @@ interface Session {
 const HEARTBEAT_INTERVAL_MS = Math.floor((HEARTBEAT_TIMEOUT_SEC * 1000) / 3);
 /** Generous relative to the watchdog's 1s FIFO poll — apply/revert/stop are all near-instant `pfctl` calls. */
 const CONFIRM_TIMEOUT_MS = 5_000;
+/**
+ * Opening a FIFO for writing blocks at the OS level until a reader is
+ * present. The watchdog normally keeps one open for the whole session, but
+ * if it died uncleanly (killed, crashed, reclaimed on sleep/wake) without
+ * reaching `teardown_and_exit`'s `rm -f "$CMD_FIFO"`, the file lingers with
+ * zero readers and a plain `fs.writeFile` would hang the caller's promise
+ * forever — with no error, no state update, nothing. `enable()`/`disable()`
+ * would then never resolve, which is worse than a normal failure: the UI's
+ * toggle handler never gets a response to react to.
+ */
+const SEND_TIMEOUT_MS = 3_000;
 
 export class MacHelperDriver implements SupervisedRedirectDriver {
   private session: Session | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * `enable`/`disable`/`teardown` all touch the same `session`/FIFO/
+   * heartbeat state and none of it is safe under concurrent access (e.g. two
+   * quick toggle clicks, or `RedirectController.enable()`'s own "revert
+   * first if already applied" nested call overlapping a click that's still
+   * in flight). Every public method runs through this queue so calls
+   * execute one at a time, in call order, instead of racing.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly deps: MacHelperSupervisorDeps) {}
 
   private log(msg: string): void {
     this.deps.log?.(msg);
+  }
+
+  private serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   /**
@@ -85,17 +114,30 @@ export class MacHelperDriver implements SupervisedRedirectDriver {
    * unreachable or doesn't confirm in time.
    */
   async enable(options: RedirectOptions): Promise<void> {
+    return this.serialize(() => this.enableLocked(options));
+  }
+
+  /** Reverts the redirect but leaves the helper (and its heartbeat) running so a later enable() can reuse it. */
+  async disable(): Promise<void> {
+    return this.serialize(() => this.disableLocked());
+  }
+
+  /** Hard stop: reverts and exits the helper. Call once at extension deactivate/panel dispose — never on an ordinary toggle-off. */
+  async teardown(): Promise<void> {
+    return this.serialize(() => this.teardownLocked());
+  }
+
+  private async enableLocked(options: RedirectOptions): Promise<void> {
     if (this.session) {
       if (await this.tryReapply(options)) return;
       this.log('Mac helper reuse failed; relaunching with a new prompt.');
-      await this.teardown();
+      await this.teardownLocked();
     }
 
     await this.launchFresh(options);
   }
 
-  /** Reverts the redirect but leaves the helper (and its heartbeat) running so a later enable() can reuse it. */
-  async disable(): Promise<void> {
+  private async disableLocked(): Promise<void> {
     if (!this.session || !this.session.applied) return;
 
     const sendCommand = this.deps.sendCommand ?? defaultSendCommand;
@@ -114,8 +156,7 @@ export class MacHelperDriver implements SupervisedRedirectDriver {
     this.session.applied = false;
   }
 
-  /** Hard stop: reverts and exits the helper. Call once at extension deactivate/panel dispose — never on an ordinary toggle-off. */
-  async teardown(): Promise<void> {
+  private async teardownLocked(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
@@ -266,9 +307,10 @@ function defaultRunElevated(scriptPath: string, label: string): Promise<void> {
   });
 }
 
-function defaultSendCommand(fifoPath: string, command: 'apply' | 'revert' | 'stop', options?: RedirectOptions): Promise<void> {
+/** Exported for direct testing against a real FIFO — see `macHelperSupervisor.test.ts`. */
+export function defaultSendCommand(fifoPath: string, command: 'apply' | 'revert' | 'stop', options?: RedirectOptions): Promise<void> {
   const line = command === 'apply' && options ? `apply ${options.rokuIp} ${options.proxyPort} ${options.ports.join(',')}\n` : `${command}\n`;
-  return new Promise((resolve, reject) => {
+  const write = new Promise<void>((resolve, reject) => {
     fs.writeFile(fifoPath, line, (err) => {
       if (err) {
         reject(err);
@@ -276,6 +318,33 @@ function defaultSendCommand(fifoPath: string, command: 'apply' | 'revert' | 'sto
       }
       resolve();
     });
+  });
+  return withTimeout(write, SEND_TIMEOUT_MS, `writing '${command}' to the FIFO`);
+}
+
+/**
+ * Races `promise` against a timer so a FIFO write with no reader (see
+ * `SEND_TIMEOUT_MS`'s doc comment) rejects instead of hanging the caller
+ * forever. The underlying `fs.writeFile` runs on libuv's threadpool, not the
+ * main thread, so this timer still fires on schedule even while that write
+ * is stuck — it just leaves the write itself to resolve (or never resolve)
+ * in the background, which is harmless: nothing awaits it anymore.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`timed out ${label} after ${timeoutMs}ms (no reader — the helper is likely dead)`));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
   });
 }
 
