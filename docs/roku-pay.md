@@ -49,7 +49,11 @@ Rate limit: **20 requests/second** per API key.
 | Issue Service Credit | POST | amount, channelId, productId, rokuCustomerId, partnerReferenceId, comments |
 
 The **Accept** selector requests `application/json` (default, pretty-printed)
-or `application/xml` (rendered raw).
+or `application/xml` (rendered raw). Roku Pay's backend serializes dates
+ASP.NET-AJAX style — `/Date(1784727028679+0000)/` — in both JSON and XML;
+the response viewer converts these tokens to a readable UTC timestamp
+(`YYYY-MM-DDTHH:mm:ss`) for display, everything else in the body is shown
+verbatim.
 
 ### Subscription recovery — TEST endpoints (`…/test/subscription-recovery/…`)
 

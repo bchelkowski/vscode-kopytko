@@ -274,16 +274,27 @@ function sendRequest(): void {
 
 // ── response viewer ──────────────────────────────────────────────────────────
 
+// Roku Pay's backend serializes dates ASP.NET-AJAX style — "/Date(ms[+offset])/" —
+// even inside XML. Humanize these tokens for display only; the stored raw body is untouched.
+function humanizeDotNetDates(text: string): string {
+  return text.replace(/\/Date\((-?\d+)(?:[+-]\d{4})?\)\//g, (match, msStr) => {
+    const ms = Number(msStr);
+    if (!Number.isFinite(ms)) return match;
+    return new Date(ms).toISOString().slice(0, 19);
+  });
+}
+
 function prettyBody(entry: PayLogEntry): string {
   const body = entry.responseBody ?? '';
+  let text = body;
   if (entry.accept === 'json') {
     try {
-      return JSON.stringify(JSON.parse(body), null, 2);
+      text = JSON.stringify(JSON.parse(body), null, 2);
     } catch {
       // Fall through to the raw body (error pages, XML despite Accept, …).
     }
   }
-  return body;
+  return humanizeDotNetDates(text);
 }
 
 function renderResponse(entry: PayLogEntry | undefined): void {

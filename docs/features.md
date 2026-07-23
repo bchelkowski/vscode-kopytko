@@ -276,7 +276,7 @@ device involved. See [roku-pay.md](./roku-pay.md).
 | All 4 subscription-recovery TEST transitions — in-grace, on-hold, passively cancel, recover | ✅ | [roku-pay.md](./roku-pay.md) |
 | Named credential profiles — partner API key in SecretStorage (OS keychain), partnerReferenceId prefill | ✅ | [roku-pay.md](./roku-pay.md) |
 | Endpoint-driven forms — typed fields (string/number/boolean/date), required markers, live masked URL preview | ✅ | [roku-pay.md](./roku-pay.md) |
-| Accept header switch — JSON (pretty-printed) or XML (raw) response rendering | ✅ | [roku-pay.md](./roku-pay.md) |
+| Accept header switch — JSON (pretty-printed) or XML (raw) response rendering, with embedded `/Date(ms)/` tokens humanized to readable timestamps | ✅ | [roku-pay.md](./roku-pay.md) |
 | Full response viewer — status, headers, body, duration, request body | ✅ | [roku-pay.md](./roku-pay.md) |
 | Persistent request/response history — last 200, API key always masked (`****`), per-entry delete + clear all | ✅ | [roku-pay.md](./roku-pay.md) |
 | Tools-sidebar button + `Kopytko: Open Roku Pay Web Services` command | ✅ | [roku-pay.md](./roku-pay.md) |
