@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.12] - 2026-07-24
+
+### Fixed
+- Load macOS redirect into com.apple/* sub-anchor, never reload main pf ruleset
+
 ## [1.10.11] - 2026-07-24
 
 - Release 1.10.11
