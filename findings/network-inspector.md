@@ -1735,3 +1735,64 @@ itself. Anything touching `pfctl` behavior beyond "does this shell script
 have the commands we intended" needs on-device verification before being
 trusted, no matter how carefully the shell logic is reasoned through
 statically.
+
+## macOS helper: the actual root-cause fix — stop touching the main pf ruleset entirely (2026-07-24)
+
+**The "run the bootstrap once" fix directly above was insufficient — the
+main-ruleset reload breaks Internet Sharing even when it runs exactly once.**
+User rebooted (clearing the broken NAT), launched fresh, enabled capture, and
+HTTPS was *still* dead. That falsified the "it's the *repeated* reload" theory
+and pinned it on the reload itself: a single `pfctl -f -` of a modified
+`/etc/pf.conf`, on the very first enable, flushes the NAT rules Internet
+Sharing dynamically loaded into its own `com.apple/*` sub-anchors. "Run it
+once" just moved the one guaranteed breakage to the first toggle instead of
+every toggle.
+
+**Root cause, stated correctly this time:** the entire approach of
+*registering a top-level `rdr-anchor "kopytko-net"` reference in
+`/etc/pf.conf` and reloading the main ruleset to activate it* is
+fundamentally incompatible with Internet Sharing (which is a hard
+prerequisite for this whole feature). Any main-ruleset reload from outside
+Internet Sharing's own lifecycle wipes its dynamically-loaded NAT. There is
+no "reload it more carefully" — the reload must not happen at all.
+
+**The fix that actually addresses it:** nest our anchor under `com.apple/`
+(`PF_ANCHOR` changed from `'kopytko-net'` to `'com.apple/kopytko-net'`). The
+default macOS `/etc/pf.conf` already contains `rdr-anchor "com.apple/*"` (and
+`nat-anchor`/`anchor` siblings) — a wildcard that evaluates *every*
+sub-anchor under `com.apple/` at packet-processing time. This is precisely
+how Internet Sharing gets its own rules evaluated: it loads them into a
+`com.apple/*` sub-anchor at runtime (via `pfctl -a`, not via the `load
+anchor` directive in the file) and the wildcard picks them up. By loading our
+rule into `com.apple/kopytko-net` the same way, we get evaluated for free
+with **zero** edits to `/etc/pf.conf` and **zero** main-ruleset reloads.
+`pfctl -a 'com.apple/kopytko-net' -f -` replaces only our own sub-anchor's
+rules; siblings (Internet Sharing's NAT) are untouched. Removed entirely:
+the `awk` insert, the `pfctl -f -` reload, the `pfctl -s Anchor` probe, and
+`ensure_anchor_referenced` — from both `buildMacSetup`
+(`redirectController.ts`) and the helper script (`macHelperScript.ts`). Mac
+setup is now just two commands: `printf '<rdr lines>' | pfctl -a
+'com.apple/kopytko-net' -f -` and the idempotent `pfctl -e`.
+
+**Failure mode is now safe by construction.** If the assumption is somehow
+wrong (a user's `/etc/pf.conf` lacks the `com.apple/*` wildcard, or pf
+doesn't evaluate our sub-anchor for some reason), the *only* consequence is
+that our redirect silently doesn't work — capture shows no traffic, but the
+user's network is completely untouched. Contrast the previous design, whose
+failure mode was "break every device's NAT until a reboot." Even without
+on-device confirmation of the pf semantics, shipping this is correct because
+the worst case degraded from *destructive* to *inert*.
+
+**Confidence / verification honesty (third bug in this redesign — pattern is
+now undeniable):** the `com.apple/*` wildcard evaluating manually-loaded
+sub-anchors is standard, long-standing pf behavior and is the documented way
+tools coexist with Internet Sharing, but this repo *still* cannot execute it
+— WSL/Linux has no `pfctl`, no Internet Sharing, no macOS pf kernel. The
+tests added only assert the generated commands' shape (nested anchor path
+used; `/etc/pf.conf`/`pfctl -f -`/`awk`/`pfctl -s Anchor` all absent). **This
+must be confirmed on the user's actual Mac**: with Internet Sharing on and
+capture enabled, (a) the Roku's HTTP traffic appears in the capture list, and
+(b) HTTPS from the Roku (and every other device behind Internet Sharing)
+keeps working normally. If a future session is tempted to add *anything* that
+runs `pfctl -f` on the main ruleset, or writes to `/etc/pf.conf`, on macOS —
+don't. That is the specific action that broke this three times.

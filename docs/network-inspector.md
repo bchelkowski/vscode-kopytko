@@ -90,7 +90,7 @@ teardown never touches your own firewall config:
 | Gateway OS | Mechanism | Revert |
 |---|---|---|
 | **Linux** | dedicated `KOPYTKO_NET` nat chain, `REDIRECT` device :80 → proxy | flush + delete the chain |
-| **macOS** | dedicated pf anchor `kopytko-net`, `rdr` device :80 → `127.0.0.1:proxy` | flush that anchor only |
+| **macOS** | pf anchor `com.apple/kopytko-net` (nested under the default `rdr-anchor "com.apple/*"` wildcard — no `/etc/pf.conf` edit, no main-ruleset reload), `rdr` device :80 → `127.0.0.1:proxy` | flush that anchor only |
 | **Windows** | elevated WinDivert companion process, packet-level redirect into loopback | closing the companion's WinDivert handles (any process exit) |
 
 **macOS gets at most one elevated prompt per VS Code session — not one per
@@ -119,12 +119,25 @@ for reuse).
 ## macOS: single-elevation persistent helper
 
 `pf` doesn't need a live process to keep a redirect active — `pfctl -a
-kopytko-net -F all` is a plain one-shot root command, runnable at any time.
-So unlike Windows (where the redirect *is* the WinDivert handles a process
-holds open), a persistent helper on macOS exists **only** to avoid repeated
-admin-password prompts — it stays alive, idle, across every capture
+'com.apple/kopytko-net' -F all` is a plain one-shot root command, runnable at
+any time. So unlike Windows (where the redirect *is* the WinDivert handles a
+process holds open), a persistent helper on macOS exists **only** to avoid
+repeated admin-password prompts — it stays alive, idle, across every capture
 on/off toggle *and* every device/port switch, for the rest of the VS Code
 session.
+
+**Why the anchor is nested under `com.apple/`.** The redirect rule loads into
+`com.apple/kopytko-net`, not a standalone `kopytko-net` anchor. The default
+macOS `/etc/pf.conf` already ships an `rdr-anchor "com.apple/*"` wildcard that
+evaluates every sub-anchor under `com.apple/` — the exact mechanism Internet
+Sharing uses for its own NAT — so nesting there gets our rule evaluated
+**without editing `/etc/pf.conf` or reloading the main pf ruleset at all**.
+That's essential: a `pfctl -f` main-ruleset reload flushes the NAT rules
+Internet Sharing dynamically loaded into its own `com.apple/*` sub-anchors,
+which breaks HTTPS (and everything that needs to route out) for every device
+behind Internet Sharing until a reboot. Our `pfctl -a 'com.apple/kopytko-net'
+-f -` only ever replaces our own sub-anchor; sibling anchors are never
+touched.
 
 The first **enable** on macOS:
 
@@ -152,7 +165,7 @@ From then on, for the rest of the VS Code session:
   `apply <rokuIp> <proxyPort> <ports>` over the FIFO — again no new
   elevation. The already-root watchdog validates those three values (rejects
   anything not shaped like a dotted-quad IP or digits-only ports before ever
-  handing them to `pfctl`/`awk`) and rebuilds the redirect rules from them at
+  handing them to `pfctl`) and rebuilds the redirect rules from them at
   runtime, rather than from whatever was baked into the script when it first
   launched. If the running helper doesn't confirm in time (it already
   self-terminated, say) or rejects the payload, the extension transparently

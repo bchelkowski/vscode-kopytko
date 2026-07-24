@@ -4,11 +4,12 @@
  * *all* of a device's port-80 traffic transparently by matching its source IP
  * at the packet level, so no hostname knowledge is ever needed.
  *  - **Linux**: a dedicated `KOPYTKO_NET` nat chain (flushed/deleted on revert).
- *  - **macOS**: a dedicated pf anchor `kopytko-net` (flushed on revert),
- *    applied and reverted by a persistent, self-terminating elevated helper
- *    (`redirect/mac/`) that stays alive across capture on/off toggles, so a
- *    whole VS Code session needs only one admin-password prompt — see
- *    `dispose()` for how it's still guaranteed to exit when the extension
+ *  - **macOS**: a dedicated pf anchor nested under `com.apple/` (see
+ *    `PF_ANCHOR`) so the default `/etc/pf.conf` wildcard evaluates it without
+ *    any main-ruleset reload; applied and reverted by a persistent,
+ *    self-terminating elevated helper (`redirect/mac/`) that stays alive
+ *    across capture on/off toggles, so a whole VS Code session needs only one
+ *    admin-password prompt — see `dispose()` for how it's still guaranteed to exit when the extension
  *    actually shuts down.
  *  - **Windows**: an elevated WinDivert companion process
  *    (`redirect/windows/`), since Windows has no `iptables`/`pf` equivalent —
@@ -62,8 +63,22 @@ export type WindowsRedirectDriver = SupervisedRedirectDriver;
 
 export class RedirectUnsupportedError extends Error {}
 
-/** Exported so `redirect/mac/macHelperScript.ts` can build the same anchor name into its runtime-parameterized apply logic. */
-export const PF_ANCHOR = 'kopytko-net';
+/**
+ * Our pf anchor path, nested under `com.apple/` on purpose. The default
+ * macOS `/etc/pf.conf` ships a `rdr-anchor "com.apple/*"` wildcard that
+ * evaluates every sub-anchor under `com.apple/` at packet-processing time —
+ * this is the exact mechanism macOS Internet Sharing itself uses to inject
+ * its NAT/redirect rules. By loading into `com.apple/kopytko-net` we get our
+ * redirect evaluated for free, WITHOUT ever editing `/etc/pf.conf` or
+ * reloading the main ruleset (`pfctl -f`). That matters enormously: a main-
+ * ruleset reload flushes the dynamically-loaded rules Internet Sharing put
+ * into its own `com.apple/*` sub-anchors, killing NAT for every device
+ * behind it until a reboot — the "HTTPS breaks when capture is on" bug this
+ * path exists to avoid. `pfctl -a "com.apple/kopytko-net" -f -` only ever
+ * touches our own sub-anchor, never siblings. Exported so
+ * `redirect/mac/macHelperScript.ts` builds the same path.
+ */
+export const PF_ANCHOR = 'com.apple/kopytko-net';
 const IPT_CHAIN = 'KOPYTKO_NET';
 
 export class RedirectController {
@@ -236,19 +251,19 @@ function buildMacSetup(o: RedirectOptions): string[] {
   const rdrLines = o.ports
     .map((port) => `rdr pass inet proto tcp from ${o.rokuIp} to any port ${port} -> 127.0.0.1 port ${o.proxyPort}`)
     .join('\\n');
-  // Reference our anchor from the main ruleset. The reference MUST sit among the
-  // translation (rdr) anchors — appending it after the filter anchors makes
-  // `pfctl -f` reject the whole file with an ordering error. `awk` inserts it
-  // right after the first existing rdr-anchor line, preserving order.
-  const insertAnchor =
-    `awk '1; /^rdr-anchor/ && !x {print "rdr-anchor \\"${PF_ANCHOR}\\""; x=1}' /etc/pf.conf | pfctl -f -`;
+  // Load ONLY into our own sub-anchor (see PF_ANCHOR above for why it's nested
+  // under com.apple/*). No `/etc/pf.conf` edit, no `pfctl -f` main-ruleset
+  // reload — those would flush Internet Sharing's NAT and break HTTPS. `pfctl
+  // -e` is idempotent (Internet Sharing, a prerequisite for this feature, has
+  // already enabled pf); kept only to cover the rare case it somehow isn't.
   return [
-    `pfctl -s Anchor 2>/dev/null | grep -q '${PF_ANCHOR}' || { ${insertAnchor}; }`,
-    `printf '${rdrLines}\\n' | pfctl -a ${PF_ANCHOR} -f -`,
+    `printf '${rdrLines}\\n' | pfctl -a '${PF_ANCHOR}' -f -`,
     'pfctl -e 2>/dev/null || true',
   ];
 }
 
 function buildMacTeardown(_o: RedirectOptions): string[] {
-  return [`pfctl -a ${PF_ANCHOR} -F all 2>/dev/null || true`];
+  // Flush only our own sub-anchor — sibling com.apple/* anchors (Internet
+  // Sharing's NAT) are untouched.
+  return [`pfctl -a '${PF_ANCHOR}' -F all 2>/dev/null || true`];
 }

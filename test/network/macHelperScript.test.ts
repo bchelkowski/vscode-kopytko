@@ -26,7 +26,7 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
     expect(script).to.contain("INITIAL_PORTS='80,443,8060'");
   });
 
-  it("do_apply builds the same rdr rule shape as the one-shot path, from its runtime arguments (not baked-in values)", () => {
+  it("do_apply builds the rdr rule from its runtime arguments and loads only our own anchor", () => {
     const script = buildMacHelperScript(BASE);
     expect(script).to.contain('rokuIp="$1"');
     expect(script).to.contain('proxyPort="$2"');
@@ -36,44 +36,29 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
     expect(script).to.contain('pfctl -e');
   });
 
-  it('inserts the pf anchor reference using a shell variable (PF_ANCHOR), not a value baked in per-call', () => {
+  it('uses the com.apple/-nested anchor path so the default pf.conf com.apple/* wildcard evaluates it', () => {
     const script = buildMacHelperScript(BASE);
-    expect(script).to.contain("PF_ANCHOR='kopytko-net'");
-    expect(script).to.contain('pfctl -s Anchor 2>/dev/null | grep -q "$PF_ANCHOR"');
-    expect(script).to.contain('rdr-anchor \\"" anchor "\\""');
+    expect(script).to.contain("PF_ANCHOR='com.apple/kopytko-net'");
   });
 
-  it('runs the /etc/pf.conf anchor-registration (full ruleset reload) exactly once, before the watchdog is backgrounded — never inside do_apply', () => {
-    // Regression test for a real incident: re-checking/re-inserting the
-    // anchor reference on every apply could spuriously re-trigger a full
-    // `pfctl -f -` reload of the main ruleset after our own revert, which
-    // clobbered macOS Internet Sharing's NAT anchor and broke HTTPS for the
-    // device until a reboot. See findings/network-inspector.md.
+  it('NEVER touches the main pf ruleset — no /etc/pf.conf edit, no `pfctl -f -` reload, no awk, no anchor-existence probe', () => {
+    // Regression test for a real, reboot-only-recoverable incident: editing
+    // /etc/pf.conf and reloading the main ruleset flushed macOS Internet
+    // Sharing's dynamically-loaded NAT rules, breaking HTTPS (and everything
+    // needing to route out) for the device. Nesting under com.apple/* lets
+    // the existing `rdr-anchor "com.apple/*"` wildcard evaluate our rule with
+    // zero main-ruleset changes. See findings/network-inspector.md.
     const script = buildMacHelperScript(BASE);
-
-    const ensureFnBody = script.slice(script.indexOf('ensure_anchor_referenced() {'), script.indexOf('do_apply() {'));
-    expect(ensureFnBody).to.contain('pfctl -s Anchor');
-    expect(ensureFnBody).to.contain('awk');
-    expect(ensureFnBody).to.contain('pfctl -f -');
-
-    const doApplyBody = script.slice(script.indexOf('do_apply() {'), script.indexOf('do_revert() {'));
-    expect(doApplyBody).to.not.contain('pfctl -s Anchor');
-    expect(doApplyBody).to.not.contain('awk');
-    expect(doApplyBody).to.not.contain('ensure_anchor_referenced');
-    // do_apply only ever touches its own anchor, never the main ruleset.
-    expect(doApplyBody).to.contain('pfctl -a "$PF_ANCHOR" -f -');
-
-    // Called exactly once in the whole script, in the synchronous top-level
-    // flow, before the initial do_apply — and specifically NOT from inside
-    // the FIFO command loop's "apply)" case.
-    const allOccurrences = script.split('ensure_anchor_referenced').length - 1;
-    expect(allOccurrences).to.equal(2); // the definition + exactly one call site
-    const callSiteIdx = script.indexOf('ensure_anchor_referenced\n');
-    const initialApplyIdx = script.indexOf('if ! do_apply "$INITIAL_ROKU_IP"');
-    const fifoApplyCaseIdx = script.indexOf('apply) log \'Apply command received.\'');
-    expect(callSiteIdx).to.be.greaterThan(-1);
-    expect(callSiteIdx).to.be.lessThan(initialApplyIdx);
-    expect(callSiteIdx).to.be.lessThan(fifoApplyCaseIdx); // runs before the watchdog loop even exists, definitely not inside it
+    expect(script).to.not.contain('/etc/pf.conf');
+    expect(script).to.not.contain('pfctl -f -');
+    expect(script).to.not.contain('pfctl -f');
+    expect(script).to.not.contain('awk');
+    expect(script).to.not.contain('pfctl -s Anchor');
+    expect(script).to.not.contain('ensure_anchor_referenced');
+    // The only pfctl commands that mutate state are scoped to our own anchor
+    // (plus the idempotent `pfctl -e`).
+    expect(script).to.contain('pfctl -a "$PF_ANCHOR" -f -');
+    expect(script).to.contain("pfctl -a 'com.apple/kopytko-net' -F all");
   });
 
   it('rejects a rokuIp that is not dotted-quad shaped before touching pfctl, so garbage can never reach a root shell command', () => {
@@ -156,7 +141,7 @@ describe('network/redirect/mac/buildMacHelperScript', () => {
   it('revert flushes the anchor but does not exit the watchdog (stays alive for a later apply)', () => {
     const script = buildMacHelperScript(BASE);
     const doRevertBody = script.slice(script.indexOf('do_revert() {'), script.indexOf("write_status 'starting'"));
-    expect(doRevertBody).to.contain('pfctl -a kopytko-net -F all');
+    expect(doRevertBody).to.contain("pfctl -a 'com.apple/kopytko-net' -F all");
     expect(doRevertBody).to.contain("write_status 'reverted'");
     expect(doRevertBody).to.not.contain('exit');
     expect(script).to.contain("revert) log 'Revert command received.'; do_revert ;;");
