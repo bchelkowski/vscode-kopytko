@@ -4,7 +4,15 @@
  * *all* of a device's port-80 traffic transparently by matching its source IP
  * at the packet level, so no hostname knowledge is ever needed.
  *  - **Linux**: a dedicated `KOPYTKO_NET` nat chain (flushed/deleted on revert).
- *  - **macOS**: a dedicated pf anchor `kopytko-net` (flushed on revert).
+ *  - **macOS**: a pf anchor nested under `com.apple/` (`com.apple/kopytko-net`),
+ *    flushed on revert. Nesting matters: the default `/etc/pf.conf` already
+ *    has a `rdr-anchor "com.apple/*"` wildcard that evaluates it, so we load
+ *    our rule with `pfctl -a` and NEVER reload the main ruleset. Reloading
+ *    (`pfctl -f`) would flush the NAT anchor macOS Internet Sharing inserts
+ *    into the running ruleset at startup — breaking HTTPS for the device
+ *    until a reboot (Apple's own `/etc/pf.conf` warns about exactly this).
+ *    Verified on-device: the nested rule redirects HTTP while Internet
+ *    Sharing's NAT (and thus HTTPS) stays intact.
  *  - **Windows**: an elevated WinDivert companion process
  *    (`redirect/windows/`), since Windows has no `iptables`/`pf` equivalent —
  *    `netsh portproxy` only catches traffic already addressed to this
@@ -40,7 +48,9 @@ export interface WindowsRedirectDriver {
 
 export class RedirectUnsupportedError extends Error {}
 
-const PF_ANCHOR = 'kopytko-net';
+// Nested under com.apple/* so the default /etc/pf.conf wildcard evaluates it
+// without any main-ruleset reload — see the macOS note in the file header.
+const PF_ANCHOR = 'com.apple/kopytko-net';
 const IPT_CHAIN = 'KOPYTKO_NET';
 
 export class RedirectController {
@@ -171,19 +181,20 @@ function buildMacSetup(o: RedirectOptions): string[] {
   const rdrLines = o.ports
     .map((port) => `rdr pass inet proto tcp from ${o.rokuIp} to any port ${port} -> 127.0.0.1 port ${o.proxyPort}`)
     .join('\\n');
-  // Reference our anchor from the main ruleset. The reference MUST sit among the
-  // translation (rdr) anchors — appending it after the filter anchors makes
-  // `pfctl -f` reject the whole file with an ordering error. `awk` inserts it
-  // right after the first existing rdr-anchor line, preserving order.
-  const insertAnchor =
-    `awk '1; /^rdr-anchor/ && !x {print "rdr-anchor \\"${PF_ANCHOR}\\""; x=1}' /etc/pf.conf | pfctl -f -`;
+  // Load ONLY our own sub-anchor. It's nested under com.apple/*, which the
+  // default /etc/pf.conf already evaluates, so there is no need to edit
+  // /etc/pf.conf or reload the main ruleset — doing so would flush Internet
+  // Sharing's dynamically-inserted NAT anchor and break the device's HTTPS.
+  // `pfctl -e` is idempotent (Internet Sharing, a prerequisite for this
+  // feature, has already enabled pf); kept only for the rare case it hasn't.
   return [
-    `pfctl -s Anchor 2>/dev/null | grep -q '${PF_ANCHOR}' || { ${insertAnchor}; }`,
-    `printf '${rdrLines}\\n' | pfctl -a ${PF_ANCHOR} -f -`,
+    `printf '${rdrLines}\\n' | pfctl -a '${PF_ANCHOR}' -f -`,
     'pfctl -e 2>/dev/null || true',
   ];
 }
 
 function buildMacTeardown(_o: RedirectOptions): string[] {
-  return [`pfctl -a ${PF_ANCHOR} -F all 2>/dev/null || true`];
+  // Flush only our own sub-anchor; sibling com.apple/* anchors (Internet
+  // Sharing's NAT) are untouched.
+  return [`pfctl -a '${PF_ANCHOR}' -F all 2>/dev/null || true`];
 }

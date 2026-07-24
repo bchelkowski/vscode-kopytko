@@ -85,7 +85,7 @@ teardown never touches your own firewall config:
 | Gateway OS | Mechanism | Revert |
 |---|---|---|
 | **Linux** | dedicated `KOPYTKO_NET` nat chain, `REDIRECT` device :80 → proxy | flush + delete the chain |
-| **macOS** | dedicated pf anchor `kopytko-net`, `rdr` device :80 → `127.0.0.1:proxy` | flush that anchor only |
+| **macOS** | pf anchor `com.apple/kopytko-net` (nested under the default `rdr-anchor "com.apple/*"` — no `/etc/pf.conf` edit, no main-ruleset reload, so Internet Sharing's NAT is never flushed), `rdr` device :80 → `127.0.0.1:proxy` | flush that anchor only |
 | **Windows** | elevated WinDivert companion process, packet-level redirect into loopback | closing the companion's WinDivert handles (any process exit) |
 
 One elevated prompt (macOS admin dialog / Linux `pkexec` / Windows UAC)

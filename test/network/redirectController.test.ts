@@ -36,21 +36,26 @@ describe('network/RedirectController', () => {
       expect(teardown).to.contain('-X KOPYTKO_NET');
     });
 
-    it('builds a dedicated pf anchor on macOS and flushes only that anchor', () => {
+    it('loads a com.apple/-nested pf anchor on macOS without ever reloading the main ruleset', () => {
       const setup = buildSetupCommands('darwin', OPTS).join('\n');
-      expect(setup).to.contain('kopytko-net');
       expect(setup).to.contain('rdr pass');
       expect(setup).to.contain('127.0.0.1 port 8888');
       expect(setup).to.contain('pfctl -e');
-      // Anchor is inserted among the rdr-anchors (ordering-safe), not appended.
-      expect(setup).to.contain('/etc/pf.conf');
-      expect(setup).to.contain('rdr-anchor');
+      // Nested under com.apple/* so the default pf.conf wildcard evaluates it —
+      // no /etc/pf.conf edit, no `pfctl -f` main-ruleset reload (that flushes
+      // Internet Sharing's dynamic NAT anchor and breaks the device's HTTPS).
+      expect(setup).to.contain("pfctl -a 'com.apple/kopytko-net' -f -");
+      expect(setup).to.not.contain('/etc/pf.conf');
+      expect(setup).to.not.contain('rdr-anchor');
+      expect(setup).to.not.contain('pfctl -f -');
+      expect(setup).to.not.contain('awk');
       // No hardcoded Internet Sharing interface name.
       expect(setup).to.not.contain('bridge100');
       expect(setup).to.not.contain(' on ');
 
       const teardown = buildTeardownCommands('darwin', OPTS).join('\n');
-      expect(teardown).to.contain('-a kopytko-net -F all');
+      expect(teardown).to.contain("-a 'com.apple/kopytko-net' -F all");
+      expect(teardown).to.not.contain('/etc/pf.conf');
     });
 
     it('produces no commands on unsupported platforms', () => {

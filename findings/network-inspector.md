@@ -1833,3 +1833,75 @@ single-prompt idea. But the key lesson dominates all the technical detail:
   user running `sudo pfctl -sa` / `-s nat` / `-s rdr` and `cat /etc/pf.conf`
   on their actual Mac (Internet Sharing on, capture on) to see what pf really
   does, *before* writing any code — not by reasoning from the source alone.
+
+## ✅ RESOLVED with on-device diagnosis + verified fix (2026-07-24, later same day)
+
+Did exactly the "tight loop with pfctl output" the entry above recommended,
+and it cracked the real root cause and produced a fix **empirically verified
+on the user's Mac**. **Two conclusions in the revert entry above are now
+DISPROVEN** — corrected here (left above intact as an honest record of what
+wrong reasoning looked like at the time):
+
+1. ❌ "The `/etc/pf.conf` reload did NOT break Internet Sharing." **It does.**
+   The reload theory was right all along.
+2. ❌ "The `com.apple/*` wildcard did not evaluate our manually-loaded
+   sub-anchor." **It does** evaluate it — HTTP was redirected in the test. The
+   `com.apple` attempt (`dc3b993`) failing to capture was NOT a pf-evaluation
+   problem; it was almost certainly the persistent-helper machinery around it
+   (FIFO/watchdog/apply-validation) failing to actually apply the rule, and/or
+   NAT already left broken by a previous build's reload — not the anchor
+   approach itself.
+
+**Confirmed root cause (from the user's actual `pfctl` output):** macOS
+Internet Sharing injects its NAT anchor into the **running** main ruleset
+dynamically at startup — it is NOT in `/etc/pf.conf`. `buildMacSetup`'s
+`awk /etc/pf.conf | pfctl -f -` rebuilt the main ruleset from the on-disk
+file, which lacks IS's dynamic anchor, so the reload **flushed IS's NAT
+anchor reference** out of the running ruleset. Evidence:
+- `sudo pfctl -s nat` (captured while broken): showed our redirect reference
+  but **no** `com.apple.internet-sharing` NAT reference — flushed.
+- `sudo pfctl -s Anchors`: `com.apple.internet-sharing` anchor still *existed*
+  but was orphaned (referenced by nothing) → its NAT never ran → device's
+  HTTPS (needs NAT to route out) dead; HTTP survived only because our rule
+  bounces it to loopback, no NAT needed. Persisted until reboot because IS
+  only re-injects on service restart.
+- Apple's own `/etc/pf.conf` comment: *"Care must be taken to ensure that the
+  main ruleset does not get flushed… some system services would dynamically
+  insert anchors into the main ruleset… removed on termination of the
+  service."* And `pfctl -f /etc/pf.conf` itself prints: *"could result in
+  flushing of rules present in the main ruleset added by the system at
+  startup."* macOS was warning about our exact operation.
+- **Not** permanently editing `/etc/pf.conf`: `grep kopytko-net /etc/pf.conf`
+  was empty. The `awk … | pfctl -f -` modified only the piped stream, never
+  the file on disk. (An earlier worry in this file that we permanently edit
+  the user's pf.conf was wrong.)
+
+**The verified fix (now in `buildMacSetup`/`buildMacTeardown`, one-shot
+path):** load the redirect into the `com.apple/kopytko-net` sub-anchor and
+**never reload the main ruleset**:
+```
+printf '<rdr lines>' | pfctl -a 'com.apple/kopytko-net' -f -
+pfctl -e 2>/dev/null || true          # idempotent; IS already enabled pf
+```
+teardown: `pfctl -a 'com.apple/kopytko-net' -F all`. The default
+`/etc/pf.conf`'s `rdr-anchor "com.apple/*"` wildcard already evaluates the
+sub-anchor, so no reference needs adding and the main ruleset is never
+touched — IS's dynamic NAT anchor stays put.
+
+**On-device proof (user ran these directly):**
+- `sudo sh -c 'printf "rdr pass inet proto tcp from <ROKU_IP> to any port 80 -> 127.0.0.1 port 9\n" | pfctl -a "com.apple/kopytko-net" -f -'`
+  → Roku HTTP failed (redirected to dead port = rule evaluated), HTTPS kept
+  working (IS NAT intact). ✓
+- `sudo pfctl -a "com.apple/kopytko-net" -F all` → both HTTP and HTTPS working
+  again (clean teardown). ✓
+
+Applied to the **reverted one-shot `ElevatedRunner` path** (NOT the
+persistent helper, which stays gone). Because that path runs the pf commands
+directly via `osascript`, exactly like the verified manual test — none of the
+FIFO/watchdog machinery that may have masked this in `dc3b993`. Still two
+admin prompts per session; the single-prompt idea is a separate future task
+and MUST reuse this `com.apple/`-nested, no-reload mechanism.
+
+**The enduring lesson, now proven twice over:** never run `pfctl -f` on the
+macOS main ruleset while Internet Sharing is active. Scope everything to the
+`com.apple/kopytko-net` sub-anchor via `pfctl -a`.
