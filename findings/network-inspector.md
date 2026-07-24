@@ -1796,3 +1796,40 @@ capture enabled, (a) the Roku's HTTP traffic appears in the capture list, and
 keeps working normally. If a future session is tempted to add *anything* that
 runs `pfctl -f` on the main ruleset, or writes to `/etc/pf.conf`, on macOS —
 don't. That is the specific action that broke this three times.
+
+## ⛔ THE ENTIRE macOS PERSISTENT-HELPER FEATURE WAS REVERTED (2026-07-24)
+
+**Everything from "macOS single-elevation persistent helper" onward in this
+file describes code that NO LONGER EXISTS.** After three failed fix attempts,
+the user asked to drop it and go back to the version that worked. All of
+`redirect/mac/`, the `SupervisedRedirectDriver`/`teardown`/`dispose` additions
+to `redirectController.ts`, the `macDriver` wiring in `activation/network.ts`,
+and the `redirect.dispose()` call in `networkController.ts` were removed;
+those files are restored to their pre-feature (`49c803d`) state. macOS is back
+to the **original one-shot `ElevatedRunner` path** (`buildMacSetup` with the
+`/etc/pf.conf` `rdr-anchor` insert + `pfctl -f -` reload guarded by `pfctl -s
+Anchor | grep -q`, then `pfctl -a kopytko-net -f -`). That original design
+captures HTTP correctly and leaves HTTPS alone — at the cost of **two admin
+prompts per capture session** (one on enable, one on disable), which is the
+tradeoff the user accepted.
+
+**The history above is kept on purpose** — it's an accurate record of what was
+tried and why each attempt failed, invaluable if anyone revisits the
+single-prompt idea. But the key lesson dominates all the technical detail:
+
+- **Do not attempt macOS pf changes without on-device testing.** This repo
+  runs on Windows/WSL — there is no `pfctl`, no Internet Sharing, no macOS pf
+  kernel anywhere in the dev/CI environment. Every one of the three failures
+  was a confident, statically-reasoned change that pf's real behavior then
+  contradicted. The `com.apple/*`-wildcard attempt in particular *looked*
+  correct and even fixed HTTPS, but the wildcard did **not** evaluate our
+  manually-loaded sub-anchor, so HTTP capture silently stopped.
+- **The original design's `/etc/pf.conf` reload did NOT break Internet
+  Sharing** — proven by the fact that the original shipped with it and worked
+  for the user. The reload theory (the basis of two of the three fixes) was
+  wrong. What actually differed in the persistent-helper version was never
+  conclusively isolated on-device before the revert.
+- If the single-prompt feature is revisited: do it as a tight loop with the
+  user running `sudo pfctl -sa` / `-s nat` / `-s rdr` and `cat /etc/pf.conf`
+  on their actual Mac (Internet Sharing on, capture on) to see what pf really
+  does, *before* writing any code — not by reasoning from the source alone.

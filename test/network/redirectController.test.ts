@@ -6,7 +6,6 @@ import {
   buildTeardownCommands,
   type ElevatedRunner,
   type RedirectOptions,
-  type SupervisedRedirectDriver,
   type WindowsRedirectDriver,
 } from '../../src/client/network/redirect/redirectController';
 
@@ -37,27 +36,21 @@ describe('network/RedirectController', () => {
       expect(teardown).to.contain('-X KOPYTKO_NET');
     });
 
-    it('loads into a com.apple/-nested anchor without ever touching the main pf ruleset', () => {
+    it('builds a dedicated pf anchor on macOS and flushes only that anchor', () => {
       const setup = buildSetupCommands('darwin', OPTS).join('\n');
+      expect(setup).to.contain('kopytko-net');
       expect(setup).to.contain('rdr pass');
       expect(setup).to.contain('127.0.0.1 port 8888');
       expect(setup).to.contain('pfctl -e');
-      // Nested under com.apple/* so the default pf.conf's existing
-      // `rdr-anchor "com.apple/*"` wildcard evaluates it — no /etc/pf.conf
-      // edit, no `pfctl -f` main-ruleset reload (that would flush Internet
-      // Sharing's NAT and break HTTPS).
-      expect(setup).to.contain("pfctl -a 'com.apple/kopytko-net' -f -");
-      expect(setup).to.not.contain('/etc/pf.conf');
-      expect(setup).to.not.contain('rdr-anchor');
-      expect(setup).to.not.contain('pfctl -f -');
-      expect(setup).to.not.contain('awk');
+      // Anchor is inserted among the rdr-anchors (ordering-safe), not appended.
+      expect(setup).to.contain('/etc/pf.conf');
+      expect(setup).to.contain('rdr-anchor');
       // No hardcoded Internet Sharing interface name.
       expect(setup).to.not.contain('bridge100');
       expect(setup).to.not.contain(' on ');
 
       const teardown = buildTeardownCommands('darwin', OPTS).join('\n');
-      expect(teardown).to.contain("-a 'com.apple/kopytko-net' -F all");
-      expect(teardown).to.not.contain('/etc/pf.conf');
+      expect(teardown).to.contain('-a kopytko-net -F all');
     });
 
     it('produces no commands on unsupported platforms', () => {
@@ -113,15 +106,6 @@ describe('network/RedirectController', () => {
       expect(threw).to.be.instanceOf(RedirectUnsupportedError);
       expect(ctrl.isApplied).to.equal(false);
       expect(calls).to.have.length(0);
-    });
-
-    it('dispose() behaves exactly like disable() when there is no macDriver.teardown() to prefer (e.g. Linux)', async () => {
-      const { runner, calls } = fakeRunner();
-      const ctrl = new RedirectController(runner, 'linux');
-      await ctrl.enable(OPTS);
-      await ctrl.dispose();
-      expect(calls).to.have.length(2);
-      expect(ctrl.isApplied).to.equal(false);
     });
   });
 
@@ -181,121 +165,6 @@ describe('network/RedirectController', () => {
 
       await ctrl.disable();
       expect(calls).to.deep.equal([]);
-    });
-  });
-
-  describe('mac driver (persistent helper)', () => {
-    function fakeMacDriver(): { driver: SupervisedRedirectDriver; calls: string[] } {
-      const calls: string[] = [];
-      const driver: SupervisedRedirectDriver = {
-        enable: (options) => {
-          calls.push(`enable:${options.rokuIp}:${options.proxyPort}`);
-          return Promise.resolve();
-        },
-        disable: () => {
-          calls.push('disable');
-          return Promise.resolve();
-        },
-        teardown: () => {
-          calls.push('teardown');
-          return Promise.resolve();
-        },
-      };
-      return { driver, calls };
-    }
-
-    it('delegates to the injected macDriver instead of the shell-command runner, on both enable and disable', async () => {
-      const { runner, calls: shellCalls } = fakeRunner();
-      const { driver, calls } = fakeMacDriver();
-      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
-
-      await ctrl.enable(OPTS);
-      expect(ctrl.isApplied).to.equal(true);
-      expect(calls).to.deep.equal(['enable:192.168.137.42:8888']);
-      expect(shellCalls).to.have.length(0);
-
-      await ctrl.disable();
-      expect(ctrl.isApplied).to.equal(false);
-      expect(calls).to.deep.equal(['enable:192.168.137.42:8888', 'disable']);
-      expect(shellCalls).to.have.length(0);
-    });
-
-    it('propagates the macDriver enable() failure and leaves nothing applied', async () => {
-      const { runner } = fakeRunner();
-      const driver: SupervisedRedirectDriver = {
-        enable: () => Promise.reject(new Error('helper failed to start')),
-        disable: () => Promise.resolve(),
-      };
-      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
-
-      let threw: unknown;
-      try {
-        await ctrl.enable(OPTS);
-      } catch (err) {
-        threw = err;
-      }
-      expect((threw as Error).message).to.equal('helper failed to start');
-      expect(ctrl.isApplied).to.equal(false);
-    });
-
-    it('disable() without a prior enable() is a no-op and never calls the mac driver', async () => {
-      const { runner } = fakeRunner();
-      const { driver, calls } = fakeMacDriver();
-      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
-
-      await ctrl.disable();
-      expect(calls).to.deep.equal([]);
-    });
-
-    it('falls back to the one-shot ElevatedRunner on darwin when no macDriver is injected', async () => {
-      const { runner, calls } = fakeRunner();
-      const ctrl = new RedirectController(runner, 'darwin');
-
-      await ctrl.enable(OPTS);
-      await ctrl.disable();
-      expect(calls).to.have.length(2);
-    });
-
-    it('dispose() calls macDriver.teardown() (a hard stop) instead of disable(), and clears applied state', async () => {
-      const { runner, calls: shellCalls } = fakeRunner();
-      const { driver, calls } = fakeMacDriver();
-      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
-
-      await ctrl.enable(OPTS);
-      await ctrl.dispose();
-
-      expect(calls).to.deep.equal(['enable:192.168.137.42:8888', 'teardown']);
-      expect(ctrl.isApplied).to.equal(false);
-      expect(shellCalls).to.have.length(0);
-    });
-
-    it('dispose() is safe to call even when the redirect was never applied (e.g. capture already off)', async () => {
-      const { runner } = fakeRunner();
-      const { driver, calls } = fakeMacDriver();
-      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
-
-      await ctrl.dispose();
-      expect(calls).to.deep.equal(['teardown']);
-    });
-
-    it('dispose() falls back to disable() when the injected macDriver has no teardown()', async () => {
-      const { runner } = fakeRunner();
-      const calls: string[] = [];
-      const driver: SupervisedRedirectDriver = {
-        enable: () => {
-          calls.push('enable');
-          return Promise.resolve();
-        },
-        disable: () => {
-          calls.push('disable');
-          return Promise.resolve();
-        },
-      };
-      const ctrl = new RedirectController(runner, 'darwin', undefined, driver);
-
-      await ctrl.enable(OPTS);
-      await ctrl.dispose();
-      expect(calls).to.deep.equal(['enable', 'disable']);
     });
   });
 });
