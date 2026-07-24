@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.10.10] - 2026-07-24
+
+### Fixed
+- Stop macOS capture from breaking Internet Sharing NAT (HTTPS)
+
 ## [1.10.9] - 2026-07-23
 
 ### Fixed
