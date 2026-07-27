@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.11.1] - 2026-07-27
+
+### Added
+- Add Kopytko Console interactive debug terminal
+
+### Maintenance
+- Bump kopytko-roku-device to v1.3.1
+
 ## [1.11.0] - 2026-07-27
 
 ### Maintenance
