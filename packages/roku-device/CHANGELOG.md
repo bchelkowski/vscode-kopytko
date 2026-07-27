@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.3.2] - 2026-07-27
+
+### Fixed
+- Stop the debug protocol client from turning device resets into dead sessions
+
 ## [1.3.1] - 2026-07-27
 
 ### Added
