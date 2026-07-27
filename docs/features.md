@@ -190,6 +190,8 @@ section (inside the Remote Control view). See [roku-webadmin.md](./roku-webadmin
 | Stepping (over/into/out), pause (STOP) | ✅ | [roku-debug.md](./roku-debug.md) |
 | Debug console REPL (EXECUTE) and hover-to-evaluate | ✅ | [roku-debug.md](./roku-debug.md) |
 | Compile errors as diagnostics; program output via IO channel | ✅ | [roku-debug.md](./roku-debug.md) |
+| Protocol-state gating — device requests and breakpoint edits deferred while the channel is running | ✅ | [roku-debug.md](./roku-debug.md) |
+| Wire-level protocol trace (`kopytko.debug.trace`) | ✅ | [roku-debug.md](./roku-debug.md) |
 
 ## Runtime Diagnostics & Profiling
 

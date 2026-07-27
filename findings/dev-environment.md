@@ -120,6 +120,18 @@ should say `directory`, not `symbolic link`. Re-copy after every package edit �
 mode for this path. Revert to the registry version with a plain `npm install` before publishing
 (never commit a locally-copied `node_modules/kopytko-roku-device`).
 
+This also applies to `npm test` and `npm run compile` at the root, not just F5: both resolve
+`kopytko-roku-device` from `node_modules`, so a new export added in `packages/roku-device/src`
+(e.g. `isRequestCancelled`) fails to type-check until the copy is refreshed. The full loop after
+editing the package is build → copy → compile/test:
+```bash
+wsl.exe bash -lic "cd /mnt/c/Projects/bchelkowski/vscode-kopytko/packages/roku-device && npm run build"
+wsl.exe bash -lic "cd /mnt/c/Projects/bchelkowski/vscode-kopytko && \
+  rm -rf node_modules/kopytko-roku-device && mkdir -p node_modules/kopytko-roku-device && \
+  cp -r packages/roku-device/dist packages/roku-device/package.json node_modules/kopytko-roku-device/ && \
+  npm test"
+```
+
 ---
 
 ## tsconfig setup

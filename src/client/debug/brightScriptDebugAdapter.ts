@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { StepType, ErrorCode, type ThreadInfo } from 'kopytko-roku-device';
+import { StepType, ErrorCode, isRequestCancelled, type ThreadInfo } from 'kopytko-roku-device';
 import { BreakpointService, BreakpointSpec } from './services/breakpointService';
 import { VariableService, variableTypeName } from './services/variableService';
 import { rokuPathToLocal } from './services/pathMapping';
-import { SessionController } from './sessionController';
+import { SessionController, type TraceSink } from './sessionController';
 
 // ---------------------------------------------------------------------------
 // Minimal DAP type helpers (subset of the Debug Adapter Protocol)
@@ -59,8 +59,23 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
           this._addCompileDiagnostic(localPath, message, lineNumber);
         },
         getWorkspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+        getTraceSink: () => this._resolveTraceSink(),
       },
     });
+  }
+
+  /**
+   * Read `kopytko.debug.trace` and build the protocol trace sink. Trace lines go
+   * only to the Kopytko output channel — never to the Debug Console, which would
+   * bury the app's own stdout.
+   */
+  private _resolveTraceSink(): TraceSink | null {
+    const level = vscode.workspace.getConfiguration('kopytko').get<string>('debug.trace') ?? 'off';
+    if (level !== 'messages' && level !== 'verbose') return null;
+    return {
+      write: (message) => this._outputChannel.append(message),
+      hex: level === 'verbose',
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -141,8 +156,10 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
 
     this._breakpoints.setPending(source, bps);
 
-    if (this._session.protocolClient?.isConnected) {
-      // Device is connected — send breakpoints immediately
+    if (this._session.protocolClient?.isConnected && this._session.stopped) {
+      // Device is connected and stopped — send breakpoints immediately.
+      // ADD/REMOVE_BREAKPOINTS while the channel is running is a protocol-state
+      // violation, so when it is running we defer to the next stop instead.
       this._breakpoints.syncForFile(this._session.commands, source, bps, this._session.sourceRoot).then((results) => {
         this._sendResponse(req.seq, 'setBreakpoints', true, {
           breakpoints: results.map((r, i) => ({
@@ -157,7 +174,11 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
         });
       });
     } else {
-      // Not connected yet — mark as unverified, will be sent after connect
+      // Not connected yet, or the target is running — mark as unverified. The
+      // session replays the pending set on connect and on every later stop.
+      if (this._session.protocolClient?.isConnected) {
+        this._session.deferBreakpointSync();
+      }
       this._sendResponse(req.seq, 'setBreakpoints', true, {
         breakpoints: bps.map((bp) => ({ verified: false, line: bp.line })),
       });
@@ -207,7 +228,10 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
   }
 
   private async _onStackTrace(req: DAPRequest): Promise<void> {
-    if (!this._session.commands) {
+    // STACKTRACE is only legal while the target is stopped. VS Code refreshes
+    // the call stack view after a resume, so without this guard a stale refresh
+    // races the resume and the device answers by resetting the socket.
+    if (!this._session.commands || !this._session.stopped) {
       this._sendResponse(req.seq, 'stackTrace', true, { stackFrames: [], totalFrames: 0 });
       return;
     }
@@ -297,46 +321,54 @@ export class BrightScriptDebugAdapter implements vscode.DebugAdapter {
     }
   }
 
+  /**
+   * Run a resume command, reporting failures instead of hiding them.
+   *
+   * These used to be bare `catch {}` blocks, which is why a device that rejected
+   * or never answered a resume produced a session that silently looked "running"
+   * while the channel was frozen. A cancellation is expected (the user resumed
+   * again) and stays quiet.
+   */
+  private async _runResume(command: string, action: () => Promise<void> | undefined): Promise<void> {
+    try {
+      await action();
+    } catch (err) {
+      if (isRequestCancelled(err)) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      this._sendOutput('stderr', `${command} failed: ${msg}\n`);
+    }
+  }
+
   private async _onContinue(req: DAPRequest): Promise<void> {
     this._session.prepareResume();
     this._sendResponse(req.seq, 'continue', true, { allThreadsContinued: true });
-    try {
-      await this._session.commands?.continue();
-    } catch { /* connection may have closed */ }
+    await this._runResume('Continue', () => this._session.commands?.continue());
   }
 
   private async _onPause(req: DAPRequest): Promise<void> {
     this._sendResponse(req.seq, 'pause', true);
-    try {
-      await this._session.commands?.stop();
-    } catch { /* connection may have closed */ }
+    await this._runResume('Pause', () => this._session.commands?.stop());
   }
 
   private async _onNext(req: DAPRequest): Promise<void> {
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     this._session.prepareResume();
     this._sendResponse(req.seq, 'next', true);
-    try {
-      await this._session.commands?.step(threadId - 1, StepType.Over);
-    } catch { /* connection may have closed */ }
+    await this._runResume('Step over', () => this._session.commands?.step(threadId - 1, StepType.Over));
   }
 
   private async _onStepIn(req: DAPRequest): Promise<void> {
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     this._session.prepareResume();
     this._sendResponse(req.seq, 'stepIn', true);
-    try {
-      await this._session.commands?.step(threadId - 1, StepType.Line);
-    } catch { /* connection may have closed */ }
+    await this._runResume('Step in', () => this._session.commands?.step(threadId - 1, StepType.Line));
   }
 
   private async _onStepOut(req: DAPRequest): Promise<void> {
     const threadId = (req.arguments?.['threadId'] as number | undefined) ?? 1;
     this._session.prepareResume();
     this._sendResponse(req.seq, 'stepOut', true);
-    try {
-      await this._session.commands?.step(threadId - 1, StepType.Out);
-    } catch { /* connection may have closed */ }
+    await this._runResume('Step out', () => this._session.commands?.step(threadId - 1, StepType.Out));
   }
 
   private async _onEvaluate(req: DAPRequest): Promise<void> {

@@ -10,6 +10,8 @@ const allSettings = [
   // Language Server
   { key: 'kopytko.languageServer.enabled', type: 'boolean', default: 'true', desc: 'Enable the BrightScript language server.' },
   { key: 'kopytko.languageServer.trace', type: 'enum', default: 'off', desc: 'LSP trace level (off / messages / verbose).' },
+  // Debugging
+  { key: 'kopytko.debug.trace', type: 'enum', default: 'off', desc: 'Trace the Roku debug protocol on port 8081 to the Kopytko output channel (off / messages / verbose). Use when a debug session disconnects or the channel freezes on resume.' },
   // Imports
   { key: 'kopytko.imports.resolveModules', type: 'boolean', default: 'true', desc: 'Resolve @import paths from installed Kopytko npm packages.' },
   { key: 'kopytko.imports.sourceDir', type: 'string', default: '"app"', desc: 'Root directory where .brs source files live.' },
@@ -431,6 +433,8 @@ const kopytkoRcExample = `// .kopytkorc
               'Debug console REPL with EXECUTE command',
               'Compile errors surfaced as VS Code diagnostics',
               'Program output via IO channel',
+              'Protocol-state aware: breakpoints toggled while the channel runs are replayed on the next stop, so the device is never sent a command it would answer with a connection reset',
+              'Wire-level protocol tracing via kopytko.debug.trace for diagnosing dropped sessions',
             ].map(f => (
               <li class="flex items-start gap-2.5 text-slate-300">
                 <span class="text-violet-400 mt-0.5 shrink-0">✓</span>

@@ -27,7 +27,35 @@ const vscodeStub = {
     getConfiguration: (_section?: string) => ({
       get: <T>(_key: string, defaultValue: T): T => defaultValue,
     }),
+    workspaceFolders: undefined as { uri: { fsPath: string } }[] | undefined,
   },
+  languages: {
+    createDiagnosticCollection: (_name?: string) => {
+      const entries = new Map<string, unknown[]>();
+      return {
+        get: (uri: { fsPath: string }) => entries.get(uri.fsPath),
+        set: (uri: { fsPath: string }, diags: unknown[]) => { entries.set(uri.fsPath, diags); },
+        clear: () => entries.clear(),
+        dispose: () => entries.clear(),
+      };
+    },
+  },
+  Uri: {
+    file: (fsPath: string) => ({ fsPath, scheme: 'file' }),
+  },
+  Range: class Range {
+    constructor(
+      public startLine: number,
+      public startCharacter: number,
+      public endLine: number,
+      public endCharacter: number,
+    ) {}
+  },
+  Diagnostic: class Diagnostic {
+    source?: string;
+    constructor(public range: unknown, public message: string, public severity?: number) {}
+  },
+  DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
   window: {
     state: { focused: true },
     onDidChangeWindowState: () => ({ dispose: () => {} }),

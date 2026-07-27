@@ -3,9 +3,16 @@ import { deploy, type DeployOptions } from '../roku/rokuDeployer';
 import { DebugCommands } from 'kopytko-roku-device';
 import { ProtocolClient } from 'kopytko-roku-device';
 import { IOClient } from 'kopytko-roku-device';
-import { ErrorCode } from 'kopytko-roku-device';
+import { ErrorCode, isRequestCancelled } from 'kopytko-roku-device';
 import { BreakpointService } from './services/breakpointService';
 import { ProtocolEventMapper } from './protocolEventMapper';
+
+/** Sink for wire-level debug-protocol tracing, or `null` when tracing is off. */
+export interface TraceSink {
+  write: (message: string) => void;
+  /** Include a hex dump of every framed packet ("verbose"). */
+  hex: boolean;
+}
 
 export interface SessionControllerCallbacks {
   sendOutput: (category: 'console' | 'stdout' | 'stderr', output: string) => void;
@@ -14,6 +21,8 @@ export interface SessionControllerCallbacks {
   clearDiagnostics: () => void;
   addCompileDiagnostic: (localPath: string, message: string, lineNumber: number) => void;
   getWorkspaceRoot: () => string;
+  /** Resolved when the session starts; `null` disables protocol tracing. */
+  getTraceSink?: () => TraceSink | null;
 }
 
 export interface SessionControllerOptions {
@@ -43,6 +52,8 @@ export class SessionController {
   private primaryThreadIndex = 0;
   private isStopped = false;
   private suppressInitialStop = false;
+  /** Set when breakpoints changed while the target was running; flushed on the next stop. */
+  private breakpointSyncDeferred = false;
 
   constructor(options: SessionControllerOptions) {
     this.callbacks = options.callbacks;
@@ -91,6 +102,15 @@ export class SessionController {
       return;
     }
 
+    // The device is launched with remotedebug_connect_early=1, so it is already
+    // stopped when we connect and its initial AllThreadsStopped normally arrives
+    // glued to the handshake bytes — which ProtocolClient dispatches
+    // synchronously, *before* connect() resolves. Arming the suppression after
+    // the await would therefore be too late, and the initial stop would surface
+    // as a real DAP `stopped`: VS Code would start issuing threads/stackTrace/
+    // variables while we are still sending breakpoints and the launch continue.
+    this.suppressInitialStop = true;
+
     try {
       this.callbacks.clearDiagnostics();
 
@@ -107,6 +127,7 @@ export class SessionController {
       const client = this.protocolClientFactory();
       this.protocolClientInstance = client;
       this.commandsInstance = this.commandsFactory(client);
+      this.attachTracer(client);
       this.attachProtocolListeners(client);
 
       const handshake = await client.connect(host);
@@ -114,26 +135,55 @@ export class SessionController {
       this.callbacks.sendOutput('console',
         `Debugger connected (protocol ${ver.major}.${ver.minor}.${ver.patch}).\n`);
 
-      this.suppressInitialStop = true;
       await this.sendAllBreakpoints();
-      this.suppressInitialStop = false;
-
-      if (this.launchConfig['stopOnEntry']) {
-        this.isStopped = true;
-        this.callbacks.sendEvent('stopped', { reason: 'entry', threadId: 1, allThreadsStopped: true });
-      } else {
-        await this.commandsInstance.continue();
-      }
     } catch (err) {
+      // Only genuine launch failures (deploy, connect, handshake, initial
+      // breakpoints) terminate the session.
+      this.suppressInitialStop = false;
       const msg = err instanceof Error ? err.message : String(err);
       this.callbacks.sendOutput('stderr', `Launch failed: ${msg}\n`);
       this.callbacks.sendEvent('terminated');
+      return;
+    }
+
+    if (this.launchConfig['stopOnEntry']) {
+      this.isStopped = true;
+      this.suppressInitialStop = false;
+      this.callbacks.sendEvent('stopped', { reason: 'entry', threadId: 1, allThreadsStopped: true });
+      return;
+    }
+
+    // Past this point the session is live. A failed resume is reported but must
+    // not terminate it — otherwise a user pressing Continue while this request
+    // is still outstanding (prepareResume rejects it) would kill the session.
+    try {
+      this.prepareResume();
+      await this.commandsInstance?.continue();
+      // Without this VS Code keeps showing "paused" over a running app: the
+      // adapter emits `stopped` for the initial stop but never its counterpart.
+      this.callbacks.sendEvent('continued', { threadId: 1, allThreadsContinued: true });
+    } catch (err) {
+      if (!isRequestCancelled(err)) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.callbacks.sendOutput('stderr', `Failed to resume after launch: ${msg}\n`);
+      }
+    } finally {
+      this.suppressInitialStop = false;
     }
   }
 
   prepareResume(): void {
     this.isStopped = false;
     this.protocolClientInstance?.cancelPendingRequests();
+  }
+
+  /**
+   * Record that breakpoints changed while the target was running. The device
+   * only accepts breakpoint edits while stopped, so the sync is replayed from
+   * {@link handleUpdate} the next time it stops.
+   */
+  deferBreakpointSync(): void {
+    this.breakpointSyncDeferred = true;
   }
 
   async disconnect(): Promise<void> {
@@ -145,6 +195,19 @@ export class SessionController {
 
   dispose(): void {
     this.cleanupClients();
+  }
+
+  private attachTracer(client: ProtocolClient): void {
+    const sink = this.callbacks.getTraceSink?.() ?? null;
+    if (!sink) return;
+
+    // Elapsed-time stamps, not wall clock: the question a trace has to answer is
+    // whether the RST landed before or after the device acknowledged a command.
+    const startedAt = Date.now();
+    client.setTracer((message) => {
+      const elapsed = String(Date.now() - startedAt).padStart(6, ' ');
+      sink.write(`[${elapsed}ms] ${message}\n`);
+    }, sink.hex);
   }
 
   private attachProtocolListeners(client: ProtocolClient): void {
@@ -166,6 +229,7 @@ export class SessionController {
       sourceRoot: this.currentSourceRoot,
     });
 
+    const wasStopped = this.isStopped;
     if (result.stopped !== undefined) {
       this.isStopped = result.stopped;
     }
@@ -190,6 +254,10 @@ export class SessionController {
     }
     if (result.ioPort !== undefined) {
       this.connectIOPort(result.ioPort);
+    }
+    if (!wasStopped && this.isStopped && this.breakpointSyncDeferred) {
+      this.breakpointSyncDeferred = false;
+      void this.sendAllBreakpoints();
     }
   }
 

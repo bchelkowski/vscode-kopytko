@@ -185,6 +185,21 @@
           "default": "off",
           "description": "Trace LSP communication for debugging."
         },
+        "kopytko.debug.trace": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "enumDescriptions": [
+            "No protocol tracing.",
+            "Log every debug-protocol command, response and device update.",
+            "Also hex-dump every framed packet."
+          ],
+          "default": "off",
+          "description": "Trace the Roku debug protocol (port 8081) to the Kopytko output channel. Use when a debug session disconnects or the channel freezes on resume."
+        },
         "kopytko.imports.resolveModules": {
           "type": "boolean",
           "default": true,

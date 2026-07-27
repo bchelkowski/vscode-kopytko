@@ -184,10 +184,46 @@ BrightScriptDebugAdapter (inline DAP)
 
 1. **Deploy** — inject `remotedebug=1` into local manifest override, run `kopytko start` to build and deploy
 2. **Handshake** — TCP connect to port 8081, exchange magic bytes, read protocol version
-3. **Initial stop** — device pauses before the first BrightScript statement
+3. **Initial stop** — device pauses before the first BrightScript statement. Because `remotedebug_connect_early=1` is also injected, the device is *already* stopped when we connect, so this `ALL_THREADS_STOPPED` normally arrives glued to the handshake bytes and is dispatched **before `connect()` resolves**. `SessionController` therefore arms `suppressInitialStop` *before* connecting — it is consumed internally and never surfaces to VS Code as a DAP `stopped`.
 4. **Set breakpoints** — send `ADD_BREAKPOINTS` for all VS Code breakpoints
-5. **Continue** — send `CONTINUE` to start the app (unless `stopOnEntry` is true)
+5. **Continue** — send `CONTINUE` to start the app (unless `stopOnEntry` is true), then emit a DAP `continued` event so VS Code's toolbar leaves the "paused" state
 6. **IO channel** — device sends `IO_PORT_OPENED` update with a dynamic port number; a second TCP connection is opened for app output
+
+### Protocol state rules
+
+Most commands are legal **only while the debug target is stopped**. Sending one while the channel is running is a protocol-state violation: the device may answer `NOT_STOPPED`, or reset the TCP connection outright (`read ECONNRESET`). A reset while the channel is stopped is especially damaging — nothing is left alive to send `CONTINUE`, so the app freezes on the device with no way to recover short of relaunching.
+
+| Command | Requires stopped |
+|---|---|
+| `CONTINUE`, `STEP`, `THREADS`, `STACKTRACE`, `VARIABLES`, `EXECUTE` | Yes |
+| `STOP`, `EXIT_CHANNEL` | No |
+| `ADD_BREAKPOINTS`, `ADD_CONDITIONAL_BREAKPOINTS`, `REMOVE_BREAKPOINTS` | Treated as yes — the adapter defers them |
+
+Accordingly:
+
+- Every adapter handler that talks to the device (`threads`, `stackTrace`, `variables`, `evaluate`) checks `SessionController.stopped` first and answers with an empty result when the app is running.
+- Breakpoints toggled while the app is running are stored via `BreakpointService.setPending()` and reported `verified: false`. `SessionController.deferBreakpointSync()` records the change and `handleUpdate` replays the whole pending set on the next stop. An empty list is replayed too — that is how a breakpoint *removed* while running gets cleared.
+- `DebugCommands.STOPPED_ONLY_COMMANDS` is the canonical set.
+
+### Failure handling
+
+- Resume commands (`continue`, `pause`, `next`, `stepIn`, `stepOut`) report failures to the Debug Console as `<Command> failed: <reason>`. A `RequestCancelledError` — raised when the user resumes again while a request is still in flight — is expected and stays silent.
+- A failed launch resume does **not** terminate the session; only genuine launch failures (deploy, connect, handshake, initial breakpoints) do.
+- A malformed packet or a throwing update listener can no longer escape into the socket's `data` handler: `ProtocolClient` catches per packet, emits `error`, and keeps draining the buffer.
+- A desynchronized stream discards the buffered bytes and realigns on the next read instead of closing the socket — a dead socket would strand the channel frozen.
+- The debug socket sets `TCP_NODELAY` (so a 12-byte `CONTINUE` is not held back by Nagle) and keep-alive probes after 10 s idle (so a device that drops off the network produces a clean `terminated` rather than a silent hang).
+
+### Tracing the protocol
+
+Set `kopytko.debug.trace` to diagnose a session that disconnects or freezes:
+
+| Value | Output |
+|---|---|
+| `off` (default) | Nothing. |
+| `messages` | Every command sent, every response, every device update, plus handshake details and socket open/error/close — with the in-flight request set named at the moment the socket drops. |
+| `verbose` | Also hex-dumps each framed packet. |
+
+Trace lines go to the **Kopytko** output channel (not the Debug Console, which carries the app's own stdout) and are stamped with milliseconds elapsed since the session started — enough to tell whether a reset landed before or after the device acknowledged a command.
 
 ### Component files
 
@@ -222,6 +258,8 @@ BrightScriptDebugAdapter (inline DAP)
 | "Install failed" | Check that the developer password is correct. Try re-enabling developer mode. |
 | Breakpoints appear grey (unverified) | The file path may not match the `pkg:/` path on the device. Ensure `rootDir` in `launch.json` matches your project root. |
 | No program output | The IO channel connects on a dynamic port. Ensure no firewall blocks outgoing TCP connections. |
+| "Protocol error: read ECONNRESET" and the app freezes | The device reset the debug socket, most likely after receiving a command that is illegal while the channel is running (see [Protocol state rules](#protocol-state-rules)). Set `kopytko.debug.trace` to `verbose` and check which packet was written last before the reset. |
+| Session says "running" but the app is frozen | Previously caused by silently swallowed resume failures. Resume errors are now printed to the Debug Console; if one appears, the device rejected the resume. |
 
 ---
 

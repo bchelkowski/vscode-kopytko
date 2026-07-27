@@ -543,6 +543,72 @@ because the log format itself is still real/observable on-device.
 
 ---
 
+## Port 8081 — Socket-based debug protocol (binary)
+
+Enabled by `remotedebug=1` in the manifest. `remotedebug_connect_early=1` additionally makes the
+device stop before the first BrightScript statement. Implementation lives in
+`packages/roku-device/src/debug-protocol/`.
+
+**Not yet verified against hardware** — the items below come from reading the protocol code against
+the reported failure `Protocol error: read ECONNRESET` on resume (2026-07-27). Confirm each with
+`kopytko.debug.trace: "verbose"` and record the actual bytes here.
+
+### The device resets the connection on out-of-state commands
+
+`read ECONNRESET` on 8081 is a TCP RST **from the device**, not something the extension does. The
+Roku debug daemon accepts most commands only while the target is stopped; sending one while the
+channel is running is answered with a reset on at least some firmware rather than the documented
+`NOT_STOPPED` (error code 4).
+
+This is far worse than it sounds: when the socket dies while the channel is *stopped at a
+breakpoint*, nothing is left alive to send `CONTINUE`, so the app freezes on the TV permanently.
+"Debugger disconnected" and "app hangs" are one bug, not two.
+
+Commands that require the stopped state: `CONTINUE`, `STEP`, `THREADS`, `STACKTRACE`, `VARIABLES`,
+`EXECUTE` (see `DebugCommands.STOPPED_ONLY_COMMANDS`). Breakpoint add/remove is treated the same way
+and deferred to the next stop. `STOP` and `EXIT_CHANNEL` are always legal.
+
+The trap is that VS Code issues `stackTrace` on its own schedule when refreshing the call-stack
+view, so a guard on *one* handler is not enough — every handler that touches the device needs the
+same check. `_onStackTrace` was the one that lacked it.
+
+### `remotedebug_connect_early` glues the initial stop to the handshake
+
+The device is already stopped when the TCP connection opens, so its first `ALL_THREADS_STOPPED`
+normally arrives in the **same TCP segment as the handshake response**. `ProtocolClient` drains
+those leftover bytes synchronously *before* `connect()` resolves, which means any state a caller
+wants to arm for that update must be set **before** awaiting `connect()`. Setting it after the
+await looks correct and is silently too late — `settleResolve` only schedules a microtask.
+
+### Framing
+
+Protocol 3.0.0+ prefixes every packet (responses *and* updates) with `uint32 packet_length`, which
+**includes its own 4 bytes**. `request_id == 0` discriminates a device update from a response.
+Minimum valid packet is 12 bytes (`packet_length` + `request_id` + `error_code`); an update is 16
+(plus `update_type`).
+
+A desync is unrecoverable by scanning — there is no sync marker in a purely length-prefixed
+protocol, and dropping a byte at a time just re-reads garbage as a huge length and stalls forever.
+The only useful responses are (a) discard the buffer and realign on the next read, and (b) keep the
+socket open regardless, because a live socket still carries `CONTINUE` even when replies are
+unparseable.
+
+### Handshake `remaining_packet_length`
+
+Read at `HANDSHAKE_FIXED_PREFIX + 4` (offset 20). Current code reads 8 bytes of timestamp and now
+skips any surplus using the declared length — previously the surplus would have been handed to the
+packet framer and desynced the stream permanently. **Log the real value from a device trace and
+record it here**, along with whether it counts itself.
+
+### Payload field widths
+
+`stop_reason` in `ALL_THREADS_STOPPED` / `THREAD_ATTACHED` is a **uint8**, not a uint32
+(`int32 thread_index`, `uint8 stop_reason`, `utf8z detail`). The package test fixture encoded it as
+uint32 for a long time; because the fixture was only ever read back by the fixture, nothing caught
+it. Fixed 2026-07-27.
+
+---
+
 ## Port 8089
 
 Open (TCP SYN accepted) but does not respond to any text commands. Purpose unknown; ignore it.

@@ -31,7 +31,9 @@ export class BreakpointService {
     if (!commands) return;
 
     for (const [filePath, bps] of this.pendingBreakpoints) {
-      if (bps.length === 0) continue;
+      // An empty list still has to reach the device — that is how a breakpoint
+      // removed while the target was running gets cleared on the next stop.
+      // syncForFile drops the previously registered ids and returns [].
       try {
         const results = await this.syncForFile(commands, filePath, bps, sourceRoot);
         for (let i = 0; i < results.length; i++) {
