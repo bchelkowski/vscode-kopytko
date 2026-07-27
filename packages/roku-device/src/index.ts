@@ -106,7 +106,13 @@ export * from './diagnostics/collectors';
 export * from './debug-protocol/constants';
 export * from './debug-protocol/types';
 export { BinaryReader, BinaryWriter } from './debug-protocol/binaryIO';
-export { ProtocolClient, type ProtocolClientEvents } from './debug-protocol/protocolClient';
+export {
+  ProtocolClient,
+  RequestCancelledError,
+  isRequestCancelled,
+  type ProtocolClientEvents,
+  type ProtocolTracer,
+} from './debug-protocol/protocolClient';
 export { IOClient } from './debug-protocol/ioClient';
 export { DebugCommands } from './debug-protocol/commands';
 

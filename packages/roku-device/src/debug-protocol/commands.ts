@@ -27,6 +27,20 @@ import { StopReason, VariableType, ErrorCode } from './constants';
 export class DebugCommands {
   constructor(private readonly _client: ProtocolClient) {}
 
+  /**
+   * Commands the device accepts only while the debug target is stopped.
+   * Sending any of these while the channel is running is a protocol-state
+   * violation; some firmware answers `NOT_STOPPED`, some resets the socket.
+   */
+  static readonly STOPPED_ONLY_COMMANDS: ReadonlySet<CommandCode> = new Set([
+    CommandCode.Continue,
+    CommandCode.Threads,
+    CommandCode.StackTrace,
+    CommandCode.Variables,
+    CommandCode.Step,
+    CommandCode.Execute,
+  ]);
+
   async stop(): Promise<void> {
     await this._client.sendRequest(CommandCode.Stop);
   }

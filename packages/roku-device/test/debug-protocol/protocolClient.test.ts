@@ -1,6 +1,7 @@
 import { expect } from 'chai';
-import { EventEmitter } from 'events';
+import * as net from 'net';
 import { BinaryWriter, BinaryReader } from '../../src/debug-protocol/binaryIO';
+import { ProtocolClient, isRequestCancelled } from '../../src/debug-protocol/protocolClient';
 import {
   CommandCode,
   DEBUGGER_MAGIC,
@@ -10,28 +11,15 @@ import {
 } from '../../src/debug-protocol/constants';
 
 /**
- * Creates a mock net.Socket that behaves like a TCP connection.
- * Provides a `pushData(buf)` method to simulate incoming data.
+ * ALL_THREADS_STOPPED / THREAD_ATTACHED payload as the device sends it:
+ * int32 thread index, **uint8** stop reason, utf8z detail.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function createMockSocket() {
-  const emitter = new EventEmitter();
-  const written: Buffer[] = [];
-
-  const socket = Object.assign(emitter, {
-    connect: (_port: number, _host: string, cb: () => void) => { cb(); },
-    write: (data: Buffer | string) => { written.push(Buffer.isBuffer(data) ? data : Buffer.from(data)); return true; },
-    destroy: () => {},
-    setTimeout: () => {},
-    removeAllListeners: (event?: string) => { if (event) emitter.removeAllListeners(event); return emitter; },
-  });
-
-  return {
-    socket,
-    written,
-    pushData: (buf: Buffer) => emitter.emit('data', buf),
-    close: () => emitter.emit('close'),
-  };
+function allThreadsStoppedPayload(threadIndex: number, stopReason: StopReason, detail = ''): Buffer {
+  const writer = new BinaryWriter();
+  writer.writeInt32(threadIndex);
+  writer.writeUint8(stopReason);
+  writer.writeStringNT(detail);
+  return writer.toBuffer();
 }
 
 /**
@@ -212,11 +200,7 @@ describe('Protocol packet building', () => {
   });
 
   it('builds an update packet with requestId = 0', () => {
-    const payloadWriter = new BinaryWriter();
-    payloadWriter.writeUint32(0); // primaryThreadIndex
-    payloadWriter.writeUint32(StopReason.Break);
-    payloadWriter.writeStringNT('Breakpoint hit');
-    const payload = payloadWriter.toBuffer();
+    const payload = allThreadsStoppedPayload(0, StopReason.Break, 'Breakpoint hit');
 
     const update = buildUpdate(UpdateType.AllThreadsStopped, ErrorCode.OK, payload);
     const reader = new BinaryReader(update);
@@ -231,10 +215,11 @@ describe('Protocol packet building', () => {
     const updateType = reader.readUint32();
     expect(updateType).to.equal(UpdateType.AllThreadsStopped);
 
-    const primaryThread = reader.readUint32();
+    const primaryThread = reader.readInt32();
     expect(primaryThread).to.equal(0);
 
-    const stopReason = reader.readUint32();
+    // stop_reason is a single byte on the wire — ProtocolEventMapper reads uint8.
+    const stopReason = reader.readUint8();
     expect(stopReason).to.equal(StopReason.Break);
 
     const detail = reader.readStringNT();
@@ -289,5 +274,237 @@ describe('Protocol packet building', () => {
     expect(packets).to.have.length(2);
     expect(packets[0].requestId).to.equal(1);
     expect(packets[1].requestId).to.equal(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ProtocolClient against a real TCP server
+//
+// These drive the actual framing, handshake and dispatch code rather than a
+// reimplementation of it — the previous suite asserted against its own copy of
+// the framing logic, so _processBuffer/_handlePacket/_performHandshake had no
+// coverage at all.
+// ---------------------------------------------------------------------------
+
+/** A stand-in Roku debug daemon: answers the magic, then replays scripted bytes. */
+class FakeDevice {
+  readonly received: Buffer[] = [];
+  private readonly _server: net.Server;
+  private _socket: net.Socket | null = null;
+  private _onMagic: (device: FakeDevice) => void = (d) => d.send(buildHandshakeResponse());
+
+  private constructor(server: net.Server) {
+    this._server = server;
+  }
+
+  static async start(): Promise<FakeDevice> {
+    const server = net.createServer();
+    const device = new FakeDevice(server);
+    server.on('connection', (socket) => {
+      device._socket = socket;
+      socket.on('data', (chunk) => {
+        device.received.push(chunk);
+        // The client opens with the 8-byte magic; everything after is a command.
+        if (device.received.length === 1) device._onMagic(device);
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return device;
+  }
+
+  get port(): number {
+    return (this._server.address() as net.AddressInfo).port;
+  }
+
+  /** Replace the default handshake reply (e.g. to glue an update onto it). */
+  onMagic(handler: (device: FakeDevice) => void): void {
+    this._onMagic = handler;
+  }
+
+  send(buf: Buffer): void {
+    this._socket?.write(buf);
+  }
+
+  /** Abort the connection the way a Roku does — an RST, not a clean FIN. */
+  reset(): void {
+    this._socket?.resetAndDestroy();
+  }
+
+  async stop(): Promise<void> {
+    this._socket?.destroy();
+    await new Promise<void>((resolve) => this._server.close(() => resolve()));
+  }
+}
+
+const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
+
+describe('ProtocolClient (real socket)', () => {
+  let device: FakeDevice;
+  let client: ProtocolClient;
+
+  beforeEach(async () => {
+    device = await FakeDevice.start();
+    client = new ProtocolClient();
+  });
+
+  afterEach(async () => {
+    client.close();
+    await device.stop();
+  });
+
+  it('dispatches an update glued to the handshake before connect() resolves', async () => {
+    const update = buildUpdate(
+      UpdateType.AllThreadsStopped,
+      ErrorCode.OK,
+      allThreadsStoppedPayload(0, StopReason.Break),
+    );
+    // remotedebug_connect_early: the device is already stopped, so its initial
+    // AllThreadsStopped rides along in the same TCP segment as the handshake.
+    device.onMagic((d) => d.send(Buffer.concat([buildHandshakeResponse(), update])));
+
+    const updates: number[] = [];
+    client.on('update', (type) => updates.push(type));
+
+    const handshake = await client.connect('127.0.0.1', device.port);
+
+    expect(handshake.protocolVersion).to.deep.equal({ major: 3, minor: 3, patch: 0 });
+    // Dispatched exactly once, and before connect() settled — this ordering is
+    // what SessionController has to arm its suppression flag ahead of.
+    expect(updates).to.deep.equal([UpdateType.AllThreadsStopped]);
+
+    await tick();
+    expect(updates).to.deep.equal([UpdateType.AllThreadsStopped]);
+  });
+
+  it('reassembles a packet split across chunks and drains several from one chunk', async () => {
+    await client.connect('127.0.0.1', device.port);
+
+    const pending = client.sendRequest(CommandCode.Threads);
+    const response = buildResponse(1, ErrorCode.OK, Buffer.from([0, 0, 0, 0]));
+    device.send(response.subarray(0, 5));
+    await tick();
+    device.send(response.subarray(5));
+
+    expect((await pending).length).to.equal(4);
+
+    const a = client.sendRequest(CommandCode.StackTrace);
+    const b = client.sendRequest(CommandCode.Variables);
+    device.send(Buffer.concat([
+      buildResponse(2, ErrorCode.OK, Buffer.from([1])),
+      buildResponse(3, ErrorCode.OK, Buffer.from([2, 2])),
+    ]));
+
+    expect((await a).length).to.equal(1);
+    expect((await b).length).to.equal(2);
+  });
+
+  it('rejects with the command name and error code when the device refuses', async () => {
+    await client.connect('127.0.0.1', device.port);
+
+    const pending = client.sendRequest(CommandCode.Continue);
+    device.send(buildResponse(1, ErrorCode.NotStopped));
+
+    let message = '';
+    await pending.catch((err: Error) => { message = err.message; });
+    expect(message).to.contain('Continue');
+    expect(message).to.contain('NotStopped');
+  });
+
+  it('keeps processing packets after an update listener throws', async () => {
+    await client.connect('127.0.0.1', device.port);
+
+    const errors: string[] = [];
+    client.on('error', (err: Error) => errors.push(err.message));
+    client.once('update', () => { throw new Error('listener exploded'); });
+
+    const pending = client.sendRequest(CommandCode.Threads);
+    // A throwing listener used to escape into the socket's 'data' emit and
+    // abort the framing loop, stranding every packet queued behind it.
+    device.send(Buffer.concat([
+      buildUpdate(UpdateType.AllThreadsStopped, ErrorCode.OK, allThreadsStoppedPayload(0, StopReason.Break)),
+      buildResponse(1, ErrorCode.OK, Buffer.from([7])),
+    ]));
+
+    expect((await pending).length).to.equal(1);
+    expect(errors).to.deep.equal(['listener exploded']);
+  });
+
+  it('resyncs instead of disconnecting when the stream desynchronizes', async () => {
+    await client.connect('127.0.0.1', device.port);
+
+    let disconnected = false;
+    client.on('disconnected', () => { disconnected = true; });
+    const errors: string[] = [];
+    client.on('error', (err: Error) => errors.push(err.message));
+
+    const pending = client.sendRequest(CommandCode.Threads);
+    // Four garbage bytes that decode as packet_length = 0. There is no sync
+    // marker to scan for, so everything buffered is dropped…
+    device.send(Buffer.from([0, 0, 0, 0]));
+    await tick();
+    // …and the next read realigns on a packet boundary.
+    device.send(buildResponse(1, ErrorCode.OK, Buffer.from([9])));
+
+    expect((await pending).length).to.equal(1);
+    expect(errors).to.have.length(1);
+    expect(errors[0]).to.contain('desynchronized');
+    // Tearing the session down here would strand the channel stopped on device.
+    expect(disconnected).to.equal(false);
+  });
+
+  it('drops a late response to an abandoned request without rejecting again', async () => {
+    await client.connect('127.0.0.1', device.port);
+
+    const abandoned = client.sendRequest(CommandCode.Variables);
+    client.cancelPendingRequests();
+
+    let cancelled = false;
+    await abandoned.catch((err: unknown) => { cancelled = isRequestCancelled(err); });
+    expect(cancelled).to.equal(true);
+    expect(client.pendingRequestCount).to.equal(0);
+
+    // The device still answers it — that must not disturb the next request.
+    const next = client.sendRequest(CommandCode.Continue);
+    device.send(Buffer.concat([
+      buildResponse(1, ErrorCode.OK, Buffer.from([4, 4, 4, 4])),
+      buildResponse(2, ErrorCode.OK),
+    ]));
+
+    expect((await next).length).to.equal(0);
+  });
+
+  it('emits disconnected once and rejects in-flight requests when the device resets', async () => {
+    await client.connect('127.0.0.1', device.port);
+
+    let disconnects = 0;
+    client.on('disconnected', () => { disconnects++; });
+    client.on('error', () => { /* ECONNRESET surfaces here */ });
+
+    const pending = client.sendRequest(CommandCode.Continue);
+    device.reset();
+
+    let message = '';
+    await pending.catch((err: Error) => { message = err.message; });
+    await tick();
+
+    expect(message).to.equal('Connection closed');
+    expect(disconnects).to.equal(1);
+    expect(client.isConnected).to.equal(false);
+  });
+
+  it('traces the command name and the in-flight set when the socket drops', async () => {
+    const lines: string[] = [];
+    client.setTracer((message) => lines.push(message));
+    await client.connect('127.0.0.1', device.port);
+
+    client.on('error', () => { /* ignore */ });
+    const pending = client.sendRequest(CommandCode.Continue);
+    device.reset();
+    await pending.catch(() => { /* expected */ });
+    await tick();
+
+    expect(lines.some((l) => l.startsWith('handshake protocol 3.3.0'))).to.equal(true);
+    expect(lines.some((l) => l.includes('send #1 Continue'))).to.equal(true);
+    expect(lines.some((l) => l.includes('socket closed') && l.includes('#1 Continue'))).to.equal(true);
   });
 });
