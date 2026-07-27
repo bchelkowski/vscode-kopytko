@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.11.2] - 2026-07-27
+
+### Fixed
+- Stop sending debug commands while the channel is running
+
+### Maintenance
+- Bump kopytko-roku-device to v1.3.2
+
 ## [1.11.1] - 2026-07-27
 
 ### Added
