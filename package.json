@@ -27,7 +27,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",
-    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview && npm run bundle:network-webview",
+    "bundle": "npm run bundle:extension && npm run bundle:server && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview && npm run bundle:network-webview && npm run bundle:console-webview",
     "bundle:extension": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --sourcemap",
     "bundle:server": "esbuild src/server/server.ts --bundle --outfile=out/server/server.js --platform=node --format=cjs --sourcemap",
     "bundle:webview": "esbuild src/client/diagnostics/webview/main.ts --bundle --outfile=out/diagnostics-webview/main.js --platform=browser --format=iife --sourcemap",
@@ -39,7 +39,8 @@
     "bundle:script-editor-webview": "esbuild src/client/deviceManager/editorWebview/main.ts --bundle --outfile=out/script-editor-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:roku-pay-webview": "esbuild src/client/rokuPay/webview/main.ts --bundle --outfile=out/roku-pay-webview/main.js --platform=browser --format=iife --sourcemap",
     "bundle:network-webview": "esbuild src/client/network/webview/main.ts --bundle --outfile=out/network-webview/main.js --platform=browser --format=iife --sourcemap",
-    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview && npm run bundle:network-webview",
+    "bundle:console-webview": "esbuild src/client/console/webview/main.ts --bundle --outfile=out/console-webview/main.js --platform=browser --format=iife --sourcemap --loader:.woff=dataurl",
+    "compile": "tsc -p ./tsconfig.json && tsc -p ./tsconfig.server.json && npm run bundle:webview && npm run bundle:perfetto-webview && npm run bundle:node-tree-webview && npm run bundle:nav-webview && npm run bundle:deep-linking-webview && npm run bundle:device-manager-webview && npm run bundle:script-editor-webview && npm run bundle:roku-pay-webview && npm run bundle:network-webview && npm run bundle:console-webview",
     "build:roku-device": "npm --prefix packages/roku-device install && npm --prefix packages/roku-device run build",
     "watch": "tsc -w -p ./tsconfig.json",
     "watch:server": "tsc -w -p ./tsconfig.server.json",
@@ -70,6 +71,8 @@
     "@types/sinon": "^22.0.0",
     "@types/vscode": "^1.125.0",
     "@vscode/vsce": "^3.9.2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "chai": "^6.2.2",
     "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
@@ -844,6 +847,54 @@
           "default": true,
           "description": "Show notification messages when devices come online or go offline."
         },
+        "kopytko.console.defaultPort": {
+          "type": "number",
+          "enum": [
+            8085,
+            8080
+          ],
+          "enumDescriptions": [
+            "BrightScript runtime console — app output and the interactive BrightScript Debugger prompt.",
+            "SceneGraph debug server — chanperf, sgnodes, sgperf, textures, and other utilities."
+          ],
+          "default": 8085,
+          "description": "Debug console port the Kopytko Console selects when it opens."
+        },
+        "kopytko.console.autoConnect": {
+          "type": "boolean",
+          "default": false,
+          "description": "Connect to the active device automatically when the Kopytko Console panel opens."
+        },
+        "kopytko.console.maxLines": {
+          "type": "number",
+          "default": 20000,
+          "description": "Maximum number of output lines kept per console port. Older lines are dropped from the buffer."
+        },
+        "kopytko.console.reconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reconnect automatically (with backoff) when the console connection drops."
+        },
+        "kopytko.console.colorize": {
+          "type": "boolean",
+          "default": true,
+          "description": "Colour console output by severity — errors, warnings, beacons, rendezvous logs, and debugger frames."
+        },
+        "kopytko.console.logToFile": {
+          "type": "boolean",
+          "default": false,
+          "description": "Append every console line to a log file as it arrives, in addition to the in-memory buffer."
+        },
+        "kopytko.console.outputDir": {
+          "type": "string",
+          "default": "debug",
+          "description": "Folder (relative to the workspace root, or absolute) where console logs and saved output are written."
+        },
+        "kopytko.console.historySize": {
+          "type": "number",
+          "default": 200,
+          "description": "Number of submitted commands remembered per console port for history recall."
+        },
         "kopytko.diagnostics.outputDir": {
           "type": "string",
           "default": "debug",
@@ -1401,6 +1452,11 @@
           "id": "kopytko-diagnostics",
           "title": "Kopytko Diagnostics",
           "icon": "images/kopytko-logo.svg"
+        },
+        {
+          "id": "kopytko-console",
+          "title": "Kopytko Console",
+          "icon": "images/kopytko-logo.svg"
         }
       ]
     },
@@ -1410,6 +1466,13 @@
           "type": "webview",
           "id": "kopytko.diagnostics",
           "name": "Kopytko Diagnostics"
+        }
+      ],
+      "kopytko-console": [
+        {
+          "type": "webview",
+          "id": "kopytko.console",
+          "name": "Kopytko Console"
         }
       ],
       "kopytko-sidebar": [
@@ -1553,6 +1616,47 @@
         "command": "kopytko.debugDevice",
         "title": "Start Debugging (F5)",
         "icon": "$(debug-alt)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.open",
+        "title": "Open Console",
+        "icon": "$(terminal)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.connect",
+        "title": "Connect Console",
+        "icon": "$(plug)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.disconnect",
+        "title": "Disconnect Console",
+        "icon": "$(debug-disconnect)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.clear",
+        "title": "Clear Console",
+        "icon": "$(clear-all)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.saveOutput",
+        "title": "Save Console Output",
+        "icon": "$(save)",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.selectPort",
+        "title": "Select Console Port",
+        "category": "Kopytko"
+      },
+      {
+        "command": "kopytko.console.showCommands",
+        "title": "Show Console Commands",
+        "icon": "$(list-unordered)",
         "category": "Kopytko"
       },
       {

@@ -36,6 +36,11 @@ frames a response by idle-detection, not by the prompt.)
 | `free` | Device-wide memory (Linux `free`, KiB) |
 | `r2d2_bitmaps` | GPU texture/bitmap table + `Available texture memory … used … max …` summary |
 
+> To run these commands by hand rather than on a poll — with completion, colouring, and the port-8085
+> BrightScript console alongside — use the **Kopytko Console** panel, see
+> [roku-console.md](./roku-console.md). It opens its own socket to 8080, so a console session and a
+> diagnostics recording can run at the same time.
+
 ### ECP — HTTP port 8060
 
 Rendezvous tracking, reusing the existing `EcpClient`:
@@ -177,6 +182,7 @@ Roku Devices) with buttons for quick navigation, top to bottom:
 |---|---|
 | **Device Manager** | Opens the Device Manager (remote control, scripts, web admin) — see [device-manager.md](./device-manager.md) |
 | **Diagnostics** | Reveals this panel (`kopytko.diagnostics.focus`) |
+| **Console** | Reveals the Kopytko Console panel (`kopytko.console.focus`) — see [roku-console.md](./roku-console.md) |
 | **Network Inspector** | Opens the Network Inspector tab (`kopytko.network.open`) — see [network-inspector.md](./network-inspector.md) |
 | **SceneGraph Tree** | Opens the SceneGraph Tree tab (`kopytko.nodes.open`) — see below |
 | **Deep Linking** | Opens the Deep Linking tab |

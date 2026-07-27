@@ -16,6 +16,7 @@ import { registerDebug } from './client/activation/debug';
 import { registerNav } from './client/activation/nav';
 import { registerRokuPay } from './client/activation/rokuPay';
 import { registerNetwork } from './client/activation/network';
+import { registerConsole } from './client/activation/console';
 
 let client: KopytkoLanguageClient | undefined;
 let deviceManager: DeviceManager | undefined;
@@ -32,6 +33,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerCommands(context, discovery);
   registerRegistry(context, discovery);
   registerDiagnostics(context, discovery);
+  registerConsole(context, discovery);
   registerPerfetto(context, discovery);
   registerNodes(context, discovery);
   registerDeepLinking(context, discovery);

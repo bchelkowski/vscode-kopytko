@@ -211,9 +211,37 @@ A recording tool that captures live runtime telemetry from a running channel int
 | Record any channel sharing the sideloaded dev key, not just "dev" | ✅ | [diagnostics.md](./diagnostics.md) |
 | SceneGraph Tree tab — All (`/query/sgnodes/all`), Roots (`/query/sgnodes/roots`), and UI (`/query/app-ui`) collections, rendered as formatted XML (default) or an icicle chart; the chosen view persists across collection switches | ✅ | [diagnostics.md](./diagnostics.md) |
 | SceneGraph Tree Edit mode — edit the UI-collection XML in place and push field changes to the running app via an injected RALE TrackerTask (`RaleTrackerClient`); navigation blocked while editing, structural edits rejected, per-edit target verification | ✅ | [diagnostics.md](./diagnostics.md) |
-| Tools sidebar — quick-nav buttons, top to bottom: Device Manager, Diagnostics, Network Inspector, SceneGraph Tree, Deep Linking, Perfetto, Roku Pay Web Services | ✅ | [diagnostics.md](./diagnostics.md) |
+| Tools sidebar — quick-nav buttons, top to bottom: Device Manager, Diagnostics, Console, Network Inspector, SceneGraph Tree, Deep Linking, Perfetto, Roku Pay Web Services | ✅ | [diagnostics.md](./diagnostics.md) |
 | Past-session replay/preview (read-only) | ✅ | [diagnostics.md](./diagnostics.md) |
 | Mutual-exclusion lock (Diagnostics ↔ Perfetto panels — only one holds the device at a time) | ✅ | [diagnostics.md](./diagnostics.md) |
+
+## Kopytko Console (Interactive Debug Terminal)
+
+A real terminal for the two Roku debug consoles in its own bottom-panel tab, with per-port command
+completion and severity colouring. Cross-platform — a Node TCP socket plus a webview, no external telnet.
+See [roku-console.md](./roku-console.md).
+
+| Feature | Status | Doc |
+|---|---|---|
+| Raw streaming transport (`ConsoleStream`, TCP 8085 + 8080) — verbatim byte forwarding, backoff reconnect | ✅ | [roku-console.md](./roku-console.md) |
+| xterm.js terminal in a dedicated panel tab — selection, scrollback, theme-driven palette | ✅ | [roku-console.md](./roku-console.md) |
+| Port 8085 — live app output streaming (device ignores input until stopped at a debugger prompt) | 🟡 | [roku-console.md](./roku-console.md) |
+| Port 8080 — SceneGraph debug server utilities, command list captured live from the device | ✅ | [roku-console.md](./roku-console.md) |
+| Both ports connected simultaneously; the dropdown switches the view, not the connection | ✅ | [roku-console.md](./roku-console.md) |
+| Follows the sidebar's active device — no duplicate device picker; connections close when it changes | ✅ | [roku-console.md](./roku-console.md) |
+| Per-port command completion with descriptions, argument hints, and subcommands — full list on an empty line | ✅ | [roku-console.md](./roku-console.md) |
+| Destructive-command confirmation (`genkey`, `remove_plugin`) | ✅ | [roku-console.md](./roku-console.md) |
+| Severity colouring (error/warning/beacon/debugger/XML) from the theme's terminal palette | ✅ | [roku-console.md](./roku-console.md) |
+| Click-to-open `pkg:/…(line)` references into the workspace | ✅ | [roku-console.md](./roku-console.md) |
+| Live filter (text or `/regex/`) plus severity chips | ✅ | [roku-console.md](./roku-console.md) |
+| Per-port persisted command history | ✅ | [roku-console.md](./roku-console.md) |
+| Save buffer to file, and optional live append-as-it-arrives logging | ✅ | [roku-console.md](./roku-console.md) |
+| Escape-sequence sanitising of device output | ✅ | [roku-console.md](./roku-console.md) |
+
+> 🟡 Verified live (Roku Ultra, firmware 15.2.4.3442): 8085 streams correctly, but the device **ignores
+> commands sent to it while the channel is running normally** — the documented command set only responds
+> behind a `BrightScript Debugger>` prompt, which reproducing needs a crashing channel. See
+> [findings/roku-device-api.md](../findings/roku-device-api.md).
 
 ## Kopytko Perfetto (App Tracing)
 

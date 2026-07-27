@@ -75,7 +75,7 @@ const collectorExample = `import {
 } from 'kopytko-roku-device';
 
 // SceneGraph debug console (port 8080) — idle-framed, auto-reconnecting
-const console8080 = new DebugConsoleClient('192.168.1.20');
+const console8080 = new DebugConsoleClient({ host: '192.168.1.20' });
 
 // Poll per-channel CPU + memory every second
 const chanperf = new ChanperfCollector(console8080, 1000);
@@ -105,6 +105,7 @@ const subsystems = [
   { name: 'ECP client', port: 'HTTP 8060 / 80', api: 'EcpClient', desc: 'Device info, apps, icons, deep-link launch/input, remote-control keys (keypress/keydown/keyup + Lit_ text entry), exit-app, active app, media-player state, registry, app state, chanperf, sgnodes (all/roots/by-id), app-ui (rendered UI tree), object counts, r2d2-bitmaps, graphics-frame-rate, TV channel queries, rendezvous + beacon tracking, dev-password validation (digest auth).' },
   { name: 'Discovery orchestration', port: '—', api: 'DeviceManager', desc: 'Merges SSDP, ECP health checks, persistence, and network-change events into one device list. Storage and network signals are injected interfaces.' },
   { name: 'SceneGraph debug console', port: 'TCP 8080', api: 'DebugConsoleClient', desc: 'Idle-framed request/response console (chanperf, sgnodes, r2d2_bitmaps, free) with exponential-backoff auto-reconnect.' },
+  { name: 'Interactive debug consoles', port: 'TCP 8085 / 8080', api: 'ConsoleStream, completeCommand', desc: 'Raw bidirectional streaming for terminal use — every byte forwarded verbatim, prompts and unsolicited output included — plus a per-port command catalog with completion, subcommands and destructive-command detection.' },
   { name: 'Diagnostics parsers + collectors', port: '8060 / 8080', api: 'PollingCollector + 10 collectors', desc: 'Typed event model (mem-cpu, node-counts, textures, rendezvous, beacons, …) with parsers verified against real hardware.' },
   { name: 'Remote debug protocol', port: 'TCP 8081', api: 'ProtocolClient, DebugCommands, IOClient', desc: 'Binary socket-based debugger: threads, stack traces, variables, breakpoints, step control, app output via the dynamic IO port.' },
   { name: 'Perfetto streaming', port: 'WS 8060', api: 'PerfettoWebSocketClient, enablePerfettoTracing', desc: 'Streams raw Perfetto TracePacket protobuf from ws://device:8060/perfetto-session with a quiet-window stop.' },

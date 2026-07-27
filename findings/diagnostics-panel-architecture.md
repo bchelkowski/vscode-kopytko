@@ -9,6 +9,90 @@ implementation. `webview/main.ts` builds raw `<svg>` elements via `d3-selection`
 in place on each redraw (no virtual DOM, no uPlot dependency). All "uPlot"
 references below should be read as "D3".
 
+## Webview toolbars: match the *sibling* panel, not any panel (2026-07-27)
+
+The Console toolbar was first styled from `rokuPay`/`deepLinking` (12px controls,
+`4px 6px` select padding, bordered secondary-style buttons) and read as visibly
+foreign next to Diagnostics. Those two are **editor tabs**; Diagnostics is the
+tab immediately beside Console in the same bottom panel, and that adjacency is
+what the eye compares.
+
+The bottom-panel toolbar convention, from
+`src/client/diagnostics/webview/styles.css` — copy these verbatim for any future
+panel tool:
+
+| Element | Metrics |
+|---|---|
+| `#toolbar` | `padding: 5px 10px`, `gap: 6px`, `min-height: 34px`, 1px `--vscode-panel-border` bottom |
+| `select` | `--vscode-dropdown-*`, `padding: 2px 4px`, `font-size: 11px`, `radius: 2px`, `max-width: 240px` → **23px tall** |
+| `button` | **primary by default** (`--vscode-button-background`), `border: none`, `padding: 3px 10px`, `font-size: 11px`, `radius: 2px` → **21px tall**; `.secondary` and `.stop` variants |
+| status dot | `8px`, `--vscode-editorHint-foreground`, `transition: background 0.3s` |
+| badge/pill | `font-size: 10px`, `font-weight: 600`, `padding: 1px 7px`, `radius: 8px`, **no border**, `rgba(…, 0.18)` tint + solid text colour → **15.5px tall** |
+| device label | `font-size: 11px`, `opacity: 0.75`, ellipsis |
+
+Two traps worth naming:
+- **A 1px border on a pill makes it 2px taller than the house badge.** The
+  Diagnostics badges have no border at all; the off state is a neutral
+  `rgba(128,128,128,0.18)` tint, not an outline.
+- **Buttons default to primary here.** Styling `.control` as secondary-with-border
+  and opting into `.primary` inverts the convention and changes button height.
+
+Cheap way to check rather than eyeball it: render the reference panel's real
+markup against its real emitted stylesheet in an iframe, put the new toolbar
+underneath, and diff `getComputedStyle` + `getBoundingClientRect` per element.
+That is how the pill's 17.5-vs-15.5px discrepancy was caught.
+
+## xterm.js in a VS Code webview (2026-07-27, Kopytko Console)
+
+First xterm.js usage in the repo (`src/client/console/webview/`). Notes that cost
+real debugging time:
+
+- **Never call `FitAddon.fit()` without checking the container has a real size.**
+  This is the big one. At first paint the panel container measured **12×4 px**;
+  `proposeDimensions()` returned `{cols:2, rows:1}` and FitAddon dutifully resized
+  the grid to 2×1 — and it never grew back, because the ResizeObserver's own
+  notification had already been consumed at that degenerate size. Symptom: the
+  buffer is full (the footer counted 14 lines) but the terminal renders one row.
+  Fix in `ConsoleTerminal`: a `MIN_CONTAINER_PX` guard plus `scheduleFit()`, an
+  rAF retry loop that waits for a usable size. The same collapse happens whenever
+  the VS Code panel is collapsed, so the guard is not just a startup concern.
+- **Use the default DOM renderer.** The WebGL addon is unreliable in webviews;
+  the DOM renderer handled these line rates fine. `@xterm/xterm` +
+  `@xterm/addon-fit` only.
+- **xterm goes in `devDependencies`, not `dependencies`.** esbuild inlines it into
+  `out/console-webview/main.js`, so shipping it in the VSIX's `node_modules` is
+  pure weight. (`d3` sits in `dependencies` for the diagnostics webview — that is
+  the pattern *not* to copy.)
+- **Theme by reading `--vscode-terminal-ansi*` into an `ITheme`**, then re-read it
+  from a `MutationObserver` on `document.body` (`class`, `style`,
+  `data-vscode-theme-kind`). A webview gets no theme-change event. Using the 16
+  ANSI slots for severity colours means themes drive the actual hues for free.
+- **The CSP needs nothing extra.** xterm's inline styles are covered by the
+  existing `style-src ${csp} 'unsafe-inline'`, and `import '@xterm/xterm/css/xterm.css'`
+  concatenates into the same emitted `main.css` as the local stylesheet.
+- **xterm has no readline and neither Roku console echoes input** — the input row
+  is entirely ours. Pattern that works: erase the input row (`\r\x1b[2K`), write
+  the output lines, then repaint prompt+buffer and move the caret back with
+  `\x1b[<n>D`. Everything funnels through one `withInputRow()` helper so output
+  can never land *inside* the typed line.
+- **Sanitise device output before writing it to a terminal.** A channel's `print`
+  is untrusted text; an escape sequence in it would repaint the screen or corrupt
+  the input row. `stripControl()` drops OSC/CSI/two-char escapes and C0 controls,
+  keeping tab.
+- **Completion-popup trap worth remembering:** re-firing the "buffer changed" hook
+  from `applyCompletion()` re-opened the popup on the text just accepted, so
+  Enter accepted forever and could never submit. Two rules fixed it — accepting
+  must not fire `change`, and `accept()` returns **false** when the highlighted
+  value already equals the typed token (so Enter on a fully-typed `bt` submits
+  instead of no-op-accepting).
+- **Headless verification is possible and worth it.** Bundle + a stub
+  `acquireVsCodeApi()` + a static server renders the whole panel in a browser.
+  One catch: the browser pane does not composite, so `requestAnimationFrame`
+  never fires and xterm's DOM renderer never paints — shim
+  `window.requestAnimationFrame = cb => setTimeout(cb, 16)` before loading the
+  bundle. Synthetic keys need `keyCode`/`which` defined (xterm reads them);
+  dispatch printable characters as `keypress` only, or they double-insert.
+
 ## Panel overhaul (2026-06-30)
 
 Added in one pass: hover tooltips (series values + nearest rendezvous/beacon),

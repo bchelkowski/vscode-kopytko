@@ -16,6 +16,11 @@ const ICONS: Record<NavTarget, string> = {
   diagnostics: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M1.5 12.5h2l2-8 3 11 2-7 1.5 4h2.5"/>
   </svg>`,
+  console: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1.25" y="2.75" width="13.5" height="10.5" rx="1.5"/>
+    <path d="M4.25 6.5 6.5 8.4 4.25 10.3"/>
+    <path d="M8.25 10.5h3.5"/>
+  </svg>`,
   perfetto: `<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M1.5 8h3l1.5-4 2.5 8 2-6 1 2h3"/>
     <circle cx="8" cy="8" r="6.25"/>
@@ -54,6 +59,7 @@ const ICONS: Record<NavTarget, string> = {
 
 const ITEMS: Array<{ target: NavTarget; title: string; desc: string }> = [
   { target: 'deviceManager', title: 'Device Manager', desc: 'Remote control, scripts, web admin' },
+  { target: 'console', title: 'Console', desc: 'Interactive debug terminal — ports 8085 & 8080' },
   { target: 'diagnostics', title: 'Diagnostics', desc: 'Live charts — memory, CPU, nodes, textures' },
   { target: 'network', title: 'Network Inspector', desc: 'Capture HTTP requests, responses & metrics' },
   { target: 'nodes', title: 'SceneGraph Tree', desc: 'SceneGraph nodes as XML or chart' },

@@ -28,6 +28,9 @@ export class NavViewProvider implements vscode.WebviewViewProvider {
         case 'diagnostics':
           void vscode.commands.executeCommand('kopytko.diagnostics.focus');
           break;
+        case 'console':
+          void vscode.commands.executeCommand('kopytko.console.focus');
+          break;
         case 'perfetto':
           void vscode.commands.executeCommand('kopytko.perfetto.open');
           break;

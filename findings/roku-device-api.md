@@ -276,7 +276,51 @@ X02800C5FKLV (Roku Ultra - 15.2.4.3442)
 
 This banner appears exactly once. Subsequent responses start directly with the output (preceded by `>`).
 
-### Full command list (from `help`)
+**Parallel connections to 8080 work (2026-07-27).** Repeated independent TCP connections each received
+their own `X02800C5FKLV (Roku Ultra - 15.2.4.3442)` banner and `>` prompt and answered commands normally,
+including while other sessions were open. The Kopytko Console therefore does **not** take `diagnosticsLock`
+— a recording and a console session can coexist. (Not stress-tested beyond a handful of concurrent
+sessions; if interference ever shows up, the fix is to extend `DiagnosticsLockOwner` with `'console'` in
+`src/client/diagnostics/diagnosticsLock.ts`.)
+
+### Full command list — captured live from `help` (firmware 15.2.4.3442, 2026-07-27)
+
+```
+? [str]                 Display the help.
+brightscript_warnings <num-warnings> Set the maximum number of brightscript warnings displayed
+bsprof-pause            Pause BS profiling
+bsprof-resume           Resume BS profiling
+bsprof-status           Get BS profiling status
+chanperf [-r <repeat-seconds>] Show channel CPU and memory usage
+clear_launch_caches     Clear all caches that can affect channel launch time
+exit                    Exits the debug terminal.
+fps_display             display onscreen graphics statistics [1|0].
+free                    Return the output of the free(1) command
+genkey                  Generate a new developer key.
+help [str]              Display the help.
+loaded_textures [overlay] Show loaded textures (default main RenderContext)
+logrendezvous [on|off]  Turn Rendezvous Logging on or off
+plugins                 Show list of all installed plugins.
+press {hudrlsp<fb>yikoteacn} Simulate a keypress. (no param lists keys)
+quit                    Exits the debug terminal.
+q                       Exits the debug terminal.
+r2d2_bitmaps            Enumerate R2D2 bitmaps
+remove_plugin           Remove a plugin from the account and device.
+sgnodes                 List SceneGraph nodes.
+sgperf                  SceneGraph node operation performance metrics.
+showkey                 Show the current developer key.
+target list | <n> | <name> | -p <pid>) List or select command execution target
+type                    Send a literal text sequence.
+```
+
+Deltas against the older capture recorded further below, and against Roku's published docs:
+- **New here, absent from the older `help`:** `?` (alias of `help`), `clear_launch_caches`, `type`.
+- **`sgversion` is documented by Roku but is NOT in this firmware's `help`.** Kept in the command catalog
+  anyway — a missing help entry is not proof the command is gone — but treat it as unconfirmed.
+- `chanperf` answers immediately with a single line and a `>` prompt:
+  `channel: mem=61608KiB{anon=40436,file=20972,shared=200,swap=0},%cpu=0{user=0,sys=0}`
+
+### Older capture of the same list
 
 ```
 chanperf [-r <repeat-seconds>]  Show channel CPU and memory usage
@@ -398,9 +442,36 @@ Only works when a SceneGraph screen is actively displayed (returns an error othe
 
 ---
 
-## Port 8085 — BrightScript Log Stream
+## Port 8085 — BrightScript Runtime Console
 
-**Read-only streaming log.** Connect, receive continuous output of `print` statements from the running channel plus system events:
+> **Correction (2026-07-27).** This section previously asserted "Cannot send commands to port 8085 — it is
+> output-only." That is **wrong as a general statement**. Roku's own debugging docs
+> (https://developer.roku.com/dev/docs/debugging) document port 8085 as *"the BrightScript runtime
+> environment"* with ~22 interactive commands (`bt`, `bsc`, `bscs`, `brkd`, `classes`, `cont`/`c`, `down`/`d`,
+> `gc`, `help`, `last`/`l`, `list`, `next`/`n`, `over`, `out`, `print`/`p`/`?`, `step`/`s`/`t`,
+> `threads`/`ths`, `thread`/`th`, `up`/`u`, `var`, `exit`). The original observation was almost certainly
+> made while the channel was *running* — 8085 only presents a `BrightScript Debugger>` prompt once execution
+> stops on a crash or a break, and typing into it at any other time does nothing visible.
+>
+> **Verified live 2026-07-27** (Roku Ultra 4850X, firmware 15.2.4.3442, 192.168.137.46, dev channel running,
+> probed from native PowerShell — WSL2 still cannot reach this hotspot range):
+>
+> - **8085 accepts a TCP connection and streams, but ignores input while the channel runs normally.**
+>   Sending `help\r\n` and `bt\r\n` produced **zero bytes** of response over a 2.5 s window each. So the
+>   original "output-only" note was right about the *common* case and wrong as a general rule — the command
+>   set exists, but only behind a `BrightScript Debugger>` prompt.
+> - **Still unverified:** the stopped/crashed state itself. Reproducing it needs a channel that throws, which
+>   was out of scope for this pass. Before trusting the 8085 input path, force a runtime error and confirm
+>   the prompt appears and `bt` returns a backtrace. Also still open: whether a `remotedebug=1` debug session
+>   takes the port away.
+>
+> **8085 replays a backlog on connect.** Every fresh connection re-sends the channel's log from launch
+> (~84 lines on the test app) before any live output. Two consecutive connects returned byte-identical
+> content. Consumers must expect a burst at connect time, and "no new lines for N seconds" does not mean
+> the connection is dead.
+
+**Streaming log, plus an interactive prompt when stopped.** Connect and receive continuous output of `print`
+statements from the running channel plus system events:
 
 ```
 [translate] Missing translation for 'railMenu_movies' key
@@ -411,7 +482,56 @@ BRIGHTSCRIPT: WARNING: roSGNode.signalBeacon: initiate before signaling AppResum
 
 Beacon events (`AppLaunchInitiate`, `AppLaunchComplete`, `AppResumeInitiate`, `AppResumeComplete`, `VODStartInitiate`, `VODStartComplete`, etc.) are particularly useful for measuring performance.
 
-**Cannot send commands to port 8085** — it is output-only. SceneGraph debug commands go to port 8080.
+### Real line shapes on 8085 (captured 2026-07-27)
+
+Worth knowing when writing any classifier over this stream. Only *some* lines carry the
+`MM-DD HH:MM:SS.mmm <thread>` prefix — beacon lines do, ordinary `print` output does not:
+
+```
+07-27 15:01:19.438 sdkl [beacon.signal] |AppLaunchChainComplete ----> Duration(-131286 ms)
+07-27 15:01:19.948 sdkl [beacon.signal] |VODStartComplete ----------> Duration(237 ms)
+-------------------- new Roku Analytics node created --------------------
+ [Info.OneTrust] |OT SDK version = 202606.1.0
+ [Success.NetworkRequestHandler] |banner Api Success
+ [Warning.MultiProfile] |Multi Profile Consent is disabled.
+ [Failed.NetworkRequestHandler] |OT Post API Failure = saveandlogconsent
+[translate] Missing translation for 'railMenu_movies' key
+buildUrl: 'params' param is ignored because it can't be converted to string
+```
+
+Key points:
+- **Bracketed level tags (`[Info.X]`, `[Warning.X]`, `[Failed.X]`, `[Success.X]`) are an app-logger
+  convention, not a Roku one**, but they are common enough that `lineClassifier.ts` matches
+  `[Error|Failed|Failure|Fatal…]` → error and `[Warning|Warn…]` → warning. Note the **leading space**
+  before the bracket on these lines.
+- A beacon `Duration(-131286 ms)` can legitimately be **negative** — do not assume monotonic timing.
+- Multi-line dumps appear inline: `header parameters = <Component: roAssociativeArray> =` followed by a
+  brace block. The `<Component: …>` line trips a naive "starts with `<`" XML check.
+
+### `logrendezvous` produces no console output (2026-07-27, verified)
+
+`logrendezvous on` on port 8080 returns `logrendezvous: rendezvous logging is on`, but **no rendezvous
+lines then appear on 8085 or 8080** — checked over a 16 s window on 8085 and 9 s on 8080 while driving the
+UI with ECP keypresses. Rendezvous data reaches the extension only through ECP `/query/sgrendezvous`
+(see above), which is what `RendezvousCollector` already uses.
+
+Consequence: **do not build console features around rendezvous log lines.** A rendezvous severity class and
+filter chip were built into the Kopytko Console and then removed once this was measured.
+
+**SceneGraph debug commands go to port 8080, not 8085** — the two consoles have disjoint command sets
+(`chanperf`/`sgnodes`/… on 8080, `bt`/`var`/`print`/… on 8085). See the correction at the top of this
+section regarding 8085's interactivity.
+
+**Port 8085 accepts a single consumer at a time.** This is why `FwBeaconCollector` was moved off it (see
+below) and why the Kopytko Console surfaces a "held by another consumer" hint after two consecutive failed
+connects instead of retrying forever.
+
+### Retired ports (do not implement)
+
+Roku's debugging docs state that **ports 8089–8093 are no longer used as of Roku OS 7.5+**. Port 8087 is
+documented as the screensaver thread's console (same command surface as 8085) and is deliberately out of
+scope for the Kopytko Console. Port 8089 was separately observed open-but-inert on firmware 15.2.4 (see
+below) — consistent with it being retired.
 
 **The extension no longer reads beacons from here.** `FwBeaconCollector` originally
 tailed this stream for `[beacon.signal]` lines, but port 8085 accepts only one

@@ -95,6 +95,7 @@ For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or 
 | [docs/device-discovery.md](docs/device-discovery.md) | Device discovery, network scoping, password management |
 | [docs/roku-debug.md](docs/roku-debug.md) | Debugger, launch config |
 | [docs/diagnostics.md](docs/diagnostics.md) | Runtime diagnostics panel — data sources, collectors, NDJSON, settings |
+| [docs/roku-console.md](docs/roku-console.md) | Kopytko Console — interactive debug terminal (ports 8085/8080), completion, colouring, filtering |
 | [docs/roku-webadmin.md](docs/roku-webadmin.md) | Developer web-admin automation (install/rekey/package/screenshot/update/reboot) |
 | [docs/device-manager.md](docs/device-manager.md) | Device Manager — remote control, keyboard mode, saved text entries, RASP scripts, abilities hub |
 | [docs/roku-pay.md](docs/roku-pay.md) | Roku Pay Web Services tool — cloud API endpoints, credential profiles, request history |

@@ -47,6 +47,16 @@ const allSettings = [
   { key: 'kopytko.format.verifySyntax', type: 'boolean', default: 'true', desc: 'Verify formatted output re-parses to an equivalent AST before applying it, catching formatter bugs.' },
   { key: 'kopytko.format.*', type: '...', default: '...', desc: 'All kopytko-formatter options available — see the Formatter page.' },
   // Diagnostics (Runtime Telemetry)
+  // Console
+  { key: 'kopytko.console.defaultPort', type: 'enum', default: '8085', desc: 'Debug console port selected when the Kopytko Console opens (8085 BrightScript runtime / 8080 SceneGraph debug server).' },
+  { key: 'kopytko.console.autoConnect', type: 'boolean', default: 'false', desc: 'Connect to the active device automatically when the console panel opens.' },
+  { key: 'kopytko.console.maxLines', type: 'number', default: '20000', desc: 'Maximum output lines kept per console port; older lines are dropped.' },
+  { key: 'kopytko.console.reconnect', type: 'boolean', default: 'true', desc: 'Reconnect automatically, with backoff, when the console connection drops.' },
+  { key: 'kopytko.console.colorize', type: 'boolean', default: 'true', desc: 'Colour console output by severity — errors, warnings, beacons, rendezvous logs and debugger frames.' },
+  { key: 'kopytko.console.logToFile', type: 'boolean', default: 'false', desc: 'Append every console line to a log file as it arrives, alongside the in-memory buffer.' },
+  { key: 'kopytko.console.outputDir', type: 'string', default: '"debug"', desc: 'Folder where console logs and saved output are written.' },
+  { key: 'kopytko.console.historySize', type: 'number', default: '200', desc: 'Number of submitted commands remembered per console port.' },
+  // Diagnostics
   { key: 'kopytko.diagnostics.outputDir', type: 'string', default: '"debug"', desc: 'Folder where diagnostics sessions are saved, each in its own timestamped subfolder.' },
   { key: 'kopytko.diagnostics.maxLivePoints', type: 'number', default: '3600', desc: 'Max in-memory samples per stream for the live view; older points stay on disk.' },
   { key: 'kopytko.diagnostics.debugConsolePort', type: 'number', default: '8080', desc: 'TCP port of the Roku debug server used for chanperf / sgnodes / texture metrics.' },
@@ -549,6 +559,43 @@ const kopytkoRcExample = `// .kopytkorc
       </div>
     </section>
 
+    <!-- Kopytko Console -->
+    <section>
+      <h2 class="text-2xl font-bold text-white mb-3">Kopytko Console</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-slate-400 leading-relaxed mb-4">
+            An <strong class="text-white">interactive terminal for the Roku debug consoles</strong>, in its own bottom-panel tab beside Terminal and Problems. It replaces reaching for an external <code class="text-violet-300">telnet</code> client — which Windows doesn't ship at all — with a real terminal that <strong class="text-white">knows which commands each port accepts</strong> and <strong class="text-white">colours the output by severity</strong>, so the crash stands out from the wall of log lines. Works identically on Windows, macOS and Linux.
+          </p>
+          <ul class="space-y-2 text-sm">
+            {[
+              'Both interactive ports, connected at once — 8085 (BrightScript runtime: live print output, beacons, and the BrightScript Debugger> prompt when execution stops) and 8080 (SceneGraph debug server: chanperf, sgnodes, sgperf, r2d2_bitmaps, free); the dropdown switches the view, not the connection',
+              'Follows the device you picked in the Roku Devices sidebar — no second device selector to fall out of sync, just the active device and a dot showing the console connection',
+              'Completion for every documented command with descriptions, argument hints and subcommands — an empty line lists the whole port catalog, so you never have to guess a first letter, and Tab walks sgnodes all|roots|counts, sgperf start|clear|report|stop and the rest with no round-trip to the device',
+              'Commands seen only in the device\'s own help output are labelled undocumented, and destructive ones (genkey, remove_plugin) need an explicit confirmation before they are sent',
+              'Severity colouring drawn from the theme\'s own terminal palette — errors, warnings, framework beacons, debugger frames and XML replies each read differently, in light, dark and high-contrast alike',
+              'Clickable pkg:/components/Foo.brs(40) references that open the file at the line, resolving through Kopytko packages in node_modules too',
+              'Live filter — plain text or /regex/ — plus severity chips, narrowing what you see without touching what is captured',
+              'Per-port command history, save-buffer-to-file, and optional append-as-it-arrives logging so a crash still leaves a complete record on disk',
+              'Device output is sanitised before display, so an escape sequence in a print statement can\'t repaint your terminal',
+            ].map(f => (
+              <li class="flex items-start gap-2.5 text-slate-300">
+                <span class="text-violet-400 mt-0.5 shrink-0">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+          <p class="text-slate-500 text-xs mt-4">
+            Only the two ports that carry an interactive command surface on current Roku OS are offered — 8089–8093 were retired in Roku OS 7.5+. Port 8085 accepts a single consumer at a time, so the console tells you when another telnet or debug session is holding it rather than retrying in silence; it also replays the channel's log from launch when you connect, and (verified on firmware 15.2.4) only accepts typed commands once execution has stopped at a debugger prompt.
+          </p>
+        </div>
+        <Screenshot
+          alt="Kopytko Console panel"
+          placeholder="Bottom panel tab with a port dropdown, connect button, active-device label with a green status dot, and a filter box above a terminal showing colour-coded Roku log output — red errors, yellow warnings, cyan beacons — with a completion popup listing bt, bsc, bscs and brkd with descriptions"
+        />
+      </div>
+    </section>
+
     <!-- Deep Linking -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-3">Deep Linking</h2>
@@ -716,6 +763,13 @@ const kopytkoRcExample = `// .kopytkorc
               ['Open device portal', '', 'Open the Roku web dashboard in a browser'],
               ['Read registry', '', 'View device registry sections in a virtual document'],
               ['Remove device', '', 'Remove a manually-added or stale device from the list'],
+              ['Open Console', '', 'Open the Kopytko Console panel — an interactive terminal for the Roku debug consoles'],
+              ['Connect Console', '', 'Connect the console to the selected device and port'],
+              ['Disconnect Console', '', 'Close the console connection for the selected port'],
+              ['Clear Console', '', 'Empty the console buffer without disconnecting'],
+              ['Save Console Output', '', 'Write the console buffer to a .log file in the workspace'],
+              ['Select Console Port', '', 'Switch between port 8085 (BrightScript runtime) and 8080 (SceneGraph debug server)'],
+              ['Show Console Commands', '', 'Browse every documented command for the selected port as a searchable list'],
               ['Open SceneGraph Tree', '', 'Fetch a node collection (sgnodes all/roots or app-ui) and show it as formatted XML or an icicle chart; Edit mode pushes field changes to the running app via RALE TrackerTask'],
               ['Open Deep Linking', '', 'Launch channels with contentId / roInput deep-link parameters'],
               ['Open Device Manager', '', 'Reveal the Remote Control view (remote, device actions, saved text)'],

@@ -1,0 +1,322 @@
+/*
+ * Kopytko Console webview styles.
+ *
+ * Every colour is a VS Code theme variable with a fallback, so the panel adapts
+ * to light/dark/high-contrast without a second stylesheet. The terminal itself
+ * is themed from JS (see terminal.ts) because xterm needs an ITheme object.
+ *
+ * Toolbar metrics deliberately mirror `src/client/diagnostics/webview/styles.css`
+ * — Diagnostics is the sibling tab in the same bottom panel, so the two sit
+ * side by side and any divergence in control height, font size or button
+ * treatment reads as a different product. Keep them in step.
+ */
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--vscode-panel-background, transparent);
+  color: var(--vscode-editor-foreground, #cccccc);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 12px);
+}
+
+.console-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── toolbar ─────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  flex: 0 0 auto;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* Selects — same metrics as #session-select / #app-select in Diagnostics. */
+select.control {
+  background: var(--vscode-dropdown-background, #3c3c3c);
+  color: var(--vscode-dropdown-foreground, #cccccc);
+  border: 1px solid var(--vscode-dropdown-border, rgba(128, 128, 128, 0.4));
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 240px;
+}
+
+select.control:focus {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+}
+
+/* Buttons default to the primary treatment, exactly as in Diagnostics. */
+button {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border: none;
+  padding: 3px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+button:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+button.secondary {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+}
+
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+
+/* Disconnect is the stop action, styled like Diagnostics' Stop Session. */
+button.stop { background: var(--vscode-statusBarItem-errorBackground, #c72e2e); }
+button.stop:hover { background: #e03535; }
+
+.filter {
+  min-width: 180px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.filter:focus {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+}
+
+.filter::placeholder {
+  color: var(--vscode-input-placeholderForeground, #a0a0a0);
+}
+
+/* ── active device ───────────────────────────────────────────────────────── */
+
+/* Read-only: the device is chosen in the Roku Devices sidebar, and a second
+   picker here could disagree with it. Metrics follow #device-label in
+   Diagnostics. */
+.device {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.75;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-ip,
+.device-none {
+  color: var(--vscode-editorHint-foreground, #aaaaaa);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--vscode-editorHint-foreground, #aaaaaa);
+  transition: background 0.3s;
+}
+
+/* Reflects the console connection, not device reachability. */
+.dot.connected { background: var(--vscode-charts-green, #81c784); }
+.dot.pending   { background: #f0ad4e; }
+.dot.idle      { background: var(--vscode-editorHint-foreground, #aaaaaa); }
+
+/* ── severity chips ──────────────────────────────────────────────────────── */
+
+.chips {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* Pill metrics match .app-state-badge in Diagnostics exactly — including the
+   absence of a border, which would otherwise make these 2px taller than the
+   badges in the panel next door. The off state is the neutral tint Diagnostics
+   uses for .app-state-unknown. */
+.chip {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(128, 128, 128, 0.18);
+  color: var(--vscode-editorHint-foreground, #aaaaaa);
+  opacity: 0.75;
+}
+
+.chip:hover {
+  opacity: 1;
+}
+
+/* An active chip is tinted in the severity's own colour — the same tinted-pill
+   treatment Diagnostics uses for its app-state badges, so the two panels read
+   alike, while the hue still matches how those lines render in the terminal. */
+.chip.on {
+  opacity: 1;
+}
+
+.chip.on.sev-error {
+  background: rgba(241, 76, 76, 0.18);
+  color: var(--vscode-terminal-ansiBrightRed, #f14c4c);
+}
+.chip.on.sev-warning {
+  background: rgba(245, 245, 67, 0.18);
+  color: var(--vscode-terminal-ansiBrightYellow, #e5e510);
+}
+.chip.on.sev-beacon {
+  background: rgba(41, 184, 219, 0.18);
+  color: var(--vscode-terminal-ansiBrightCyan, #29b8db);
+}
+.chip.on.sev-debugger {
+  background: rgba(35, 209, 139, 0.18);
+  color: var(--vscode-terminal-ansiBrightGreen, #23d18b);
+}
+
+/* ── banner ──────────────────────────────────────────────────────────────── */
+
+.banner {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+.banner.info {
+  background: var(--vscode-editorHoverWidget-background, #252526);
+}
+
+.banner.warning {
+  background: var(--vscode-inputValidation-warningBackground, #352a05);
+  border-bottom-color: var(--vscode-inputValidation-warningBorder, #b89500);
+}
+
+.banner.error {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border-bottom-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+/* ── terminal ────────────────────────────────────────────────────────────── */
+
+.terminal {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 6px 0;
+}
+
+.terminal .xterm {
+  height: 100%;
+}
+
+.footer {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+/* ── completion popup ────────────────────────────────────────────────────── */
+
+.completion-popup {
+  position: absolute;
+  z-index: 20;
+  max-height: 220px;
+  min-width: 320px;
+  max-width: 640px;
+  overflow-y: auto;
+  padding: 2px;
+  border-radius: 3px;
+  border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-panel-border, #454545));
+  background: var(--vscode-editorSuggestWidget-background, #252526);
+  color: var(--vscode-editorSuggestWidget-foreground, #cccccc);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+}
+
+.completion-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.completion-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.completion-item.selected {
+  background: var(--vscode-editorSuggestWidget-selectedBackground, #04395e);
+  color: var(--vscode-editorSuggestWidget-selectedForeground, #ffffff);
+}
+
+.completion-name {
+  font-weight: 600;
+  color: var(--vscode-editorSuggestWidget-highlightForeground, #2aaaff);
+}
+
+.completion-item.selected .completion-name {
+  color: inherit;
+}
+
+.completion-args {
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.completion-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
+.badge {
+  flex: 0 0 auto;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+}
+
+.badge-danger {
+  background: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: #ffffff;
+}
