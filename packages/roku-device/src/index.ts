@@ -4,6 +4,7 @@
 //   - SSDP discovery (UDP 1900)
 //   - ECP REST client + registry/tracing helpers (HTTP 8060, digest auth on 80)
 //   - SceneGraph debug console client (TCP 8080)
+//   - Interactive debug console streaming + command catalog (TCP 8085 + 8080)
 //   - BrightScript remote debug protocol (TCP 8081 + dynamic IO port)
 //   - Diagnostics parsers + polling collectors (chanperf, sgnodes, textures, …)
 //   - RALE TrackerTask client — live SceneGraph node editing (dynamic TCP port)
@@ -77,6 +78,24 @@ export {
   type ConsoleSocketFactory,
   type DebugConsoleOptions,
 } from './console/debugConsoleClient';
+
+// Interactive debug consoles (ports 8085 + 8080) — raw streaming transport
+export {
+  ConsoleStream,
+  CONSOLE_PORTS,
+  type ConsolePort,
+  type ConsoleStreamOptions,
+} from './console/consoleStream';
+export {
+  CONSOLE_COMMANDS,
+  CONSOLE_PORT_LABELS,
+  completeCommand,
+  findCommand,
+  isDestructiveCommand,
+  type ConsoleCommandSpec,
+  type ConsoleSubcommandSpec,
+  type ConsoleCompletion,
+} from './console/commandCatalog';
 
 // Diagnostics event model, parsers, and collectors
 export * from './diagnostics/eventModel';

@@ -26,6 +26,7 @@ Requires Node.js >= 24. No runtime dependencies beyond `ws` (Perfetto streaming)
 | ECP (External Control Protocol) | HTTP 8060, 80 | `EcpClient`, `parseRegistryXml`, `enablePerfettoTracing`, `triggerHeapSnapshot` |
 | Device discovery orchestration | — | `DeviceManager` + `DeviceStorage` / `NetworkWatcher` injection interfaces |
 | SceneGraph debug console | TCP 8080 | `DebugConsoleClient` — idle-framed request/response, auto-reconnect |
+| Interactive debug consoles | TCP 8085, 8080 | `ConsoleStream` — raw bidirectional streaming; `CONSOLE_COMMANDS` / `completeCommand` / `isDestructiveCommand` command catalog |
 | Diagnostics parsers + collectors | 8060/8080 | `parseChanperf`, `parseSgNodesCounts`, `parseR2d2Bitmaps`, …, `PollingCollector` and 10 concrete collectors |
 | BrightScript remote debug protocol | TCP 8081 | `ProtocolClient`, `IOClient`, `DebugCommands`, `BinaryReader`/`BinaryWriter`, protocol constants/types |
 | Perfetto trace streaming | WS 8060 | `PerfettoWebSocketClient` — quiet-window framing over `ws://…/perfetto-session` |
@@ -210,12 +211,31 @@ const player = await ecp.queryMediaPlayer('192.168.1.20');
 if (player.state === 'play') console.log(player.format?.video, player.positionMs);
 ```
 
+### Drive an interactive debug console
+
+`ConsoleStream` is the terminal-facing counterpart to `DebugConsoleClient`. It frames nothing and strips
+nothing — every byte the device sends is forwarded, prompts and unsolicited output included — which is what
+a human-facing console needs and a parser does not. Neither port echoes input, so callers own local echo.
+
+```ts
+import { ConsoleStream, completeCommand, isDestructiveCommand } from 'kopytko-roku-device';
+
+const stream = new ConsoleStream({ host: '192.168.1.20', port: 8085 });
+stream.on('connect', () => stream.write('bt\r\n'));  // caller supplies the terminator
+stream.on('data', (chunk: string) => process.stdout.write(chunk));
+stream.on('close', () => console.log('disconnected; reconnecting with backoff'));
+stream.start();
+
+completeCommand(8080, 'sgnodes ');   // → all | roots | counts
+isDestructiveCommand(8080, 'genkey'); // → true — confirm before sending
+```
+
 ### Poll runtime metrics
 
 ```ts
 import { DebugConsoleClient, ChanperfCollector } from 'kopytko-roku-device';
 
-const console8080 = new DebugConsoleClient('192.168.1.20');
+const console8080 = new DebugConsoleClient({ host: '192.168.1.20' });
 const collector = new ChanperfCollector(console8080, 1000);
 collector.on('sample', (s) => console.log(s)); // { type: 'mem-cpu', memKiB, cpuPct, … }
 collector.start();
