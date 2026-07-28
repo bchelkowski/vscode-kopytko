@@ -549,9 +549,9 @@ Enabled by `remotedebug=1` in the manifest. `remotedebug_connect_early=1` additi
 device stop before the first BrightScript statement. Implementation lives in
 `packages/roku-device/src/debug-protocol/`.
 
-**Not yet verified against hardware** — the items below come from reading the protocol code against
-the reported failure `Protocol error: read ECONNRESET` on resume (2026-07-27). Confirm each with
-`kopytko.debug.trace: "verbose"` and record the actual bytes here.
+The handshake layout below is **verified** against a 3.5.0 device (2026-07-28). The out-of-state
+command behaviour is still inferred from the reported `read ECONNRESET` on resume (2026-07-27) —
+confirm it with `kopytko.debug.trace: "verbose"` and record the actual bytes here.
 
 ### The device resets the connection on out-of-state commands
 
@@ -593,12 +593,40 @@ The only useful responses are (a) discard the buffer and realign on the next rea
 socket open regardless, because a live socket still carries `CONTINUE` even when replies are
 unparseable.
 
-### Handshake `remaining_packet_length`
+### Handshake `remaining_packet_length` COUNTS ITSELF (verified, 2026-07-28)
 
-Read at `HANDSHAKE_FIXED_PREFIX + 4` (offset 20). Current code reads 8 bytes of timestamp and now
-skips any surplus using the declared length — previously the surplus would have been handed to the
-packet framer and desynced the stream permanently. **Log the real value from a device trace and
-record it here**, along with whether it counts itself.
+Observed protocol version on the dev device is **3.5.0**, not 3.3.0.
+
+```
+offset  size  field
+     0     8  magic  (b'bsdebug\0' as LE uint64)
+     8     4  major                      = 3
+    12     4  minor                      = 5
+    16     4  patch                      = 0
+    20     4  remaining_packet_length    = 12   ← counts itself
+    24     8  platform_revision_timestamp
+   ---- 32 bytes total ----
+```
+
+So the handshake ends at `20 + remaining_packet_length`, **not** `20 + 4 + remaining_packet_length`.
+Getting that wrong over-consumes by exactly 4 bytes, and because `remotedebug_connect_early` glues
+updates to the handshake, those 4 bytes are the `packet_length` of the next packet. The framer then
+reads that packet's `request_id` — which is **0** for updates — as a packet length, and the session
+dies at connect with `Invalid packet length: 0`. Symptom: the app never launches at all.
+
+Two device logs pinned this down without any capture, purely from the discarded-byte counts:
+`discarded 16 bytes` = a 20-byte `IO_PORT_OPENED` minus the 4 eaten; `discarded 43 bytes` = that
+plus a 27-byte `ALL_THREADS_STOPPED` carrying a 5-char stop-reason detail.
+
+The initial burst on connect is `IO_PORT_OPENED` **then** `ALL_THREADS_STOPPED`, both glued to the
+handshake in the same TCP segment.
+
+Watch the test fixtures here: `buildHandshakeResponse()` encoded `remaining_packet_length` as **8**
+for a long time, and 8 is the single value at which the wrong formula lands on the right offset —
+so the fixture actively concealed the bug. It now encodes 12, and
+`packages/roku-device/test/debug-protocol/protocolClient.test.ts` asserts
+`20 + remaining_packet_length === handshake.length` plus a glued-updates case that reproduces the
+exact 43-byte failure.
 
 ### Payload field widths
 

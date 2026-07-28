@@ -23,15 +23,20 @@ function allThreadsStoppedPayload(threadIndex: number, stopReason: StopReason, d
 }
 
 /**
- * Builds a valid handshake response buffer (protocol 3.3.0).
+ * Builds a valid handshake response buffer — 32 bytes, exactly as a device sends it.
+ *
+ * `remaining_packet_length` COUNTS ITSELF: 12 = the 4-byte field + the 8-byte
+ * timestamp. This fixture used to say 8, which is the one value at which an
+ * off-by-four in the consumption maths still lands on the right offset — so it
+ * hid a bug that killed every real 3.5.0 session at connect.
  */
-function buildHandshakeResponse(): Buffer {
+function buildHandshakeResponse(major = 3, minor = 5, patch = 0): Buffer {
   const writer = new BinaryWriter();
   writer.writeUint64(DEBUGGER_MAGIC);
-  writer.writeUint32(3); // major
-  writer.writeUint32(3); // minor
-  writer.writeUint32(0); // patch
-  writer.writeUint32(8); // remaining_packet_length (timestamp only)
+  writer.writeUint32(major);
+  writer.writeUint32(minor);
+  writer.writeUint32(patch);
+  writer.writeUint32(12); // remaining_packet_length: itself + timestamp
   writer.writeUint64(1700000000n); // platform_revision_timestamp
   return writer.toBuffer();
 }
@@ -144,14 +149,21 @@ describe('Protocol packet building', () => {
     const minor = reader.readUint32();
     const patch = reader.readUint32();
     expect(major).to.equal(3);
-    expect(minor).to.equal(3);
+    expect(minor).to.equal(5);
     expect(patch).to.equal(0);
 
+    // Counts itself: 4 (this field) + 8 (timestamp).
     const remainingLength = reader.readUint32();
-    expect(remainingLength).to.equal(8);
+    expect(remainingLength).to.equal(12);
 
     const timestamp = reader.readUint64();
     expect(timestamp).to.equal(1700000000n);
+
+    // The whole handshake is 32 bytes, i.e. HANDSHAKE_FIXED_PREFIX (20) +
+    // remaining_packet_length — NOT 20 + 4 + remaining_packet_length.
+    expect(reader.position).to.equal(32);
+    expect(response.length).to.equal(32);
+    expect(20 + remainingLength).to.equal(response.length);
   });
 
   it('builds a request packet with correct framing', () => {
@@ -367,13 +379,51 @@ describe('ProtocolClient (real socket)', () => {
 
     const handshake = await client.connect('127.0.0.1', device.port);
 
-    expect(handshake.protocolVersion).to.deep.equal({ major: 3, minor: 3, patch: 0 });
+    expect(handshake.protocolVersion).to.deep.equal({ major: 3, minor: 5, patch: 0 });
+    expect(handshake.platformRevisionTimestamp).to.equal(1700000000n);
     // Dispatched exactly once, and before connect() settled — this ordering is
     // what SessionController has to arm its suppression flag ahead of.
     expect(updates).to.deep.equal([UpdateType.AllThreadsStopped]);
 
     await tick();
     expect(updates).to.deep.equal([UpdateType.AllThreadsStopped]);
+  });
+
+  it('leaves the framer aligned when several updates are glued to the handshake', async () => {
+    // The exact shape a 3.5.0 device sends on connect with
+    // remotedebug_connect_early: handshake, IO_PORT_OPENED, ALL_THREADS_STOPPED,
+    // all in one segment. Over-consuming the handshake by even one byte eats the
+    // next packet_length and the whole session dies at connect.
+    const ioPort = new BinaryWriter();
+    ioPort.writeUint32(8085);
+    const updates = Buffer.concat([
+      buildUpdate(UpdateType.IOPortOpened, ErrorCode.OK, ioPort.toBuffer()),
+      buildUpdate(
+        UpdateType.AllThreadsStopped,
+        ErrorCode.OK,
+        allThreadsStoppedPayload(0, StopReason.Break, 'break'),
+      ),
+    ]);
+    device.onMagic((d) => d.send(Buffer.concat([buildHandshakeResponse(), updates])));
+
+    const seen: { type: number; payload: Buffer }[] = [];
+    const errors: string[] = [];
+    client.on('update', (type, _code, payload) => seen.push({ type, payload }));
+    client.on('error', (err: Error) => errors.push(err.message));
+
+    await client.connect('127.0.0.1', device.port);
+    await tick();
+
+    expect(errors).to.deep.equal([]);
+    expect(seen.map((u) => u.type)).to.deep.equal([
+      UpdateType.IOPortOpened,
+      UpdateType.AllThreadsStopped,
+    ]);
+    // Payloads must be byte-exact, not merely present.
+    expect(seen[0].payload.readUInt32LE(0)).to.equal(8085);
+    expect(seen[1].payload.readInt32LE(0)).to.equal(0);
+    expect(seen[1].payload.readUInt8(4)).to.equal(StopReason.Break);
+    expect(seen[1].payload.subarray(5).toString('utf-8')).to.equal('break\0');
   });
 
   it('reassembles a packet split across chunks and drains several from one chunk', async () => {
@@ -503,7 +553,7 @@ describe('ProtocolClient (real socket)', () => {
     await pending.catch(() => { /* expected */ });
     await tick();
 
-    expect(lines.some((l) => l.startsWith('handshake protocol 3.3.0'))).to.equal(true);
+    expect(lines.some((l) => l.startsWith('handshake protocol 3.5.0'))).to.equal(true);
     expect(lines.some((l) => l.includes('send #1 Continue'))).to.equal(true);
     expect(lines.some((l) => l.includes('socket closed') && l.includes('#1 Continue'))).to.equal(true);
   });

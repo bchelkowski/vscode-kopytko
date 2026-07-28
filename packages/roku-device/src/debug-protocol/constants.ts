@@ -3,7 +3,10 @@
  *
  * Binary protocol on TCP port 8081. All values are little-endian.
  * Reference: https://developer.roku.com/dev/docs/socket-based-debugger
- * Target: Protocol 3.3.0 / Roku OS 14.1+
+ * Target: Protocol 3.x / Roku OS 14.1+ (3.5.0 observed on current firmware).
+ *
+ * Handshake layout — including the fact that `remaining_packet_length` counts
+ * itself — is recorded in findings/roku-device-api.md under "Port 8081".
  */
 
 export const DEBUGGER_PORT = 8081;

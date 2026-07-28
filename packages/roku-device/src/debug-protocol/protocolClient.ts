@@ -27,6 +27,13 @@ import type { HandshakeResponse, ProtocolVersion } from './types';
 const HANDSHAKE_FIXED_PREFIX = 20; // magic(8) + major(4) + minor(4) + patch(4)
 
 /**
+ * Full 3.x handshake: HANDSHAKE_FIXED_PREFIX + remaining_packet_length(4) +
+ * platform_revision_timestamp(8). Used as a floor so a device that under-reports
+ * remaining_packet_length cannot make us leave timestamp bytes in the framer.
+ */
+const HANDSHAKE_MIN_LENGTH = 32;
+
+/**
  * Smallest well-formed inbound packet: packet_length(4) + request_id(4) +
  * error_code(4). Anything shorter means the stream has desynchronized.
  */
@@ -341,14 +348,24 @@ export class ProtocolClient extends EventEmitter {
         if (major >= 3) {
           if (handshakeBuffer.length < HANDSHAKE_FIXED_PREFIX + 4) return; // wait for remaining_length
           remainingLength = reader.readUint32();
-          if (handshakeBuffer.length < HANDSHAKE_FIXED_PREFIX + 4 + remainingLength) return;
+          // remaining_packet_length COUNTS ITSELF: it is 12 on protocol 3.3–3.5
+          // (the 4-byte field plus the 8-byte timestamp), so the handshake ends
+          // at HANDSHAKE_FIXED_PREFIX + remainingLength = 32 bytes total.
+          //
+          // Adding the 4 again double-counts the field and eats the first four
+          // bytes of whatever follows — which, thanks to
+          // remotedebug_connect_early, is the packet_length of an update glued
+          // to the handshake. The framer then reads that update's request_id
+          // (0 for updates) as a packet length and the stream is dead on
+          // arrival. Verified against a 3.5.0 device.
+          const handshakeEnd = Math.max(HANDSHAKE_FIXED_PREFIX + remainingLength, HANDSHAKE_MIN_LENGTH);
+          if (handshakeBuffer.length < handshakeEnd) return;
           if (remainingLength >= 8) {
             platformRevisionTimestamp = reader.readUint64();
           }
-          // remaining_length exists precisely so the handshake can grow. Skip any
-          // fields this build does not know about, otherwise the surplus bytes
-          // would be handed to the packet framer and desync the stream forever.
-          const handshakeEnd = HANDSHAKE_FIXED_PREFIX + 4 + remainingLength;
+          // remaining_packet_length exists so the handshake can grow: skip any
+          // trailing fields this build does not know about rather than handing
+          // them to the packet framer.
           if (reader.position < handshakeEnd) {
             reader.skip(handshakeEnd - reader.position);
           }
