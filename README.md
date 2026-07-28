@@ -311,33 +311,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, building, testing,
 
 ## Releasing
 
-Both packages are released via **GitHub Actions** workflows (Actions tab → Run workflow → pick `patch`/`minor`/`major`).
+Five packages, each released via its own **GitHub Actions** workflow (Actions tab → Run workflow → pick `patch`/`minor`/`major`). Every workflow runs tests, bumps the version, updates the changelog, tags the release, publishes, creates a GitHub Release, and — for the four npm packages — auto-bumps the root `package.json` dependency once npm has propagated the new version.
 
-### Release kopytko-formatter (npm)
-
-1. Go to **Actions** → **Release kopytko-formatter** → **Run workflow**
-2. Select `patch`, `minor`, or `major`
-3. The workflow runs tests, bumps the version, updates the changelog, tags `kopytko-formatter-v{x.y.z}`, publishes to npm (OIDC provenance), and creates a GitHub Release
-
-### Release kopytko-linter (npm)
-
-1. Go to **Actions** → **Release kopytko-linter** → **Run workflow**
-2. Select `patch`, `minor`, or `major`
-3. The workflow runs tests, bumps the version, updates the changelog, tags `kopytko-linter-v{x.y.z}`, publishes to npm (OIDC provenance), and creates a GitHub Release
-
-### Release vscode-kopytko (VS Code Marketplace)
-
-1. Go to **Actions** → **Release vscode-kopytko** → **Run workflow**
-2. Select `patch`, `minor`, or `major`
-3. The workflow compiles, tests, bumps the version, updates the changelog, tags `v{x.y.z}`, publishes to the Marketplace, and creates a GitHub Release with the `.vsix` attached
+| Workflow | Publishes | Tag |
+|---|---|---|
+| **Release kopytko-brightscript-parser** | npm (OIDC provenance) | `kopytko-brightscript-parser-v{x.y.z}` |
+| **Release kopytko-formatter** | npm (OIDC provenance) | `kopytko-formatter-v{x.y.z}` |
+| **Release kopytko-linter** | npm (OIDC provenance) | `kopytko-linter-v{x.y.z}` |
+| **Release kopytko-roku-device** | npm (OIDC provenance) | `kopytko-roku-device-v{x.y.z}` |
+| **Release vscode-kopytko** | VS Code Marketplace | `v{x.y.z}` |
 
 ### Release order
 
-When the formatter changes affect the extension:
+`kopytko-brightscript-parser` has no dependency on the other packages, but `kopytko-formatter` and `kopytko-linter` both depend on it — `kopytko-roku-device` is fully independent (see [Standalone Tools](#standalone-tools)).
 
-1. Release `kopytko-formatter` first
-2. Update the extension's `kopytko-formatter` dependency version
-3. Release `vscode-kopytko`
+1. **If the parser changed**: release `kopytko-brightscript-parser` first
+2. Release `kopytko-formatter` / `kopytko-linter` (if changed) — their dependency on the parser auto-bumps once it's published
+3. Release `kopytko-roku-device` (if changed) — independent of the above
+4. **Last**: release `vscode-kopytko`, once every package it depends on that changed has been published and its root dependency bump has landed on `main`
+
+Skipping a package release before releasing the extension is the most common way to ship a broken build — the extension's own tests run against whatever is currently on npm, not local source, so a source fix with no matching package release doesn't reach users and can fail the extension's own CI.
 
 ### Required secrets
 
@@ -345,4 +338,4 @@ When the formatter changes affect the extension:
 |---|---|
 | `VSCE_PAT` | Azure DevOps PAT with Marketplace (Manage) scope |
 
-npm uses OIDC provenance — no token needed. See [docs/publishing.md](docs/publishing.md) for full setup.
+npm uses OIDC provenance — no token needed. See [docs/publishing.md](docs/publishing.md) for full setup, the complete publishing order, and manual (non-Actions) release steps.
