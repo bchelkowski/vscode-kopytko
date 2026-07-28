@@ -4,7 +4,7 @@ import {
   buildCallGraph, analyzeContext, getSymbolInfo,
   findNodeAtPosition, findTokenAtPosition, getWordAtPosition, escapeRegex,
   parseXmlScriptUris, parseXmlInterface, parseXmlExtends, parseXmlComponentName,
-  findComponent, findBuiltin, matchesGlob, findMatchingGlob,
+  findComponent, findBuiltin, getComponentMethods, matchesGlob, findMatchingGlob,
   inferNumericLiteralType, isNumericLiteral,
   applyCasing, resolveKeywordCasing, DEFAULT_CASING_CONFIG, getKeywordCategory,
   TokenKind,
@@ -310,6 +310,88 @@ describe('Catalogs', () => {
     expect(getKeywordCategory('and')).to.equal('logicOperator');
     expect(getKeywordCategory('mod')).to.equal('mathOperator');
     expect(getKeywordCategory('if')).to.equal('keyword');
+  });
+
+  // ifDateTime shipped with fabricated method names — AsLongMilliseconds,
+  // AsLongSeconds, FromLongSeconds, GetISOString, GetLocalDateTime,
+  // GetLocalTime and a GetDayOfYear that does not exist at all. Roku's real
+  // convention is a trailing `Long` (AsMillisecondsLong) and a `To`/`From`
+  // prefix pair (ToISOString). Pin the exact surface against
+  // https://developer.roku.com/dev/docs/ifdatetime so it cannot drift back.
+  it('ifDateTime matches the documented Roku surface exactly', () => {
+    const documented = [
+      'Mark', 'ToLocalTime', 'GetTimeZoneOffset',
+      'AsSeconds', 'AsSecondsLong', 'FromSeconds', 'FromSecondsLong',
+      'ToISOString', 'FromISO8601String',
+      'asDateStringLoc', 'asTimeStringLoc', 'AsDateString', 'AsDateStringNoParam',
+      'AsMillisecondsLong',
+      'GetWeekday', 'GetYear', 'GetMonth', 'GetDayOfMonth', 'GetHours',
+      'GetMinutes', 'GetSeconds', 'GetMilliseconds', 'GetLastDayOfMonth', 'GetDayOfWeek',
+    ].map((n) => n.toLowerCase()).sort();
+
+    const actual = getComponentMethods('roDateTime').map((m) => m.name.toLowerCase()).sort();
+    expect(actual).to.deep.equal(documented);
+  });
+
+  // A full sweep of all 80 interfaces against the live Roku docs (2026-07-28)
+  // removed 51 fabricated or misfiled methods across 21 interfaces. These are
+  // the names that were invented — none appears on any Roku page. They read as
+  // plausible, which is exactly why they survived: a wrong completion is worse
+  // than a missing one because the user trusts it.
+  it('rejects the fabricated method names found in the catalog audit', () => {
+    const fabricated: [string, string][] = [
+      ['roAppInfo', 'GetSubtitle'],
+      ['roAssociativeArray', 'Values'],
+      ['roAudioPlayer', 'GetPlayheadPosition'],
+      ['roChannelStore', 'GetPurchaseList'],
+      ['roDeviceInfo', 'GetFirmwareVersion'],
+      ['roDeviceInfo', 'GetMemoryLevel'],
+      ['roDeviceInfo', 'GetHDMIStatus'],
+      ['roFileSystem', 'MoveFile'],
+      ['roFileSystem', 'GetFreeSpace'],
+      ['roPath', 'GetExtension'],
+      ['roPath', 'GetFilename'],
+      ['roString', 'ToUpper'],
+      ['roString', 'ToLower'],
+      ['roString', 'InstrRev'],
+      ['roXMLElement', 'GetChildByName'],
+      ['roXMLElement', 'AddChild'],
+    ];
+    for (const [component, method] of fabricated) {
+      const found = getComponentMethods(component).some((m) => m.name.toLowerCase() === method.toLowerCase());
+      expect(found, `${component}.${method} is not a real Roku method`).to.be.false;
+    }
+  });
+
+  // Removing a method from the interface that wrongly owned it must not remove
+  // it from the component, which reaches it through the correct interface.
+  it('keeps methods reachable through the interface that really declares them', () => {
+    const reachable: [string, string][] = [
+      ['roString', 'IsEmpty'],        // ifString, not ifStringOps
+      ['roString', 'ToStr'],          // ifToStr, not ifString
+      ['roXMLList', 'Count'],         // ifArray, not ifXMLList
+      ['roList', 'IsEmpty'],          // ifEnum, not ifList
+      ['roUrlTransfer', 'AddHeader'], // ifHttpAgent, not ifUrlTransfer
+      ['roUrlTransfer', 'EnableCookies'],
+      ['roUrlTransfer', 'SetCertificatesFile'],
+    ];
+    for (const [component, method] of reachable) {
+      const found = getComponentMethods(component).some((m) => m.name.toLowerCase() === method.toLowerCase());
+      expect(found, `${component}.${method} should still be offered`).to.be.true;
+    }
+  });
+
+  it('ifDateTime exposes millisecond and second epoch getters as LongInteger', () => {
+    const byName = new Map(getComponentMethods('roDateTime').map((m) => [m.name.toLowerCase(), m]));
+
+    // The bug that started this: completion offered `AsLongMilliseconds`.
+    expect(byName.has('aslongmilliseconds'), 'AsLongMilliseconds is not a real method').to.be.false;
+    expect(byName.has('aslongseconds'), 'AsLongSeconds is not a real method').to.be.false;
+    expect(byName.has('getisostring'), 'GetISOString is not a real method').to.be.false;
+
+    expect(byName.get('asmillisecondslong')?.returnType).to.equal('LongInteger');
+    expect(byName.get('assecondslong')?.returnType).to.equal('LongInteger');
+    expect(byName.get('fromiso8601string')?.returnType).to.equal('Void');
   });
 });
 

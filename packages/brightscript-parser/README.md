@@ -108,7 +108,7 @@ Reconstructing: `"" + "x" + " " + "" + "=" + " " + "" + "42" + " " + "' my comme
 
 | Category | Examples |
 |---|---|
-| **Keywords** (47) | `if`, `then`, `else`, `end if`, `function`, `sub`, `for`, `while`, `try`, `catch`, `return`, `print`, `and`, `or`, `not`, `mod`, ... |
+| **Keywords** (52) | `if`, `then`, `else`, `end if`, `function`, `sub`, `for`, `while`, `try`, `catch`, `return`, `print`, `and`, `or`, `not`, `mod`, ... |
 | **Identifiers** | `myVar`, `name$` (String), `count%` (Integer), `value!` (Float), `dist#` (Double), `id&` (LongInteger) |
 | **Literals** | `42` (Integer), `&HFF` (hex), `2.01` (Float), `1.23D-12` (Double), `"hello"` (String), `true`, `false`, `invalid` |
 | **Operators** (23) | `+`, `-`, `*`, `/`, `\`, `^`, `=`, `<>`, `<`, `>`, `<=`, `>=`, `<<`, `>>`, `+=`, `-=`, `++`, `--`, ... |
@@ -246,10 +246,10 @@ fn.syntax;      // escape hatch to the raw SyntaxNode
 
 | Export | Description |
 |---|---|
-| `BRIGHTSCRIPT_BUILTINS` | 58 built-in functions with signatures and docs |
-| `BRIGHTSCRIPT_KEYWORDS` | 47 reserved words |
+| `BRIGHTSCRIPT_BUILTINS` | 59 built-in functions with signatures and docs |
+| `BRIGHTSCRIPT_KEYWORDS` | 52 reserved words |
 | `BRIGHTSCRIPT_COMPONENTS` | 62 ro* components with interfaces and methods |
-| `BRIGHTSCRIPT_INTERFACES` | 80 `if*` interfaces backing the components above, each with its method signatures |
+| `BRIGHTSCRIPT_INTERFACES` | 80 `if*` interfaces backing the components above, with 654 method signatures between them |
 | `findBuiltin(name)` | Look up a built-in function |
 | `builtinNames` | Lowercase `Set` of every built-in function name, for fast membership checks |
 | `builtinArity(name)` | Get a built-in's `{ min, max }` parameter count |
@@ -274,7 +274,7 @@ fn.syntax;      // escape hatch to the raw SyntaxNode
 
 | Export | Description |
 |---|---|
-| `SG_NODES` | `Record<string, SgNodeDefinition>` — the full node catalog, keyed by node name |
+| `SG_NODES` | `Record<string, SgNodeDefinition>` — the full catalog of 88 node types, keyed by node name |
 | `findSgNode(name)` | Look up a single node's own (non-inherited) definition |
 | `getAllSgNodeFields(name)` | Get every field for a node, including those inherited via `extends` |
 | `getAllSgNodeMethods(name)` | Get every method for a node, including those inherited via `extends` |

@@ -1,6 +1,6 @@
 # BrightScript Component Reference
 
-> **Last verified against Roku documentation:** 2026-06-04
+> **Last verified against Roku documentation:** 2026-07-28 (full method-by-method sweep of all interfaces)
 >
 > This date must be updated whenever the component catalog in
 > `packages/brightscript-parser/src/catalog/components.ts` is refreshed.
@@ -34,6 +34,7 @@
 |---|---|---|
 | 2026-06-04 | Initial | Catalog created: 60 components, 78 interfaces, ~700 methods |
 | 2026-07-07 | Docs sync | Catalog now at 62 components, 80 interfaces — added `roUtils`/`ifUtils` (firmware 15.0+) and documented `ifRenderThreadQueue` in the interfaces quick-reference |
+| 2026-07-28 | Full audit | Every interface checked against its live Roku docs page. Removed 51 methods that were fabricated or filed under the wrong interface, added 14 documented ones that were missing, and wired `ifHttpAgent` onto `roUrlTransfer`. Method total 691 → 654. See the interface notes below for the renames. |
 
 ---
 
@@ -75,7 +76,7 @@
 
 | Component | Interfaces | Description |
 |---|---|---|
-| `roUrlTransfer` | ifUrlTransfer, ifSetMessagePort, ifGetMessagePort | HTTP/HTTPS client; sync and async GET/POST |
+| `roUrlTransfer` | ifUrlTransfer, ifHttpAgent, ifSetMessagePort, ifGetMessagePort | HTTP/HTTPS client; sync and async GET/POST. Header and cookie methods come from `ifHttpAgent` |
 | `roHttpAgent` | ifHttpAgent | Shared HTTP agent managing cookies/headers across transfers |
 | `roStreamSocket` | ifSocket, ifSocketAsync, ifSocketConnection, ifSocketConnectionOption, ifSocketConnectionStatus, ifSocketOption, ifSocketStatus, ifSetMessagePort, ifGetMessagePort | TCP stream socket |
 | `roDataGramSocket` | ifSocket, ifSocketAsync, ifSocketOption, ifSocketStatus, ifSocketCastOption, ifSetMessagePort, ifGetMessagePort | UDP datagram socket with multicast support |
@@ -183,7 +184,7 @@
 | `ifByteArray` | WriteFile, ReadFile, AppendFile, SetResize, FromHexString, ToHexString, FromBase64String, ToBase64String, FromAsciiString, ToAsciiString, GetSignedByte, GetSignedLong, IsLittleEndianCPU, GetCRC32 |
 | `ifXMLElement` | Parse, GetBody, GetAttributes, GetName, GetText, GetChildElements, GetChildCount, GetChild, GetChildByName, GetChildrenByName, AddChild, RemoveChild, Clear, GenXML, SetBody, SetName, AddAttribute, IsName, HasAttribute |
 | `ifXMLList` | GetAttributes, GetBody, GetChildElements, GetName, GetText, Count, Simplify |
-| `ifDateTime` | Mark, GetDayOfWeek, GetDayOfMonth, GetHours, GetMinutes, GetSeconds, GetMilliseconds, GetMonth, GetYear, AsDateString, AsSeconds, FromSeconds, ToLocalTime, GetISOString, FromISO8601String |
+| `ifDateTime` | Mark, GetDayOfWeek, GetDayOfMonth, GetHours, GetMinutes, GetSeconds, GetMilliseconds, GetMonth, GetYear, GetWeekday, GetLastDayOfMonth, GetTimeZoneOffset, AsDateString, AsDateStringNoParam, asDateStringLoc, asTimeStringLoc, AsSeconds, AsSecondsLong, AsMillisecondsLong, FromSeconds, FromSecondsLong, ToLocalTime, ToISOString, FromISO8601String |
 | `ifTimespan` | Mark, TotalMilliseconds, TotalSeconds |
 | `ifUrlTransfer` | SetUrl, GetUrl, SetRequest, GetToString, GetToFile, AsyncGetToString, AsyncGetToFile, PostFromString, PostFromFile, AsyncPostFromString, AsyncPostFromFile, AsyncCancel, Head, AsyncHead, SetHeaders, AddHeader, GetResponseCode, GetResponseHeaders, GetResponseHeadersArray, GetFailureReason, EnablePeerVerification, EnableHostVerification, EnableFreshConnection, InitClientCertificates, SetMinimumTransferRate, SetCertificatesFile, EnableCookies, GetCookies, AddCookies, ClearCookies |
 | `ifSetMessagePort` | SetMessagePort |
