@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.1] - 2026-07-28
+
+### Fixed
+- Correct 21 interfaces against the Roku documentation
+
 ## [1.2.0] - 2026-07-01
 
 ### Added

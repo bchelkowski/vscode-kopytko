@@ -1,6 +1,6 @@
 {
   "name": "kopytko-brightscript-parser",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Hand-written BrightScript lexer and lossless CST parser. Shared foundation for kopytko-formatter, kopytko-linter, and the Kopytko language server.",
   "license": "MIT",
   "author": "bchelkowski",
