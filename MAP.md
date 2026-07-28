@@ -2,7 +2,7 @@
 
 # Repo map
 
-Structural index of `vscode-kopytko` v1.11.3. **Read this to locate code** — it is regenerated from the tree and `package.json`, so it cannot drift.
+Structural index of `vscode-kopytko`. **Read this to locate code** — it is regenerated from the tree and `package.json`, so it cannot drift.
 
 For *how* a subsystem behaves and what has already gone wrong in it, read `findings/`. For user-facing behaviour, read `docs/` — but do not read `docs/` to learn the code.
 

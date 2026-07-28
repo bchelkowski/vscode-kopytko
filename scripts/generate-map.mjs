@@ -153,8 +153,12 @@ function renderMap({ areas, descriptions, exportsByPkg, commands, pkg }) {
   out.push(HEADER());
   out.push('# Repo map\n');
   out.push(
-    `Structural index of \`${pkg.name}\` v${pkg.version}. **Read this to locate code** — it is regenerated from the tree and \`package.json\`, so it cannot drift.\n`
+    `Structural index of \`${pkg.name}\`. **Read this to locate code** — it is regenerated from the tree and \`package.json\`, so it cannot drift.\n`
   );
+  // Deliberately no version number here: it changes on every release-bump commit
+  // (5 workflows, plus their auto-dependency-bump commits), none of which run
+  // this generator -- only an interactive Claude Code session's Stop hook does.
+  // Embedding it made this "cannot drift" file drift on every unrelated release.
   out.push(
     'For *how* a subsystem behaves and what has already gone wrong in it, read `findings/`. For user-facing behaviour, read `docs/` — but do not read `docs/` to learn the code.\n'
   );
