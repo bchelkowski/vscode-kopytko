@@ -52,6 +52,62 @@ Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add co
 - Update `CATALOG_LAST_VERIFIED` **only** after verifying against live Roku docs
 - Update `docs/brightscript-components.md` + matching component catalog tests
 
+### ⛔ Never write catalog entries from memory
+
+`ifDateTime` shipped **seven fabricated method names** and one method that does not exist at all:
+
+| We had | Reality |
+|---|---|
+| `AsLongMilliseconds` | `AsMillisecondsLong` |
+| `AsLongSeconds` | `AsSecondsLong` |
+| `FromLongSeconds` | `FromSecondsLong` |
+| `GetISOString` | `ToISOString` |
+| `GetISOStringWithMilliseconds(fmt)` | `ToISOString(fmt)` overload |
+| `GetLocalDateTime` / `GetLocalTime` | `asDateStringLoc` / `asTimeStringLoc` |
+| `GetDayOfYear` | does not exist |
+
+**Why it is easy to get wrong: Roku's own naming is inconsistent.** `ifDateTime` uses a trailing
+`Long` (`AsMillisecondsLong`) while `ifDeviceInfo` uses `AsLong` (`GetUptimeMillisecondsAsLong`) —
+both verified live. Generalising either convention to the other interface produces a plausible name
+that does not exist, and a wrong completion is worse than a missing one because the user trusts it.
+
+Two more traps seen on the real pages: Roku documents `AsSecondsLong` as returning **`Object`** and
+`AsMillisecondsLong` as **`Long`** (neither is a BrightScript type keyword — the catalog uses
+`LongInteger` and notes the discrepancy in the description), and it writes `asDateStringLoc` /
+`asTimeStringLoc` with a **lowercase first letter** while every sibling is PascalCase. Match the
+documented casing — there is precedent (the 16 `e*` socket status methods).
+
+**Always fetch the interface's page before editing its entry**, and pin the result with a test that
+compares `getComponentMethods()` against the documented list (see the tests in
+`packages/brightscript-parser/test/analysis.test.ts`).
+
+### Full audit result (2026-07-28)
+
+All 80 interfaces were diffed against their live docs pages. **21 were wrong** — 51 methods removed,
+14 added, method total 691 → 654. Three distinct failure modes, which need different fixes:
+
+1. **Fabricated** — the name is on no Roku page (`GetFirmwareVersion`, `ToUpper`, `MoveFile`,
+   `GetChildByName`, `GetExtension`, …). Delete.
+2. **Misfiled** — real, but documented on a different interface the same component implements.
+   `IsEmpty` sat on `ifStringOps` (really `ifString`), `Count` on `ifXMLList` (really `ifArray`),
+   and eight `ifHttpAgent` header/cookie methods were copied into `ifUrlTransfer` while
+   `roUrlTransfer` did not even list `ifHttpAgent`. **Fix by correcting the component's `interfaces`
+   array, not by deleting the method** — otherwise completions disappear.
+3. **Missing** — documented but absent (`TotalMicroseconds`, `getGlobalNode`, `ShrinkToFit`, …).
+
+**`ifSGNode` is synthetic.** Roku has no such interface — `roSGNode` implements `ifSGNodeChildren`,
+`ifSGNodeField`, `ifSGNodeDict`, `ifSGNodeFocus`, `ifSGNodeBoundingRect`, and
+`ifSGNodeHttpAgentAccess`. Our single 34-method aggregate works for completion but the name is ours,
+not Roku's; it is the one interface the audit could not diff. Splitting it is a breaking API change.
+
+**How to re-run the audit:** fetch each interface's page asking only for bare method names, write one
+`<ifName>.txt` per interface, and diff `getComponentMethods()` against it. The one-shot doc summariser
+sometimes truncates — when a name looks real, re-query that page specifically before deleting it.
+That check is what caught `AddHeader` as misfiled rather than fabricated.
+
+`CATALOG_LAST_VERIFIED` covers a full sweep, not a single interface — do not bump it for a
+one-interface fix.
+
 ---
 
 ## Kopytko module catalog
@@ -60,12 +116,28 @@ Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add co
 
 ---
 
+---
+
+## Documented counts are machine-checked
+
+Any number in a README/docs/site page that counts something in the code (built-ins, keywords, ro*
+components, interfaces, SceneGraph nodes, lint rules, formatter options, CST passes, LSP providers)
+is verified by `scripts/check-doc-claims.mjs`, run from `npm run lint` and CI.
+
+- **Adding to a catalog or rule set? Update the number too** — CI will tell you which file.
+- **Rewording a sentence that contains one of these counts breaks the regex.** The check reports it
+  as "pattern matched nothing" rather than passing silently; fix the pattern in the CLAIMS table.
+- It loads the **TypeScript source via tsx, not `dist/`** — deliberately. The packages' `dist/` can
+  be weeks stale (it was, when this was written), which is exactly how the drift went unnoticed.
+
+---
+
 ## Key files reference
 
 | Area | Key files |
 |---|---|
 | LSP entry | `src/server/server.ts`, `src/server/registerHandlers.ts` |
-| Providers | `src/server/providers/` (12 providers) |
+| Providers | `src/server/providers/` (16 providers) |
 | Document cache | `src/server/utils/documentCache.ts` |
 | Cache invalidation | `src/server/services/cacheInvalidation.ts` |
 | Import resolution | `src/server/kopytko/importResolver.ts` |

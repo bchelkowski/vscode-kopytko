@@ -1,0 +1,103 @@
+{
+  "$comment": "One-line purpose for every source directory. Consumed by scripts/generate-map.mjs to build MAP.md. A directory with no entry here is emitted as UNDESCRIBED and makes `npm run map -- --check` fail — add the line rather than letting the map go vague. Keep each value to one sentence, present tense, describing responsibility (not file list).",
+
+  "src": "Extension entry point; delegates everything to src/client/activation/.",
+  "src/client": "Shared client-side helpers used across every VS Code-facing feature.",
+  "src/client/activation": "One module per feature, each wiring its commands, views, and services on extension start.",
+
+  "src/client/console": "Kopytko Console controller and severity/line classification for debug output.",
+  "src/client/console/views": "Console panel view provider (tree/webview host registration).",
+  "src/client/console/webview": "Kopytko Console webview: xterm.js terminal, completion, colouring, filtering.",
+
+  "src/client/debug": "Debug Adapter Protocol implementation and the session controller driving a Roku debug run.",
+  "src/client/debug/services": "Debug session sub-services: breakpoints, source-path mapping, variable inspection.",
+
+  "src/client/deepLinking": "Deep-link launch controller and saved parameter-set storage.",
+  "src/client/deepLinking/views": "Deep Linking view provider.",
+  "src/client/deepLinking/webview": "Deep Linking webview: parameter editor and launch form.",
+
+  "src/client/deviceManager": "Device Manager controllers: remote control, keyboard mode, saved text entries, script runner, abilities hub.",
+  "src/client/deviceManager/editorWebview": "RASP script editor webview hosted in an editor tab.",
+  "src/client/deviceManager/rasp": "RASP script format: parser, runner, and shared types.",
+  "src/client/deviceManager/views": "Device Manager view providers.",
+  "src/client/deviceManager/webview": "Device Manager webview: remote UI, abilities, script controls.",
+
+  "src/client/diagnostics": "Runtime diagnostics panel controller (transports live in packages/roku-device).",
+  "src/client/diagnostics/session": "Diagnostics session lifecycle: start/stop, active-channel tracking.",
+  "src/client/diagnostics/storage": "NDJSON session persistence and replay loading.",
+  "src/client/diagnostics/views": "Diagnostics panel view provider and message routing.",
+  "src/client/diagnostics/webview": "Diagnostics webview: uPlot charts, tables, navigator/brush.",
+
+  "src/client/nav/views": "Kopytko Tools navigation sidebar view provider.",
+  "src/client/nav/webview": "Kopytko Tools nav sidebar webview.",
+
+  "src/client/network": "Network Inspector controller plus body formatting, text diffing, and DNS bypass.",
+  "src/client/network/capture": "Intercepting proxy: https<->http bridging, flow records, cURL export.",
+  "src/client/network/capture/rewrite": "Request/response rewrite rule engine (map-local, headers, latency, block).",
+  "src/client/network/discovery": "Gateway IP detection used to scope the transparent redirect.",
+  "src/client/network/redirect": "Transparent redirect orchestration and privilege elevation.",
+  "src/client/network/redirect/windows": "Windows WinDivert companion: bundled binary resolution, script, supervisor.",
+  "src/client/network/storage": "Network capture session persistence (HAR and session store).",
+  "src/client/network/views": "Network Inspector view provider.",
+  "src/client/network/webview": "Network Inspector webview: flow list, detail pane, compare, breakpoints.",
+
+  "src/client/nodes": "SceneGraph node tree panel and RALE node-path resolution.",
+  "src/client/nodes/webview": "Node Tree webview: tree, XML view, edit mode.",
+
+  "src/client/perfetto": "Kopytko Perfetto tracing controller.",
+  "src/client/perfetto/session": "Perfetto trace session storage.",
+  "src/client/perfetto/views": "Perfetto view providers.",
+  "src/client/perfetto/webview": "Perfetto webview hosting the trace UI iframe (PING/PONG handshake).",
+
+  "src/client/roku": "Kopytko-specific device glue kept out of packages/roku-device: CLI deployer and .kopytkorc reader.",
+  "src/client/roku/discovery": "VS Code-side device discovery wiring over the package SSDP client.",
+  "src/client/roku/persistence": "Device list (Memento) and password (SecretStorage) stores.",
+  "src/client/roku/rendezvous": "Rendezvous log collection and the shared-queue coordination it needs.",
+  "src/client/roku/util": "Device-side path to workspace source-file resolution.",
+  "src/client/roku/views": "Roku Devices tree views.",
+
+  "src/client/rokuPay": "Roku Pay Web Services client, endpoint catalog, credential profiles, request history.",
+  "src/client/rokuPay/views": "Roku Pay view provider.",
+  "src/client/rokuPay/webview": "Roku Pay webview: request builder and response viewer.",
+
+  "src/server": "LSP server entry and handler registration.",
+  "src/server/brightscript": "Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config.",
+  "src/server/kopytko": "Kopytko-specific server logic: @import resolution, module catalog, unit-test framework support.",
+  "src/server/providers": "The 16 LSP feature providers (completion, hover, definition, rename, semantic tokens, ...).",
+  "src/server/providers/completion": "Completion sub-builders split by context: members, imports, tests.",
+  "src/server/providers/shared": "Symbol resolution shared by definition, hover, references, and rename.",
+  "src/server/services": "Cross-cutting server services; currently cache invalidation on watched-file changes.",
+  "src/server/utils": "Server performance layer: document/parse caches, workspace indexes, stubbable fs wrapper.",
+
+  "packages/brightscript-parser/src": "Lexer, CST, typed AST, and diagnostics — the single source of truth for per-file structural facts.",
+  "packages/brightscript-parser/src/analysis": "Scope and semantic analysis over the AST: call graph, context, symbols, type inference.",
+  "packages/brightscript-parser/src/catalog": "Static BrightScript catalogs: built-ins, ro* components, SceneGraph nodes, casing, numeric literals.",
+  "packages/brightscript-parser/src/utils": "Parser-side helpers: glob matching, position math, XML parsing.",
+
+  "packages/formatter/bin": "kopytko-format CLI entry.",
+  "packages/formatter/src": "Formatter engine, configuration, and casing rules.",
+  "packages/formatter/src/cst-passes": "Structure-aware formatting passes applied over the CST, one concern per file.",
+
+  "packages/linter/bin": "kopytko-lint CLI entry.",
+  "packages/linter/src": "Linter core: rule running, config, suppression, fixing, project indexing.",
+  "packages/linter/src/analysis": "Per-file analysis the rules consume: function index, imports, siblings, XML, text utils.",
+  "packages/linter/src/catalog": "Linter-side catalogs for built-ins, components, and test globals.",
+  "packages/linter/src/output": "Report formatters: text, JSON, SARIF.",
+  "packages/linter/src/rules": "Rule registry split into syntax-level and AST-level rule sets.",
+  "packages/linter/src/rules/ast": "AST rule implementations, one rule (or closely related group) per file.",
+
+  "packages/roku-device/bin": "kopytko-roku CLI entry.",
+  "packages/roku-device/src": "Public API surface for all Roku device communication; deliberately Kopytko-unaware.",
+  "packages/roku-device/src/console": "Debug console transports (TCP 8080/8085) and the interactive command catalog.",
+  "packages/roku-device/src/debug-protocol": "BrightScript remote debug protocol (TCP 8081): framing, binary IO, commands, client.",
+  "packages/roku-device/src/diagnostics": "Diagnostics event model shared by parsers and collectors.",
+  "packages/roku-device/src/diagnostics/collectors": "Polling collectors, one per metric stream (chanperf, node counts, textures, rendezvous, ...).",
+  "packages/roku-device/src/diagnostics/parsers": "Pure parsers for each device response format (chanperf, sgnodes, free, r2d2_bitmaps, ...).",
+  "packages/roku-device/src/discovery": "Device discovery orchestration over SSDP plus storage and network-change hooks.",
+  "packages/roku-device/src/ecp": "ECP REST client (HTTP 8060): queries, key simulation, registry, tracing control.",
+  "packages/roku-device/src/installer": "Developer web-admin automation over HTTP 80 (install, rekey, package, screenshot, reboot).",
+  "packages/roku-device/src/net": "Low-level HTTP with digest auth and multipart, plus network identity.",
+  "packages/roku-device/src/perfetto": "Perfetto trace streaming over WebSocket.",
+  "packages/roku-device/src/rale": "RALE TrackerTask client for live SceneGraph node editing.",
+  "packages/roku-device/src/ssdp": "SSDP discovery client (UDP 1900)."
+}

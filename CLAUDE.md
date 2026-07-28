@@ -1,50 +1,62 @@
 # vscode-kopytko — CLAUDE.md
 
+## Where to look
+
+| Question | Source |
+|---|---|
+| **Where does X live?** | [MAP.md](MAP.md) — generated repo map: directories, entry points, package exports, commands. Regenerate with `npm run map`; never edit by hand. |
+| **How does X behave, and what has already gone wrong in it?** | `findings/` — see the routing table in [findings/README.md](findings/README.md). |
+| **What does X do for a user?** | `docs/` and `site/` |
+
+**`docs/` and `site/` are human-facing product documentation.** Update them when behaviour changes,
+but **do not read them to answer a question about the code** — `MAP.md` and `findings/` are faster
+and are what the code actually does.
+
 ## Internal knowledge base (`findings/`)
 
 **Reading and writing `findings/` is a required step, not optional — treat it the same as updating `docs/`.**
 
-**BEFORE starting any relevant task — read the applicable file(s) first:**
+**BEFORE starting any relevant task — read the applicable file first:**
 
 | File | Required reading when |
 |---|---|
 | [findings/roku-device-api.md](findings/roku-device-api.md) | Any Roku device communication (ports, commands, response formats) |
-| [findings/diagnostics-panel-architecture.md](findings/diagnostics-panel-architecture.md) | Touching `src/client/diagnostics/` or the webview |
+| [findings/diagnostics-panel-architecture.md](findings/diagnostics-panel-architecture.md) | `src/client/diagnostics/`, or **any webview** — toolbars, uPlot, xterm, sidebar vs panel |
+| [findings/network-inspector.md](findings/network-inspector.md) | `src/client/network/` — proxy, transparent redirect, rewrite rules |
 | [findings/lsp-architecture.md](findings/lsp-architecture.md) | LSP server providers, formatter rules, built-in/component catalogs |
 | [findings/dev-environment.md](findings/dev-environment.md) | Build, test, compile, or F5 debug work |
+| [findings/device-manager-architecture.md](findings/device-manager-architecture.md) | `src/client/deviceManager/` — remote, RASP, abilities |
 
-**AFTER completing any task — update the relevant file if you discovered anything non-obvious:** a constraint, a gotcha, a design decision, a pattern that worked. Keep entries concrete — real examples, file paths, the *why*. Vague notes have no value.
+Each file opens with a **⛔ Never do this** section. Read it — those rules were paid for.
+
+**AFTER completing any task — update the relevant file if you discovered anything non-obvious:** a constraint, a gotcha, a design decision, a pattern that worked. Keep entries concrete — real examples, file paths, the *why*. Vague notes have no value. **Update the reference file in place; do not append a dated entry.** [findings/README.md](findings/README.md) has the full writing rules; `findings/archive/` holds the old session journals and is not read by default.
 
 ---
 
 ## Project overview
 
-VS Code extension for **BrightScript** (Roku) and the **Kopytko Framework** — LSP server (diagnostics, completion, hover, go-to-definition, formatting), built-in debugger, device discovery, and a runtime diagnostics panel.
+VS Code extension for **BrightScript** (Roku) and the **Kopytko Framework** — LSP server, built-in
+debugger, device discovery, and a set of runtime tools (diagnostics, console, network inspector,
+device manager, Perfetto).
 
-Four standalone npm packages live in `packages/`: `kopytko-brightscript-parser`, `kopytko-formatter`, `kopytko-linter`, and `kopytko-roku-device`. All four are published to npm and consumed by the extension as versioned dependencies (see `docs/publishing.md`). `kopytko-roku-device` handles all Roku device communication and is deliberately Kopytko-ecosystem-unaware (no CLI spawning, no `.kopytkorc`) so Kopytko packages can depend on it — the Kopytko CLI deployer and `.kopytkorc` reader stay in the extension (`src/client/roku/rokuDeployer.ts`, `src/client/roku/kopytkorc.ts`).
+Four npm packages in `packages/` — `kopytko-brightscript-parser`, `kopytko-formatter`,
+`kopytko-linter`, `kopytko-roku-device` — are published and consumed by the extension **as versioned
+dependencies, not local sources** (see `docs/publishing.md`).
+
+`kopytko-roku-device` is deliberately **Kopytko-ecosystem-unaware** (no CLI spawning, no
+`.kopytkorc`) so Kopytko packages can depend on it. The CLI deployer and `.kopytkorc` reader
+therefore stay in the extension (`src/client/roku/`).
 
 ---
 
 ## Repository structure
 
-```
-packages/brightscript-parser/   Shared parser: lexer, CST, AST, scope analysis, catalogs
-packages/formatter/              Standalone formatter: CLI + library, 27 CST passes
-packages/linter/                 Standalone linter: rule descriptors, fileAnalysis, project indexer
-packages/roku-device/            All Roku device communication: SSDP, ECP, debug console (8080),
-                                 debug protocol (8081), diagnostics parsers/collectors, Perfetto
-src/extension.ts                 Extension entry; delegates to client/activation/*
-src/client/activation/           Wires all services on extension start
-src/client/debug/                DAP adapter + session controller (protocol client in packages/roku-device)
-src/client/roku/                 VS Code glue: stores (Memento/SecretStorage), network monitor, tree views,
-                                 Kopytko CLI deployer + .kopytkorc reader (kept out of packages/roku-device)
-src/client/diagnostics/          Runtime diagnostics panel (session, storage, webview; transports in packages/roku-device)
-src/server/                      LSP server: 12 providers, document cache, import resolver
-test/                            Mocha + Chai + Sinon; mirrors src/server/ structure
-docs/                            Feature docs (see Documentation section)
-findings/                        Internal session-accumulated knowledge (see above)
-site/                            Astro 5 GitHub Pages site (bchelkowski.github.io/vscode-kopytko)
-```
+See [MAP.md](MAP.md) — every source directory with its purpose, generated from the tree so it
+cannot drift. `test/` mirrors `src/server/`; `docs/` and `site/` are user-facing; `findings/` is
+the internal knowledge base.
+
+Adding a new source directory? Add its one-line purpose to `scripts/map-areas.json` — `npm run
+lint` and CI fail on an undescribed directory.
 
 ---
 
@@ -55,8 +67,12 @@ npm install          # install dependencies
 npm run compile      # tsc (client + server) + esbuild (webview) — use before F5
 npm run bundle       # production esbuild — used by vsce package
 npm test             # Mocha + tsx, no compilation needed
-npm run lint         # ESLint
+npm run lint         # generated-file check + ESLint
+npm run map          # regenerate MAP.md + docs/reference + README settings block
 ```
+
+Node/npm live **only inside WSL** on this machine — see `findings/dev-environment.md` for the
+invocation, and for why `$?` after a `wsl.exe` call cannot be trusted.
 
 `compile` outputs individual JS files for the Extension Development Host. `bundle` produces self-contained files for the published VSIX. See `findings/dev-environment.md` for the full build workflow, WSL setup, and F5 caveats.
 
@@ -67,9 +83,14 @@ For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or 
 ## Definition of done
 
 1. **Tests pass** — `npm test` exits 0. New behaviour has new tests. No test left broken.
-2. **Docs updated** — `docs/features.md` and the relevant topic doc reflect the change.
-3. **Site updated** — the corresponding `site/src/pages/` page reflects the change.
-4. **Findings updated** — if anything non-obvious was discovered, the relevant `findings/` file is updated.
+2. **Lint passes** — `npm run lint` exits 0. This also fails on a stale `MAP.md` or an undescribed source directory.
+3. **Docs updated** — `docs/features.md` and the relevant topic doc reflect the change.
+4. **Site updated** — the corresponding `site/src/pages/` page reflects the change.
+5. **Findings updated** — if anything non-obvious was discovered, the relevant `findings/` file is updated **in place**.
+
+Never hand-edit a generated file: `MAP.md`, `docs/reference/commands-and-settings.md`, or the
+README block between `<!-- settings:start -->` / `<!-- settings:end -->`. Change the source
+(`package.json`, `scripts/map-areas.json`) and run `npm run map`.
 
 ---
 
@@ -84,26 +105,14 @@ For `packages/formatter`, `packages/linter`, `packages/brightscript-parser`, or 
 
 ## Documentation
 
-| File | Covers |
-|---|---|
-| [docs/features.md](docs/features.md) | **Master list** — every implemented and planned feature with status |
-| [docs/language-server.md](docs/language-server.md) | LSP architecture, 12 providers, casing config |
-| [docs/kopytko-imports.md](docs/kopytko-imports.md) | @import resolution, document links, diagnostics |
-| [docs/brightscript-components.md](docs/brightscript-components.md) | ro* catalog, interface methods, maintenance |
-| [docs/brightscript-support.md](docs/brightscript-support.md) | Syntax highlighting, snippets, language config |
-| [docs/formatting.md](docs/formatting.md) | Formatting rules, all `kopytko.format.*` settings |
-| [docs/device-discovery.md](docs/device-discovery.md) | Device discovery, network scoping, password management |
-| [docs/roku-debug.md](docs/roku-debug.md) | Debugger, launch config |
-| [docs/diagnostics.md](docs/diagnostics.md) | Runtime diagnostics panel — data sources, collectors, NDJSON, settings |
-| [docs/roku-console.md](docs/roku-console.md) | Kopytko Console — interactive debug terminal (ports 8085/8080), completion, colouring, filtering |
-| [docs/roku-webadmin.md](docs/roku-webadmin.md) | Developer web-admin automation (install/rekey/package/screenshot/update/reboot) |
-| [docs/device-manager.md](docs/device-manager.md) | Device Manager — remote control, keyboard mode, saved text entries, RASP scripts, abilities hub |
-| [docs/roku-pay.md](docs/roku-pay.md) | Roku Pay Web Services tool — cloud API endpoints, credential profiles, request history |
-| [docs/network-inspector.md](docs/network-inspector.md) | Network Inspector — intercepting proxy, no-CA https↔http bridging, transparent redirect, rewrite rules, HAR |
-| [packages/formatter/README.md](packages/formatter/README.md) | Formatter CLI, library API, CI integration |
-| [packages/roku-device/README.md](packages/roku-device/README.md) | Device communication package — SSDP, ECP, debug console/protocol, collectors, Perfetto |
-| [docs/roku-device-cli.md](docs/roku-device-cli.md) | `kopytko-roku` terminal CLI — ECP + web-admin ops, config resolution, exit codes |
-| [docs/publishing.md](docs/publishing.md) | npm and VS Code Marketplace publishing |
+**[docs/features.md](docs/features.md) is the master list** — every implemented and planned feature
+with status. A feature is not done until it appears there.
+
+Topic docs in `docs/`, named after their subject: `language-server`, `kopytko-imports`,
+`brightscript-components`, `brightscript-support`, `formatting`, `device-discovery`, `roku-debug`,
+`diagnostics`, `roku-console`, `roku-webadmin`, `device-manager`, `roku-pay`, `network-inspector`,
+`roku-device-cli`, `publishing`. Package APIs are documented in `packages/*/README.md`.
+`docs/reference/commands-and-settings.md` is **generated** — do not edit it.
 
 **Every change that adds, modifies, or removes a feature must update `docs/features.md`, the relevant topic doc, and the corresponding site page.**
 
