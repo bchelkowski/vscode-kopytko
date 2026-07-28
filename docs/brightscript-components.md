@@ -35,6 +35,7 @@
 | 2026-06-04 | Initial | Catalog created: 60 components, 78 interfaces, ~700 methods |
 | 2026-07-07 | Docs sync | Catalog now at 62 components, 80 interfaces — added `roUtils`/`ifUtils` (firmware 15.0+) and documented `ifRenderThreadQueue` in the interfaces quick-reference |
 | 2026-07-28 | Full audit | Every interface checked against its live Roku docs page. Removed 51 methods that were fabricated or filed under the wrong interface, added 14 documented ones that were missing, and wired `ifHttpAgent` onto `roUrlTransfer`. Method total 691 → 654. See the interface notes below for the renames. |
+| 2026-07-28 | Audit follow-up | Two pre-existing tests expected `Values` on `roAssociativeArray` and `GetResponseCode` on `roUrlTransfer` — both were wrong (re-verified against the docs). `GetResponseCode`/`GetResponseHeaders`/`GetResponseHeadersArray` are real, but belong to `roUrlEvent`, the async-completion object delivered via message port — a component the catalog never had. Added `roUrlEvent`/`ifUrlEvent`. Catalog now 63 components, 81 interfaces, 662 methods. |
 
 ---
 
@@ -77,6 +78,7 @@
 | Component | Interfaces | Description |
 |---|---|---|
 | `roUrlTransfer` | ifUrlTransfer, ifHttpAgent, ifSetMessagePort, ifGetMessagePort | HTTP/HTTPS client; sync and async GET/POST. Header and cookie methods come from `ifHttpAgent` |
+| `roUrlEvent` | ifUrlEvent | Response delivered via message port when an async `roUrlTransfer` request completes — response code, headers, and body live here, not on `roUrlTransfer` |
 | `roHttpAgent` | ifHttpAgent | Shared HTTP agent managing cookies/headers across transfers |
 | `roStreamSocket` | ifSocket, ifSocketAsync, ifSocketConnection, ifSocketConnectionOption, ifSocketConnectionStatus, ifSocketOption, ifSocketStatus, ifSetMessagePort, ifGetMessagePort | TCP stream socket |
 | `roDataGramSocket` | ifSocket, ifSocketAsync, ifSocketOption, ifSocketStatus, ifSocketCastOption, ifSetMessagePort, ifGetMessagePort | UDP datagram socket with multicast support |

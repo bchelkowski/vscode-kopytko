@@ -129,13 +129,28 @@ describe('BrightScript component catalog', () => {
     it('returns methods for roAssociativeArray', () => {
       const methods = getComponentMethods('roAssociativeArray');
       const names = methods.map((m) => m.name);
-      expect(names).to.include.members(['AddReplace', 'Delete', 'DoesExist', 'Lookup', 'Keys', 'Values', 'Count']);
+      // No Values() on ifAssociativeArray -- Keys()/Items() are the only ways
+      // to enumerate an AA. Verified against
+      // developer.roku.com/docs/references/brightscript/interfaces/ifassociativearray.md
+      expect(names).to.include.members(['AddReplace', 'Delete', 'DoesExist', 'Lookup', 'Keys', 'Count']);
+      expect(names).to.not.include('Values');
     });
 
     it('returns methods for roUrlTransfer', () => {
       const methods = getComponentMethods('roUrlTransfer');
       const names = methods.map((m) => m.name);
-      expect(names).to.include.members(['GetToString', 'AsyncGetToString', 'PostFromString', 'SetUrl', 'GetResponseCode', 'AddHeader']);
+      // GetResponseCode is not on ifUrlTransfer -- it is delivered on the
+      // roUrlEvent object an async request posts to the message port on
+      // completion (see the roUrlEvent test below). AddHeader comes from
+      // ifHttpAgent, which roUrlTransfer also implements.
+      expect(names).to.include.members(['GetToString', 'AsyncGetToString', 'PostFromString', 'SetUrl', 'AddHeader']);
+      expect(names).to.not.include('GetResponseCode');
+    });
+
+    it('returns methods for roUrlEvent', () => {
+      const methods = getComponentMethods('roUrlEvent');
+      const names = methods.map((m) => m.name);
+      expect(names).to.include.members(['GetResponseCode', 'GetResponseHeaders', 'GetResponseHeadersArray', 'GetString', 'GetFailureReason']);
     });
 
     it('returns methods for roSGNode', () => {

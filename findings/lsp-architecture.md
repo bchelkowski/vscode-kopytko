@@ -105,6 +105,30 @@ not Roku's; it is the one interface the audit could not diff. Splitting it is a 
 sometimes truncates — when a name looks real, re-query that page specifically before deleting it.
 That check is what caught `AddHeader` as misfiled rather than fabricated.
 
+### Follow-up: a fourth failure mode — the wrong object entirely (2026-07-28, same day)
+
+Two pre-existing tests in `test/brightscript/components.test.ts` and
+`test/providers/completionProvider.test.ts` (written before the audit, asserting against the *old*
+catalog) failed CI after the fix released: they expected `Values` on `roAssociativeArray` and
+`GetResponseCode` on `roUrlTransfer`. Re-verifying both with pointed yes/no questions (not a bare
+list dump) confirmed the audit's original deletions were right — but also surfaced a fourth failure
+mode the sweep's fabricated/misfiled/missing taxonomy didn't cover:
+
+4. **Wrong object.** `GetResponseCode`/`GetResponseHeaders`/`GetResponseHeadersArray` are real, but
+   belong to `roUrlEvent` — the object an *async* `ifUrlTransfer` request (`AsyncGetToString`, …)
+   delivers via the message port on completion, not the request object itself. The catalog had no
+   `roUrlEvent` entry at all, so these methods were misfiled onto the request object because that
+   was the only place completion could offer them — a plausible-looking home that happened to be
+   wrong. Added `roUrlEvent`/`ifUrlEvent` (synthetic, like `ifSGNode` — Roku documents these methods
+   directly on the component page with no separate interface page).
+
+**Lesson: a hardcoded test asserting a method exists is not proof it belongs on that object.**
+`Values` was genuinely fabricated (confirmed twice). `GetResponseCode` was real but on the wrong
+object — request vs. response-event. When completion/catalog work touches an async API with a
+paired "you get the result back on a different object" pattern (message-port events, promises,
+callbacks), check which object actually documents the method before assuming the one under test is
+right.
+
 `CATALOG_LAST_VERIFIED` covers a full sweep, not a single interface — do not bump it for a
 one-interface fix.
 

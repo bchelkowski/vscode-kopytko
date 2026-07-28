@@ -419,7 +419,9 @@ describe('BrightScriptCompletionProvider', () => {
       ].join('\n'));
       const items = await provider.provideCompletions(doc, { line: 1, character: 3 });
       const labels = items.map((i) => i.label);
-      expect(labels).to.include.members(['AddReplace', 'DoesExist', 'Lookup', 'Keys', 'Values', 'Count']);
+      // No Values() -- verified against Roku's ifAssociativeArray docs.
+      expect(labels).to.include.members(['AddReplace', 'DoesExist', 'Lookup', 'Keys', 'Count']);
+      expect(labels).to.not.include('Values');
     });
 
     it('returns roUrlTransfer methods after transfer.', async () => {
@@ -429,7 +431,10 @@ describe('BrightScriptCompletionProvider', () => {
       ].join('\n'));
       const items = await provider.provideCompletions(doc, { line: 1, character: 9 });
       const labels = items.map((i) => i.label);
-      expect(labels).to.include.members(['SetUrl', 'GetToString', 'AsyncGetToString', 'AddHeader', 'GetResponseCode']);
+      // GetResponseCode is delivered on the roUrlEvent object an async request
+      // posts to the message port, not on the roUrlTransfer request object itself.
+      expect(labels).to.include.members(['SetUrl', 'GetToString', 'AsyncGetToString', 'AddHeader']);
+      expect(labels).to.not.include('GetResponseCode');
     });
 
     it('returns roSGNode methods for m.transfer when assigned via CreateObject', async () => {

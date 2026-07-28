@@ -15,7 +15,7 @@
 ### Language support
 
 - **Syntax highlighting** — full TextMate grammar for `.brs` files including `@import`/`@mock` annotations, `as <type>`, and `m` variable scopes
-- **IntelliSense** — completions for 62 `ro*` components, 80 interfaces, 654 methods, 59 built-in functions, keywords, and user-defined functions
+- **IntelliSense** — completions for 63 `ro*` components, 81 interfaces, 662 methods, 59 built-in functions, keywords, and user-defined functions
 - **`CreateObject` type inference** — member completions appear automatically after typing `.` on a variable created via `CreateObject`
 - **`m.top` member completion** — auto-completes fields from your XML interface, parent components, and the 88-type SceneGraph node catalog
 - **Kopytko module support** — module export completions with auto-insert `@import`, `@import`/`@mock` path completions and snippets

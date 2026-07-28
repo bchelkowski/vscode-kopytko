@@ -381,6 +381,25 @@ describe('Catalogs', () => {
     }
   });
 
+  // Follow-up to the sweep above: two pre-existing tests elsewhere in the repo
+  // (test/brightscript/components.test.ts, test/providers/completionProvider.test.ts)
+  // asserted GetResponseCode was a method of roUrlTransfer. It is real, but
+  // belongs to roUrlEvent -- the object an async request delivers via the
+  // message port on completion, which the catalog never modeled at all until
+  // this fix. Confirmed by fetching the roUrlEvent component page directly.
+  it('does not put roUrlEvent response methods on roUrlTransfer, and adds roUrlEvent', () => {
+    const transferNames = getComponentMethods('roUrlTransfer').map((m) => m.name.toLowerCase());
+    for (const wrong of ['GetResponseCode', 'GetResponseHeaders', 'GetResponseHeadersArray']) {
+      expect(transferNames, `roUrlTransfer should not offer ${wrong}`).to.not.include(wrong.toLowerCase());
+    }
+
+    const eventNames = getComponentMethods('roUrlEvent').map((m) => m.name);
+    expect(eventNames).to.include.members([
+      'GetInt', 'GetResponseCode', 'GetFailureReason', 'GetString',
+      'GetSourceIdentity', 'GetResponseHeaders', 'GetTargetIpAddress', 'GetResponseHeadersArray',
+    ]);
+  });
+
   it('ifDateTime exposes millisecond and second epoch getters as LongInteger', () => {
     const byName = new Map(getComponentMethods('roDateTime').map((m) => [m.name.toLowerCase(), m]));
 

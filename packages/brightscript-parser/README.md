@@ -248,8 +248,8 @@ fn.syntax;      // escape hatch to the raw SyntaxNode
 |---|---|
 | `BRIGHTSCRIPT_BUILTINS` | 59 built-in functions with signatures and docs |
 | `BRIGHTSCRIPT_KEYWORDS` | 52 reserved words |
-| `BRIGHTSCRIPT_COMPONENTS` | 62 ro* components with interfaces and methods |
-| `BRIGHTSCRIPT_INTERFACES` | 80 `if*` interfaces backing the components above, with 654 method signatures between them |
+| `BRIGHTSCRIPT_COMPONENTS` | 63 ro* components with interfaces and methods |
+| `BRIGHTSCRIPT_INTERFACES` | 81 `if*` interfaces backing the components above, with 662 method signatures between them |
 | `findBuiltin(name)` | Look up a built-in function |
 | `builtinNames` | Lowercase `Set` of every built-in function name, for fast membership checks |
 | `builtinArity(name)` | Get a built-in's `{ min, max }` parameter count |

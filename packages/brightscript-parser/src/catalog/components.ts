@@ -462,6 +462,28 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
     ],
   },
 
+  // ifUrlEvent is synthetic, like ifSGNode: Roku documents these methods on the
+  // roUrlEvent component page directly, with no separate ifUrlEvent interface
+  // page. This is the object an async ifUrlTransfer request (AsyncGetToString,
+  // AsyncPostFromString, ...) delivers via the message port on completion —
+  // GetResponseCode/GetResponseHeaders/GetResponseHeadersArray live HERE, not
+  // on ifUrlTransfer itself, despite looking like they belong on the request.
+  ifUrlEvent: {
+    name: 'ifUrlEvent',
+    description: 'Response delivered via message port when an ifUrlTransfer async request completes.',
+    docsUrl: 'https://developer.roku.com/docs/references/brightscript/components/rourlevent.md',
+    methods: [
+      { name: 'GetInt', signature: 'GetInt() as Integer', returnType: 'Integer', description: 'Returns the HTTP response code, or a negative value on a transport-level failure.' },
+      { name: 'GetResponseCode', signature: 'GetResponseCode() as Integer', returnType: 'Integer', description: 'Returns the HTTP response status code.' },
+      { name: 'GetFailureReason', signature: 'GetFailureReason() as String', returnType: 'String', description: 'Returns a human-readable description of the failure, if any.' },
+      { name: 'GetString', signature: 'GetString() as String', returnType: 'String', description: 'Returns the response body as a string.' },
+      { name: 'GetSourceIdentity', signature: 'GetSourceIdentity() as Integer', returnType: 'Integer', description: "Returns the source roUrlTransfer's GetIdentity() value, so one message port can be shared across several requests." },
+      { name: 'GetResponseHeaders', signature: 'GetResponseHeaders() as Object', returnType: 'Object', description: 'Returns response headers as an associative array (last value wins for duplicate header names).' },
+      { name: 'GetTargetIpAddress', signature: 'GetTargetIpAddress() as String', returnType: 'String', description: 'Returns the IP address actually connected to for this request.' },
+      { name: 'GetResponseHeadersArray', signature: 'GetResponseHeadersArray() as Object', returnType: 'Object', description: 'Returns response headers as an roArray of associative arrays, preserving duplicate header names.' },
+    ],
+  },
+
   // ── ifSetMessagePort / ifGetMessagePort ──────────────────────────────────
   ifSetMessagePort: {
     name: 'ifSetMessagePort',
@@ -1528,6 +1550,12 @@ export const BRIGHTSCRIPT_COMPONENTS: BrightScriptComponent[] = [
     description: 'HTTP/HTTPS client. Supports sync and async GET/POST, headers, cookies, and TLS configuration.',
     docsUrl: 'https://developer.roku.com/dev/docs/rourltransfer',
     interfaces: ['ifUrlTransfer', 'ifHttpAgent', 'ifSetMessagePort', 'ifGetMessagePort'],
+  },
+  {
+    name: 'roUrlEvent',
+    description: 'Response event delivered via message port when an async roUrlTransfer request completes.',
+    docsUrl: 'https://developer.roku.com/docs/references/brightscript/components/rourlevent.md',
+    interfaces: ['ifUrlEvent'],
   },
   {
     name: 'roMessagePort',
