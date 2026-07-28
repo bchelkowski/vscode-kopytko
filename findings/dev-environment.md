@@ -21,6 +21,30 @@ The `-lic` flags load the user's shell profile (which sets up `nvm` and the corr
 
 WSL path for this repo: `/mnt/c/Projects/bchelkowski/vscode-kopytko`
 
+### `$?` is unreliable through `wsl.exe` — use `&&` / `||` instead
+
+`wsl.exe bash -lic '<cmd>'` reports exit status **0 even when `<cmd>` exited non-zero** — verified
+with `node -e "process.exit(1)"`, which still reads back as 0. Anything that gates on a WSL command's
+exit code (a CI-style check, a hook, a "did the tests pass?" probe) must use shell chaining, whose
+semantics are evaluated inside WSL:
+
+```bash
+# Unreliable — always prints 0:
+wsl.exe bash -lic 'node scripts/generate-map.mjs --check'; echo $?
+
+# Reliable:
+wsl.exe bash -lic 'node scripts/generate-map.mjs --check && echo PASSED || echo FAILED'
+```
+
+This cost real time while verifying `npm run map -- --check` — the script was working correctly and
+the harness was lying about it.
+
+### Converting the repo path for WSL
+
+`wslpath` needs a real Windows path. Git Bash's `$PWD` is already POSIX-ish (`/c/Projects/…`), and
+feeding that to `wslpath -a` silently yields `/mnt/c/c/Projects/…`. Use `pwd -W` first — see
+`scripts/regen-map.sh`.
+
 ---
 
 ## Device connectivity
