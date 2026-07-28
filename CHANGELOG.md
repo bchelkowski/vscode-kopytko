@@ -1,6 +1,15 @@
 # Changelog
 
 
+## [1.11.4] - 2026-07-28
+
+### Maintenance
+- Bump kopytko-linter to v1.6.9
+- Bump kopytko-formatter to v1.1.15
+- Bump kopytko-linter to v1.6.8
+- Bump kopytko-formatter to v1.1.14
+- Generate the repo map and machine-check documented counts
+
 ## [1.11.3] - 2026-07-28
 
 ### Maintenance
