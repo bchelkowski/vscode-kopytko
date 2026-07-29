@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.12.0] - 2026-07-29
+
+### Added
+- Redesign Device actions as labeled rows, add Secret screens reference
+
+### Fixed
+- Stop embedding the extension version in MAP.md
+
 ## [1.11.4] - 2026-07-28
 
 ### Maintenance
