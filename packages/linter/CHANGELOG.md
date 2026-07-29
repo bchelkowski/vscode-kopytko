@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.7.0] - 2026-07-29
+
+### Added
+- Add project-wide component/duplicate-name check
+
 ## [1.6.9] - 2026-07-28
 
 - Release 1.6.9
