@@ -73,6 +73,44 @@ export function parseXmlComponentName(xmlText: string): string | null {
   return match ? match[1] : null;
 }
 
+/** A `<component>` tag's declared name, with the source position of the value. */
+export interface ComponentNamePosition {
+  name: string;
+  /** Zero-based position of the first character of the `name` attribute value. */
+  line: number;
+  column: number;
+}
+
+/**
+ * Like `parseXmlComponentName`, but also reports where the value is written.
+ *
+ * Needed by any diagnostic that has to point at the declaration itself rather
+ * than at the file as a whole. Matching is scoped to the `<component>` tag's own
+ * attribute list, so a `<function name="…">` inside `<interface>` is not picked
+ * up by mistake.
+ */
+export function parseComponentNamePosition(xmlText: string): ComponentNamePosition | null {
+  const tagMatch = /<component\b([^>]*)>/i.exec(xmlText);
+  if (!tagMatch) return null;
+
+  const attrMatch = /\bname\s*=\s*["']([^"']+)["']/i.exec(tagMatch[1]);
+  if (!attrMatch) return null;
+
+  // '<component'.length === 10, then the offset of the value past its quote
+  const valueOffset = tagMatch.index + 10 + attrMatch.index + attrMatch[0].search(/["']/) + 1;
+
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < valueOffset; i++) {
+    if (xmlText.charCodeAt(i) === 10 /* \n */) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+
+  return { name: attrMatch[1], line, column: valueOffset - lineStart };
+}
+
 export interface XmlInterfaceField {
   name: string;
   type: string;

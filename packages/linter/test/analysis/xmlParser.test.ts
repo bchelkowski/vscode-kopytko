@@ -8,6 +8,8 @@ import {
   parseXmlExtends,
   parseXmlInterface,
   findComponentXml,
+  parseComponentNamePosition,
+  parseXmlComponentName,
 } from '../../src/analysis/xmlParser';
 
 describe('xmlParser', () => {
@@ -285,6 +287,67 @@ describe('xmlParser', () => {
       );
       const result = findComponentXml('RokuStoreRequest', ['/project/components']);
       expect(result).to.equal('/project/components/RokuStore.request.xml');
+    });
+  });
+
+  describe('parseComponentNamePosition', () => {
+    it('returns the name with the position of its value', () => {
+      const xml = '<component name="MyButton" extends="BaseButton">\n</component>';
+
+      expect(parseComponentNamePosition(xml)).to.deep.equal({
+        name: 'MyButton', line: 0, column: 17,
+      });
+    });
+
+    it('reports the position on a multi-line component tag', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="utf-8" ?>',
+        '<component',
+        '    name="Card"',
+        '    extends="Group">',
+        '</component>',
+      ].join('\n');
+
+      expect(parseComponentNamePosition(xml)).to.deep.equal({ name: 'Card', line: 2, column: 10 });
+    });
+
+    it('handles single-quoted values', () => {
+      expect(parseComponentNamePosition("<component name='Card' />"))
+        .to.deep.equal({ name: 'Card', line: 0, column: 17 });
+    });
+
+    it('ignores name attributes outside the component tag', () => {
+      const xml = [
+        '<component name="Card" extends="Group">',
+        '  <interface>',
+        '    <function name="refresh" />',
+        '  </interface>',
+        '</component>',
+      ].join('\n');
+
+      expect(parseComponentNamePosition(xml)).to.deep.equal({ name: 'Card', line: 0, column: 17 });
+    });
+
+    it('returns null without a component tag or without a name', () => {
+      expect(parseComponentNamePosition('<settings><value>1</value></settings>')).to.be.null;
+      expect(parseComponentNamePosition('<component extends="Group" />')).to.be.null;
+    });
+
+    it('agrees with parseXmlComponentName on the name it finds', () => {
+      // The two parsers are separate regexes over the same tag — this pins them
+      // together, since `componentNameToXml` and the duplicate check must not
+      // disagree about which component a file declares.
+      const samples = [
+        '<component name="Card" extends="Group" />',
+        "<component name='Card' extends='Group' />",
+        '<component\n  name="Card"\n  extends="Group">\n</component>',
+        '<component extends="Group" name="Card" />',
+        '<component name="Card">\n  <interface>\n    <function name="refresh" />\n  </interface>\n</component>',
+      ];
+
+      for (const xml of samples) {
+        expect(parseComponentNamePosition(xml)?.name).to.equal(parseXmlComponentName(xml));
+      }
     });
   });
 });

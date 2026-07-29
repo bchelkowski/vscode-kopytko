@@ -4,7 +4,7 @@ BrightScript linter for the [Kopytko ecosystem](https://github.com/bchelkowski/v
 
 ## Features
 
-- **31 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, callbacks, and `m.top` field access
+- **32 diagnostic rules** covering imports, identifiers, syntax, test structure, type annotations, callbacks, and `m.top` field access
 - **Configurable severity** per rule (`error`, `warning`, `info`, `hint`, `off`)
 - **Three output formats**: text (terminal), JSON, [SARIF](https://sarifweb.azurewebsites.net/) (GitHub Code Scanning)
 - **Config file support**: `kopytko-linter.json` or `.vscode/settings.json`
@@ -186,6 +186,31 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | Rule | Default | Description |
 |---|---|---|
 | `mtop/undefined-field` | warning | `m.top.fieldName` accesses a field not declared in the component's XML `<interface>` or any ancestor component/SG node. Only active when the field catalog is populated (extension mode) |
+
+### Component Rules
+
+| Rule | Default | Description |
+|---|---|---|
+| `component/duplicate-name` | warning | The same `<component name>` is declared by two XML files. Component names are global to the channel, so the declaration that loads last silently wins |
+
+Unlike every other rule, this one is **project-wide**: it runs once per `lintProject` over every
+component XML in the project and its installed Kopytko packages, rather than per `.brs` file, and its
+diagnostics are attached to the `.xml` files themselves. `lintFile` therefore never produces it —
+`runLint` does, after the per-file pass.
+
+A clash with a component from an installed package is reported on *your* file only; a warning inside
+`node_modules` would not be actionable. If a build pipeline copies your source tree into an output
+directory, exclude the copy with `readOnlyPaths` (e.g. `**/out/**`) — excluded files are discounted
+before the duplicate is counted, so nothing is reported.
+
+**To fail CI on it, raise the severity to `error`.** `kopytko-lint --check` exits non-zero on errors
+only, so at the default `warning` the duplicate is reported but the build still passes (it does still
+surface in SARIF output for GitHub Code Scanning). The default is deliberately conservative because a
+mis-scoped build-output directory would otherwise flag every component in the project:
+
+```jsonc
+{ "rules": { "component/duplicate-name": "error" } }
+```
 
 ### Syntax Rules
 

@@ -5,6 +5,7 @@ import type { LinterConfig } from './config';
 import { ALL_RULE_GROUPS } from './rules/index';
 import { parseSuppressionMap, isSuppressed } from './suppression';
 import { matchesGlob } from './analysis/globMatcher';
+import { DUPLICATE_COMPONENT_RULE, duplicateComponentDiagnostics } from './analysis/duplicateComponents';
 import { parse } from 'kopytko-brightscript-parser';
 import { analyzeFile } from './analysis/fileAnalysis';
 import type { ParseResult } from 'kopytko-brightscript-parser';
@@ -65,6 +66,8 @@ export function runLint(
     allDiagnostics.push(...lintFile(file, content, fileContext, config));
   }
 
+  allDiagnostics.push(...lintProjectWide(context, config));
+
   return {
     diagnostics: allDiagnostics,
     fileCount: brsFiles.length,
@@ -73,6 +76,26 @@ export function runLint(
     infoCount: allDiagnostics.filter(d => d.severity === 'info').length,
     hintCount: allDiagnostics.filter(d => d.severity === 'hint').length,
   };
+}
+
+/**
+ * Checks that span the whole project rather than one file.
+ *
+ * These cannot be rules: a rule receives one file's `RuleContext` and cannot see
+ * a second file, let alone an XML one. They run once per `runLint`, after the
+ * per-file pass, and may attach diagnostics to any file — including `.xml`,
+ * which is never linted directly.
+ */
+function lintProjectWide(context: LintContext, config: LinterConfig): LintDiagnostic[] {
+  const declarations = context.componentDeclarations;
+  const severity = config.rules[DUPLICATE_COMPONENT_RULE];
+  if (!declarations || !severity || severity === 'off') return [];
+
+  return duplicateComponentDiagnostics(declarations, {
+    severity,
+    isExcluded: (filePath) =>
+      config.readOnlyPaths.length > 0 && config.readOnlyPaths.some((p) => matchesGlob(filePath, p)),
+  });
 }
 
 /** Overrides the context's knownFuncNames, externalFuncNames, and ancestorFuncNames for a specific file. */

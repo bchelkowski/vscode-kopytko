@@ -1,4 +1,5 @@
 import type { GeneratedModuleConfig, KopytkoImport } from './types';
+import type { ComponentDeclaration } from './analysis/duplicateComponents';
 
 /**
  * Abstraction over cross-file project data.
@@ -8,6 +9,12 @@ import type { GeneratedModuleConfig, KopytkoImport } from './types';
  */
 export interface LintContext {
   knownFuncNames: Set<string>;
+  /**
+   * Every `<component name>` declaration in the project and its Kopytko packages.
+   * Set in CLI mode only — the extension runs the same check against its own live
+   * component index, so `runLint`'s project pass skips it when this is absent.
+   */
+  componentDeclarations?: ComponentDeclaration[];
   /** Workspace-wide union of all function names that appear as call targets in any .brs file.
    * Undefined in CLI mode — rules must degrade gracefully when this is absent. */
   calledWorkwideFuncNames?: Set<string>;

@@ -7,7 +7,8 @@ import { parseImports, ImportResolver } from './analysis/importParser';
 import { parseFunctionDefs } from './analysis/functionIndex';
 import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
-import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName, parseXmlInterface } from './analysis/xmlParser';
+import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName, parseXmlInterface, parseComponentNamePosition } from './analysis/xmlParser';
+import type { ComponentDeclaration } from './analysis/duplicateComponents';
 import { findSgNode, getAllSgNodeFields, getAllSgNodeMethods } from 'kopytko-brightscript-parser';
 import { matchesGlob } from './analysis/globMatcher';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
@@ -662,6 +663,18 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
 
   const getMtopFields = buildGetMtopFields(brsToXmlParents, xmlTextCache, componentNameToXml);
 
+  // Derived from `xmlTextCache` rather than at walk time, so both the sync and
+  // async builders get it without duplicating the collection logic. Unlike
+  // `componentNameToXml` (a name → file map, last write wins) this keeps every
+  // declaration — which is the whole point of the duplicate check.
+  const componentDeclarations: ComponentDeclaration[] = [];
+  for (const [filePath, text] of xmlTextCache) {
+    const declaration = parseComponentNamePosition(text);
+    if (declaration) {
+      componentDeclarations.push({ ...declaration, filePath });
+    }
+  }
+
   const context: LintContext = {
     get knownFuncNames() { return new Set<string>(); },
 
@@ -699,6 +712,8 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     },
 
     getMtopFields,
+
+    componentDeclarations,
 
     generatedPaths: config.generatedPaths,
     generatedModules: config.generatedModules,

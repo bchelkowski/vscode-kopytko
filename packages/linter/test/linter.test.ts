@@ -1,8 +1,10 @@
 import { expect } from 'chai';
 import { parse } from 'kopytko-brightscript-parser';
 import { lintFile, DEFAULT_LINTER_CONFIG } from '../src/index';
+import { runLint } from '../src/lintRunner';
 import { createMockContext } from './helpers';
 import type { LinterConfig } from '../src/config';
+import type { ComponentDeclaration } from '../src/analysis/duplicateComponents';
 
 describe('linter — lintFile', () => {
   it('returns no diagnostics for an empty file', () => {
@@ -176,5 +178,70 @@ describe('linter — lintFile', () => {
     const diags = lintFile('/project/src/_tests/Foo.test.brs', content, context, DEFAULT_LINTER_CONFIG);
     const undef = diags.filter(d => d.code === 'identifier/undefined-function');
     expect(undef).to.be.empty;
+  });
+});
+
+describe('linter — project-wide checks', () => {
+  const APP_CARD = '/project/src/components/Card.xml';
+  const OUT_CARD = '/project/out/components/Card.xml';
+
+  function declarations(): ComponentDeclaration[] {
+    return [
+      { name: 'Card', filePath: APP_CARD, line: 0, column: 17 },
+      { name: 'Card', filePath: OUT_CARD, line: 0, column: 17 },
+      { name: 'Button', filePath: '/project/src/components/Button.xml', line: 0, column: 17 },
+    ];
+  }
+
+  function lint(config: Partial<LinterConfig> = {}, componentDeclarations = declarations()) {
+    const context = createMockContext({ componentDeclarations });
+    return runLint([], new Map(), context, { ...DEFAULT_LINTER_CONFIG, ...config });
+  }
+
+  it('reports duplicate component names even with no .brs files to lint', () => {
+    const result = lint();
+
+    const duplicates = result.diagnostics.filter(d => d.code === 'component/duplicate-name');
+    expect(duplicates.map(d => d.filePath).sort()).to.deep.equal([OUT_CARD, APP_CARD].sort());
+    expect(result.warningCount).to.equal(2);
+  });
+
+  it('attaches the diagnostics to .xml files, which are never linted directly', () => {
+    const [diagnostic] = lint().diagnostics;
+
+    expect(diagnostic.filePath.endsWith('.xml')).to.be.true;
+    expect(diagnostic.message).to.contain('Duplicate component name "Card"');
+  });
+
+  it('respects a configured severity', () => {
+    const result = lint({ rules: { ...DEFAULT_LINTER_CONFIG.rules, 'component/duplicate-name': 'error' } });
+
+    expect(result.errorCount).to.equal(2);
+    expect(result.warningCount).to.equal(0);
+  });
+
+  it('skips the check when the rule is off', () => {
+    const result = lint({ rules: { ...DEFAULT_LINTER_CONFIG.rules, 'component/duplicate-name': 'off' } });
+
+    expect(result.diagnostics).to.be.empty;
+  });
+
+  it('skips the check when the context carries no declarations (extension mode)', () => {
+    const context = createMockContext();
+    const result = runLint([], new Map(), context, DEFAULT_LINTER_CONFIG);
+
+    expect(result.diagnostics).to.be.empty;
+  });
+
+  it('honours readOnlyPaths, discounting build-output copies', () => {
+    const result = lint({ readOnlyPaths: ['**/out/**'] });
+
+    expect(result.diagnostics).to.be.empty;
+  });
+
+  it('reports nothing when every component name is unique', () => {
+    const result = lint({}, declarations().slice(1));
+
+    expect(result.diagnostics).to.be.empty;
   });
 });

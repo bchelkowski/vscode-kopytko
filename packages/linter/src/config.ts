@@ -45,6 +45,7 @@ export const DEFAULT_RULE_CONFIG: RuleConfig = {
   'identifier/duplicate-function': 'error',
   'mtop/undefined-field': 'warning',
   'syntax/unreachable-code': 'warning',
+  'component/duplicate-name': 'warning',
 };
 
 export const DEFAULT_LINTER_CONFIG: LinterConfig = {

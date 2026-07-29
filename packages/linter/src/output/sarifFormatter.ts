@@ -107,6 +107,7 @@ function getRuleDescription(code: string): string {
     'identifier/duplicate-function': 'Function name collides with one already visible in scope',
     'mtop/undefined-field': 'm.top field not declared in component XML interface or ancestor',
     'syntax/unreachable-code': 'Code after a return, throw, or other terminating statement',
+    'component/duplicate-name': 'SceneGraph component name declared by more than one XML file',
   };
   return descriptions[code] ?? code;
 }
