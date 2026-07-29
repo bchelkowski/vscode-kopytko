@@ -1,17 +1,15 @@
 import * as path from 'path';
 import { Connection } from 'vscode-languageserver/node';
 import { URI } from 'vscode-uri';
-import type { LintSeverity } from 'kopytko-linter';
-// Canonical implementation lives in kopytko-linter; see the file's header for
-// why it is mirrored here and when to switch this import to the package.
 import {
-  ComponentDeclaration,
+  type LintSeverity,
+  type ComponentDeclaration,
   duplicateComponentDiagnostics,
-} from '../brightscript/duplicateComponents';
+} from 'kopytko-linter';
 import { toLspDiagnostic } from '../providers/shared/lintDiagnostic';
 import { WorkspaceComponentIndex } from '../utils/workspaceComponentIndex';
 
-export { DUPLICATE_COMPONENT_RULE } from '../brightscript/duplicateComponents';
+export { DUPLICATE_COMPONENT_RULE } from 'kopytko-linter';
 
 export interface ComponentDiagnosticsDeps {
   index: WorkspaceComponentIndex;

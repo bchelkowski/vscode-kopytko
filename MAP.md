@@ -112,7 +112,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | `src/client/rokuPay/views` | 1 | Roku Pay view provider. |
 | `src/client/rokuPay/webview` | 2 | Roku Pay webview: request builder and response viewer. |
 | `src/server` | 2 | LSP server entry and handler registration. |
-| `src/server/brightscript` | 9 | Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config. |
+| `src/server/brightscript` | 8 | Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config. |
 | `src/server/kopytko` | 3 | Kopytko-specific server logic: @import resolution, module catalog, unit-test framework support. |
 | `src/server/providers` | 17 | The LSP feature providers (completion, hover, definition, rename, semantic tokens, ...). |
 | `src/server/providers/completion` | 5 | Completion sub-builders split by context: members, imports, tests. |

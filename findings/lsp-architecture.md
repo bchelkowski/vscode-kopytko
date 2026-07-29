@@ -199,16 +199,20 @@ it causes (a component silently overridden by load order) is so hard to trace fr
 
 **It is not a per-file rule, and it is not extension-only.** The canonical implementation is
 `kopytko-linter`'s `src/analysis/duplicateComponents.ts`, a pure function over
-`ComponentDeclaration[]`. `runLint` calls it once per project after the per-file pass (so
-`kopytko-lint` fails CI on it); `services/componentDiagnostics.ts` calls it against
-`WorkspaceComponentIndex` (so the editor shows it on save). A rule cannot do this — `RuleContext` is
-one `.brs` file — which is why it is a project-wide pass in `runLint` rather than an entry in
-`ALL_RULE_GROUPS`.
+`ComponentDeclaration[]`. `runLint` calls it once per project after the per-file pass (`kopytko-lint`
+reports it at the default `warning`; raise the rule to `error` in `.kopytkolintrc` for `--check` to
+fail the build on it — see the *Duplicate Component Names* section above);
+`services/componentDiagnostics.ts` calls it against `WorkspaceComponentIndex` (so the editor shows it
+on save). A rule cannot do this — `RuleContext` is one `.brs` file — which is why it is a project-wide
+pass in `runLint` rather than an entry in `ALL_RULE_GROUPS`.
 
-⚠️ `src/server/brightscript/duplicateComponents.ts` is a **temporary byte-for-byte mirror** of the
-linter module. The extension consumes `kopytko-linter` as a published tarball, so the new exports do
-not exist in `node_modules` until a release. Once the dependency is bumped past 1.6.9, delete the
-mirror and point `componentDiagnostics.ts` at `'kopytko-linter'` — the signatures are identical.
+Both call sites import the check straight from `kopytko-linter` (>= 1.7.0, released alongside this
+feature). There was a transitional period where the extension's dependency lagged the linter release
+and `src/server/brightscript/duplicateComponents.ts` carried a byte-for-byte mirror so the extension
+could ship without waiting on a publish — that file is now deleted; do not recreate it. If this ever
+recurs (a linter-side check the extension needs before the next linter release), mirror in exactly one
+file with a header stating the version to delete it at, and grep for the mirror's own filename before
+assuming it's still needed — `git log -- <path>` shows when it was added and removed last time.
 
 Three things this got wrong before it worked:
 
