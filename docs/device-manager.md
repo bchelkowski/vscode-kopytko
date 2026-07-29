@@ -3,9 +3,10 @@
 A dedicated Activity Bar container (`Kopytko Device Manager`) bundling everything
 needed to drive a Roku device by hand or by script, across two sidebar views:
 
-- **Remote Control** — the on-screen remote, a collapsed **Device actions**
-  disclosure (icon-only web-admin buttons), and **Saved Text** entries
-  (including credentials), stacked in that order.
+- **Remote Control** — the on-screen remote, then three collapsible
+  disclosures (all expanded by default): **Saved Text** entries (including
+  credentials), **Device actions**, then **Secret screens** (a reference
+  list of remote key sequences — not buttons; see below).
 - **Scripts** — a **RASP script** library with an editor tab and runner.
 
 All views target the **active device** selected in the Roku Devices view and
@@ -94,7 +95,8 @@ focus anyway.
 
 ## Saved Text section
 
-Part of the Remote Control view, below Device actions. Reusable entries for
+Part of the Remote Control view, right below the remote — a `<details>`
+disclosure ("▾ Saved Text"), **expanded by default**. Reusable entries for
 text you type on devices often — search terms, deep-link IDs, and
 test-account credentials:
 
@@ -223,24 +225,64 @@ Settings: `kopytko.deviceManager.runner.pollIntervalMs` (default 500),
 
 ## Device actions section
 
-Part of the Remote Control view, between the remote and Saved Text — a
-collapsed `<details>` disclosure ("▸ Device actions") that expands into a
-2-column grid of icon-only pill buttons, styled identically to the remote
-keypad buttons above (same purple pill shape, tooltip-only labels, no
-visible text). Anything that needs input uses native VS Code dialogs instead
-of sidebar forms:
+Part of the Remote Control view, below Saved Text — a `<details>` disclosure
+("▾ Device actions"), **expanded by default**. It holds one flat, ordered
+list of labeled rows (icon + visible label + a short description, not just
+a tooltip) — earlier versions used an icon-only pill grid with tooltip-only
+labels, which users didn't discover or understand at a glance:
 
-- Screenshot (captured via the web-admin; a save dialog asks where to write
-  the `.jpg`, then it opens), Check update, Reboot (confirm modal, red
-  outline).
-- Install channel (zip picker), Delete channel (confirm, red outline),
-  Package (zip picker → app name/version → signing password → save `.pkg`),
-  Rekey (pkg picker → signing password). See [roku-webadmin.md](./roku-webadmin.md)
-  for the underlying endpoint behavior.
+1. **Screenshot** — captured via the web-admin; a save dialog asks where to
+   write the `.jpg`, then it opens.
+2. **Upload channel** — zip picker; sideloads via the web-admin Installer.
+3. **Package** — zip picker → app name/version → signing password → save
+   `.pkg`.
+4. **Rekey** — pkg picker → signing password.
+5. **Software update** — triggers a system update check (result shows on
+   the device).
+6. **Restart** — confirm modal, red outline.
+7. **Delete channel** — confirm modal, red outline.
 
-Web-admin actions authenticate with the device's developer password (HTTP
-Digest, user `rokudev`) from the shared device-password store; if none is
-saved you're prompted once with an option to save it.
+All 7 authenticate with the device's developer password (HTTP Digest, user
+`rokudev`) from the shared device-password store; if none is saved you're
+prompted once with an option to save it. See [roku-webadmin.md](./roku-webadmin.md)
+for the underlying endpoint behavior.
+
+## Secret screens section
+
+Part of the Remote Control view, below Device actions — a `<details>`
+disclosure ("▾ Secret screens"), **expanded by default**. This is a
+**read-only reference list**, not a set of buttons: each row shows a
+label, the exact remote-control key sequence, and what it opens. You type
+these on your own physical remote — the extension deliberately does not
+send them for you:
+
+- **Enable dev mode** — `Home ×3, Up ×2, Right, Left, Right, Left, Right`.
+  Opens the Developer Application Installer screen; finish the prompts
+  on-device.
+- **Channel info** — `Home ×3, Up ×2, Left, Right, Left, Right, Left`.
+  Shows metadata, version numbers, and developer tracking IDs for
+  installed channels.
+- **Screenshots & Ads** — `Home ×5, Up, Right, Down, Left, Up`. Ad-banner
+  behavior toggles, cycling theme logs, and screenshot capture.
+- **Reset & Update** — `Home ×5, Fwd ×3, Rev ×2`. Opens a diagnostic panel
+  offering Factory Reset (wipes the registry) or Soft Reset/Software
+  Update.
+- **Clear cache** — `Home ×5, Up, Rev ×2, Fwd ×2`. Clears temporary system
+  caches and forces a hard reboot (not a registry clear); can take up to
+  ~1 minute.
+
+An earlier version of this feature tried to send these sequences
+automatically via ECP (the same mechanism the on-screen remote uses for
+every button press). Two of the five never triggered over ECP despite the
+exact same key list working on a physical remote — see the "Secret screens:
+from auto-press to reference-only" entry in
+`findings/device-manager-architecture.md` for what was tried and why this
+ended up as a plain reference list instead: reliability isn't guaranteed
+even for the sequences that did work over ECP on the device it was tested
+against, and a device-specific or firmware-specific secret sequence is
+exactly the kind of thing that can silently stop working after an OS
+update — not worth risking a button that might do nothing (or the wrong
+thing) with no way to tell.
 
 The Device info / Active app quick actions (which just opened raw ECP
 `device-info` JSON or queried the foreground app) were removed — they

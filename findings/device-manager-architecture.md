@@ -50,19 +50,40 @@ through `InstallerClient`, injected separately). Removing an action isn't just
 deleting the webview button + `abilityActions.ts` switch case — check whether the
 controller method it called was the last user of one of its constructor deps.
 
-## `.remote-btn` reused for `.ability-btn` (icon-only pill buttons)
+## Device actions: from icon-only pills (`.ability-btn`) to labeled rows (`.device-action`)
 
-Device actions buttons were restyled to visually match the remote keypad
-(`.remote-btn`): circular pill, same `--roku-purple` palette, icon-only with the
-label in the `title` tooltip instead of visible text. The purple palette
-variables were originally scoped to `#remote { --roku-purple: ...; }` — since
-`.ability-btn` lives in a sibling `<details>` block, not a descendant of `#remote`,
-those custom properties weren't in scope there. Moved them to `body` so both
-button families share one source of truth (`src/client/deviceManager/webview/styles.css`).
-Danger actions (reboot, deleteChannel) keep the same pill shape/background but add
-a red `outline` (via `--vscode-errorForeground`) rather than changing to a
-different button family — keeps the "matches the remote" promise intact while
-still signaling destructive intent.
+Device actions started as icon-only pill buttons visually matching the
+remote keypad (`.remote-btn`) — circular, `--roku-purple`, label only in the
+`title` tooltip. Users didn't discover the section or understand the icons,
+so it was redesigned to `.device-action`: full-width rows with a small
+purple icon chip (`.action-icon`, still `--roku-purple`) plus a **visible**
+label and one-line description (`.action-label`/`.action-desc`). Danger
+actions (restart, delete channel, reset & update, clear cache) keep the red
+`outline` (via `--vscode-errorForeground`) rather than a different button
+family — same "still signals destructive intent without changing shape"
+approach as before.
+
+Naming gotcha if you touch this again: `.action-row` was already taken by
+an unrelated flex-wrapper class used for the Scripts list's button row and
+the entry-form's button row (`webview/main.ts`/`styles.css`) — reusing that
+name for the device-action buttons silently broke both, since CSS doesn't
+care that they're semantically different (`<div>` wrapper vs `<button>`).
+The device-action buttons are named `.device-action` specifically to avoid
+this collision; grep for a class name before introducing a new one in this
+webview.
+
+The `--roku-purple` custom properties are scoped to `body` (not `#remote`)
+specifically so both `.remote-btn` and `.action-icon` — which live in
+different, non-nested parts of the DOM — can share one source of truth
+(`src/client/deviceManager/webview/styles.css`).
+
+Saved Text was later made collapsible too (`<details id="saved-text">`,
+matching `#device-actions`) and moved **above** Device actions — both are
+now `.section-disclosure`, a shared class factored out of what used to be
+`#device-actions`-only rules, so a third collapsible section can reuse it
+without re-deriving the chevron/summary styling. Both default to `open`:
+collapsed-by-default was the original discoverability problem with Device
+actions, so neither top-level section repeats it.
 
 ## Custom labels: normalize host-side, duplicate parsing per webview bundle
 
@@ -108,6 +129,66 @@ future `<details class="dropdown">` + `<select>` toolbar pair, or any
   selection in Chromium, which is what VS Code webviews run), then
   reconstructs the value as `<everything before the last comma>, <picked>, `
   instead of accepting the browser's whole-value replacement.
+
+## Secret screens: from auto-press to reference-only
+
+Roku's undocumented secret screens (enable dev mode, channel info,
+screenshots & ads, reset & update, clear cache — each triggered by a canned
+remote-control key sequence starting with several `Home` presses) were
+originally built as a second class of Device action, auto-sent via ECP
+(`DeviceManagerController.pressKeySequence()`, a `KeySequenceAction` type
+parallel to `AbilityAction`, dispatched through its own `WebMsg` kind). That
+code has since been **removed entirely** — see history if you need the
+implementation details. What's shipped now instead: `SECRET_SCREENS` in
+`webview/main.ts` is a **plain read-only list** (label + key sequence text +
+description, rendered as `<div>` rows, not `<button>`s) inside its own
+`#secret-screens` disclosure (`.section-disclosure`, same shared style as
+Saved Text / Device actions, expanded by default). No message kind, no
+host-side dispatch, no `EcpClient` call — purely informational, the user
+types the sequence on their own physical remote.
+
+**Why the auto-press approach was abandoned**, in case someone's tempted to
+rebuild it: testing on a real Roku Ultra found 3 of the 5 sequences
+(Channel info, Reset & Update, Clear cache) *did* trigger reliably via ECP
+`pressKeySequence` — ruling out a bug in the send loop or a blanket
+ECP-can't-do-this limitation. But 2 of 5 (**Enable dev mode**,
+**Screenshots & Ads**) never triggered via ECP under any tried condition —
+not the original 700ms inter-key delay, not 150ms, not an extra leading
+`Home`, not sending each key as `keydown`→wait→`keyup` instead of an atomic
+`keypress` (to mimic a physical press's actual duration) — despite the
+exact same key lists being reconfirmed working when entered by hand on a
+physical IR/RF remote. Leading (unconfirmed) theory: Roku may deliberately
+restrict ECP-simulated input from triggering the more sensitive screens
+(dev mode enable is a real security boundary — silently flippable via any
+app on the LAN would be bad) while allowing it for lower-stakes ones. Even
+setting that aside, the user's own call: a device/firmware-specific secret
+sequence that happens to work via ECP on one test device today isn't
+something to build a "does this for you" button around — it's exactly the
+kind of thing that could silently stop working on another model or after
+an OS update, with no way for the extension to detect that it failed. A
+reference list degrades gracefully (worst case, a description is stale);
+an auto-press button that silently no-ops does not.
+
+Confirmed key sequences and what they actually do — worth keeping accurate
+if these ever get re-documented elsewhere: the original assumption that
+`Home×5, Up, Rev×2, Fwd×2` clears the device *registry* was wrong; it
+clears temporary system caches and forces a hard reboot (device hangs
+~1 minute on a Roku Ultra) — that's **Clear cache**, not a registry clear.
+The real registry-wipe path is **Reset & Update** (`Home×5, Fwd×3, Rev×2`),
+which opens a diagnostic panel offering Factory Reset (wipes the registry)
+or Soft Reset/Update — the reference list only shows the sequence that
+opens the panel, same as before; the user picks the option on-device.
+**Enable dev mode** (`Home×3, Up×2, Right, Left, Right, Left, Right`) is
+sourced from Roku's own
+[developer-setup docs](https://developer.roku.com/dev/docs/developer-setup)
+rather than guessed, but has still never been confirmed to open the
+Developer Application Installer screen via this extension (only by hand) —
+don't assume it's settled without a fresh device check.
+
+If a future task wants to try auto-pressing these again, re-read this
+entry first — the specific combinations already ruled out (delay tuning,
+leading `Home`, hold-vs-click) shouldn't be re-tried without new evidence,
+per the project's no-speculative-device-protocol-changes rule.
 
 The Saved Text implicit `type` facet (`text`/`credentials`) is presented as
 its own **"Type"** heading in the Filter checkbox list and a `<optgroup

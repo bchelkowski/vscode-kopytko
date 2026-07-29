@@ -251,27 +251,48 @@ function buildRemoteDom(): void {
 </label>
 <div id="kb-hint" class="hidden">Arrows/Enter/Esc/Backspace navigate the device from anywhere. Typing lands on the device while this view is focused. <b>Ctrl+K</b> exits.</div>
 
-<details id="device-actions">
+<details id="saved-text" class="section-disclosure" open>
+  <summary>Saved Text</summary>
+  <div id="entries-toolbar" class="list-toolbar">
+    <details class="dropdown" id="entries-filter-dd">
+      <summary>Filter ▾</summary>
+      <div class="dropdown-menu" id="entries-filter-menu"></div>
+    </details>
+    <select id="entries-sort"><option value="">Sort: Title</option></select>
+  </div>
+  <div id="entries-list"></div>
+  <button id="btn-add-entry" class="secondary">+ Add entry</button>
+  <div id="entry-form" class="hidden"></div>
+</details>
+
+<details id="device-actions" class="section-disclosure" open>
   <summary>Device actions</summary>
-  <div class="ability-group">
-    ${DEVICE_ACTIONS.map((b) => `
-      <button class="ability-btn ${b.danger ? 'danger' : ''}" data-action="${b.action}" title="${esc(b.title)}">
-        ${b.icon}
+  <div class="action-list">
+    ${ACTION_ROWS.map((r) => `
+      <button class="device-action ${r.danger ? 'danger' : ''}" data-action="${r.action}">
+        <span class="action-icon">${r.icon}</span>
+        <span class="action-text">
+          <span class="action-label">${esc(r.label)}</span>
+          <span class="action-desc">${esc(r.description)}</span>
+        </span>
       </button>`).join('')}
   </div>
 </details>
 
-<h3>Saved Text</h3>
-<div id="entries-toolbar" class="list-toolbar">
-  <details class="dropdown" id="entries-filter-dd">
-    <summary>Filter ▾</summary>
-    <div class="dropdown-menu" id="entries-filter-menu"></div>
-  </details>
-  <select id="entries-sort"><option value="">Sort: Title</option></select>
-</div>
-<div id="entries-list"></div>
-<button id="btn-add-entry" class="secondary">+ Add entry</button>
-<div id="entry-form" class="hidden"></div>`;
+<details id="secret-screens" class="section-disclosure" open>
+  <summary>Secret screens</summary>
+  <div class="action-list">
+    ${SECRET_SCREENS.map((s) => `
+      <div class="secret-screen-row">
+        <span class="action-icon">${s.icon}</span>
+        <span class="action-text">
+          <span class="action-label">${esc(s.label)}</span>
+          <span class="secret-screen-keys">${esc(s.keys)}</span>
+          <span class="action-desc">${esc(s.description)}</span>
+        </span>
+      </div>`).join('')}
+  </div>
+</details>`;
 
   wireRemoteButtons();
   wireTextSend();
@@ -749,22 +770,29 @@ function renderRunProgress(progress: RunProgress): void {
 
 // ── device actions ───────────────────────────────────────────────────────────
 
-interface AbilityButton { action: AbilityAction; icon: string; title: string; danger?: boolean }
+interface ActionRow {
+  action: AbilityAction;
+  icon: string;
+  label: string;
+  description: string;
+  danger?: boolean;
+}
 
-// Icon-only pills, same stroke-icon family and .remote-btn shape as the
-// keypad above — the label lives only in the `title` tooltip.
-const DEVICE_ACTIONS: AbilityButton[] = [
-  { action: 'screenshot', icon: icon('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-2.5h5L16 7"/><circle cx="12" cy="13.5" r="3.5"/>'), title: 'Screenshot: capture the running dev channel (requires developer password)' },
-  { action: 'checkUpdate', icon: icon('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4"/><path d="M6 21v-4h4"/>'), title: 'Check update: trigger a system update check (result shows on the device)' },
-  { action: 'reboot', icon: icon('<path d="M12 3v6"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>'), title: 'Reboot the device', danger: true },
-  { action: 'installChannel', icon: icon('<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>'), title: 'Install channel…: sideload a channel zip (dev web-admin Installer)' },
-  { action: 'deleteChannel', icon: icon('<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/>'), title: 'Delete channel: remove the sideloaded dev channel', danger: true },
-  { action: 'packageChannel', icon: icon('<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>'), title: 'Package…: install a zip and sign it into a .pkg (Packager)' },
-  { action: 'rekey', icon: icon('<circle cx="8" cy="15" r="3.5"/><path d="M10.8 12.2L19 4"/><path d="M15.5 8.5l2.5 2.5"/><path d="M18 6l2.5 2.5"/>'), title: 'Rekey…: rekey the device with a signed .pkg' },
+// One flat, labeled list. The order is a deliberate workflow order (capture
+// → build/sign → keep the OS current → disruptive actions last), not
+// alphabetical — don't "tidy" this into categories.
+const ACTION_ROWS: ActionRow[] = [
+  { action: 'screenshot', icon: icon('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-2.5h5L16 7"/><circle cx="12" cy="13.5" r="3.5"/>'), label: 'Screenshot', description: 'Capture the running dev channel (requires developer password)' },
+  { action: 'installChannel', icon: icon('<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>'), label: 'Upload channel', description: 'Sideload a channel zip (dev web-admin Installer)' },
+  { action: 'packageChannel', icon: icon('<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>'), label: 'Package', description: 'Install a zip and sign it into a .pkg (Packager)' },
+  { action: 'rekey', icon: icon('<circle cx="8" cy="15" r="3.5"/><path d="M10.8 12.2L19 4"/><path d="M15.5 8.5l2.5 2.5"/><path d="M18 6l2.5 2.5"/>'), label: 'Rekey', description: 'Rekey the device with a signed .pkg' },
+  { action: 'checkUpdate', icon: icon('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4"/><path d="M6 21v-4h4"/>'), label: 'Software update', description: 'Trigger a system update check (result shows on the device)' },
+  { action: 'reboot', icon: icon('<path d="M12 3v6"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>'), label: 'Restart', description: 'Reboot the device', danger: true },
+  { action: 'deleteChannel', icon: icon('<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/>'), label: 'Delete channel', description: 'Remove the sideloaded dev channel', danger: true },
 ];
 
 function wireAbilityButtons(): void {
-  for (const btn of document.querySelectorAll<HTMLButtonElement>('.ability-btn')) {
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.device-action')) {
     btn.addEventListener('click', () => {
       post({ kind: 'ability', action: btn.dataset.action as AbilityAction });
     });
@@ -772,10 +800,34 @@ function wireAbilityButtons(): void {
 }
 
 function applyAbilitiesBusy(busy: boolean): void {
-  for (const btn of document.querySelectorAll<HTMLButtonElement>('.ability-btn')) {
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.device-action')) {
     btn.disabled = busy || device === undefined;
   }
 }
+
+// ── secret screens (reference only — never auto-pressed) ───────────────────────
+
+interface SecretScreenRow {
+  icon: string;
+  label: string;
+  keys: string;
+  description: string;
+}
+
+// Purely informational — type these into the physical remote yourself.
+// Deliberately NOT wired to a button: some of these sequences only respond
+// to genuine physical/IR remote input, not ECP-simulated keypresses (Enable
+// dev mode and Screenshots & Ads never triggered via ECP despite the exact
+// same key list working by hand), and even the ones that did trigger via
+// ECP on this device aren't guaranteed to on other models or after a future
+// OS update — not worth risking a button that might silently do nothing.
+const SECRET_SCREENS: SecretScreenRow[] = [
+  { icon: icon('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'), label: 'Enable dev mode', keys: 'Home ×3, Up ×2, Right, Left, Right, Left, Right', description: 'Opens the Developer Application Installer screen — finish the prompts on-device.' },
+  { icon: icon('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>'), label: 'Channel info', keys: 'Home ×3, Up ×2, Left, Right, Left, Right, Left', description: 'Shows metadata, version numbers, and developer tracking IDs for installed channels.' },
+  { icon: icon('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5-4 4-3-3-5 5"/>'), label: 'Screenshots & Ads', keys: 'Home ×5, Up, Right, Down, Left, Up', description: 'Ad-banner behavior toggles, cycling theme logs, and screenshot capture.' },
+  { icon: icon('<path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/>'), label: 'Reset & Update', keys: 'Home ×5, Fwd ×3, Rev ×2', description: 'Opens a diagnostic panel offering Factory Reset (wipes the registry) or Soft Reset/Software Update.' },
+  { icon: icon('<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 8l9 5 9-5"/>'), label: 'Clear cache', keys: 'Home ×5, Up, Rev ×2, Fwd ×2', description: 'Clears temporary system caches and forces a hard reboot (not a registry clear); can take up to ~1 minute.' },
+];
 
 // ── message dispatch ─────────────────────────────────────────────────────────
 

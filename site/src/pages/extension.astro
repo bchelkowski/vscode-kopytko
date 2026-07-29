@@ -371,14 +371,15 @@ const kopytkoRcExample = `// .kopytkorc
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div>
           <p class="text-slate-400 leading-relaxed mb-4">
-            A dedicated sidebar container — drag it to the right-hand Secondary Side Bar to keep it next to your code — with two views: <strong class="text-white">Remote Control</strong> (the on-screen remote, a collapsed Device actions grid, and Saved Text entries, stacked in that order) and a <strong class="text-white">RASP automation-script</strong> library compatible with Roku's official Remote Tool.
+            A dedicated sidebar container — drag it to the right-hand Secondary Side Bar to keep it next to your code — with two views: <strong class="text-white">Remote Control</strong> (the on-screen remote, then three expanded-by-default disclosures: Saved Text entries, Device actions, then a Secret screens reference) and a <strong class="text-white">RASP automation-script</strong> library compatible with Roku's official Remote Tool.
           </p>
           <ul class="space-y-2 text-sm">
             {[
               'Remote laid out like a physical Roku remote — click for keypress, hold ≥1 s for keydown/keyup (scrubbing works)',
               'Text field types on the device keyboard — ordered, sequential Lit_ keypresses, UTF-8 safe',
               'Keyboard remote mode — arrows/Enter/Escape drive the device from anywhere; status-bar indicator, Ctrl+K exits',
-              'Device actions — collapsed by default, icon-only pill buttons matching the remote keypad style: screenshot, update check, reboot, install/delete/package/rekey',
+              'Device actions — expanded by default, labeled rows for web-admin actions: screenshot, upload, package, rekey, software update, restart, delete channel',
+              'Secret screens — expanded-by-default reference list (not buttons) for 5 Roku key sequences: enable dev mode, channel info, screenshots & ads, reset & update, clear cache; typed on your physical remote',
               'Saved Text entries: text and credentials types with a Send button per field; passwords in the OS keychain, never in settings or the webview',
               'Custom labels on Saved Text (type doubles as an implicit label) and Scripts, with Filter and Sort-by-label dropdowns',
               'RASP script editor tab — live validation, snippet toolbar, per-step run progress with cancel',
@@ -395,7 +396,7 @@ const kopytkoRcExample = `// .kopytkorc
         </div>
         <Screenshot
           alt="Device Manager sidebar"
-          placeholder="Secondary sidebar with a Roku-style remote control (D-pad, media keys, text field), a collapsed Device actions grid of icon-only pill buttons, saved credentials entries with Send buttons, and a script list with run progress"
+          placeholder="Secondary sidebar with a Roku-style remote control (D-pad, media keys, text field), expanded Saved Text entries with Send buttons, an expanded Device actions list of labeled rows, an expanded Secret screens reference list, and a script list with run progress"
         />
       </div>
     </section>

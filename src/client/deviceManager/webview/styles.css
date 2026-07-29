@@ -5,8 +5,8 @@
    the input fields (entry forms, the Send field). Non-selectability is scoped
    to buttons/labels below instead. */
 body {
-  /* Shared with .remote-btn and .ability-btn (device actions), so both button
-     families move in lockstep if the palette changes. */
+  /* Shared with .remote-btn and .action-icon (device actions), so all
+     Roku-purple elements move in lockstep if the palette changes. */
   --roku-purple: #662d91;
   --roku-purple-hover: #7b3fae;
   --roku-purple-active: #4e2270;
@@ -418,14 +418,17 @@ input[type="checkbox"] { margin: 0; }
   white-space: normal;
 }
 
-/* ── device actions ── */
+/* ── collapsible sections (Saved Text, Device actions) ── */
 
-/* Collapsible disclosure, closed by default — styled like the h3 section
-   headers above but clickable, with a rotating chevron. */
-#device-actions {
+/* Both top-level sections are collapsible disclosures, open by default —
+   collapsed-by-default is what made Device actions undiscoverable in the
+   first place, so neither section repeats that mistake. Styled like the h3
+   section headers elsewhere in this view but clickable, with a rotating
+   chevron. */
+.section-disclosure {
   margin: 10px 0;
 }
-#device-actions > summary {
+.section-disclosure > summary {
   cursor: pointer;
   list-style: none;
   margin: 10px 0 6px;
@@ -435,31 +438,78 @@ input[type="checkbox"] { margin: 0; }
   letter-spacing: 0.04em;
   color: var(--vscode-descriptionForeground);
 }
-#device-actions > summary::-webkit-details-marker { display: none; }
-#device-actions > summary::before { content: '▸'; display: inline-block; margin-right: 4px; }
-#device-actions[open] > summary::before { content: '▾'; }
+.section-disclosure > summary::-webkit-details-marker { display: none; }
+.section-disclosure > summary::before { content: '▸'; display: inline-block; margin-right: 4px; }
+.section-disclosure[open] > summary::before { content: '▾'; }
 
-/* Icon-only pills, same shape/palette as .remote-btn — labels live in the
-   title tooltip, matching how the D-pad buttons work. */
-.ability-group {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  max-width: 280px;
-  margin: 0 auto;
+/* ── device actions ── */
+
+/* One flat, ordered list of labeled rows — no category headings. Replaces
+   the earlier icon-only pill grid, which tooltips alone didn't make
+   discoverable. */
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.ability-btn {
+.device-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  text-align: left;
+}
+.device-action:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
+.device-action:active:not(:disabled) { background: var(--vscode-list-activeSelectionBackground); }
+.device-action.danger { outline: 1px solid var(--vscode-errorForeground); outline-offset: -1px; }
+
+.action-icon {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 0;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   background: var(--roku-purple);
   color: #ffffff;
 }
-.ability-btn:hover:not(:disabled) { background: var(--roku-purple-hover); }
-.ability-btn:active:not(:disabled) { background: var(--roku-purple-active); }
-.ability-btn.danger { outline: 2px solid var(--vscode-errorForeground); outline-offset: 1px; }
-.ability-btn svg { display: block; }
+.action-icon svg { display: block; width: 16px; height: 16px; }
+
+.action-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.action-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+.action-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  white-space: normal;
+}
+
+/* ── secret screens (reference list, not clickable) ── */
+
+/* Same row shape as .device-action but a plain <div>, not a <button> — no
+   hover/active state, no cursor change. These are instructions to type on
+   the physical remote yourself, not actions this extension performs. */
+.secret-screen-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 6px;
+}
+.secret-screen-keys {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  color: var(--vscode-foreground);
+}

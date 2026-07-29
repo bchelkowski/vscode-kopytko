@@ -292,7 +292,8 @@ Roku remote control with everything else `kopytko-roku-device` can do. See
 | Remote-to-script recording — remote presses / sent text append steps to the open editor | ✅ | [device-manager.md](./device-manager.md) |
 | Full RASP runner — press/text/pause/launch/loop/anchors/wait_for_player_state/validate_streaming | ✅ | [device-manager.md](./device-manager.md) |
 | Script library — save/edit/delete/run/cancel + import/export `.rasp` (Roku Remote Tool compatible) | ✅ | [device-manager.md](./device-manager.md) |
-| Device actions section (collapsed by default, icon-only pill buttons matching the remote keypad) — screenshot/update/reboot + web-admin (install/delete/package/rekey) | ✅ | [device-manager.md](./device-manager.md) |
+| Device actions section (expanded by default, labeled rows) — web-admin actions: screenshot/upload/package/rekey/software update/restart/delete channel | ✅ | [device-manager.md](./device-manager.md) |
+| Secret screens section (expanded by default, reference-only list of remote key sequences: enable dev mode/channel info/screenshots & ads/reset & update/clear cache) — not buttons, typed on the physical remote by hand | ✅ | [device-manager.md](./device-manager.md) |
 | `kopytko` custom automation script format (second editor mode) | ⬜ | [device-manager.md](./device-manager.md) |
 
 ## Roku Pay Web Services
