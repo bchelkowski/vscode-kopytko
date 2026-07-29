@@ -33,11 +33,13 @@ VS Code Extension Host
               ├── BrightScriptFoldingRangeProvider
               ├── BrightScriptSelectionRangeProvider
               ├── BrightScriptCallHierarchyProvider
+              ├── BrightScriptTypeHierarchyProvider
               ├── providers/shared/symbolResolver.ts
               ├── KopytkoImportResolver
               ├── KopytkoModuleCatalog
               ├── WorkspaceFunctionIndex
               ├── WorkspaceCallIndex
+              ├── WorkspaceComponentIndex
               └── (parser package catalogs: builtins, components, casing,
                    numericLiterals, globMatcher;
                    extension helpers: brightscript/functionIndex,
@@ -915,4 +917,57 @@ Powered by `buildCallGraph` from `brightscript-parser`, which records all direct
 ### Scope
 
 The workspace scan uses `WorkspaceFunctionIndex.getFiles()`, which covers all `.brs` files in the workspace roots. Cached parse results (`getCachedFileParseResult`) are reused; files not yet parsed are read via `readCachedFileText` and parsed on demand.
+
+---
+
+## Type Hierarchy
+
+**Provider:** `src/server/providers/typeHierarchyProvider.ts`
+**Capability:** `typeHierarchyProvider: true` (plus a dynamic registration for `.xml` — see *Registration*)
+**Trigger:** right-click → "Show Type Hierarchy", in a component `.xml` **or** its `.brs`
+
+Navigates SceneGraph `extends` chains. `WorkspaceComponentIndex` (`src/server/utils/workspaceComponentIndex.ts`) parses every `<component name="…" extends="…">` in the search roots into a name → declaration map and a parent → subtypes map, so both directions are lookups rather than scans. The built-in half of the chain comes from the `SG_NODES` catalog.
+
+### Behaviour
+
+| Request | What it returns |
+|---|---|
+| `textDocument/prepareTypeHierarchy` | In `.xml`: the parent named by the `extends` attribute under the cursor, the component named by a child element tag, or — anywhere else in the file — the component the file declares. In `.brs`: the component or built-in node whose name is under the cursor, otherwise the component(s) whose XML pulls the file in via `<script>`. |
+| `typeHierarchy/supertypes` | The direct parent — VS Code expands the chain one level at a time. Workspace components resolve from the index; anything else resolves against the built-in catalog. A self-referential `extends` returns nothing. |
+| `typeHierarchy/subtypes` | Workspace components that extend the item (sorted by name), followed by the built-in nodes that extend it. |
+
+Workspace declarations win over built-ins on a name clash, so a project component named `Button` shadows the built-in `Button` in the hierarchy.
+
+### Scope
+
+Built-in nodes have no file of their own. Their items are *anchored* to whatever referenced them — the `extends="Group"` attribute of the component below, or the anchor of the item they were expanded from — so clicking a built-in always opens real text instead of failing on a synthetic URI. They are shown with `SymbolKind.Interface` and the detail `built-in SceneGraph node`; workspace components use `SymbolKind.Class` and `extends <Parent>`.
+
+The index is built from `buildSearchRoots()` rather than the workspace folders alone, so components inside installed Kopytko packages are included, and it is kept current by `CacheInvalidationService` on any watched `.xml` change. Roots that contain one another are collapsed first — `buildSearchRoots()` returns both `<ws>` and `<ws>/<sourceDir>` by design, and walking a subtree twice costs a directory-listing pass per duplicate.
+
+### Registration
+
+XML reaches this provider through a dynamic registration scoped to type hierarchy alone (`registerXmlTypeHierarchy` in `server.ts`). XML is deliberately **not** in the client's `documentSelector`: that would advertise every capability for XML, and the formatting capability in particular would shadow VS Code's built-in XML formatter. The trade-off is that XML documents are never synced to the server, so their text is read from `readCachedFileText`; unsaved XML edits are invisible, which the "anywhere else → the component this file declares" fallback keeps harmless.
+
+---
+
+## Duplicate Component Names
+
+**Rule:** `component/duplicate-name` (default Warning, `kopytko.lint.rules.component/duplicate-name`)
+**Check:** `kopytko-linter` — `src/analysis/duplicateComponents.ts`
+**Editor adapter:** `src/server/services/componentDiagnostics.ts`
+
+A SceneGraph component name is global to the channel — `CreateObject("roSGNode", "Card")` and `<Card />` resolve by name alone, with no notion of a declaring file — so two XML files declaring `name="Card"` means one silently overrides the other depending on load order. Every per-file lookup (`findComponentXml`, the import resolver) is a first-match search that stops at the first file it finds, so nothing that resolves *one* name can see the collision.
+
+The check is **project-wide, not a per-file rule**, and it lives in the linter so both entry points share it:
+
+| | Declarations come from | Runs |
+|---|---|---|
+| CLI (`kopytko-lint`) | the project walk in `projectIndexer.ts` | once per `lintProject`, after the per-file pass — set the rule to `error` in `.kopytkolintrc` to make `--check` fail the build, which it does for errors only |
+| Editor | `WorkspaceComponentIndex` | after the initial index build, any watched `.xml` change, and any configuration change |
+
+`ComponentDiagnosticsService` is only an adapter: it maps index entries into `ComponentDeclaration[]`, calls the linter's `duplicateComponentDiagnostics`, and converts the result with the shared `toLspDiagnostic`. Grouping, message text, and severity all come from the package, so the editor and CI cannot disagree.
+
+Diagnostics land on **both** declarations, ranged over the `name` attribute value. XML files are not synced documents, but `sendDiagnostics` does not require one: the warnings appear in the Problems panel immediately and become squiggles when the file is opened. Stale entries are cleared by republishing an empty list for URIs that are no longer duplicated.
+
+**Packages and excluded paths.** A clash with a component from an installed Kopytko package is reported on the project file only — a warning inside `node_modules` is not actionable. Build pipelines that copy `app/` into an output directory would otherwise produce a duplicate for every component in the project, so the check honours `kopytko.lint.readOnlyPaths` (falling back to `kopytko.readOnlyPaths`; `readOnlyPaths` in `.kopytkolintrc` for the CLI) and filters excluded files out *before* counting — a name left with a single non-excluded declaration is not reported at all. Add `**/out/**`, or whatever your staging directory is.
 

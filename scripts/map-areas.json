@@ -63,10 +63,10 @@
   "src/server": "LSP server entry and handler registration.",
   "src/server/brightscript": "Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config.",
   "src/server/kopytko": "Kopytko-specific server logic: @import resolution, module catalog, unit-test framework support.",
-  "src/server/providers": "The 16 LSP feature providers (completion, hover, definition, rename, semantic tokens, ...).",
+  "src/server/providers": "The LSP feature providers (completion, hover, definition, rename, semantic tokens, ...).",
   "src/server/providers/completion": "Completion sub-builders split by context: members, imports, tests.",
   "src/server/providers/shared": "Symbol resolution shared by definition, hover, references, and rename.",
-  "src/server/services": "Cross-cutting server services; currently cache invalidation on watched-file changes.",
+  "src/server/services": "Cross-cutting server services: cache invalidation on watched-file changes, workspace-level component diagnostics.",
   "src/server/utils": "Server performance layer: document/parse caches, workspace indexes, stubbable fs wrapper.",
 
   "packages/brightscript-parser/src": "Lexer, CST, typed AST, and diagnostics — the single source of truth for per-file structural facts.",

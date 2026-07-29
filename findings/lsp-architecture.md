@@ -21,6 +21,38 @@
 4. Add tests in `test/providers/<name>Provider.test.ts`
 5. Update `docs/features.md` (mark ✅) and `docs/language-server.md`
 
+### ⛔ Never add `.xml` to the client's `documentSelector`
+
+`src/client/activation/languageServer.ts` selects `.brs` + `.kopytkorc` only, and that is load-bearing.
+The selector is per-client, not per-capability: adding XML to it advertises **every** capability for
+XML files. `documentFormattingProvider` is the dangerous one — our formatter returns nothing for XML
+(`getBrsDocument` rejects it), but VS Code would still offer it as an XML formatter and can shadow the
+built-in one. Semantic tokens and document symbols have the same shape of problem.
+
+When a feature genuinely needs XML (type hierarchy does — SceneGraph `extends` lives in XML), register
+that **one** capability dynamically instead, as `registerXmlTypeHierarchy()` in `server.ts` does:
+
+```ts
+connection.client.register(TypeHierarchyPrepareRequest.type, {
+  documentSelector: [{ scheme: 'file', language: 'xml', pattern: '**/*.xml' }],
+});
+```
+
+Two things to know before copying this:
+
+- **The registration type is the *request* type** (`TypeHierarchyPrepareRequest.type`), not a
+  `…RegistrationType` — no such export exists in `vscode-languageserver` v10. `TypeHierarchyFeature`
+  in `vscode-languageclient` registers under `TypeHierarchyPrepareRequest.type`, so anything else is
+  silently ignored. Gate the call on
+  `params.capabilities.textDocument?.typeHierarchy?.dynamicRegistration`.
+- **The document is not synced.** The client only sends `didOpen`/`didChange` for documents matching
+  its own `documentSelector`, and dynamic server-side registration does not change that. So the
+  handler must not use `services.getBrsDocument` — it gets `documents.get(uri)` (usually `undefined`
+  for XML) and falls back to `readCachedFileText`. That text is disk state: unsaved XML edits are
+  invisible, and a position can point at stale text. `typeHierarchyProvider.prepare` absorbs this by
+  ending with a position-independent fallback ("the component this file declares") instead of
+  returning nothing.
+
 ---
 
 ## Formatter: adding a new option
@@ -140,6 +172,72 @@ one-interface fix.
 
 ---
 
+## Workspace component index
+
+`src/server/utils/workspaceComponentIndex.ts` maps SceneGraph component name → declaration and parent
+→ subtypes, for type hierarchy. Two things it does differently from `WorkspaceCallIndex`, both
+deliberate:
+
+- **Built from `buildSearchRoots()`, not `getWorkspaceFolders()`.** `_walkDir` skips `node_modules`
+  (as every workspace walk here does), so components shipped by installed Kopytko packages would be
+  invisible — `extends="KopytkoSomething"` would resolve to nothing. Passing the package base dirs in
+  as explicit roots is what makes them reachable: the skip only prevents *descending into*
+  `node_modules`, it does not reject a root that already lives there.
+- **The name map is rebuilt from the file map on every change**, rather than patched in place. A
+  renamed component otherwise lingers under its old name forever, and the reverse (subtypes) map
+  would keep an entry pointing at a component that no longer extends it.
+- **Roots are de-duplicated before walking** (`dedupeRoots`). `buildSearchRoots()` returns both
+  `<ws>` and `<ws>/<sourceDir>`, so without this the source tree is traversed twice. File *reads*
+  dedupe through `readCachedFileText`; `readdirTyped` calls do not — `_walkDir` calls it directly.
+
+### Duplicate component names — the check lives in the linter
+
+`component/duplicate-name` reports the same `<component name>` declared by two XML files. It cannot
+fall out of any existing lookup — `findComponentXml` and the import resolver are first-match searches
+that stop at the first file they find, which is precisely why a duplicate is invisible and why the bug
+it causes (a component silently overridden by load order) is so hard to trace from the symptom.
+
+**It is not a per-file rule, and it is not extension-only.** The canonical implementation is
+`kopytko-linter`'s `src/analysis/duplicateComponents.ts`, a pure function over
+`ComponentDeclaration[]`. `runLint` calls it once per project after the per-file pass (so
+`kopytko-lint` fails CI on it); `services/componentDiagnostics.ts` calls it against
+`WorkspaceComponentIndex` (so the editor shows it on save). A rule cannot do this — `RuleContext` is
+one `.brs` file — which is why it is a project-wide pass in `runLint` rather than an entry in
+`ALL_RULE_GROUPS`.
+
+⚠️ `src/server/brightscript/duplicateComponents.ts` is a **temporary byte-for-byte mirror** of the
+linter module. The extension consumes `kopytko-linter` as a published tarball, so the new exports do
+not exist in `node_modules` until a release. Once the dependency is bumped past 1.6.9, delete the
+mirror and point `componentDiagnostics.ts` at `'kopytko-linter'` — the signatures are identical.
+
+Three things this got wrong before it worked:
+
+- **`dedupeRoots` must model reachability, not string prefixes.** Kopytko package base dirs are
+  `<ws>/node_modules/<pkg>/<dir>` — a sub-path of the workspace root, but one `_walkDir` will never
+  descend into. Collapsing them as "already covered" silently un-indexes every package component.
+  `walkReaches()` re-applies the walker's own skip rules to the relative segments. A test that
+  asserted a package component was still found is what caught it.
+- **`updateFile` needs the same scope test as `build`.** The client watches `**/*.xml` across the
+  whole workspace, so the watcher offers paths the build deliberately skipped (`node_modules` outside
+  a package base dir, dot-directories). Indexing them on write makes the index depend on what changed
+  since startup — a duplicate-name warning that vanishes on restart. `_isInScope` replays the stored
+  roots through `walkReaches`. Deletions stay ungated: dropping an entry is always safe.
+- **The rule defaults to `warning`, and `kopytko-lint --check` exits non-zero on errors only.** So it
+  does not fail CI out of the box — that is deliberate (a mis-scoped build-output dir would flag every
+  component in the project), but it means "it runs in CI" is only true for reporting/SARIF unless the
+  project raises it to `error`.
+
+- **Filter excluded paths *before* counting, not after.** A build pipeline that copies `app/` into a
+  staging dir turns every component in the project into a "duplicate". The check honours
+  `kopytko.lint.readOnlyPaths`, and a name whose only remaining declaration is non-excluded must not
+  be reported at all. Filtering after the `length > 1` test would still warn on the surviving file.
+- **Published diagnostics are sticky per URI.** `sendDiagnostics` replaces the list for a URI, so a
+  resolved duplicate needs an explicit empty publish. The service tracks `_publishedUris` for exactly
+  this. Note this is also the one place the server publishes diagnostics for a file that is **not** a
+  synced document — which works, and is what makes reporting on XML possible at all.
+
+---
+
 ---
 
 ## Documented counts are machine-checked
@@ -161,7 +259,7 @@ is verified by `scripts/check-doc-claims.mjs`, run from `npm run lint` and CI.
 | Area | Key files |
 |---|---|
 | LSP entry | `src/server/server.ts`, `src/server/registerHandlers.ts` |
-| Providers | `src/server/providers/` (16 providers) |
+| Providers | `src/server/providers/` (17 providers) |
 | Document cache | `src/server/utils/documentCache.ts` |
 | Cache invalidation | `src/server/services/cacheInvalidation.ts` |
 | Import resolution | `src/server/kopytko/importResolver.ts` |

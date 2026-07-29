@@ -305,6 +305,18 @@
           "default": "warning",
           "description": "Warn when a function parameter is missing an 'as Type' annotation."
         },
+        "kopytko.lint.rules.component/duplicate-name": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "markdownDescription": "Warn when two XML files declare the same SceneGraph component name. Component names are global to the channel, so the declaration that loads last silently wins.\n\nBuild pipelines that copy the source tree into an output directory will report every component as a duplicate — exclude the copy with `kopytko.lint.readOnlyPaths` (e.g. `**/out/**`)."
+        },
         "kopytko.casing.builtin": {
           "type": "string",
           "enum": [

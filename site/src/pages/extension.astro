@@ -164,13 +164,14 @@ const kopytkoRcExample = `// .kopytkorc
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div>
           <p class="text-slate-400 leading-relaxed mb-4">
-            Navigate your codebase with precision — from go-to-definition on @import paths to workspace-wide call hierarchy. All navigation respects the @import graph and XML sibling relationships.
+            Navigate your codebase with precision — from go-to-definition on @import paths to workspace-wide call hierarchy and SceneGraph type hierarchy. All navigation respects the @import graph and XML sibling relationships.
           </p>
           <div class="grid grid-cols-2 gap-3">
             {[
               { label: 'Go-to-Definition', desc: '@import paths, user functions, /source/ functions' },
               { label: 'Find All References', desc: 'Workspace-wide with Shift+F12' },
               { label: 'Call Hierarchy', desc: 'Incoming and outgoing calls (Shift+Alt+H)' },
+              { label: 'Type Hierarchy', desc: 'SceneGraph extends chains, super and sub components' },
               { label: 'Outline / Symbols', desc: 'Functions, subs, and AA methods with params' },
               { label: 'Workspace Symbols', desc: 'Fuzzy search across all .brs files (Ctrl+T)' },
               { label: 'Document Links', desc: 'Clickable @import paths' },
@@ -213,7 +214,7 @@ const kopytkoRcExample = `// .kopytkorc
         </div>
         <div>
           <p class="text-slate-400 leading-relaxed mb-4">
-            Real-time diagnostics powered by the <a href={`${base}/linter`} class="prose-link">kopytko-linter</a> engine. 31 rules reported as you type, with code actions for auto-fixable issues.
+            Real-time diagnostics powered by the <a href={`${base}/linter`} class="prose-link">kopytko-linter</a> engine. 32 rules reported as you type, with code actions for auto-fixable issues.
           </p>
           <div class="space-y-2 text-sm">
             {[
@@ -234,6 +235,9 @@ const kopytkoRcExample = `// .kopytkorc
             ))}
             <p class="text-xs text-slate-500 pt-2">… and 19 more rules. <a href={`${base}/linter`} class="prose-link">Full rule list →</a></p>
           </div>
+          <p class="text-slate-400 leading-relaxed mt-5 text-sm">
+            One of them is project-wide rather than per-file: <code class="text-violet-300">component/duplicate-name</code> warns on both XML files when two of them declare the same SceneGraph component. Component names are global to the channel, so the second declaration silently overrides the first. The editor reports it as you save; <code class="text-violet-300">kopytko-lint</code> reports it in CI.
+          </p>
         </div>
       </div>
     </section>

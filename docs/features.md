@@ -54,10 +54,11 @@ Canonical list of extension and package features. Each row links to its topic do
 | Folding ranges — CST-driven folds for functions, `if`/`for`/`while`/`try` blocks, and `@import` groups | ✅ | [language-server.md](./language-server.md) |
 | Selection range — smart expand/shrink selection along AST boundaries (`Shift+Alt+→` / `Shift+Alt+←`) | ✅ | [language-server.md](./language-server.md) |
 | Call hierarchy — incoming and outgoing calls for any function (`Shift+Alt+H` / right-click → "Show Call Hierarchy") | ✅ | [language-server.md](./language-server.md) |
+| Type hierarchy — SceneGraph `extends` chains, super- and sub-components, from a component's `.xml` or its `.brs` (right-click → "Show Type Hierarchy") | ✅ | [language-server.md](./language-server.md) |
 
 ## Diagnostics
 
-Backed by the standalone linter's 31 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
+Backed by the standalone linter's 32 rules (shared by the editor and CI). Full rule reference: [kopytko-linter README](../packages/linter/README.md).
 
 | Group | Rules | Status | Doc |
 |---|---|---|---|
@@ -70,6 +71,7 @@ Backed by the standalone linter's 31 rules (shared by the editor and CI). Full r
 | Callbacks | undefined-observer-callback · undefined-event-callback | ✅ | [language-server.md](./language-server.md) |
 | Test structure | missing-return-ts · missing-mock-annotation | ✅ | [language-server.md](./language-server.md) |
 | m.top fields | **undefined-field** (extension mode only — warns on `m.top.<field>` not in XML interface or ancestor chain) | ✅ | [language-server.md](./language-server.md) |
+| Components | **duplicate-name** (project-wide, not per-file — the same `<component name>` declared by two XML files; reported on both, in the editor and in CI) | ✅ | [language-server.md](./language-server.md) |
 | Inline suppression | `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` comments; glob patterns supported; omit rule to suppress all | ✅ | — |
 
 **Scope-resolution details that keep diagnostics accurate:**
@@ -113,7 +115,7 @@ Multi-pass engine (28 CST passes + text passes, 49 configurable options), shared
 
 | Feature | Status | Doc |
 |---|---|---|
-| `kopytko-linter` package — all 31 rules, shared with the editor | ✅ | [kopytko-linter README](../packages/linter/README.md) |
+| `kopytko-linter` package — all 32 rules, shared with the editor | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 | `kopytko-lint --check` CLI for CI pipelines | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 | Per-rule severity via `kopytko-linter.json` or `.vscode/settings.json` | ✅ | [kopytko-linter README](../packages/linter/README.md) |
 | Output formats: text, JSON, SARIF (GitHub Code Scanning) | ✅ | [kopytko-linter README](../packages/linter/README.md) |
@@ -397,13 +399,11 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 | **Test Explorer integration** | Discover Kopytko `it()`/`test()`/`itEach()` cases in VS Code's Testing panel; run on the active device; show pass/fail inline. | Reuses existing test-scope detection; needs a device test runner bridge. |
 | **CodeLens** | Reference counts and a "Run test" lens above test cases; "N callers" above functions. | Reference counts come from the workspace index; call counts from the call graph. |
 | **Rename file → update `@import`s** | Auto-rewrite affected `@import`/`@mock` paths when a `.brs`/`.xml` is moved or renamed. | Import resolver already maps both directions. |
-| **Type hierarchy** | Navigate SceneGraph `extends` chains (super/sub components). | XML `extends` parsing already exists. |
 | **Workspace audit command** | One-shot report of unused exports, unresolved imports, and dead functions across the project. | Call graph + import resolver + workspace index. |
 
 ### C. Roku device & debugging roadmap
 
 | Feature | Notes |
 |---|---|
-| Device info webview panel | Deliberately dropped from the Device actions section — not needed for a remote-control-first workflow. Still reachable via the [`kopytko-roku` CLI](./roku-device-cli.md) or a raw ECP `device-info` request. |
 | Roku log streaming panel | Always-on syslog channel, independent of debug sessions. |
 | Debugger enhancements | Source maps, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |

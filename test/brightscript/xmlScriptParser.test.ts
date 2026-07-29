@@ -6,6 +6,7 @@ import {
   getXmlSiblingPaths,
   findComponentXml,
   clearComponentXmlCache,
+  parseComponentTag,
 } from '../../src/server/brightscript/xmlScriptParser';
 
 describe('xmlScriptParser', () => {
@@ -97,6 +98,81 @@ describe('xmlScriptParser', () => {
     it('returns empty array when no parent XML found', () => {
       readdirStub.returns([]);
       expect(getXmlSiblingPaths('/dir/file.brs', ['/project'], 'app')).to.deep.equal([]);
+    });
+  });
+
+  // ── parseComponentTag ─────────────────────────────────────────────────────
+
+  describe('parseComponentTag', () => {
+    it('returns the name and extends values with their positions', () => {
+      const xml = '<component name="MyButton" extends="BaseButton">\n</component>';
+
+      expect(parseComponentTag(xml)).to.deep.equal({
+        name: 'MyButton',
+        tagLine: 0,
+        nameLine: 0,
+        nameColumn: 17,
+        extendsName: 'BaseButton',
+        extendsLine: 0,
+        extendsColumn: 36,
+      });
+    });
+
+    it('reports positions relative to the line the attribute is on', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="utf-8" ?>',
+        '<component',
+        '    name="Card"',
+        '    extends="Group">',
+        '</component>',
+      ].join('\n');
+
+      const tag = parseComponentTag(xml);
+
+      expect(tag?.tagLine).to.equal(1);
+      expect(tag?.nameLine).to.equal(2);
+      expect(tag?.nameColumn).to.equal(10);
+      expect(tag?.extendsLine).to.equal(3);
+      expect(tag?.extendsColumn).to.equal(13);
+    });
+
+    it('handles single-quoted attribute values', () => {
+      const tag = parseComponentTag("<component name='Card' extends='Group' />");
+
+      expect(tag?.name).to.equal('Card');
+      expect(tag?.extendsName).to.equal('Group');
+      expect(tag?.extendsColumn).to.equal(32);
+    });
+
+    it('omits extends fields when the component has no parent', () => {
+      const tag = parseComponentTag('<component name="Root" />');
+
+      expect(tag?.name).to.equal('Root');
+      expect(tag?.extendsName).to.be.undefined;
+      expect(tag?.extendsLine).to.be.undefined;
+    });
+
+    it('returns undefined when there is no component tag', () => {
+      expect(parseComponentTag('<settings><value>1</value></settings>')).to.be.undefined;
+    });
+
+    it('returns undefined when the component tag has no name', () => {
+      expect(parseComponentTag('<component extends="Group" />')).to.be.undefined;
+    });
+
+    it('ignores name attributes outside the component tag', () => {
+      const xml = [
+        '<component name="Card" extends="Group">',
+        '  <interface>',
+        '    <function name="refresh" />',
+        '  </interface>',
+        '</component>',
+      ].join('\n');
+
+      const tag = parseComponentTag(xml);
+
+      expect(tag?.name).to.equal('Card');
+      expect(tag?.nameLine).to.equal(0);
     });
   });
 });

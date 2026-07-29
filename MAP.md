@@ -43,7 +43,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | **packages/linter** | | |
 | `packages/linter/bin` | 1 | kopytko-lint CLI entry. |
 | `packages/linter/src` | 10 | Linter core: rule running, config, suppression, fixing, project indexing. |
-| `packages/linter/src/analysis` | 10 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
+| `packages/linter/src/analysis` | 11 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
 | `packages/linter/src/catalog` | 3 | Linter-side catalogs for built-ins, components, and test globals. |
 | `packages/linter/src/output` | 3 | Report formatters: text, JSON, SARIF. |
 | `packages/linter/src/rules` | 3 | Rule registry split into syntax-level and AST-level rule sets. |
@@ -112,13 +112,13 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | `src/client/rokuPay/views` | 1 | Roku Pay view provider. |
 | `src/client/rokuPay/webview` | 2 | Roku Pay webview: request builder and response viewer. |
 | `src/server` | 2 | LSP server entry and handler registration. |
-| `src/server/brightscript` | 8 | Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config. |
+| `src/server/brightscript` | 9 | Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config. |
 | `src/server/kopytko` | 3 | Kopytko-specific server logic: @import resolution, module catalog, unit-test framework support. |
-| `src/server/providers` | 16 | The 16 LSP feature providers (completion, hover, definition, rename, semantic tokens, ...). |
+| `src/server/providers` | 17 | The LSP feature providers (completion, hover, definition, rename, semantic tokens, ...). |
 | `src/server/providers/completion` | 5 | Completion sub-builders split by context: members, imports, tests. |
-| `src/server/providers/shared` | 1 | Symbol resolution shared by definition, hover, references, and rename. |
-| `src/server/services` | 1 | Cross-cutting server services; currently cache invalidation on watched-file changes. |
-| `src/server/utils` | 8 | Server performance layer: document/parse caches, workspace indexes, stubbable fs wrapper. |
+| `src/server/providers/shared` | 2 | Symbol resolution shared by definition, hover, references, and rename. |
+| `src/server/services` | 2 | Cross-cutting server services: cache invalidation on watched-file changes, workspace-level component diagnostics. |
+| `src/server/utils` | 9 | Server performance layer: document/parse caches, workspace indexes, stubbable fs wrapper. |
 
 ## Package exports
 
@@ -159,7 +159,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | Group | Symbols |
 |---|---|
 | Exports | `lintFile`, `lintProject`, `lintProjectAsync`, `createFileContext`, `LinterConfig`, `DEFAULT_LINTER_CONFIG`, `DEFAULT_RULE_CONFIG`, `parseLinterConfig`, `resolveConfig`, `applyFixes`, `formatJson`, `formatSarif` |
-| Re-export from brightscript-parser (canonical source) | `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `matchesGlob`, `findMatchingGlob`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE`, `findComponent`, `escapeRegex`, `parseImports`, `ImportResolver`, `parseFunctionDefs`, `parseInnerMethodDefs`, `isTestFile`, `isMockFile`, `isTestRelatedFile`, `getTestBaseName`, `findTestSiblings`, `stripStringLiterals` |
+| Re-export from brightscript-parser (canonical source) | `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `matchesGlob`, `findMatchingGlob`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE`, `findComponent`, `escapeRegex`, `parseImports`, `ImportResolver`, `parseFunctionDefs`, `parseInnerMethodDefs`, `isTestFile`, `isMockFile`, `isTestRelatedFile`, `getTestBaseName`, `findTestSiblings`, `stripStringLiterals`, `DUPLICATE_COMPONENT_RULE`, `findDuplicateComponents`, `duplicateComponentMessage`, `duplicateComponentDiagnostics`, `isProjectFile`, `parseComponentNamePosition` |
 
 ### `kopytko-roku-device` — `packages/roku-device/src/index.ts`
 

@@ -1,4 +1,4 @@
-import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver/node';
+import { Diagnostic } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { matchesGlob } from 'kopytko-brightscript-parser';
@@ -16,11 +16,11 @@ import {
   DEFAULT_LINTER_CONFIG,
   type LintContext,
   type LintDiagnostic,
-  type LintSeverity,
   type LinterConfig,
   type KopytkoImport,
   type RuleConfig,
 } from 'kopytko-linter';
+import { toLspDiagnostic } from './shared/lintDiagnostic';
 import { collectFunctionsFromExtends } from '../brightscript/functionIndex';
 import { collectMtopItems } from '../brightscript/mtopResolver';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
@@ -48,13 +48,6 @@ export interface GeneratedModuleConfig {
   path: string;
   functions: string[];
 }
-
-const SEVERITY_MAP: Record<LintSeverity, typeof DiagnosticSeverity[keyof typeof DiagnosticSeverity]> = {
-  error: DiagnosticSeverity.Error,
-  warning: DiagnosticSeverity.Warning,
-  info: DiagnosticSeverity.Information,
-  hint: DiagnosticSeverity.Hint,
-};
 
 /**
  * Thin LSP adapter wrapping the standalone kopytko-linter engine.
@@ -231,19 +224,6 @@ export class BrightScriptDiagnosticsProvider {
     const lint: LintFileWithPreParse = lintFile;
     const lintDiagnostics = lint(documentPath, content, context, config, cachedLines, getCachedParseResult(document));
 
-    return lintDiagnostics.map((d) => this.toLspDiagnostic(d));
-  }
-
-  private toLspDiagnostic(d: LintDiagnostic): Diagnostic {
-    return {
-      severity: SEVERITY_MAP[d.severity] ?? DiagnosticSeverity.Warning,
-      range: {
-        start: { line: d.line, character: d.column },
-        end: { line: d.endLine ?? d.line, character: d.endColumn ?? Number.MAX_SAFE_INTEGER },
-      },
-      message: d.message,
-      source: 'kopytko',
-      code: d.code,
-    };
+    return lintDiagnostics.map(toLspDiagnostic);
   }
 }

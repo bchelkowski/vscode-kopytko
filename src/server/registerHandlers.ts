@@ -43,6 +43,7 @@ import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensPr
 import { BrightScriptFoldingRangeProvider } from './providers/foldingRangeProvider';
 import { BrightScriptSelectionRangeProvider } from './providers/selectionRangeProvider';
 import { BrightScriptCallHierarchyProvider } from './providers/callHierarchyProvider';
+import { BrightScriptTypeHierarchyProvider } from './providers/typeHierarchyProvider';
 import { BrightScriptSignatureHelpProvider } from './providers/signatureHelpProvider';
 import { BrightScriptWorkspaceSymbolProvider } from './providers/workspaceSymbolProvider';
 import { getCachedAllFunctions, getCachedLines } from './utils/documentCache';
@@ -63,6 +64,7 @@ export interface ServerProviders {
   foldingRangeProvider: BrightScriptFoldingRangeProvider;
   selectionRangeProvider: BrightScriptSelectionRangeProvider;
   callHierarchyProvider: BrightScriptCallHierarchyProvider;
+  typeHierarchyProvider: BrightScriptTypeHierarchyProvider;
 }
 
 export interface HandlerState {
@@ -208,5 +210,20 @@ export function registerHandlers(
 
   connection.languages.callHierarchy.onOutgoingCalls((params) =>
     providers.callHierarchyProvider.outgoingCalls(params.item)
+  );
+
+  connection.languages.typeHierarchy.onPrepare((params) => {
+    // Not `getBrsDocument` — this handler also serves .xml, which is registered
+    // dynamically and never synced, so the document is often absent by design.
+    const document = documents.get(params.textDocument.uri);
+    return providers.typeHierarchyProvider.prepare(params.textDocument.uri, params.position, document);
+  });
+
+  connection.languages.typeHierarchy.onSupertypes((params) =>
+    providers.typeHierarchyProvider.supertypes(params.item)
+  );
+
+  connection.languages.typeHierarchy.onSubtypes((params) =>
+    providers.typeHierarchyProvider.subtypes(params.item)
   );
 }

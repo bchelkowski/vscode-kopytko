@@ -381,6 +381,25 @@ end sub`,
   },
 ];
 
+const componentRules: Rule[] = [
+  {
+    id: 'component/duplicate-name',
+    severity: 'warning',
+    description: 'Two XML files declare the same SceneGraph component name. Component names are global to the channel, so whichever declaration loads last silently wins.',
+    note: 'A project-wide check rather than a per-file rule: it runs once per lint over every component XML in the project and its installed Kopytko packages, and reports on both declarations. A clash with a package component is reported on your file only. Build pipelines that copy the source tree into an output directory should exclude the copy via readOnlyPaths.',
+    bad: `<!-- components/Card.xml -->
+<component name="Card" extends="Group" />
+
+<!-- components/catalog/Card.xml -->
+<component name="Card" extends="Group" />`,
+    good: `<!-- components/Card.xml -->
+<component name="Card" extends="Group" />
+
+<!-- components/catalog/CatalogCard.xml -->
+<component name="CatalogCard" extends="Group" />`,
+  },
+];
+
 const suppressionExample = `' Suppress a specific rule on the next line
 ' kopytko-disable-next-line identifier/undefined-function
 result = dynamicallyRegisteredFunction()
@@ -448,7 +467,7 @@ const scriptExample = `{
       </div>
       <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">BrightScript Linter</h1>
       <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
-        Static analysis for BrightScript with 31 rules covering imports, undefined identifiers, type annotations, syntax errors, and callback wiring. Outputs text, JSON, or SARIF for GitHub Code Scanning.
+        Static analysis for BrightScript with 32 rules covering imports, undefined identifiers, type annotations, syntax errors, and callback wiring. Outputs text, JSON, or SARIF for GitHub Code Scanning.
       </p>
       <div class="flex flex-wrap gap-3 mt-6">
         <a href="https://www.npmjs.com/package/kopytko-linter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
@@ -506,7 +525,7 @@ const scriptExample = `{
     <!-- Rules -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-2">Rules</h2>
-      <p class="text-slate-400 text-sm mb-8">31 rules across 7 categories. Severity levels: <span class="badge-error text-xs px-1.5 py-0.5 rounded">error</span> <span class="badge-warning text-xs px-1.5 py-0.5 rounded">warning</span> <span class="badge-info text-xs px-1.5 py-0.5 rounded">info</span> <span class="badge-hint text-xs px-1.5 py-0.5 rounded">hint</span> <span class="badge-off text-xs px-1.5 py-0.5 rounded">off by default</span></p>
+      <p class="text-slate-400 text-sm mb-8">32 rules across 8 categories. Severity levels: <span class="badge-error text-xs px-1.5 py-0.5 rounded">error</span> <span class="badge-warning text-xs px-1.5 py-0.5 rounded">warning</span> <span class="badge-info text-xs px-1.5 py-0.5 rounded">info</span> <span class="badge-hint text-xs px-1.5 py-0.5 rounded">hint</span> <span class="badge-off text-xs px-1.5 py-0.5 rounded">off by default</span></p>
 
       <!-- Quick nav -->
       <div class="flex flex-wrap gap-2 mb-10 p-4 bg-[#0f1923] border border-[#1e2d4a] rounded-xl">
@@ -588,6 +607,17 @@ const scriptExample = `{
         </h3>
         <div class="space-y-3">
           {testRules.map(rule => <RuleCard {...rule} />)}
+        </div>
+      </div>
+
+      <!-- Component rules -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-cyan-500 rounded-full"></span>
+          Component rules
+        </h3>
+        <div class="space-y-3">
+          {componentRules.map(rule => <RuleCard {...rule} />)}
         </div>
       </div>
 

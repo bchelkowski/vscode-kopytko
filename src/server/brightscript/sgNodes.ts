@@ -1677,6 +1677,46 @@ export function findSgNode(name: string): SgNodeDefinition | undefined {
   return SG_NODES[name];
 }
 
+/** Lowercased node name → catalog entry. Built once; the catalog is static. */
+let _sgNodesByLowerName: Map<string, SgNodeDefinition> | undefined;
+/** Lowercased parent name → its direct built-in subtypes. Built once. */
+let _sgNodeChildren: Map<string, SgNodeDefinition[]> | undefined;
+
+/**
+ * Case-insensitive variant of `findSgNode`. SceneGraph `extends` attributes are
+ * written by hand, so `extends="group"` must resolve as readily as `"Group"`.
+ */
+export function findSgNodeInsensitive(name: string): SgNodeDefinition | undefined {
+  if (!_sgNodesByLowerName) {
+    _sgNodesByLowerName = new Map();
+    for (const def of Object.values(SG_NODES)) {
+      _sgNodesByLowerName.set(def.name.toLowerCase(), def);
+    }
+  }
+  return _sgNodesByLowerName.get(name.toLowerCase());
+}
+
+/** Returns the built-in nodes that directly extend `name`, sorted by name. */
+export function getSgNodeChildren(name: string): SgNodeDefinition[] {
+  if (!_sgNodeChildren) {
+    _sgNodeChildren = new Map();
+    for (const def of Object.values(SG_NODES)) {
+      if (!def.extends) continue;
+      const key = def.extends.toLowerCase();
+      const group = _sgNodeChildren.get(key);
+      if (group) {
+        group.push(def);
+      } else {
+        _sgNodeChildren.set(key, [def]);
+      }
+    }
+    for (const group of _sgNodeChildren.values()) {
+      group.sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }
+  return _sgNodeChildren.get(name.toLowerCase()) ?? [];
+}
+
 /** Caches for SG node field/method lookups — catalog is static. */
 const _sgFieldsCache = new Map<string, SgNodeField[]>();
 const _sgMethodsCache = new Map<string, SgNodeMethod[]>();

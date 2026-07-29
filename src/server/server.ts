@@ -10,6 +10,7 @@ import {
   Diagnostic,
   TextDocumentChangeEvent,
   DidChangeConfigurationNotification,
+  TypeHierarchyPrepareRequest,
 } from 'vscode-languageserver/node';
 import type { Connection } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -32,6 +33,7 @@ import { BrightScriptSemanticTokensProvider } from './providers/semanticTokensPr
 import { BrightScriptFoldingRangeProvider } from './providers/foldingRangeProvider';
 import { BrightScriptSelectionRangeProvider } from './providers/selectionRangeProvider';
 import { BrightScriptCallHierarchyProvider } from './providers/callHierarchyProvider';
+import { BrightScriptTypeHierarchyProvider } from './providers/typeHierarchyProvider';
 import { CasingConfig, DEFAULT_CASING_CONFIG, CasingOption } from 'kopytko-brightscript-parser';
 import type { RuleConfig } from 'kopytko-linter';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './brightscript/formattingConfig';
@@ -39,14 +41,18 @@ import { GeneratedModuleConfig } from './providers/diagnosticsProvider';
 import { invalidateAllCaches } from './utils/documentCache';
 import { WorkspaceFunctionIndex } from './utils/workspaceFunctionIndex';
 import { WorkspaceCallIndex } from './utils/workspaceCallIndex';
+import { WorkspaceComponentIndex } from './utils/workspaceComponentIndex';
+import { buildSearchRoots } from './utils/workspaceUtils';
 import { findMatchingGlob } from 'kopytko-brightscript-parser';
 import { registerHandlers } from './registerHandlers';
 import { CacheInvalidationService } from './services/cacheInvalidation';
+import { ComponentDiagnosticsService, DUPLICATE_COMPONENT_RULE } from './services/componentDiagnostics';
 
 const connection: Connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments<TextDocument>(TextDocument);
 const workspaceIndex = new WorkspaceFunctionIndex();
 const workspaceCallIndex = new WorkspaceCallIndex();
+const workspaceComponentIndex = new WorkspaceComponentIndex();
 
 let importResolver: KopytkoImportResolver;
 let catalog: KopytkoModuleCatalog;
@@ -66,7 +72,11 @@ let semanticTokensProvider: BrightScriptSemanticTokensProvider;
 let foldingRangeProvider: BrightScriptFoldingRangeProvider;
 let selectionRangeProvider: BrightScriptSelectionRangeProvider;
 let callHierarchyProvider: BrightScriptCallHierarchyProvider;
+let typeHierarchyProvider: BrightScriptTypeHierarchyProvider;
 let cacheInvalidationService: CacheInvalidationService;
+let componentDiagnosticsService: ComponentDiagnosticsService;
+/** XML type hierarchy is registered dynamically — see `registerXmlTypeHierarchy`. */
+let supportsTypeHierarchyDynamicRegistration = false;
 let casingConfig: CasingConfig = { ...DEFAULT_CASING_CONFIG };
 let formattingConfig: FormattingConfig = { ...DEFAULT_FORMATTING_CONFIG };
 let generatedPaths: string[] = [];
@@ -99,13 +109,24 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   foldingRangeProvider = new BrightScriptFoldingRangeProvider();
   selectionRangeProvider = new BrightScriptSelectionRangeProvider();
   callHierarchyProvider = new BrightScriptCallHierarchyProvider(workspaceIndex);
+  typeHierarchyProvider = new BrightScriptTypeHierarchyProvider(workspaceComponentIndex);
+  supportsTypeHierarchyDynamicRegistration =
+    params.capabilities.textDocument?.typeHierarchy?.dynamicRegistration === true;
+  componentDiagnosticsService = new ComponentDiagnosticsService(connection, {
+    index: workspaceComponentIndex,
+    isExcluded: isLintReadOnlyFsPath,
+    workspaceFolders: () => importResolver.getWorkspaceFolders(),
+    severity: () => lintRuleOverrides[DUPLICATE_COMPONENT_RULE] ?? 'warning',
+  });
   cacheInvalidationService = new CacheInvalidationService(connection, {
     importResolver: () => importResolver,
     catalog: () => catalog,
     workspaceIndex,
     workspaceCallIndex,
+    workspaceComponentIndex,
     documents,
     scheduleValidation,
+    refreshComponentDiagnostics: () => componentDiagnosticsService.refresh(),
   });
   cacheInvalidationService.registerWatchedFileHandler();
   registerHandlers(
@@ -127,6 +148,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       foldingRangeProvider,
       selectionRangeProvider,
       callHierarchyProvider,
+      typeHierarchyProvider,
     },
     {
       casingConfig: () => casingConfig,
@@ -171,6 +193,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       foldingRangeProvider: true,
       selectionRangeProvider: true,
       callHierarchyProvider: true,
+      typeHierarchyProvider: true,
     },
     serverInfo: {
       name: 'Kopytko BrightScript Language Server',
@@ -188,9 +211,40 @@ connection.onInitialized(async () => {
   await refreshConfiguration(true);
   workspaceIndex.build(importResolver.getWorkspaceFolders());
   workspaceCallIndex.build(importResolver.getWorkspaceFolders());
+  // Search roots, not workspace folders: component XMLs also live in installed
+  // Kopytko packages, which `_walkDir` would otherwise skip with node_modules.
+  workspaceComponentIndex.build(
+    buildSearchRoots(importResolver, importResolver.getWorkspaceFolders()[0] ?? '')
+  );
+  componentDiagnosticsService.refresh();
+  registerXmlTypeHierarchy();
   // Re-validate all documents that may have been validated before config loaded
   cacheInvalidationService.revalidateOpenDocuments();
 });
+
+/**
+ * Adds `.xml` to the type hierarchy capability only.
+ *
+ * SceneGraph `extends` chains are declared in XML, so the hierarchy has to be
+ * reachable from there — but XML must NOT be added to the client's
+ * documentSelector, which would advertise *every* capability for XML and let
+ * our BrightScript formatter shadow VS Code's built-in XML formatter. A scoped
+ * dynamic registration adds the one capability that makes sense.
+ *
+ * Consequence: XML documents are never synced, so the provider reads their text
+ * from the file cache rather than from a live TextDocument.
+ */
+function registerXmlTypeHierarchy(): void {
+  if (!supportsTypeHierarchyDynamicRegistration) return;
+  connection.client
+    .register(TypeHierarchyPrepareRequest.type, {
+      documentSelector: [{ scheme: 'file', language: 'xml', pattern: '**/*.xml' }],
+    })
+    .catch((err: unknown) => {
+      // Not fatal — the .brs entry point still works.
+      connection.console.warn(`[kopytko] XML type hierarchy registration failed: ${String(err)}`);
+    });
+}
 
 connection.onDidChangeConfiguration(async () => {
   await cacheInvalidationService.handleConfigurationChanged(() => refreshConfiguration(false));
@@ -288,7 +342,11 @@ async function fetchLintRuleOverrides(): Promise<Partial<RuleConfig>> {
   try {
     const cfg = await connection.workspace.getConfiguration('kopytko.lint.rules');
     const overrides: Partial<RuleConfig> = {};
-    for (const rule of ['type/missing-return-type', 'type/missing-param-type'] as const) {
+    for (const rule of [
+      'type/missing-return-type',
+      'type/missing-param-type',
+      DUPLICATE_COMPONENT_RULE,
+    ] as const) {
       const value = cfg?.[rule];
       if (typeof value === 'string' && VALID_RULE_SEVERITIES.has(value)) {
         overrides[rule] = value as RuleConfig[string];
@@ -393,9 +451,14 @@ function isReadOnlyPath(uri: string): boolean {
 
 /** Checks if a document URI matches any lintReadOnlyPaths glob pattern (linter). */
 function isLintReadOnlyPath(uri: string): boolean {
+  return isLintReadOnlyFsPath(URI.parse(uri).fsPath);
+}
+
+/** Path-based variant, for diagnostics about files that are never opened as documents. */
+function isLintReadOnlyFsPath(filePath: string): boolean {
   if (lintReadOnlyPaths.length === 0) return false;
-  const fsPath = URI.parse(uri).fsPath.replace(/\\/g, '/');
-  return lintReadOnlyPaths.some((pattern) => findMatchingGlob(fsPath, [pattern]) !== undefined);
+  const normalized = filePath.replace(/\\/g, '/');
+  return lintReadOnlyPaths.some((pattern) => findMatchingGlob(normalized, [pattern]) !== undefined);
 }
 
 // Wire up

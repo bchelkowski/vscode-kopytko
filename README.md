@@ -21,9 +21,10 @@
 - **Kopytko module support** — module export completions with auto-insert `@import`, `@import`/`@mock` path completions and snippets
 - **Hover, go-to-definition, signature help** — for components, methods, built-ins, user functions, and Kopytko module exports
 - **Find All References, Rename, Call Hierarchy** — workspace-wide and safe across files
+- **Type Hierarchy** — navigate SceneGraph `extends` chains up and down, from a component's `.xml` or its `.brs`
 - **Outline & Workspace Symbols** — functions, subs, AA methods, and test cases via the Outline view or `Ctrl+T`
 - **Semantic tokens** — parser-driven highlighting that separates params, locals, calls, and `m`-fields
-- **31 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
+- **32 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
 - **Inline suppression** — `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` (glob patterns and `rem` style supported; use `disable-next-line` on the preceding line for `@import`/`@mock` annotations)
 - **Code actions** — quick fixes for import diagnostics and unused parameters
 - **Document formatting** — multi-pass engine with 49 configurable options (indentation, spacing, casing, blank lines, keyword style, and more)
@@ -59,7 +60,7 @@ The extension is built on four packages, each published to npm and usable on its
 |---|---|
 | [**kopytko-brightscript-parser**](packages/brightscript-parser/README.md) | Lossless BrightScript lexer, CST, typed AST, scope/type analysis, and the built-in + component + SceneGraph catalogs |
 | [**kopytko-formatter**](packages/formatter/README.md) | BrightScript formatter — `kopytko-format --check` / `--write` for CI, plus a library API |
-| [**kopytko-linter**](packages/linter/README.md) | BrightScript linter with 31 rules and inline suppression comments — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
+| [**kopytko-linter**](packages/linter/README.md) | BrightScript linter with 32 rules and inline suppression comments — `kopytko-lint --check` for CI, SARIF output for GitHub Code Scanning |
 | [**kopytko-roku-device**](packages/roku-device/README.md) | Roku device communication toolkit — SSDP, ECP, debug console/protocol, web-admin automation, diagnostic collectors, Perfetto, and the `kopytko-roku` CLI |
 
 ---

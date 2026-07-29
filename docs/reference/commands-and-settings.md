@@ -48,7 +48,7 @@ Generated from `package.json` `contributes`, which is the source of truth VS Cod
 | `kopytko.network.toggleCapture` | Toggle Network Capture | Kopytko |
 | `kopytko.network.clear` | Clear Network Capture | Kopytko |
 
-## Settings (130)
+## Settings (131)
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
@@ -65,6 +65,7 @@ Generated from `package.json` `contributes`, which is the source of truth VS Cod
 | `kopytko.lint.readOnlyPaths` | array | `[]` | Glob patterns for files that the linter should skip. When set, overrides `kopytko.readOnlyPaths` for linting. When empty, falls back to `kopytko.readOnlyPaths`. |
 | `kopytko.lint.rules.type/missing-return-type` | enum | `"warning"` | Warn when a function is missing an 'as Type' return type annotation. |
 | `kopytko.lint.rules.type/missing-param-type` | enum | `"warning"` | Warn when a function parameter is missing an 'as Type' annotation. |
+| `kopytko.lint.rules.component/duplicate-name` | enum | `"warning"` | Warn when two XML files declare the same SceneGraph component name. Component names are global to the channel, so the declaration that loads last silently wins. Build pipelines that copy the source tree into an output directory will report every component as a duplicate — exclude the copy with `kopytko.lint.readOnlyPaths` (e.g. `**/out/**`). |
 | `kopytko.casing.builtin` | enum | `"preserve"` | Casing applied to BrightScript built-in function names when a completion is inserted. |
 | `kopytko.casing.keyword` | enum | `"preserve"` | Casing applied to BrightScript keywords when a completion is inserted. Acts as fallback for type, literal, and operator casing when those are not set. |
 | `kopytko.casing.type` | enum | `"preserve"` | Casing for BrightScript type names (`boolean`, `integer`, `string`, `void`, …). Falls back to `kopytko.casing.keyword` when not set. |
