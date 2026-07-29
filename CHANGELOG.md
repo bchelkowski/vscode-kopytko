@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [1.13.0] - 2026-07-29
+
+### Added
+- Add SceneGraph type hierarchy and duplicate component diagnostics
+
+### Maintenance
+- Bump kopytko-linter to v1.7.0
+
 ## [1.12.0] - 2026-07-29
 
 ### Added
