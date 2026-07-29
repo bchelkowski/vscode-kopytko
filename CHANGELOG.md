@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.13.1] - 2026-07-29
+
+### Maintenance
+- Drop the temporary duplicateComponents mirror
+
 ## [1.13.0] - 2026-07-29
 
 ### Added
