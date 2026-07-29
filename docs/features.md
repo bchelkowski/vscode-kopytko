@@ -162,21 +162,22 @@ Multi-pass engine (28 CST passes + text passes, 49 configurable options), shared
 
 `kopytko-roku-device`'s `InstallerClient` drives the Roku developer web-admin page
 (`http://<device-ip>/`, HTTP Digest auth) the same way a developer would in a
-browser. Surfaced in the extension through the Device Manager's Device actions
-section (inside the Remote Control view). See [roku-webadmin.md](./roku-webadmin.md).
+browser. 7 of the 9 operations below are surfaced in the extension through the
+Device Manager's Device actions section (inside the Remote Control view); the
+other two remain package/CLI-only (see the 🟡 rows). See
+[roku-webadmin.md](./roku-webadmin.md).
 
 | Feature | Status | Doc |
 |---|---|---|
 | Delete installed dev channel | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Install/replace dev channel from a local zip | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Rekey device from a signed `.pkg` + signing password | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
-| Validate keyed developer ID against a target key (via ECP device-info) | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Validate keyed developer ID against a target key (via ECP device-info) — package/CLI-only, no Device Manager UI action | 🟡 | [roku-webadmin.md](./roku-webadmin.md) |
 | Screenshot capture + download | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
-| Profiling data download | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Profiling data download — package/CLI-only, no Device Manager UI action | 🟡 | [roku-webadmin.md](./roku-webadmin.md) |
 | Package (sign) a channel into a `.pkg` | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | OS update check | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Reboot | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
-| VS Code UI surface for the above (Device Manager → Remote Control → Device actions) | ✅ | [device-manager.md](./device-manager.md) |
 
 ## Debugging
 
@@ -404,7 +405,5 @@ Ideas grouped by readiness. The parser already ships four analysis modules that 
 | Feature | Notes |
 |---|---|
 | Device info webview panel | Deliberately dropped from the Device actions section — not needed for a remote-control-first workflow. Still reachable via the [`kopytko-roku` CLI](./roku-device-cli.md) or a raw ECP `device-info` request. |
-| Remote control | ~~Implemented~~ — Device Manager Remote Control view + keyboard remote mode ([device-manager.md](./device-manager.md)). |
-| Web-admin automation commands | ~~Implemented~~ — Device Manager → Device actions section wires `InstallerClient` (install/delete/package/rekey/screenshot/update/reboot) into the UI ([device-manager.md](./device-manager.md)). Profiling-data download remains package-only. |
 | Roku log streaming panel | Always-on syslog channel, independent of debug sessions. |
-| Debugger enhancements | Source maps, profiling, SceneGraph inspector, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |
+| Debugger enhancements | Source maps, logpoints — see [roku-debug.md — Future possibilities](./roku-debug.md#future-possibilities). |

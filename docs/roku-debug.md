@@ -272,16 +272,11 @@ These features could be built on top of the socket-based debug protocol and Roku
 | **Source map support** | Map transpiled BrighterScript `.bs` → `.brs` for breakpoints and stack traces. Load `.map` files from build output. | Medium |
 | **Logpoints** | Evaluate expressions on hit without pausing. Implement via `EXECUTE` on conditional breakpoint. | Medium |
 | **Data breakpoints** | Break when a variable changes. Not natively supported — would require polling via `VARIABLES` command. | High |
-| **Rendezvous tracking** | ~~Implemented~~ — see [Rendezvous tracking](#rendezvous-tracking) section above and [diagnostics.md](./diagnostics.md). | — |
-| **Channel performance panel** | ~~Implemented~~ — see [diagnostics.md](./diagnostics.md) (Memory/CPU charts, ECP `chanperf`). | — |
-| **Profiling (Perfetto)** | ~~Implemented~~ — see the Kopytko Perfetto panel in [diagnostics.md](./diagnostics.md). | — |
-| **SceneGraph Inspector** | ~~Implemented~~ — see the SceneGraph Tree (`kopytko.nodes.open`). | — |
 | **Remote file system** | Browse and download files from `tmp:/` and `cachefs:/` via ECP. | Low |
 | **Log streaming panel** | Always-on output channel streaming device syslog, independent of debug sessions. | Low |
 | **Component library debugging** | `lib:/<name>/<path>` breakpoints for multi-component-library projects. | High |
 | **Deep link debugging** | Sideload, set breakpoints, then trigger a deep link via ECP `launch`. | Medium |
 | **Watch expressions** | Persistent watch panel with auto-refresh on stop (via `EXECUTE` command). | Low |
 | **RALE integration** | Inject Roku Advanced Layout Editor's `TrackerTask.xml` at deploy time. | Medium |
-| **Remote control webview** | ~~Implemented~~ — see the Device Manager's Remote Control view ([device-manager.md](./device-manager.md)). | — |
 | **Inline variable values** | Show variable values inline in the editor (VS Code `InlineValueProvider` API). | Medium |
 | **Debug visualizers** | Custom renderers for Roku types (node trees, AA tables). | Medium |
