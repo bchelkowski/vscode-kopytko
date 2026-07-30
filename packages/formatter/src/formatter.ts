@@ -13,6 +13,15 @@ import {
   thenStylePass,
   functionVsSubPass,
   trailingWhitespacePass,
+  observeFieldStylePass,
+  mPrefixStylePass,
+  fieldAccessConsistencyPass,
+  lineCommentPositionPass,
+  trailingCommasPass,
+  parenthesisIfCasePass,
+  stringConcatStylePass,
+  elseOnNewLinePass,
+  aaThresholdPass,
 } from './cst-passes/index';
 import type { CstPass } from './cst-passes/index';
 import type { ParseResult } from 'kopytko-brightscript-parser';
@@ -68,20 +77,24 @@ export function formatText(
   }
   lines = runCstOnLines(lines, lineEndStr, styleCstPasses, parseCache);
 
-  // Pass 4 — Parenthesis if case (regex) + catch paren strip (regex)
-  lines = passParenthesisIfCase(lines, config);
+  // Pass 4 — Parenthesis if case (CST) + catch paren strip (regex)
+  if (config.parenthesisIfCase !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, parenthesisIfCasePass(config.parenthesisIfCase), parseCache);
+  }
   lines = passStripCatchParens(lines);
 
-  // Pass 4c — Else on new line (regex)
-  lines = passElseOnNewLine(lines, config);
+  // Pass 4c — Else on new line (CST)
+  lines = runCstOnLines(lines, lineEndStr, elseOnNewLinePass(config.elseOnNewLine), parseCache);
 
   // Pass 5 — Print statement handling (CST)
   if (config.printStatement === 'remove') {
     lines = runCstOnLines(lines, lineEndStr, printStatementRemovalPass(), parseCache);
   }
 
-  // Pass 5b — Line comment position (regex)
-  lines = passLineCommentPosition(lines, config);
+  // Pass 5b — Line comment position (CST)
+  if (config.lineCommentPosition === 'above') {
+    lines = runCstOnLines(lines, lineEndStr, lineCommentPositionPass(config.lineCommentPosition), parseCache);
+  }
 
   // Pass 6 — Spacing rules (regex)
   lines = passSpacing(lines, config);
@@ -89,20 +102,29 @@ export function formatText(
   // Pass 6b — Wrap long strings (regex)
   lines = passWrapLongStrings(lines, config);
 
-  // Pass 6c — String concatenation style (regex)
-  lines = passStringConcatStyle(lines, config);
+  // Pass 6c — String concatenation style (CST)
+  if (config.stringConcatStyle !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, stringConcatStylePass(config.stringConcatStyle), parseCache);
+  }
 
   // Pass 7b — Split array open bracket (regex)
   lines = passSplitArrayOpenBracket(lines, config);
 
-  // Pass 7c — Associative array single-line threshold (regex)
-  lines = passAAThreshold(lines, config);
+  // Pass 7c — Associative array single-line threshold (CST)
+  if (config.associativeArraySingleLineThreshold > 0) {
+    const indentUnit = config.useTabs ? '\t' : ' '.repeat(config.indentSize);
+    lines = runCstOnLines(lines, lineEndStr, aaThresholdPass(config.associativeArraySingleLineThreshold, indentUnit), parseCache);
+  }
 
   // Pass 8 — Indentation (regex)
   lines = passIndentation(lines, config);
 
-  // Pass 8b — Trailing commas (regex)
-  lines = passTrailingCommas(lines, config);
+  // Pass 8b — Trailing commas (CST)
+  lines = runCstOnLines(lines, lineEndStr, trailingCommasPass({
+    trailingComma: config.trailingComma,
+    arrayCommaStyle: config.arrayCommaStyle,
+    associativeArrayCommaStyle: config.associativeArrayCommaStyle,
+  }), parseCache);
 
   // Pass 8c — Align assignments (regex)
   lines = passAlignAssignments(lines, config);
@@ -128,14 +150,20 @@ export function formatText(
   // Pass 11 — Comment width (regex)
   lines = passCommentWidth(lines, config);
 
-  // Pass 12 — observeField style (regex)
-  lines = passObserveFieldStyle(lines, config);
+  // Pass 12 — observeField style (CST)
+  if (config.observeFieldStyle !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, observeFieldStylePass(config.observeFieldStyle), parseCache);
+  }
 
-  // Pass 13 — m prefix style (regex)
-  lines = passMPrefixStyle(lines, config);
+  // Pass 13 — m prefix style (CST)
+  if (config.mPrefixStyle !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, mPrefixStylePass(config.mPrefixStyle), parseCache);
+  }
 
-  // Pass 14 — Field access consistency (regex)
-  lines = passFieldAccessConsistency(lines, config);
+  // Pass 14 — Field access consistency (CST)
+  if (config.fieldAccessConsistency !== 'preserve') {
+    lines = runCstOnLines(lines, lineEndStr, fieldAccessConsistencyPass(config.fieldAccessConsistency), parseCache);
+  }
 
   // Assemble result
   let newText = lines.join(lineEndStr);
@@ -230,6 +258,15 @@ function resolveLineEnding(setting: 'lf' | 'crlf' | 'auto', detected: '\n' | '\r
 
 // ---------------------------------------------------------------------------
 // Pass 1 — Import sorting
+//
+// Deliberately NOT a CST pass, investigated and staying regex: `@import`/
+// `@mock` annotations are Kopytko-framework pragmas written as `'`
+// tick-comments — they are not BrightScript syntax at all, so this pass
+// only ever matches lines already confirmed to start with `' @import`/
+// `' @mock` (`annotationRegex`) before touching anything. There is no real
+// code for a CST pass to protect from misinterpretation here — the entire
+// input domain is comment text by construction. Same class of call as
+// `commentWidth`/`blankLines`/`emptyLinesBetweenMethods`.
 // ---------------------------------------------------------------------------
 
 function passImportSorting(lines: string[], config: FormattingConfig): string[] {
@@ -343,15 +380,15 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
 }
 
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Pass 4b — Strip catch parentheses (always — BrightScript does not allow them)
+//
+// Deliberately NOT a CST pass, and never should be: the grammar's CatchClause
+// rule requires `catch <Identifier>` with no paren support at all, so
+// `catch (e)` is a real parse error (verified: "Expected exception variable
+// name"). Every CST pass bails out and returns the source unchanged whenever
+// the parse has any diagnostics (see runCstPasses/runCstOnLines) — so a CST
+// version of this pass would never fire on the exact input it exists to fix.
+// This has to run on raw text before the source can parse cleanly.
 // ---------------------------------------------------------------------------
 
 function passStripCatchParens(lines: string[]): string[] {
@@ -365,62 +402,6 @@ function passStripCatchParens(lines: string[]): string[] {
   });
 }
 
-function passParenthesisIfCase(lines: string[], config: FormattingConfig): string[] {
-  if (config.parenthesisIfCase === 'preserve') return lines;
-
-  return lines.map(line => {
-    const trimmed = line.trim();
-    if (!/^(?:if|else\s*if|elseif)\b/i.test(trimmed)) return line;
-
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-
-    if (config.parenthesisIfCase === 'always') {
-      const mThen = /^((?:if|else\s*if|elseif)\b)\s+(.+?)\s+(then\s*(?:'.*)?)\s*$/i.exec(trimmed);
-      if (mThen) {
-        let condition = mThen[2];
-        if (!isWrappedInParens(condition)) {
-          condition = `(${condition})`;
-        }
-        return indent + mThen[1] + ' ' + condition + ' ' + mThen[3];
-      }
-
-      const mNoThen = /^((?:if|else\s*if|elseif)\b)\s+(.+?)\s*$/i.exec(trimmed);
-      if (mNoThen) {
-        const rest = mNoThen[2];
-        const split = splitTrailingComment(rest);
-        const codeOnly = split.code;
-        const trailingComment = split.comment ? ' ' + split.comment : '';
-        const hasThen = /\bthen\b/i.test(codeOnly);
-        if (!hasThen) {
-          if (isWrappedInParens(codeOnly)) {
-            return line;
-          }
-          if (/\breturn\b/i.test(codeOnly) || /=\s*\S/.test(codeOnly.replace(/[<>!]=?|<>/g, ''))) {
-            return line;
-          }
-          return indent + mNoThen[1] + ' (' + codeOnly + ')' + trailingComment;
-        }
-      }
-    } else {
-      const m = /^((?:if|else\s*if|elseif)\b)\s+\((.+)\)(.*?)$/i.exec(trimmed);
-      if (m && isWrappedInParens('(' + m[2] + ')')) {
-        return indent + m[1] + ' ' + m[2] + m[3];
-      }
-    }
-    return line;
-  });
-}
-
-function isWrappedInParens(s: string): boolean {
-  if (!s.startsWith('(') || !s.endsWith(')')) return false;
-  let depth = 0;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '(') depth++;
-    else if (s[i] === ')') depth--;
-    if (depth === 0 && i < s.length - 1) return false;
-  }
-  return depth === 0;
-}
 
 /** Splits a code line into code and trailing tick comment, ignoring `'` inside strings. */
 function splitTrailingComment(s: string): { code: string; comment: string } {
@@ -437,95 +418,21 @@ function splitTrailingComment(s: string): { code: string; comment: string } {
   return { code: s, comment: '' };
 }
 
-// ---------------------------------------------------------------------------
-// Pass 4c — Else on new line
-// ---------------------------------------------------------------------------
-
-function passElseOnNewLine(lines: string[], config: FormattingConfig): string[] {
-  // true = keep else on its own line (default, no-op)
-  if (config.elseOnNewLine) return lines;
-
-  const result: string[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    const trimmed = lines[i].trim();
-
-    // Only match `if ...` (not `else if`)
-    if (/^if\b/i.test(trimmed) && i + 4 < lines.length) {
-      const { code, comment: ifComment } = splitTrailingComment(trimmed);
-      const codeClean = code.trimEnd();
-      const endsWithThen = /\bthen\s*$/i.test(codeClean);
-      const hasInlineThen = /\bthen\b/i.test(codeClean) && !endsWithThen;
-
-      // Multi-line if: ends with `then` or has no `then` at all (no code after then)
-      if (!hasInlineThen && !ifComment) {
-        const thenStmt = lines[i + 1].trim();
-        const elseLine = lines[i + 2].trim();
-        const elseStmt = lines[i + 3].trim();
-        const endIfLine = lines[i + 4].trim();
-
-        const isSimpleStmt = (s: string): boolean => {
-          if (s === '' || s.startsWith("'") || /^rem\b/i.test(s)) return false;
-          return !splitTrailingComment(s).comment;
-        };
-
-        if (
-          isSimpleStmt(thenStmt) &&
-          /^else\s*$/i.test(elseLine) &&
-          isSimpleStmt(elseStmt) &&
-          /^(?:end\s*if|endif)\s*$/i.test(endIfLine)
-        ) {
-          const indent = lines[i].match(/^(\s*)/)?.[1] ?? '';
-          let condPart = codeClean;
-          if (!endsWithThen) condPart += ' then';
-          result.push(indent + condPart + ' ' + thenStmt + ' else ' + elseStmt);
-          i += 5;
-          continue;
-        }
-      }
-    }
-
-    result.push(lines[i]);
-    i++;
-  }
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Pass 5b — Line comment position
-// ---------------------------------------------------------------------------
-
-function passLineCommentPosition(lines: string[], config: FormattingConfig): string[] {
-  if (config.lineCommentPosition !== 'above') return lines;
-
-  const result: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Skip pure comment lines and blank lines
-    if (trimmed === '' || trimmed.startsWith("'") || /^rem\b/i.test(trimmed)) {
-      result.push(line);
-      continue;
-    }
-
-    const { code, comment } = splitTrailingComment(trimmed);
-    if (!comment) {
-      result.push(line);
-      continue;
-    }
-
-    // Move trailing comment to the line above, preserving indentation
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    result.push(indent + comment);
-    result.push(indent + code);
-  }
-  return result;
-}
 
 // ---------------------------------------------------------------------------
 // Pass 6 — Spacing rules
+//
+// Deliberately NOT a CST pass, investigated and staying regex: string-literal
+// safety — the specific hazard CST passes exist to remove — is already
+// structurally handled here. `splitCodeSegments` (below) separates string
+// segments from code before any operator/paren/comma rule runs, and
+// `applyBracketAndCommaSpacing` re-walks the assembled line with its own
+// `inString` tracker for the AA-brace/comma rules that need to see across
+// segment boundaries. A CST port would touch every adjacent token pair in
+// the file to re-derive the same spacing decisions this already makes
+// safely — effectively a second printer, not a bounded rule — for no
+// correctness gain over what's here today. Same call as `indentation` below
+// and `alignAssignments` above, at a much larger scale.
 // ---------------------------------------------------------------------------
 
 function passSpacing(lines: string[], config: FormattingConfig): string[] {
@@ -736,6 +643,15 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
 
 // ---------------------------------------------------------------------------
 // Pass 7b — Split array open bracket
+//
+// Deliberately NOT a CST pass, investigated and staying regex: its only
+// trigger is a line whose trimmed text literally ends with `[{` — an
+// unambiguous, already-safe textual check with no string/comment content to
+// misinterpret (a `[{` sequence can't appear inside a string literal this
+// pass would need to skip; the check is on the line's own trailing
+// characters, not a scan through arbitrary text). Low-value, narrow rule;
+// porting it would only add an `ArrayLiteral`/`AALiteral`-nesting-shape
+// dependency for zero correctness gain.
 // ---------------------------------------------------------------------------
 
 function passSplitArrayOpenBracket(lines: string[], config: FormattingConfig): string[] {
@@ -773,135 +689,22 @@ function passSplitArrayOpenBracket(lines: string[], config: FormattingConfig): s
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Pass 8b — Comma handling (trailing commas + array/AA comma style)
-// ---------------------------------------------------------------------------
-
-function passTrailingCommas(lines: string[], config: FormattingConfig): string[] {
-  const result = [...lines];
-
-  for (let i = 0; i < result.length; i++) {
-    const trimmed = result[i].trim();
-
-    if (!/^\s*[}\]]/.test(result[i])) continue;
-
-    const closerChar = trimmed[0];
-    const isArray = closerChar === ']';
-    const isAA = closerChar === '}';
-
-    const itemStyle = isArray ? config.arrayCommaStyle : isAA ? config.associativeArrayCommaStyle : 'preserve';
-
-    const openerChar = isArray ? '[' : '{';
-    let depth = 0;
-    for (let j = i; j >= 0; j--) {
-      const jTrimmed = result[j].trim();
-
-      depth += netBracketDepthForPair(jTrimmed, openerChar, closerChar);
-
-      if (depth <= 0) break;
-
-      if (j < i && j > 0 && jTrimmed !== '' && !jTrimmed.startsWith("'") && !/^rem\b/i.test(jTrimmed)) {
-        if (/\b(?:function|sub)(?:\s+\w+)?\s*\(.*\)(?:\s+as\s+\w+)?\s*$/i.test(jTrimmed)) continue;
-        if (jTrimmed === '{' || jTrimmed === '[') continue;
-        if (/^return\b/i.test(jTrimmed)) continue;
-        if (/^(?:if|else|elseif|else\s+if|end\s*if|end\s*sub|end\s*function|end\s*for|end\s*while|end\s*try|for|while|try|catch|next|exit|throw|dim|print|\?)\b/i.test(jTrimmed)) continue;
-        if (isAA && !/^\w+\s*:/.test(jTrimmed) && !/^"[^"]*"\s*:/.test(jTrimmed)) continue;
-
-        const isLastItem = j === i - 1 || (() => {
-          for (let k = j + 1; k < i; k++) {
-            if (result[k].trim() !== '') return false;
-          }
-          return true;
-        })();
-
-        const codeOnly = stripTrailingComment(jTrimmed);
-        const alreadyHasComma = codeOnly.endsWith(',');
-
-        if (isLastItem) {
-          if (config.trailingComma === 'always' || config.trailingComma === 'multiline') {
-            if (!alreadyHasComma && jTrimmed !== openerChar) {
-              result[j] = insertCommaBeforeComment(result[j]);
-            }
-          } else if (config.trailingComma === 'never') {
-            if (alreadyHasComma) {
-              result[j] = removeCommaBeforeComment(result[j]);
-            }
-          }
-        } else {
-          if (itemStyle === 'always') {
-            if (!alreadyHasComma && !codeOnly.endsWith('{') && !codeOnly.endsWith('[')) {
-              result[j] = insertCommaBeforeComment(result[j]);
-            }
-          } else if (itemStyle === 'never') {
-            if (alreadyHasComma) {
-              result[j] = removeCommaBeforeComment(result[j]);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return result;
-}
-
-/** Count net bracket depth on a line for a specific bracket pair, skipping string literals. */
-function netBracketDepthForPair(line: string, opener: string, closer: string): number {
-  let depth = 0;
-  let inStr = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inStr && line[i + 1] === '"') { i++; continue; }
-      inStr = !inStr;
-    } else if (!inStr) {
-      if (ch === "'") break;
-      if (ch === closer) depth++;
-      else if (ch === opener) depth--;
-    }
-  }
-  return depth;
-}
-
-function stripTrailingComment(trimmed: string): string {
-  let inStr = false;
-  for (let i = 0; i < trimmed.length; i++) {
-    if (trimmed[i] === '"') inStr = !inStr;
-    else if (trimmed[i] === "'" && !inStr) {
-      return trimmed.substring(0, i).trimEnd();
-    }
-  }
-  return trimmed;
-}
-
-function insertCommaBeforeComment(line: string): string {
-  let inStr = false;
-  for (let i = 0; i < line.length; i++) {
-    if (line[i] === '"') inStr = !inStr;
-    else if (line[i] === "'" && !inStr) {
-      const before = line.substring(0, i).trimEnd();
-      const after = line.substring(i);
-      return before + ', ' + after;
-    }
-  }
-  return line.trimEnd() + ',';
-}
-
-function removeCommaBeforeComment(line: string): string {
-  let inStr = false;
-  for (let i = 0; i < line.length; i++) {
-    if (line[i] === '"') inStr = !inStr;
-    else if (line[i] === "'" && !inStr) {
-      const before = line.substring(0, i).trimEnd();
-      const after = line.substring(i);
-      return before.replace(/,\s*$/, '') + ' ' + after;
-    }
-  }
-  return line.replace(/,(\s*)$/, '$1');
-}
 
 // ---------------------------------------------------------------------------
 // Pass 8 — Indentation
+//
+// Deliberately NOT a CST pass, investigated and staying regex: same call as
+// `spacing` above, for the same reason. Every helper this pass leans on
+// (`isDeindentLine`/`isIndentLine`, `countInlineIndentChange`,
+// `countNetAnonFunctionOpeners`, `netContainerDepth`) already tracks string
+// literals and `'`/`rem` comments itself before counting a bracket or
+// matching a keyword — the string-safety CST passes exist to guarantee is
+// already structurally present. What a CST port would actually be doing is
+// re-deriving physical-line indent from block/expression nesting depth in
+// the tree, including the chain-continuation and inline-`:`-separator state
+// this pass tracks by hand — a full indentation engine, not an incremental
+// rule migration, with the highest blast radius of any pass in this file
+// (every line of every formatted file runs through it). Not attempted here.
 // ---------------------------------------------------------------------------
 
 function passIndentation(lines: string[], config: FormattingConfig): string[] {
@@ -978,6 +781,18 @@ function passIndentation(lines: string[], config: FormattingConfig): string[] {
 
 // ---------------------------------------------------------------------------
 // Pass 8c — Align assignments
+//
+// Deliberately NOT a CST pass: it already guards against the two failure
+// modes CST safety exists to prevent (`findSimpleAssignment` tracks string
+// literals and bracket depth itself before ever matching an `=`), so a port
+// would buy no correctness gain. What it would cost: every statement-block
+// owner in this grammar (`SourceFile`, `FunctionDeclaration`/`Expression`,
+// each `IfStatement` branch, `ForStatement`, `WhileStatement`, `TryStatement`/
+// `CatchClause`, ...) exposes its statement list with a different child
+// shape (see each one's `body` getter in ast.ts) — finding "runs of
+// consecutive sibling assignments" structurally means handling all of them,
+// for a purely cosmetic column-alignment feature. Not worth it without a
+// concrete correctness bug driving it.
 // ---------------------------------------------------------------------------
 
 function passAlignAssignments(lines: string[], config: FormattingConfig): string[] {
@@ -1078,6 +893,17 @@ function findSimpleAssignment(trimmed: string): { before: string; after: string 
 
 // ---------------------------------------------------------------------------
 // Pass 9 — Blank line rules
+//
+// Deliberately NOT a CST pass: every rule here only ever counts or inserts/
+// removes *blank* lines, gated on whether an adjacent line's trimmed text
+// starts with a keyword (`function`, `end sub`, `return`, ...). It never
+// reads or rewrites a single character of real code, and BrightScript has no
+// multi-line string literals for a keyword-looking line to hide inside — so
+// none of the string/comment-safety a CST pass buys applies here. Porting it
+// would mean re-deriving "is this a function boundary" from the tree instead
+// of a token's `.line`, for zero behavioral or safety difference. See
+// findings/lsp-architecture.md for the fuller reasoning (same call applies
+// to passEmptyLinesBetweenMethods and passCommentWidth below).
 // ---------------------------------------------------------------------------
 
 function passBlankLines(lines: string[], config: FormattingConfig): string[] {
@@ -1195,6 +1021,10 @@ function passBlankLines(lines: string[], config: FormattingConfig): string[] {
 
 // ---------------------------------------------------------------------------
 // Pass 9b — Empty lines between methods
+//
+// Deliberately NOT a CST pass — same reasoning as passBlankLines above:
+// only blank lines are inserted/removed, gated on a keyword-line pattern
+// (`x.y = function(` / `end function`), never on real code content.
 // ---------------------------------------------------------------------------
 
 function passEmptyLinesBetweenMethods(lines: string[], config: FormattingConfig): string[] {
@@ -1228,6 +1058,15 @@ function passEmptyLinesBetweenMethods(lines: string[], config: FormattingConfig)
 
 // ---------------------------------------------------------------------------
 // Pass 11 — Comment width
+//
+// Deliberately NOT a CST pass: every line this pass rewrites was already
+// confirmed comment-only by `trimmed.startsWith("'")` / a `rem` check before
+// any text is touched, so there's no risk of it reaching into real code or a
+// string literal — the exact class of bug CST safety exists to prevent.
+// What it does — reflowing one comment's text across several output lines —
+// also isn't expressible as position-based token edits the way the other
+// passes are: a single trivia comment would need to become several new
+// tokens, not just have its text or position changed.
 // ---------------------------------------------------------------------------
 
 function passCommentWidth(lines: string[], config: FormattingConfig): string[] {
@@ -1266,130 +1105,24 @@ function passCommentWidth(lines: string[], config: FormattingConfig): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 12 — observeField style
-// ---------------------------------------------------------------------------
-
-function passObserveFieldStyle(lines: string[], config: FormattingConfig): string[] {
-  if (config.observeFieldStyle === 'preserve') return lines;
-  return lines.map(line => {
-    const { code, comment } = splitTrailingComment(line);
-    if (comment && /\.observeField\s*\(/i.test(comment)) return line;
-    if (!/\.observeField\s*\(/i.test(code)) return line;
-    if (/\.observeFieldScoped\s*\(/i.test(code)) return line;
-
-    if (config.observeFieldStyle === 'always-scoped') {
-      const newCode = code.replace(/\.observeField\s*\(/gi, '.observeFieldScoped(');
-      return comment ? newCode + ' ' + comment : newCode;
-    }
-    // 'warn'
-    if (comment && /TODO:.*observeFieldScoped/i.test(comment)) return line;
-    return line + " ' TODO: consider using observeFieldScoped";
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Pass 13 — m prefix style
-// ---------------------------------------------------------------------------
-
-const M_KNOWN_PROPS = new Set(['top', 'global']);
-
-function passMPrefixStyle(lines: string[], config: FormattingConfig): string[] {
-  if (config.mPrefixStyle === 'preserve') return lines;
-  return lines.map(line => {
-    const { code, comment } = splitTrailingComment(line);
-    let newCode = code;
-
-    if (config.mPrefixStyle === 'dot') {
-      // m["field"] → m.field
-      newCode = newCode.replace(/\bm\["([a-zA-Z_]\w*)"\]/g, (_match, field) => {
-        return `m.${field}`;
-      });
-    } else {
-      // m.field → m["field"], but not m.top, m.global, or method calls m.func()
-      newCode = newCode.replace(/\bm\.([a-zA-Z_]\w*)/g, (match, field, offset) => {
-        if (M_KNOWN_PROPS.has(field.toLowerCase())) return match;
-        const afterField = newCode.slice(offset + match.length);
-        if (/^\s*\(/.test(afterField)) return match;
-        return `m["${field}"]`;
-      });
-    }
-
-    return comment ? newCode + ' ' + comment : newCode;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Pass 14 — Field access consistency
-// ---------------------------------------------------------------------------
-
-const FIELD_ACCESS_SKIP_METHODS = new Set([
-  'observefield', 'observefieldscoped', 'unobservefield', 'unobservefieldscoped',
-  'update', 'getchild', 'getchildren', 'getparent', 'findnode',
-  'createchild', 'removechild', 'appendchild', 'getfield', 'setfield',
-  'hasfield', 'addfield', 'addfields', 'removechildindex', 'removechildren',
-  'getchildcount', 'replacechild', 'insertchild', 'createobject',
-]);
-
-function passFieldAccessConsistency(lines: string[], config: FormattingConfig): string[] {
-  if (config.fieldAccessConsistency === 'preserve') return lines;
-
-  if (config.fieldAccessConsistency === 'dot') {
-    return lines.map(line => {
-      const { code, comment } = splitTrailingComment(line);
-      let newCode = code;
-
-      // m.top.getField("x") → m.top.x
-      newCode = newCode.replace(
-        /\bm\.top\.getField\s*\(\s*"([a-zA-Z_]\w*)"\s*\)/gi,
-        (_m, field) => `m.top.${field}`,
-      );
-
-      // m.top.setField("x", val) → m.top.x = val
-      newCode = newCode.replace(
-        /\bm\.top\.setField\s*\(\s*"([a-zA-Z_]\w*)"\s*,\s*/gi,
-        (_m, field) => `m.top.${field} = `,
-      );
-      // Remove trailing ) from setField conversion
-      if (newCode !== code && /\bm\.top\.\w+\s*=\s*.+\)/.test(newCode)) {
-        const lastParen = newCode.lastIndexOf(')');
-        if (lastParen > -1) newCode = newCode.slice(0, lastParen) + newCode.slice(lastParen + 1);
-      }
-
-      return comment ? newCode + ' ' + comment : newCode;
-    });
-  }
-
-  // 'method' — convert dot access to method calls
-  return lines.map(line => {
-    const { code, comment } = splitTrailingComment(line);
-    const trimmed = code.trim();
-    let newCode = code;
-
-    // Assignment: m.top.field = value → m.top.setField("field", value)
-    const assignMatch = trimmed.match(/^(\s*)m\.top\.([a-zA-Z_]\w*)\s*=\s*(.+)$/i);
-    if (assignMatch) {
-      const [, indent, field, value] = assignMatch;
-      if (!FIELD_ACCESS_SKIP_METHODS.has(field.toLowerCase())) {
-        newCode = `${indent}m.top.setField("${field}", ${value})`;
-        return comment ? newCode + ' ' + comment : newCode;
-      }
-    }
-
-    // Read: m.top.field (not a method call, not assignment target)
-    newCode = newCode.replace(/\bm\.top\.([a-zA-Z_]\w*)/gi, (match, field, offset) => {
-      if (FIELD_ACCESS_SKIP_METHODS.has(field.toLowerCase())) return match;
-      const afterField = newCode.slice(offset + match.length);
-      if (/^\s*\(/.test(afterField)) return match;
-      if (/^\s*=/.test(afterField)) return match;
-      return `m.top.getField("${field}")`;
-    });
-
-    return comment ? newCode + ' ' + comment : newCode;
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Pass 6b — Wrap long strings
+//
+// Investigated, staying regex: `stringMatch = code.match(/"([^"]{40,})"/)`
+// excludes `"` from the captured content entirely, so a string containing
+// BrightScript's `""` escaped-quote sequence never has an escape pair
+// *inside* `strContent` — anything from the first embedded `"` onward lands
+// in `after`, untouched by the chunking logic. Confirmed empirically this
+// is NOT a corruption risk (`formatText(..., {verifySyntax: false})` on a
+// string with an embedded `""` still produces valid, semantically-correct
+// output — splitting a string token at any position and re-quoting both
+// sides always reconstitutes a valid escape at the seam, since two adjacent
+// literal `"` characters are read as one escaped quote by the lexer
+// regardless of which piece each one came from). The real effect is just
+// that `after`'s length isn't counted toward the wrap-width target for
+// strings with an embedded escaped quote, a minor completeness gap, not a
+// safety one — not worth the size of this pass's transform (chunking string
+// content and re-emitting either `+ _` continuation lines or a
+// `[...].join("")` restructuring) to fix.
 // ---------------------------------------------------------------------------
 
 function passWrapLongStrings(lines: string[], config: FormattingConfig): string[] {
@@ -1455,151 +1188,19 @@ function passWrapLongStrings(lines: string[], config: FormattingConfig): string[
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Pass 6c — String concatenation style
-// ---------------------------------------------------------------------------
-
-function passStringConcatStyle(lines: string[], config: FormattingConfig): string[] {
-  if (config.stringConcatStyle === 'preserve') return lines;
-
-  if (config.stringConcatStyle === 'plus') {
-    // Convert [a, b, c].join("") → a + b + c
-    const result: string[] = [];
-    let i = 0;
-    while (i < lines.length) {
-      const trimmed = lines[i].trim();
-      // Single-line: [a, b, c].join("")
-      const singleMatch = trimmed.match(/^(.*)(\[.+\])\.join\s*\(\s*""\s*\)(.*)$/);
-      if (singleMatch) {
-        const indent = lines[i].match(/^(\s*)/)?.[1] ?? '';
-        const before = singleMatch[1];
-        const arrContent = singleMatch[2];
-        const after = singleMatch[3];
-        // Extract items from [...]
-        const inner = arrContent.slice(1, -1);
-        const items = splitArrayItems(inner);
-        if (items.length > 0) {
-          result.push(indent + before + items.join(' + ') + after);
-          i++;
-          continue;
-        }
-      }
-      result.push(lines[i]);
-      i++;
-    }
-    return result;
-  }
-
-  // 'array-join': Convert a + b + c → [a, b, c].join("") when at least one is a string
-  return lines.map(line => {
-    const { code, comment } = splitTrailingComment(line);
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    // Match: expr + expr + expr (with at least one string literal)
-    const plusParts = splitPlusParts(code.trim());
-    if (plusParts.length < 2) return line;
-    const hasString = plusParts.some(p => /^".*"$/.test(p.trim()));
-    if (!hasString) return line;
-
-    // Find the assignment prefix
-    const assignMatch = code.match(/^(\s*\S+\s*=\s*)/);
-    const prefix = assignMatch ? assignMatch[1] : indent;
-    const items = plusParts.map(p => p.trim()).join(', ');
-    const newCode = prefix + `[${items}].join("")`;
-    return comment ? newCode + ' ' + comment : newCode;
-  });
-}
-
-function splitArrayItems(inner: string): string[] {
-  const items: string[] = [];
-  let depth = 0;
-  let current = '';
-  let inStr = false;
-  for (let i = 0; i < inner.length; i++) {
-    const ch = inner[i];
-    if (ch === '"' && (i === 0 || inner[i - 1] !== '\\')) inStr = !inStr;
-    if (!inStr) {
-      if (ch === '[' || ch === '{' || ch === '(') depth++;
-      if (ch === ']' || ch === '}' || ch === ')') depth--;
-      if (ch === ',' && depth === 0) {
-        items.push(current.trim());
-        current = '';
-        continue;
-      }
-    }
-    current += ch;
-  }
-  if (current.trim()) items.push(current.trim());
-  return items;
-}
-
-function splitPlusParts(code: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = '';
-  let inStr = false;
-  for (let i = 0; i < code.length; i++) {
-    const ch = code[i];
-    if (ch === '"' && (i === 0 || code[i - 1] !== '\\')) inStr = !inStr;
-    if (!inStr) {
-      if (ch === '[' || ch === '{' || ch === '(') depth++;
-      if (ch === ']' || ch === '}' || ch === ')') depth--;
-      if (ch === '+' && depth === 0 && !inStr) {
-        // Check it's not += 
-        if (i > 0 && code[i - 1] === ' ' || i + 1 < code.length) {
-          const before = code.slice(0, i).trim();
-          if (!before.endsWith('=')) {
-            parts.push(current.trim());
-            current = '';
-            continue;
-          }
-        }
-      }
-    }
-    current += ch;
-  }
-  if (current.trim()) parts.push(current.trim());
-  return parts.length > 1 ? parts : [];
-}
-
-// ---------------------------------------------------------------------------
-// Pass 7c — Associative array single-line threshold
-// ---------------------------------------------------------------------------
-
-function passAAThreshold(lines: string[], config: FormattingConfig): string[] {
-  if (config.associativeArraySingleLineThreshold <= 0) return lines;
-  const threshold = config.associativeArraySingleLineThreshold;
-  const indentStr = config.useTabs ? '\t' : ' '.repeat(config.indentSize);
-
-  const result: string[] = [];
-  for (const line of lines) {
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    const { code, comment } = splitTrailingComment(line);
-    const codeT = code.trim();
-
-    // Find single-line AA: { key: val, key: val }
-    const aaMatch = codeT.match(/^(.*?)(\{[^{}]+\})(.*)$/);
-    if (!aaMatch) { result.push(line); continue; }
-
-    const [, before, aaBlock, after] = aaMatch;
-    if (aaBlock.length <= threshold) { result.push(line); continue; }
-
-    // Extract key-value pairs
-    const inner = aaBlock.slice(1, -1).trim();
-    const pairs = splitArrayItems(inner);
-    if (pairs.length === 0) { result.push(line); continue; }
-
-    const childIndent = indent + indentStr;
-    result.push(indent + before + '{');
-    for (const pair of pairs) {
-      result.push(childIndent + pair.trim());
-    }
-    result.push(indent + '}' + after + (comment ? ' ' + comment : ''));
-  }
-  return result;
-}
 
 // ---------------------------------------------------------------------------
 // Pass 8d — Multi-line param alignment
+//
+// Deliberately NOT a CST pass, and never should be: same architectural block
+// as passStripCatchParens. This grammar's `parseParameterList` requires every
+// parameter to be on the opening paren's line *unless* a default value
+// itself contains a multi-line AA/array/function literal (verified:
+// `function work(\n  x as String,\n  y as Integer)\n...` — the plain
+// wrapped-params case this pass exists to reformat — produces the real parse
+// error "Function parameters must be on one line"). Every CST pass bails out
+// unchanged whenever `parseResult.diagnostics.length > 0`, so a CST version
+// could never fire on the exact input it's meant to fix.
 // ---------------------------------------------------------------------------
 
 function passParamAlignment(lines: string[], config: FormattingConfig): string[] {

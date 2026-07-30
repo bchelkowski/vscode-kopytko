@@ -40,7 +40,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | **packages/formatter** | | |
 | `packages/formatter/bin` | 1 | kopytko-format CLI entry. |
 | `packages/formatter/src` | 7 | Formatter engine, configuration, and casing rules. |
-| `packages/formatter/src/cst-passes` | 9 | Structure-aware formatting passes applied over the CST, one concern per file. |
+| `packages/formatter/src/cst-passes` | 18 | Structure-aware formatting passes applied over the CST, one concern per file. |
 | **packages/linter** | | |
 | `packages/linter/bin` | 1 | kopytko-lint CLI entry. |
 | `packages/linter/src` | 10 | Linter core: rule running, config, suppression, fixing, project indexing. |
