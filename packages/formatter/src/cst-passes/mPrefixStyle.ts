@@ -10,8 +10,8 @@
  * as the regex version.
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isNode, isToken } from 'kopytko-brightscript-parser';
-import { TextEdit } from './infrastructure';
+import { SyntaxNode, SyntaxKind, TokenKind, isNode } from 'kopytko-brightscript-parser';
+import { TextEdit, dotMemberToken, rawEnd } from './infrastructure';
 
 type MPrefixStyle = 'preserve' | 'dot' | 'bracket';
 
@@ -66,7 +66,7 @@ function processIndexNode(node: SyntaxNode, edits: TextEdit[]): void {
   const field = literalToken.text.slice(1, -1);
   if (!IDENTIFIER_RE.test(field)) return;
 
-  edits.push({ pos: objectRawEnd(object), end: rightBracket.end, newText: `.${field}` });
+  edits.push({ pos: rawEnd(object), end: rightBracket.end, newText: `.${field}` });
 }
 
 function processDotNode(node: SyntaxNode, edits: TextEdit[]): void {
@@ -84,22 +84,6 @@ function processDotNode(node: SyntaxNode, edits: TextEdit[]): void {
 
   // Use raw token ends, not node.end — a node's `.end` includes trailing
   // trivia (e.g. the newline after the last token on a line).
-  edits.push({ pos: objectRawEnd(object), end: memberToken.end, newText: `["${field}"]` });
+  edits.push({ pos: rawEnd(object), end: memberToken.end, newText: `["${field}"]` });
 }
 
-/** A node's own `.end` includes trailing trivia of its last token; this returns
- * the raw end of its last direct-child token instead. */
-function objectRawEnd(node: SyntaxNode): number {
-  const tokens = node.childTokens;
-  return tokens.length > 0 ? tokens[tokens.length - 1].end : node.end;
-}
-
-/** Last non-Dot direct-child token of a DotExpression — the member name. */
-function dotMemberToken(node: SyntaxNode) {
-  const children = node.children;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i];
-    if (isToken(child) && child.kind !== TokenKind.Dot) return child;
-  }
-  return undefined;
-}

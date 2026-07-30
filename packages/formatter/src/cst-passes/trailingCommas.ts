@@ -22,7 +22,7 @@
 
 import { SyntaxNode, SyntaxKind, TokenKind, isNode, isToken } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit, walkTokens, rawEnd } from './infrastructure';
 
 export interface TrailingCommaConfig {
   trailingComma: 'never' | 'always' | 'multiline';
@@ -124,11 +124,4 @@ function commaOrLastToken(item: Item): Token {
 function aaFieldValue(field: SyntaxNode): SyntaxNode | undefined {
   const nodes = field.childNodes;
   return nodes.length > 0 ? nodes[nodes.length - 1] : undefined;
-}
-
-/** Raw end of a node's last direct-child token, ignoring trailing trivia. */
-function rawEnd(node: SyntaxNode): number {
-  let last: Token | undefined;
-  walkTokens(node, (t) => { last = t; });
-  return last ? last.end : node.end;
 }

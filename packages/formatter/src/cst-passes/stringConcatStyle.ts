@@ -34,7 +34,7 @@
 
 import { SyntaxNode, SyntaxKind, TokenKind, isNode, isToken } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit, dotMemberToken, rawStart, rawEnd, rawText } from './infrastructure';
 
 type StringConcatStyle = 'preserve' | 'plus' | 'array-join';
 
@@ -100,15 +100,6 @@ function isEmptyStringLiteral(node: SyntaxNode | undefined): boolean {
   return token?.text === '""';
 }
 
-function dotMemberToken(node: SyntaxNode): Token | undefined {
-  const children = node.children;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i];
-    if (isToken(child) && child.kind !== TokenKind.Dot) return child;
-  }
-  return undefined;
-}
-
 // ── 'array-join': a + b + "c" → [a, b, "c"].join("") ────────────────────────
 
 function processPlusChain(node: SyntaxNode, edits: TextEdit[], source: string): void {
@@ -147,24 +138,4 @@ function flattenPlusChain(node: SyntaxNode): SyntaxNode[] | null {
 
 function isStringLiteralOperand(node: SyntaxNode): boolean {
   return node.kind === SyntaxKind.LiteralExpression && node.childTokens.some(t => t.kind === TokenKind.StringLiteral);
-}
-
-function rawStart(node: SyntaxNode): number {
-  let first: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; });
-  return first ? first.pos : node.pos;
-}
-
-function rawEnd(node: SyntaxNode): number {
-  let last: Token | undefined;
-  walkTokens(node, (t) => { last = t; });
-  return last ? last.end : node.end;
-}
-
-function rawText(node: SyntaxNode, source: string): string {
-  let first: Token | undefined;
-  let last: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; last = t; });
-  if (!first || !last) return node.getText().trim();
-  return source.slice(first.pos, last.end);
 }

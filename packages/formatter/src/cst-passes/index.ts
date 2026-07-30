@@ -1,17 +1,14 @@
 /**
  * CST-based formatting passes.
  *
- * These passes demonstrate the pattern for migrating regex-based formatting
- * to structure-aware CST transformations. Each pass:
+ * Structure-aware alternatives to the regex/text passes in `formatter.ts`,
+ * used wherever CST removes a real string/comment-corruption or ambiguous-
+ * context risk the regex version had (see `findings/lsp-architecture.md` for
+ * the "when is this worth it" reasoning — not every regex pass is). Each
+ * pass:
  *   1. Walks the CST to find tokens/nodes matching certain criteria
  *   2. Produces a list of TextEdits (position-based replacements)
  *   3. Edits are applied to produce the transformed source
- *
- * Advantages over regex passes:
- * - Cannot modify text inside string literals (tokens are pre-classified)
- * - Cannot confuse keywords in different contexts (structural awareness)
- * - Position-accurate (no line-splitting heuristics)
- * - Testable in isolation (each pass is a pure function)
  */
 
 export { applyEdits, runCstPasses, walkTokens } from './infrastructure';

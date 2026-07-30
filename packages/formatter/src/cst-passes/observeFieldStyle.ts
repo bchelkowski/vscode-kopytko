@@ -11,9 +11,8 @@
  * mistaken for a call — comments aren't parsed as expressions.
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isNode, isToken, TriviaKind } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit } from './infrastructure';
+import { SyntaxNode, SyntaxKind, TokenKind, isNode, TriviaKind } from 'kopytko-brightscript-parser';
+import { TextEdit, dotMemberToken } from './infrastructure';
 
 type ObserveFieldStyle = 'preserve' | 'always-scoped' | 'warn';
 
@@ -68,14 +67,4 @@ function processCallNode(node: SyntaxNode, edits: TextEdit[], style: 'always-sco
       : lastToken.end;
 
   edits.push({ pos: insertPos, end: insertPos, newText: " ' TODO: consider using observeFieldScoped" });
-}
-
-/** Last non-Dot direct-child token of a DotExpression — the member name. */
-function dotMemberToken(node: SyntaxNode): Token | undefined {
-  const children = node.children;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i];
-    if (isToken(child) && child.kind !== TokenKind.Dot) return child;
-  }
-  return undefined;
 }

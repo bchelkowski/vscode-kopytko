@@ -19,7 +19,7 @@
 
 import { SyntaxNode, SyntaxKind, TokenKind, isNode, TriviaKind } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit, walkTokens, rawText } from './infrastructure';
 
 export function elseOnNewLinePass(elseOnNewLine: boolean): (root: SyntaxNode, source: string) => TextEdit[] {
   if (elseOnNewLine) return () => [];
@@ -85,12 +85,4 @@ function hasAnyComment(node: SyntaxNode): boolean {
     if (i < tokens.length - 1 && tokens[i].trailingTrivia.some(isComment)) return true;
   }
   return false;
-}
-
-function rawText(node: SyntaxNode, source: string): string {
-  let first: Token | undefined;
-  let last: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; last = t; });
-  if (!first || !last) return node.getText().trim();
-  return source.slice(first.pos, last.end);
 }

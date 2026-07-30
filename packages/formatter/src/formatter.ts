@@ -26,10 +26,10 @@ import {
 import type { CstPass } from './cst-passes/index';
 import type { ParseResult } from 'kopytko-brightscript-parser';
 
-/** Reverse mapping: spaced form → compact. */
-
 /**
- * Formats BrightScript source code using an 11-pass engine.
+ * Formats BrightScript source code using a hybrid multi-pass engine —
+ * structure-aware CST passes composed with text/regex passes (see the
+ * per-pass comments below for which is which, and why).
  *
  * This is the pure, framework-agnostic formatting function.
  * It takes a source string and returns the formatted result.
@@ -638,8 +638,6 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
 
   return result;
 }
-
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Pass 7b — Split array open bracket

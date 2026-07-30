@@ -16,9 +16,9 @@
  * as a workaround for exactly that; kept here too, for exact parity).
  */
 
-import { SyntaxNode, SyntaxKind, TokenKind, isNode, isToken } from 'kopytko-brightscript-parser';
+import { SyntaxNode, SyntaxKind, TokenKind, isNode } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit, dotMemberToken, rawStart, rawEnd, rawText } from './infrastructure';
 
 type FieldAccessConsistency = 'preserve' | 'dot' | 'method';
 
@@ -81,30 +81,6 @@ function matchMTopMember(dotNode: SyntaxNode): Token | undefined {
   if (!topMember || topMember.text.toLowerCase() !== 'top') return undefined;
 
   return dotMemberToken(dotNode);
-}
-
-function dotMemberToken(node: SyntaxNode): Token | undefined {
-  const children = node.children;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i];
-    if (isToken(child) && child.kind !== TokenKind.Dot) return child;
-  }
-  return undefined;
-}
-
-function rawText(node: SyntaxNode, source: string): string {
-  let first: Token | undefined;
-  let last: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; last = t; });
-  if (!first || !last) return node.getText().trim();
-  return source.slice(first.pos, last.end);
-}
-
-/** Raw start of a node's first token, ignoring leading trivia. */
-function rawStart(node: SyntaxNode): number {
-  let first: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; });
-  return first ? first.pos : node.pos;
 }
 
 // ── 'dot' direction: getField/setField → direct access ─────────────────────
@@ -188,14 +164,6 @@ function processAssignmentNode(
   const valueText = rawText(value, source);
   const end = rawEnd(node);
   edits.push({ pos: start, end, newText: `m.top.setField("${field}", ${valueText})` });
-}
-
-/** A node's own `.end` includes trailing trivia of its last token; this returns
- * the raw end of its last direct-child token instead. */
-function rawEnd(node: SyntaxNode): number {
-  let last: Token | undefined;
-  walkTokens(node, (t) => { last = t; });
-  return last ? last.end : node.end;
 }
 
 function processReadNode(node: SyntaxNode, edits: TextEdit[]): void {

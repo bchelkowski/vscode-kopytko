@@ -9,7 +9,7 @@
  * code inside string literals or comments.
  */
 
-import { parse, SyntaxNode, isNode, isToken } from 'kopytko-brightscript-parser';
+import { parse, SyntaxNode, isNode, isToken, TokenKind } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
 
 /** A text replacement at a specific byte range in the source. */
@@ -77,4 +77,37 @@ export function walkTokens(node: SyntaxNode, callback: (token: Token, parent: Sy
       walkTokens(child, callback);
     }
   }
+}
+
+/** Raw start of a node's first token, ignoring leading trivia. */
+export function rawStart(node: SyntaxNode): number {
+  let first: Token | undefined;
+  walkTokens(node, (t) => { if (!first) first = t; });
+  return first ? first.pos : node.pos;
+}
+
+/** Raw end of a node's last token, ignoring trailing trivia (unlike `node.end`, which includes it). */
+export function rawEnd(node: SyntaxNode): number {
+  let last: Token | undefined;
+  walkTokens(node, (t) => { last = t; });
+  return last ? last.end : node.end;
+}
+
+/** A node's exact source text, from its first token's start to its last token's end — excludes leading/trailing trivia (comments, whitespace). */
+export function rawText(node: SyntaxNode, source: string): string {
+  let first: Token | undefined;
+  let last: Token | undefined;
+  walkTokens(node, (t) => { if (!first) first = t; last = t; });
+  if (!first || !last) return node.getText().trim();
+  return source.slice(first.pos, last.end);
+}
+
+/** Last non-`.` direct-child token of a dot-access node (`a.b` → `b`) — the member name. */
+export function dotMemberToken(node: SyntaxNode): Token | undefined {
+  const children = node.children;
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+    if (isToken(child) && child.kind !== TokenKind.Dot) return child;
+  }
+  return undefined;
 }

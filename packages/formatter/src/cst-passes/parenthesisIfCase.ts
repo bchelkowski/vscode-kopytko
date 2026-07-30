@@ -20,8 +20,7 @@
  */
 
 import { SyntaxNode, SyntaxKind, isNode } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit, rawStart, rawEnd, rawText } from './infrastructure';
 
 export function parenthesisIfCasePass(style: 'preserve' | 'always' | 'never'): (root: SyntaxNode, source: string) => TextEdit[] {
   if (style === 'preserve') return () => [];
@@ -66,24 +65,4 @@ function processCondition(
     const end = rawEnd(condition);
     edits.push({ pos: start, end, newText: rawText(inner, source) });
   }
-}
-
-function rawStart(node: SyntaxNode): number {
-  let first: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; });
-  return first ? first.pos : node.pos;
-}
-
-function rawEnd(node: SyntaxNode): number {
-  let last: Token | undefined;
-  walkTokens(node, (t) => { last = t; });
-  return last ? last.end : node.end;
-}
-
-function rawText(node: SyntaxNode, source: string): string {
-  let first: Token | undefined;
-  let last: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; last = t; });
-  if (!first || !last) return node.getText().trim();
-  return source.slice(first.pos, last.end);
 }

@@ -32,7 +32,7 @@
 
 import { SyntaxNode, SyntaxKind, isNode } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit, walkTokens } from './infrastructure';
+import { TextEdit, walkTokens, rawText } from './infrastructure';
 
 export function aaThresholdPass(threshold: number, indentUnit: string): (root: SyntaxNode, source: string) => TextEdit[] {
   if (threshold <= 0) return () => [];
@@ -87,12 +87,4 @@ function tryExpand(
   const newText = `{${eol}${fieldLines}${eol}${baseIndent}}`;
   edits.push({ pos: first.pos, end: last.end, newText });
   return true;
-}
-
-function rawText(node: SyntaxNode, source: string): string {
-  let first: Token | undefined;
-  let last: Token | undefined;
-  walkTokens(node, (t) => { if (!first) first = t; last = t; });
-  if (!first || !last) return node.getText().trim();
-  return source.slice(first.pos, last.end);
 }
