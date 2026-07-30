@@ -225,7 +225,19 @@ print result`,
     name: 'paramAlignmentStyle',
     type: "'indent' | 'align-to-paren' | 'preserve'",
     defaultValue: "'preserve'",
-    description: "How to align parameters when a function signature spans multiple lines. Note: in BrightScript, multi-line parameter lists require _ line-continuation characters. This pass is not yet implemented — the option is accepted but has no effect on formatting output.",
+    description: "How to re-indent parameters when a function signature already spans multiple lines. 'indent' uses a single indent level under the signature; 'align-to-paren' lines params up under the opening (.",
+    before: `function work(
+    x as String,
+    y as Integer)
+    return x
+end function`,
+    after: `function work(
+              x as String,
+              y as Integer)
+    return x
+end function`,
+    beforeLabel: "'indent'",
+    afterLabel: "'align-to-paren'",
   },
 ];
 
@@ -429,7 +441,15 @@ end if`,
     name: 'elseOnNewLine',
     type: 'boolean',
     defaultValue: 'true',
-    description: "Intended to control else placement. This pass is not yet implemented — the option is accepted but has no effect on formatting output.",
+    description: "Whether else stays on its own line. When false, collapses a simple if/else (exactly one statement per branch, no else if, no comments) onto a single line.",
+    before: `if a
+  x = 1
+else
+  x = 2
+end if`,
+    after: `if a then x = 1 else x = 2`,
+    beforeLabel: 'true',
+    afterLabel: 'false',
   },
   {
     name: 'forLoopSpacing',
