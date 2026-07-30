@@ -95,8 +95,12 @@ export {
 // SceneGraph XML parsing (pure functions — no file system)
 export {
   parseXmlScriptUris, parseXmlInterface, parseXmlExtends, parseXmlComponentName,
+  tokenizeXmlInterfaceElements,
 } from './utils/xmlParsing.js';
-export type { XmlInterfaceField, XmlInterfaceFunction, ParsedXmlInterface } from './utils/xmlParsing.js';
+export type {
+  XmlInterfaceField, XmlInterfaceFunction, ParsedXmlInterface,
+  XmlInterfaceElement, XmlInterfaceChunk, TokenizedXmlInterface,
+} from './utils/xmlParsing.js';
 
 // ── Analysis modules (for LSP features and advanced linting) ──
 

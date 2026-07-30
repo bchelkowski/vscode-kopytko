@@ -4,6 +4,7 @@ import {
   buildCallGraph, analyzeContext, getSymbolInfo,
   findNodeAtPosition, findTokenAtPosition, getWordAtPosition, escapeRegex,
   parseXmlScriptUris, parseXmlInterface, parseXmlExtends, parseXmlComponentName,
+  tokenizeXmlInterfaceElements,
   findComponent, findBuiltin, getComponentMethods, matchesGlob, findMatchingGlob,
   inferNumericLiteralType, isNumericLiteral,
   applyCasing, resolveKeywordCasing, DEFAULT_CASING_CONFIG, getKeywordCategory,
@@ -262,6 +263,79 @@ describe('XML Parsing', () => {
 
   it('parses component name', () => {
     expect(parseXmlComponentName('<component name="MyScreen" extends="Group">')).to.equal('MyScreen');
+  });
+});
+
+describe('tokenizeXmlInterfaceElements', () => {
+  it('tokenizes fields and functions in document order with correct keys', () => {
+    const xml = '<component><interface><field id="title" type="string"/><function name="doWork"/></interface></component>';
+    const result = tokenizeXmlInterfaceElements(xml)!;
+    expect(result).to.not.be.null;
+    expect(result.items).to.have.length(2);
+    expect(result.items[0].element).to.deep.equal({ kind: 'field', key: 'title', text: '<field id="title" type="string"/>' });
+    expect(result.items[1].element).to.deep.equal({ kind: 'function', key: 'doWork', text: '<function name="doWork"/>' });
+  });
+
+  it('folds a preceding comment and blank lines into the following element\'s chunk', () => {
+    const xml = [
+      '<component><interface>',
+      '  <!-- the title field -->',
+      '  <field id="title" type="string"/>',
+      '</interface></component>',
+    ].join('\n');
+    const result = tokenizeXmlInterfaceElements(xml)!;
+    expect(result.items).to.have.length(1);
+    expect(result.items[0].chunk).to.equal('\n  <!-- the title field -->\n  <field id="title" type="string"/>');
+  });
+
+  it('folds a same-line trailing comment backward into the *preceding* element\'s chunk, not the next one\'s', () => {
+    const xml = [
+      '<component><interface>',
+      '  <field id="title" type="string"/> <!-- trailing comment about title -->',
+      '  <field id="count" type="integer"/>',
+      '</interface></component>',
+    ].join('\n');
+    const result = tokenizeXmlInterfaceElements(xml)!;
+    expect(result.items).to.have.length(2);
+    expect(result.items[0].chunk).to.equal('\n  <field id="title" type="string"/> <!-- trailing comment about title -->');
+    expect(result.items[1].chunk).to.equal('\n  <field id="count" type="integer"/>');
+  });
+
+  it('captures trailing whitespace/comments after the last element separately', () => {
+    const xml = '<component><interface><field id="title" type="string"/>\n  <!-- trailing -->\n</interface></component>';
+    const result = tokenizeXmlInterfaceElements(xml)!;
+    expect(result.items).to.have.length(1);
+    expect(result.trailingText).to.equal('\n  <!-- trailing -->\n');
+  });
+
+  it('supports an open/close pair with only whitespace between as an empty element', () => {
+    const xml = '<component><interface><field id="title" type="string"></field></interface></component>';
+    const result = tokenizeXmlInterfaceElements(xml)!;
+    expect(result.items).to.have.length(1);
+    expect(result.items[0].element.text).to.equal('<field id="title" type="string"></field>');
+  });
+
+  it('returns null when there is no <interface> block', () => {
+    expect(tokenizeXmlInterfaceElements('<component name="Foo"></component>')).to.be.null;
+  });
+
+  it('returns null when the <interface> block is unterminated', () => {
+    expect(tokenizeXmlInterfaceElements('<component><interface><field id="title" type="string"/>')).to.be.null;
+  });
+
+  it('returns null when a field is missing its id attribute', () => {
+    expect(tokenizeXmlInterfaceElements('<component><interface><field type="string"/></interface></component>')).to.be.null;
+  });
+
+  it('returns null when unexpected content (a text node) appears between elements', () => {
+    const xml = '<component><interface><field id="title" type="string"/>some text<function name="doWork"/></interface></component>';
+    expect(tokenizeXmlInterfaceElements(xml)).to.be.null;
+  });
+
+  it('returns innerStart/innerEnd offsets that bound the interface block\'s inner content', () => {
+    const xml = '<component><interface><field id="title" type="string"/></interface></component>';
+    const result = tokenizeXmlInterfaceElements(xml)!;
+    expect(xml.slice(result.innerStart, result.innerEnd)).to.equal('<field id="title" type="string"/>');
   });
 });
 
