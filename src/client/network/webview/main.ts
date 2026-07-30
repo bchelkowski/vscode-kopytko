@@ -54,6 +54,12 @@ const state: {
   sectionOpen: Record<string, boolean>;
   /** Section the user last opened/clicked — scrolled back into view when switching flows. */
   lastFocusedSection: string | null;
+  /** Whether the detail pane is currently scrolled to its bottom — restored on the next flow instead of `lastFocusedSection` when set. */
+  detailScrolledToBottom: boolean;
+  /** Last body-view tab picked per body kind (raw/formatted/tree) — reused so switching flows doesn't reset it. */
+  bodyTab: { request: string; response: string };
+  /** Last picked tab for binary bodies (preview/hex) — kept separate since binary sections use a different tab set. */
+  binaryBodyTab: string;
   /** Flow marked as the "A" side for a comparison, if any. */
   diffBaseId: string | null;
   /** When set, the detail pane shows a diff of these two flows instead of one flow. */
@@ -75,6 +81,9 @@ const state: {
   methodChips: new Set(),
   sectionOpen: { overview: true },
   lastFocusedSection: null,
+  detailScrolledToBottom: false,
+  bodyTab: { request: 'raw', response: 'raw' },
+  binaryBodyTab: 'preview',
   diffBaseId: null,
   diffView: null,
   intercepts: [],
@@ -541,9 +550,14 @@ function renderDetail(): void {
     ensureBodyContent(details, d, f);
   });
 
-  // Put the user back at the section they were looking at on the previous
-  // request — absent sections (e.g. this flow has no response body) stay top.
-  if (state.lastFocusedSection) {
+  // Put the user back where they were on the previous request. If they were
+  // scrolled to the bottom, stay pinned to the bottom (e.g. reading the tail
+  // of a long response body) — otherwise restore the section they last
+  // opened/clicked. Absent sections (e.g. this flow has no response body)
+  // stay top.
+  if (state.detailScrolledToBottom) {
+    el.scrollTop = el.scrollHeight;
+  } else if (state.lastFocusedSection) {
     el.querySelector(`.dsec[data-sec="${CSS.escape(state.lastFocusedSection)}"]`)?.scrollIntoView({ block: 'start' });
   }
 }
@@ -750,6 +764,9 @@ function headersHtml(headers: Record<string, string | string[]>): string {
   return `<table class="kv">${rows || '<tr><td colspan="2">(none)</td></tr>'}</table>`;
 }
 
+const TEXT_BODY_TABS = ['raw', 'formatted', 'tree'];
+const BINARY_BODY_TABS = ['preview', 'hex'];
+
 /**
  * Renders only the collapsed shell (summary + empty content placeholder) —
  * deliberately closed by default. The body itself is only fetched from
@@ -767,13 +784,18 @@ function bodySectionShell(
 ): string {
   if (!hasBody) return '';
   // Binary bodies (images) get Preview/Hex instead of Raw/Formatted/Tree, and
-  // no rewritten toggle (binary is never rewritten).
+  // no rewritten toggle (binary is never rewritten). The active tab is
+  // whatever the user last picked for this kind — falling back to the first
+  // tab when the stored pick isn't valid for this variant (e.g. a text tab
+  // stored for `response` but this response turns out to be binary).
+  const validTabs = binary ? BINARY_BODY_TABS : TEXT_BODY_TABS;
+  const stored = binary ? state.binaryBodyTab : state.bodyTab[kind];
+  const active = validTabs.includes(stored) ? stored : validTabs[0];
+  const tabBtn = (tab: string, label: string) =>
+    `<button type="button" class="tab${tab === active ? ' active' : ''}" data-tab="${tab}">${label}</button>`;
   const tabs = binary
-    ? `<button type="button" class="tab active" data-tab="preview">Preview</button>
-       <button type="button" class="tab" data-tab="hex">Hex</button>`
-    : `<button type="button" class="tab active" data-tab="raw">Raw</button>
-       <button type="button" class="tab" data-tab="formatted">Formatted</button>
-       <button type="button" class="tab" data-tab="tree">Tree</button>`;
+    ? `${tabBtn('preview', 'Preview')}${tabBtn('hex', 'Hex')}`
+    : `${tabBtn('raw', 'Raw')}${tabBtn('formatted', 'Formatted')}${tabBtn('tree', 'Tree')}`;
   const openInEditor = binary
     ? ''
     : '<button type="button" class="find-nav" data-open-body title="Open the full body, formatted, in a new editor tab">Open in editor</button>';
@@ -1769,6 +1791,17 @@ function wireEvents(): void {
     if (e.key === 'Escape') hideCtxMenu();
   });
   byId('detail').addEventListener('scroll', hideCtxMenu, true);
+  // Tracks whether the pane is currently scrolled to its bottom — a pure
+  // derivation from live scroll position, so it stays correct whether the
+  // scroll was user-driven or from our own restore in `renderDetail()`.
+  byId('detail').addEventListener(
+    'scroll',
+    () => {
+      const el = byId('detail');
+      state.detailScrolledToBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+    },
+    true,
+  );
 
   byId('detail').addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
@@ -1850,6 +1883,9 @@ function wireEvents(): void {
       if (!details) return;
       details.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
       tabBtn.classList.add('active');
+      const pickedTab = tabBtn.dataset.tab!;
+      if (details.dataset.binary === '1') state.binaryBodyTab = pickedTab;
+      else if (details.dataset.kind === 'request' || details.dataset.kind === 'response') state.bodyTab[details.dataset.kind] = pickedTab;
       renderBodyTab(details, selectedDetail(), selectedFlow());
       return;
     }
