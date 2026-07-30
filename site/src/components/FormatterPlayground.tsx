@@ -106,6 +106,13 @@ const INITIAL_CONFIG_TEXT = `{
   "arraySplitOpenBracket": false,           // true | false
   "associativeArraySingleLineThreshold": 0, // number — 0 = no threshold
 
+  // Sorting & Kopytko Template Structuring
+  "associativeArrayKeySortOrder": "preserve", // "preserve" | "alphabetical"
+  "sortPriorityKeys": [],                   // string[] — global default priority-key list
+  "associativeArraySortPriorityKeys": [],   // string[] — override for plain assoc arrays
+  "kopytkoTemplateKeyOrder": [],            // string[] — e.g. ["name", "props", "dynamicProps", "events", "children"]; [] = disabled
+  "kopytkoTemplatePropsSortPriorityKeys": [], // string[] — override for nested props/dynamicProps/events
+
   // Operators & Expressions
   "spaceAroundOperators": true,             // true | false
   "spaceAroundAssignment": true,            // true | false

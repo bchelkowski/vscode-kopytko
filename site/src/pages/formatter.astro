@@ -588,6 +588,112 @@ const aaOptions: Option[] = [
   },
 ];
 
+const sortOptions: Option[] = [
+  {
+    name: 'associativeArrayKeySortOrder',
+    type: "'preserve' | 'alphabetical'",
+    defaultValue: "'preserve'",
+    description: "Sort assoc-array entries alphabetically by key. Quoted and unquoted keys sort identically.",
+    before: `config = { name: "app", version: "1.0", debug: true }`,
+    after: `config = { debug: true, name: "app", version: "1.0" }`,
+    beforeLabel: "'preserve'",
+    afterLabel: "'alphabetical'",
+  },
+  {
+    name: 'sortPriorityKeys',
+    type: 'string[]',
+    defaultValue: '[]',
+    description: "Global default priority-key list used by every sort scope (assoc arrays, XML fields, Kopytko template props) unless that scope's own override is non-empty.",
+    before: `props = { width: 100, color: "red", id: "box1", height: 50 }`,
+    after: `props = { id: "box1", width: 100, height: 50, color: "red" }`,
+    beforeLabel: 'sortPriorityKeys: []',
+    afterLabel: 'sortPriorityKeys: ["id", "width", "height"]',
+  },
+  {
+    name: 'associativeArraySortPriorityKeys',
+    type: 'string[]',
+    defaultValue: '[]',
+    description: 'Priority-key override for plain assoc-array sorting. Empty falls back to sortPriorityKeys.',
+    before: `props = { width: 100, id: "box1" }`,
+    after: `props = { id: "box1", width: 100 }`,
+    beforeLabel: '[]',
+    afterLabel: '["id"]',
+  },
+  {
+    name: 'kopytkoTemplateKeyOrder',
+    type: 'string[]',
+    defaultValue: '[]',
+    description: "Top-level key order for detected Kopytko UI template objects ({ name, props, dynamicProps, children, events }-shaped, requiring a name key and an id key inside props/dynamicProps). Nested props/dynamicProps/events are always alphabetically sorted, independent of associativeArrayKeySortOrder. Empty disables the feature.",
+    before: `return {
+  props: { width: 100, id: "myGroup" },
+  name: "Group"
+}`,
+    after: `return {
+  name: "Group",
+  props: { id: "myGroup", width: 100 }
+}`,
+    beforeLabel: '[]',
+    afterLabel: '["name", "props", "dynamicProps", "events", "children"]',
+  },
+  {
+    name: 'kopytkoTemplatePropsSortPriorityKeys',
+    type: 'string[]',
+    defaultValue: '[]',
+    description: 'Priority-key override for nested props/dynamicProps/events objects of a detected template object. Empty falls back to sortPriorityKeys.',
+    before: `props: { width: 100, id: "x", height: 50 }`,
+    after: `props: { id: "x", width: 100, height: 50 }`,
+    beforeLabel: '[]',
+    afterLabel: '["id", "width", "height"]',
+  },
+];
+
+const xmlOptions: Option[] = [
+  {
+    name: 'xmlInterfaceSortOrder',
+    type: "'preserve' | 'alphabetical'",
+    defaultValue: "'preserve'",
+    description: 'Sort <field>/<function> entries inside a SceneGraph <interface> block — fields by id, functions by name. Works via Format Document on .xml files, and via the kopytko-format CLI.',
+    before: `<interface>
+  <field id="title" type="string" />
+  <field id="count" type="integer" />
+</interface>`,
+    after: `<interface>
+  <field id="count" type="integer" />
+  <field id="title" type="string" />
+</interface>`,
+    beforeLabel: "'preserve'",
+    afterLabel: "'alphabetical'",
+  },
+  {
+    name: 'xmlInterfaceGroupOrder',
+    type: "'preserve' | 'fields-first' | 'functions-first'",
+    defaultValue: "'preserve'",
+    description: 'Relative grouping of <field> vs <function> entries.',
+    before: `<interface>
+  <function name="doWork" />
+  <field id="title" type="string" />
+</interface>`,
+    after: `<interface>
+  <field id="title" type="string" />
+  <function name="doWork" />
+</interface>`,
+    beforeLabel: "'preserve'",
+    afterLabel: "'fields-first'",
+  },
+  {
+    name: 'xmlInterfaceSortPriorityKeys',
+    type: 'string[]',
+    defaultValue: '[]',
+    description: "Priority-key override for XML interface sorting, matched against each field's id or function's name. Empty falls back to sortPriorityKeys.",
+    before: `<field id="width" type="integer" />
+<field id="id" type="string" />`,
+    after: `<field id="id" type="string" />
+<field id="width" type="integer" />`,
+    beforeLabel: '[]',
+    afterLabel: '["id", "width"]',
+  },
+];
+
 const brsPatternOptions: Option[] = [
   {
     name: 'mPrefixStyle',
@@ -781,7 +887,7 @@ end function`;
       </div>
       <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">BrightScript Formatter</h1>
       <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
-        A hybrid 27-pass formatter for BrightScript with 51 configuration options. All options default to preserve so you can adopt it incrementally without changing existing style.
+        A hybrid 28-pass formatter for BrightScript with 59 configuration options — plus SceneGraph .xml &lt;interface&gt; field/function sorting. All options default to preserve so you can adopt it incrementally without changing existing style.
       </p>
       <div class="flex flex-wrap gap-3 mt-6">
         <a href="https://www.npmjs.com/package/kopytko-formatter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
@@ -884,7 +990,7 @@ end function`;
     <!-- All options -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-2">All options</h2>
-      <p class="text-slate-400 text-sm mb-8">51 formatting options, all defaulting to <code class="text-slate-300">'preserve'</code>. Click any option's anchor to link directly.</p>
+      <p class="text-slate-400 text-sm mb-8">59 formatting options, all defaulting to <code class="text-slate-300">'preserve'</code>. Click any option's anchor to link directly.</p>
 
       <!-- Indentation -->
       <div class="mb-10">
@@ -985,6 +1091,28 @@ end function`;
         </div>
       </div>
 
+      <!-- Sorting & Kopytko templates -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-fuchsia-500 rounded-full"></span>
+          Sorting & Kopytko templates
+        </h3>
+        <div class="space-y-3">
+          {sortOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
+      <!-- XML formatting -->
+      <div class="mb-10">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+          <span class="w-1 h-4 bg-amber-500 rounded-full"></span>
+          XML formatting
+        </h3>
+        <div class="space-y-3">
+          {xmlOptions.map(opt => <OptionCard {...opt} />)}
+        </div>
+      </div>
+
       <!-- BrightScript patterns -->
       <div class="mb-10">
         <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
@@ -1011,7 +1139,7 @@ end function`;
     <!-- Library API -->
     <section>
       <h2 class="text-xl font-bold text-white mb-4">Library API</h2>
-      <CodePanel code={`import { formatText, checkFormatting } from 'kopytko-formatter';
+      <CodePanel code={`import { formatText, checkFormatting, formatXml, checkXml } from 'kopytko-formatter';
 
 // Format a BrightScript source string
 const formatted = formatText(source, {
@@ -1024,7 +1152,11 @@ const formatted = formatText(source, {
 const isClean = checkFormatting(source, config);
 if (!isClean) {
   console.log('File needs formatting');
-}`} lang="typescript" />
+}
+
+// Sort a SceneGraph component's <interface> block
+const formattedXml = formatXml(xmlSource, { xmlInterfaceSortOrder: 'alphabetical' });
+const isXmlClean = checkXml(xmlSource, config);`} lang="typescript" />
     </section>
 
   </div>

@@ -27,7 +27,7 @@
 - **32 diagnostic rules** — undefined functions/variables, wrong argument count, unused imports/parameters, `CreateObject` validation, `@import` resolution, test framework checks, and more
 - **Inline suppression** — `' kopytko-disable-next-line <rule>` and `' kopytko-disable-line <rule>` (glob patterns and `rem` style supported; use `disable-next-line` on the preceding line for `@import`/`@mock` annotations)
 - **Code actions** — quick fixes for import diagnostics and unused parameters
-- **Document formatting** — multi-pass engine with 51 configurable options (indentation, spacing, casing, blank lines, keyword style, and more)
+- **Document formatting** — multi-pass engine with 59 configurable options (indentation, spacing, casing, blank lines, keyword style, assoc-array/XML-interface sorting, Kopytko template structuring, and more), plus XML `<interface>` field/function sorting via *Format Document* on SceneGraph component files
 - **Configurable identifier casing** — 10 casing dimensions (builtins, keywords, types, methods, user functions) with per-identifier overrides
 - **Kopytko Unit Testing Framework** — test file detection, `@mock` support, `expect()` matcher completions, test case symbols in Outline
 

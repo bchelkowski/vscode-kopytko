@@ -2,7 +2,7 @@
 
 ## Overview
 
-The BrightScript formatter is a **hybrid 27-pass engine**: 16 structure-aware CST passes plus 11 inline text/regex passes. `packages/formatter/src/cst-passes/index.ts` exports 17 CST pass files (`endKeywordStyle`, `casingPass`, `commentNormalization`, `printStatementRemoval`, `thenStyle`, `functionVsSub`, `trailingWhitespace`, `observeFieldStyle`, `mPrefixStyle`, `fieldAccessConsistency`, `lineCommentPosition`, `trailingCommas`, `parenthesisIfCase`, `stringConcatStyle`, `elseOnNewLine`, `aaThreshold`, plus shared `infrastructure`); `packages/formatter/src/formatter.ts` composes 16 of those into the pipeline (`infrastructure` isn't itself a pass) alongside the 11 rules still implemented as inline text/regex transforms. Every regex pass has been evaluated for a CST port — some were, some weren't because they're already safe from the string/comment-corruption risk CST removes or because the input they exist to fix is itself a parse error a CST pass could never see; see the per-pass comments in `formatter.ts` and `findings/lsp-architecture.md` for the reasoning behind each one that stayed regex.
+The BrightScript formatter is a **hybrid 28-pass engine**: 17 structure-aware CST passes plus 11 inline text/regex passes. `packages/formatter/src/cst-passes/index.ts` exports 18 CST pass files (`endKeywordStyle`, `casingPass`, `commentNormalization`, `printStatementRemoval`, `thenStyle`, `functionVsSub`, `trailingWhitespace`, `observeFieldStyle`, `mPrefixStyle`, `fieldAccessConsistency`, `lineCommentPosition`, `trailingCommas`, `parenthesisIfCase`, `stringConcatStyle`, `elseOnNewLine`, `aaThreshold`, `associativeArraySort`, plus shared `infrastructure`); `packages/formatter/src/formatter.ts` composes 17 of those into the pipeline (`infrastructure` isn't itself a pass) alongside the 11 rules still implemented as inline text/regex transforms. Every regex pass has been evaluated for a CST port — some were, some weren't because they're already safe from the string/comment-corruption risk CST removes or because the input they exist to fix is itself a parse error a CST pass could never see; see the per-pass comments in `formatter.ts` and `findings/lsp-architecture.md` for the reasoning behind each one that stayed regex.
 
 CST passes run through a small bridge that joins the current lines, applies token/node-position edits, and splits back to lines. Consecutive style passes (`endKeywordStyle`, `functionVsSubForVoid`, `thenStyle`) are batched through `runCstPasses`, while single-pass CST transforms reuse a per-format parse cache. This parse-once batching keeps typical formatting to roughly two parser runs instead of repeatedly reparsing for every rule. Pass files are regular linted TypeScript modules; they no longer carry a blanket unused-variable ESLint disable.
 
@@ -14,7 +14,7 @@ String literal contents and trailing comments (`'…`) are preserved verbatim �
 
 **CLI usage:** The formatter is also available as a standalone CLI tool via the `kopytko-formatter` npm package. See the [kopytko-formatter README](../packages/formatter/README.md) for CI integration and library API.
 
-**Implementation:** The formatting engine lives in `packages/formatter/src/formatter.ts`. The extension's `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package.
+**Implementation:** The formatting engine lives in `packages/formatter/src/formatter.ts`. The extension's `BrightScriptFormattingProvider` in `src/server/providers/formattingProvider.ts` is a thin LSP adapter that calls `formatText()` from the package. SceneGraph `.xml` `<interface>` sorting (see [XML Formatting](#xml-formatting) below) is a separate, client-side-only capability — `src/client/activation/xmlFormatting.ts` registers a `DocumentFormattingEditProvider` directly in the extension, bypassing the language server entirely (see that section for why).
 
 ---
 
@@ -881,6 +881,129 @@ return [{
 
 ---
 
+## Sorting & Kopytko Template Structuring
+
+All three settings below default to `preserve`/empty — zero edits until you opt in, same as every
+other rule. A shared `sortPriorityKeys` global default exists alongside two scope-specific
+overrides (`associativeArraySortPriorityKeys`, `xmlInterfaceSortPriorityKeys`,
+`kopytkoTemplatePropsSortPriorityKeys`) — an empty scope override falls back to the global list.
+
+---
+
+**`kopytko.format.associativeArrayKeySortOrder`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"alphabetical"` | `"preserve"` |
+
+Sort assoc-array (`{ key: value }`) entries alphabetically by key. Quoted (`"id":`) and unquoted
+(`id:`) keys sort identically — quoting is never rewritten, only entry order changes. A comment
+directly above an entry travels with it when reordered.
+
+```brightscript
+' "alphabetical":
+' Before:
+config = { name: "app", version: "1.0", debug: true }
+
+' After:
+config = { debug: true, name: "app", version: "1.0" }
+
+' "preserve" — leaves entry order as written (default)
+```
+
+---
+
+**`kopytko.format.sortPriorityKeys`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string[]` | Any key names | `[]` |
+
+Global default priority-key list used by every sort scope below (assoc arrays, XML interface
+fields, Kopytko template props) unless that scope's own override is non-empty. Keys listed here
+always sort first, in this order (only for keys actually present); everything else follows
+alphabetically.
+
+```brightscript
+' sortPriorityKeys: ["id", "width", "height"], associativeArrayKeySortOrder: "alphabetical"
+' Before:
+props = { width: 100, color: "red", id: "box1", height: 50 }
+
+' After:
+props = { id: "box1", width: 100, height: 50, color: "red" }
+```
+
+---
+
+**`kopytko.format.associativeArraySortPriorityKeys`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string[]` | Any key names | `[]` |
+
+Priority-key override for plain assoc-array sorting (`associativeArrayKeySortOrder`). Empty = fall
+back to `sortPriorityKeys`.
+
+---
+
+**`kopytko.format.kopytkoTemplateKeyOrder`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string[]` | Any key names | `[]` |
+
+Top-level key order enforced on detected **Kopytko UI template objects** — assoc arrays shaped
+like `{ name, props, dynamicProps, children, events }` used by the Kopytko framework's component
+templates.
+
+An assoc array is recognized as a template object when: it has a `name` key, an `id` key is
+present inside its `props` and/or `dynamicProps` field, and every one of its keys is a member of
+this list (an unrecognized key disqualifies the whole object — it's treated as a plain assoc array
+instead). This applies **regardless of `associativeArrayKeySortOrder`**.
+
+Once recognized, the object's nested `props`/`dynamicProps`/`events` values are always
+alphabetically sorted (using `kopytkoTemplatePropsSortPriorityKeys`), independent of
+`associativeArrayKeySortOrder`; a `children` field (an array of nested template objects) is
+recursed into the same way, at arbitrary depth.
+
+**Empty = feature disabled** — template objects are treated as plain assoc arrays.
+
+```brightscript
+' kopytkoTemplateKeyOrder: ["name", "props", "dynamicProps", "events", "children"]
+' kopytkoTemplatePropsSortPriorityKeys: ["id", "width", "height"]
+' Before:
+return {
+  props: { width: 100, id: "myGroup", height: 100 },
+  name: "Group",
+  children: [
+    { props: { color: red, id: "background", width: 100, height: 100 }, name: "Rectangle" }
+  ]
+}
+
+' After:
+return {
+  name: "Group",
+  props: { id: "myGroup", width: 100, height: 100 },
+  children: [
+    { name: "Rectangle", props: { id: "background", width: 100, height: 100, color: red } }
+  ]
+}
+```
+
+---
+
+**`kopytko.format.kopytkoTemplatePropsSortPriorityKeys`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string[]` | Any key names | `[]` |
+
+Priority-key override for the nested `props`/`dynamicProps`/`events` objects of a detected
+Kopytko template object. Empty = fall back to `sortPriorityKeys`. Only has an effect when
+`kopytkoTemplateKeyOrder` is non-empty.
+
+---
+
 ## Operators & Expressions
 
 ---
@@ -1536,9 +1659,91 @@ Verifies that formatted output re-parses to an equivalent AST before applying it
 
 ---
 
+## XML Formatting
+
+The formatter also sorts SceneGraph component `.xml` `<interface>` blocks — `<field>` and
+`<function>` entries only; nothing else in the file is touched (attributes, comments, indentation
+outside `<interface>` are all preserved verbatim). This is a much narrower capability than the
+`.brs` engine above: one tokenize → reorder → splice step, not a multi-pass pipeline.
+
+**Usage:** Run *Format Document* (`Shift+Alt+F`) on an open `.xml` component file, or use the
+`kopytko-format` CLI (see below) — both call the same `formatXml()` function.
+
+**Why this is a separate, client-side-only code path:** the LSP client's document selector
+(`src/client/activation/languageServer.ts`) only covers `.brs`/`.kopytkorc` files, deliberately —
+broadening it to `.xml` would advertise every other server capability (semantic tokens, symbols,
+etc.) for XML too. A dynamically-registered *server-side* XML formatter would work around that, but
+the client only synchronizes documents matching its *static* selector — so it would only ever see
+last-saved-to-disk content, and applying edits computed against stale text to a live, unsaved
+buffer risks corrupting it. Instead, `src/client/activation/xmlFormatting.ts` registers a
+`vscode.languages.registerDocumentFormattingEditProvider` directly in the extension, reading
+`document.getText()` from the live in-memory buffer — no LSP round-trip, no sync gap.
+
+---
+
+**`kopytko.format.xmlInterfaceSortOrder`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"alphabetical"` | `"preserve"` |
+
+Sort `<field>`/`<function>` entries alphabetically — fields by their `id` attribute, functions by
+their `name` attribute. A comment directly above an entry travels with it when reordered.
+
+```xml
+<!-- "alphabetical": -->
+<!-- Before: -->
+<interface>
+  <field id="title" type="string" />
+  <function name="doWork" />
+  <field id="count" type="integer" />
+</interface>
+
+<!-- After (xmlInterfaceGroupOrder: "preserve" — relative field/function interleaving kept): -->
+<interface>
+  <field id="count" type="integer" />
+  <function name="doWork" />
+  <field id="title" type="string" />
+</interface>
+```
+
+---
+
+**`kopytko.format.xmlInterfaceGroupOrder`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"fields-first"`, `"functions-first"` | `"preserve"` |
+
+Relative grouping of `<field>` vs `<function>` entries. `"preserve"` keeps their original relative
+interleaving (sorting, if enabled, treats them as one combined list); `"fields-first"`/
+`"functions-first"` groups all of one kind before the other (each group sorted independently when
+`xmlInterfaceSortOrder` is `"alphabetical"`).
+
+```xml
+<!-- "fields-first": -->
+<interface>
+  <field id="count" type="integer" />
+  <field id="title" type="string" />
+  <function name="doWork" />
+</interface>
+```
+
+---
+
+**`kopytko.format.xmlInterfaceSortPriorityKeys`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string[]` | Any field `id`/function `name` values | `[]` |
+
+Priority-key override for XML interface sorting. Empty = fall back to `sortPriorityKeys`.
+
+---
+
 ## CLI & CI Usage
 
-The formatting engine is available as a standalone CLI tool via the `kopytko-formatter` npm package, independent of VS Code.
+The formatting engine is available as a standalone CLI tool via the `kopytko-formatter` npm package, independent of VS Code. It formats both `.brs` files and `.xml` component `<interface>` blocks — pass either extension in your glob patterns (`kopytko-format --write "**/*.xml"`).
 
 ### Installation
 
@@ -1627,10 +1832,13 @@ jobs:
 ### Library API
 
 ```typescript
-import { formatText, checkFormatting, DEFAULT_FORMATTING_CONFIG } from 'kopytko-formatter';
+import { formatText, checkFormatting, formatXml, checkXml, DEFAULT_FORMATTING_CONFIG } from 'kopytko-formatter';
 
 const formatted = formatText(source, { ...DEFAULT_FORMATTING_CONFIG, indentSize: 2 });
 const isClean = checkFormatting(source, DEFAULT_FORMATTING_CONFIG);
+
+const formattedXml = formatXml(xmlSource, { ...DEFAULT_FORMATTING_CONFIG, xmlInterfaceSortOrder: 'alphabetical' });
+const isXmlClean = checkXml(xmlSource, DEFAULT_FORMATTING_CONFIG);
 ```
 
 See the [kopytko-formatter README](../packages/formatter/README.md) for the full API reference.
