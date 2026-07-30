@@ -88,7 +88,8 @@ const INITIAL_CONFIG_TEXT = `{
   "spaceBeforeAnonymousFunctionParens": false, // true | false
   "spaceBeforeCallParens": false,           // true | false
   "spaceInsideParens": "never",             // "never" | "always"
-  "paramAlignmentStyle": "preserve",        // "preserve" | "indent" | "align-to-paren"  (not yet implemented)
+  "parenCommaSpacing": "preserve",          // "preserve" | "after" | "before" | "both" | "none"
+  "paramAlignmentStyle": "preserve",        // "preserve" | "indent" | "align-to-paren"
 
   // Line Length & Wrapping
   "maxLineLength": 120,                     // number — 0 = no limit
@@ -98,6 +99,7 @@ const INITIAL_CONFIG_TEXT = `{
   // Arrays & Associative Arrays
   "associativeArrayBracketSpacing": true,   // true | false
   "associativeArrayCommaSpacing": "preserve",// "preserve" | "after" | "before" | "both" | "none"
+  "arrayCommaSpacing": "preserve",          // "preserve" | "after" | "before" | "both" | "none"
   "trailingComma": "never",                 // "never" | "always" | "multiline"
   "arrayCommaStyle": "preserve",            // "preserve" | "always" | "never"
   "associativeArrayCommaStyle": "preserve", // "preserve" | "always" | "never"
@@ -126,7 +128,7 @@ const INITIAL_CONFIG_TEXT = `{
 
   // Control Flow
   "parenthesisIfCase": "preserve",         // "preserve" | "always" | "never"
-  "elseOnNewLine": true,                    // true | false  (not yet implemented)
+  "elseOnNewLine": true,                    // true | false
   "forLoopSpacing": true,                   // true | false
 
   // Miscellaneous

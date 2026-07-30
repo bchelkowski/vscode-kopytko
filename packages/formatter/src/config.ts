@@ -59,6 +59,10 @@ export interface FormattingConfig {
   associativeArrayBracketSpacing: boolean;
   /** Spaces around commas separating key-value pairs inside inline `{}`. 'after' = `{a: 1, b: 2}`, 'before' = `{a: 1 ,b: 2}`, 'both' = `{a: 1 , b: 2}`, 'none' = `{a: 1,b: 2}`. Only applied to commas inside `{}` on the same line (not multi-line AAs). */
   associativeArrayCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
+  /** Spaces around commas separating elements inside inline `[]`. Same values as `associativeArrayCommaSpacing`; applied to whichever bracket most immediately encloses the comma, so a `[{...}]` array of AAs gets each bracket's own setting. Only applied to commas on the same line as the surrounding `[`/`]` (not multi-line arrays). */
+  arrayCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
+  /** Spaces around commas separating arguments/parameters inside `()` — function calls and function/sub definitions alike. Same values as `associativeArrayCommaSpacing`. Only applied to commas on the same line as the surrounding `(`/`)` (not multi-line parameter/argument lists). */
+  parenCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
   /** Trailing comma after the last item in multi-line arrays/AAs. */
   trailingComma: 'never' | 'always' | 'multiline';
   /** Comma separators between items in multi-line arrays. BrightScript allows omitting commas when items are on separate lines. */
@@ -167,6 +171,8 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   // Arrays & AAs
   associativeArrayBracketSpacing: true,
   associativeArrayCommaSpacing: 'preserve',
+  arrayCommaSpacing: 'preserve',
+  parenCommaSpacing: 'preserve',
   trailingComma: 'never',
   arrayCommaStyle: 'preserve',
   associativeArrayCommaStyle: 'preserve',

@@ -575,6 +575,32 @@ result = getValue( key, default )
 
 ---
 
+**`kopytko.format.parenCommaSpacing`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"after"`, `"before"`, `"both"`, `"none"` | `"preserve"` |
+
+Controls spaces around commas separating arguments in function calls and parameters in function/sub definitions. Applies to whichever `()` most immediately encloses the comma, independent of `associativeArrayCommaSpacing`/`arrayCommaSpacing` for nested `{}`/`[]` arguments. Only applies to commas on the same line as `(` and `)` — multi-line parameter/argument lists are not affected.
+
+```brightscript
+' "after" — space after comma only:
+result = getValue("a", "b", "c")
+
+' "before" — space before comma only:
+result = getValue("a" ,"b" ,"c")
+
+' "both" — space on both sides:
+result = getValue("a" , "b" , "c")
+
+' "none" — no spaces around commas:
+result = getValue("a","b","c")
+
+' "preserve" — leave as written (default)
+```
+
+---
+
 **`kopytko.format.paramAlignmentStyle`**
 
 | Type | Values | Default |
@@ -706,6 +732,32 @@ config = { a: 1 , b: 2 }
 
 ' "none" — no spaces around commas:
 config = { a: 1,b: 2 }
+
+' "preserve" — leave as written (default)
+```
+
+---
+
+**`kopytko.format.arrayCommaSpacing`**
+
+| Type | Values | Default |
+|---|---|---|
+| `string` | `"preserve"`, `"after"`, `"before"`, `"both"`, `"none"` | `"preserve"` |
+
+Controls spaces around commas separating elements in **inline** arrays `[]`. Applies to whichever `[]` most immediately encloses the comma, independent of `associativeArrayCommaSpacing`/`parenCommaSpacing` for nested `{}`/`()` elements — e.g. in `[{a: 1}, foo(2, 3)]`, the array-level commas, the AA-internal commas, and the call-argument commas are each controlled by their own setting. Only applies to commas on the same line as `[` and `]` — multi-line arrays are not affected.
+
+```brightscript
+' "after" — space after comma only:
+items = ["1", "2", "3"]
+
+' "before" — space before comma only:
+items = ["1" ,"2" ,"3"]
+
+' "both" — space on both sides:
+items = ["1" , "2" , "3"]
+
+' "none" — no spaces around commas:
+items = ["1","2","3"]
 
 ' "preserve" — leave as written (default)
 ```

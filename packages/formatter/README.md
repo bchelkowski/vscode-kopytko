@@ -162,6 +162,7 @@ When used inside the [Kopytko extension](https://github.com/bchelkowski/vscode-k
 | `kopytko.format.spaceBeforeAnonymousFunctionParens` | `boolean` | `false` | Space before `(` in anonymous function expressions |
 | `kopytko.format.spaceBeforeCallParens` | `boolean` | `false` | Space before `(` in function calls |
 | `kopytko.format.spaceInsideParens` | `"never" \| "always"` | `"never"` | Spaces inside `()` in calls and definitions |
+| `kopytko.format.parenCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in function calls and definition parameter lists |
 | `kopytko.format.paramAlignmentStyle` | `"indent" \| "align-to-paren" \| "preserve"` | `"preserve"` | Multi-line parameter alignment style |
 
 ### Strings
@@ -178,6 +179,7 @@ When used inside the [Kopytko extension](https://github.com/bchelkowski/vscode-k
 |---|---|---|---|
 | `kopytko.format.associativeArrayBracketSpacing` | `boolean` | `true` | Spaces inside `{}`: `{ key: value }` (true) vs `{key: value}` (false) |
 | `kopytko.format.associativeArrayCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in inline associative arrays |
+| `kopytko.format.arrayCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in inline arrays |
 | `kopytko.format.trailingComma` | `"never" \| "always" \| "multiline"` | `"never"` | Trailing comma after the last item in multi-line arrays and AAs |
 | `kopytko.format.arrayCommaStyle` | `"always" \| "never" \| "preserve"` | `"preserve"` | Comma separators in multi-line arrays |
 | `kopytko.format.associativeArrayCommaStyle` | `"always" \| "never" \| "preserve"` | `"preserve"` | Comma separators in multi-line associative arrays |
@@ -297,7 +299,7 @@ Returns `true` if the source text is already formatted (no changes needed).
 |---|---|
 | `formatText(source, config, casing?, userFunctions?)` | Format BrightScript source; returns the formatted string |
 | `checkFormatting(source, config, casing?, userFunctions?)` | Returns `true` if the source is already formatted |
-| `FormattingConfig` | The full formatting-options type (49 fields — everything under `kopytko.format.*`) |
+| `FormattingConfig` | The full formatting-options type (51 fields — everything under `kopytko.format.*`) |
 | `DEFAULT_FORMATTING_CONFIG` | A `FormattingConfig` with every option at its VS Code default |
 | `parseFormattingConfig(raw)` | Parse/validate a raw settings object (e.g. from `kopytko-formatter.json` or `.vscode/settings.json`) into a `FormattingConfig` |
 | `FunctionDefinition` | Shape of a parsed function/sub definition, used for the `userFunctions` casing parameter |

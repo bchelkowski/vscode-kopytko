@@ -1621,6 +1621,108 @@ describe('kopytko-formatter', () => {
     });
   });
 
+  // ── arrayCommaSpacing ────────────────────────────────────────────────────────
+  describe('arrayCommaSpacing', () => {
+    it("'none' removes spaces on both sides", () => {
+      const result = format(['sub init()', '  a = ["1", "2", "3"]', 'end sub'], { arrayCommaSpacing: 'none' });
+      expect(result).to.include('a = ["1","2","3"]');
+    });
+
+    it("'after' adds space after commas and removes space before", () => {
+      const result = format(['sub init()', '  a = ["1","2","3"]', 'end sub'], { arrayCommaSpacing: 'after' });
+      expect(result).to.include('a = ["1", "2", "3"]');
+    });
+
+    it("'before' adds space before commas and removes space after", () => {
+      const result = format(['sub init()', '  a = ["1", "2", "3"]', 'end sub'], { arrayCommaSpacing: 'before' });
+      expect(result).to.include('a = ["1" ,"2" ,"3"]');
+    });
+
+    it("'both' adds spaces on both sides", () => {
+      const result = format(['sub init()', '  a = ["1","2"]', 'end sub'], { arrayCommaSpacing: 'both' });
+      expect(result).to.include('a = ["1" , "2"]');
+    });
+
+    it("'preserve' leaves existing (even inconsistent) spacing unchanged", () => {
+      const result = format(['sub init()', '  a = ["1" ,"2",  "3"]', 'end sub'], { arrayCommaSpacing: 'preserve' });
+      expect(result).to.include('a = ["1" ,"2",  "3"]');
+    });
+
+    it('does not affect commas inside a function call argument list within the array', () => {
+      const result = format(['sub init()', '  x = [foo(a, b), 1]', 'end sub'], { arrayCommaSpacing: 'none' });
+      expect(result).to.include('foo(a, b),1');
+    });
+  });
+
+  // ── parenCommaSpacing ────────────────────────────────────────────────────────
+  describe('parenCommaSpacing', () => {
+    it("'none' removes spaces on both sides in a function call", () => {
+      const result = format(['sub init()', '  a("1", "2", "3")', 'end sub'], { parenCommaSpacing: 'none' });
+      expect(result).to.include('a("1","2","3")');
+    });
+
+    it("'after' adds space after commas in a function call", () => {
+      const result = format(['sub init()', '  a("1","2","3")', 'end sub'], { parenCommaSpacing: 'after' });
+      expect(result).to.include('a("1", "2", "3")');
+    });
+
+    it("'before' adds space before commas and removes space after", () => {
+      const result = format(['sub init()', '  a("1", "2", "3")', 'end sub'], { parenCommaSpacing: 'before' });
+      expect(result).to.include('a("1" ,"2" ,"3")');
+    });
+
+    it("applies to function/sub parameter definitions, not just calls", () => {
+      const result = format(['function work(x,y,z)', '  return x', 'end function'], { parenCommaSpacing: 'after' });
+      expect(result).to.include('function work(x, y, z)');
+    });
+
+    it("'preserve' leaves existing spacing unchanged", () => {
+      const result = format(['sub init()', '  a("1" ,"2",  "3")', 'end sub'], { parenCommaSpacing: 'preserve' });
+      expect(result).to.include('a("1" ,"2",  "3")');
+    });
+
+    it('does not affect commas inside an array argument', () => {
+      const result = format(['sub init()', '  foo([1, 2], "x")', 'end sub'], { parenCommaSpacing: 'none' });
+      expect(result).to.include('foo([1, 2],"x")');
+    });
+  });
+
+  // ── comma spacing in nested bracket contexts (each bracket type independent) ──
+  describe('nested comma spacing', () => {
+    it('array-of-AAs: array commas and AA-internal commas are spaced independently', () => {
+      const result = format(['sub init()', '  x = [{a:1,b:2},{c:3,d:4}]', 'end sub'], {
+        arrayCommaSpacing: 'after',
+        associativeArrayCommaSpacing: 'none',
+      });
+      expect(result).to.include('x = [{ a:1,b:2 }, { c:3,d:4 }]');
+    });
+
+    it('AA-with-array-value: AA commas and array-internal commas are spaced independently', () => {
+      const result = format(['sub init()', '  x = {items:[1,2,3],count:1}', 'end sub'], {
+        associativeArrayCommaSpacing: 'after',
+        arrayCommaSpacing: 'none',
+      });
+      expect(result).to.include('x = { items:[1,2,3], count:1 }');
+    });
+
+    it('array-of-calls: array commas and call-argument commas are spaced independently', () => {
+      const result = format(['sub init()', '  x = [foo(1, 2),bar(3, 4)]', 'end sub'], {
+        arrayCommaSpacing: 'after',
+        parenCommaSpacing: 'none',
+      });
+      expect(result).to.include('x = [foo(1,2), bar(3,4)]');
+    });
+
+    it('does not affect a multi-line array, including a trailing comma added by trailingComma (disjoint scopes, not pass ordering)', () => {
+      const result = format(['sub init()', '  items = [', '    "a",', '    "b"', '  ]', 'end sub'], {
+        arrayCommaSpacing: 'none',
+        trailingComma: 'always',
+      });
+      expect(result).to.include('"a",');
+      expect(result).to.include('"b",');
+    });
+  });
+
   // ── Catch parentheses (always stripped) ──────────────────────────────────
 
   describe('catch parentheses', () => {

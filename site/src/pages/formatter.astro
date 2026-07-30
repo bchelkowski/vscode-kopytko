@@ -222,6 +222,16 @@ print result`,
     afterLabel: "'always'",
   },
   {
+    name: 'parenCommaSpacing',
+    type: "'preserve' | 'after' | 'before' | 'both' | 'none'",
+    defaultValue: "'preserve'",
+    description: "Spaces around commas separating arguments/parameters in function calls and definitions. Applies to whichever ( ) most immediately encloses the comma — independent of associativeArrayCommaSpacing/arrayCommaSpacing for nested { }/[ ] arguments.",
+    before: `result = add("1","2","3")`,
+    after: `result = add("1", "2", "3")`,
+    beforeLabel: "'none'",
+    afterLabel: "'after'",
+  },
+  {
     name: 'paramAlignmentStyle',
     type: "'indent' | 'align-to-paren' | 'preserve'",
     defaultValue: "'preserve'",
@@ -477,6 +487,26 @@ const aaOptions: Option[] = [
     after: `data = { name: "Alice", age: 30 }`,
     beforeLabel: 'false',
     afterLabel: 'true',
+  },
+  {
+    name: 'associativeArrayCommaSpacing',
+    type: "'preserve' | 'after' | 'before' | 'both' | 'none'",
+    defaultValue: "'preserve'",
+    description: "Spaces around commas separating key-value pairs in inline associative arrays. Applies to whichever { } most immediately encloses the comma.",
+    before: `data = { a: 1 ,b: 2 }`,
+    after: `data = { a: 1, b: 2 }`,
+    beforeLabel: "'preserve' (mixed input)",
+    afterLabel: "'after'",
+  },
+  {
+    name: 'arrayCommaSpacing',
+    type: "'preserve' | 'after' | 'before' | 'both' | 'none'",
+    defaultValue: "'preserve'",
+    description: "Spaces around commas separating elements in inline arrays. Applies to whichever [ ] most immediately encloses the comma — independent of associativeArrayCommaSpacing for nested { } elements.",
+    before: `items = ["1","2","3"]`,
+    after: `items = ["1", "2", "3"]`,
+    beforeLabel: "'none'",
+    afterLabel: "'after'",
   },
   {
     name: 'trailingComma',
@@ -751,7 +781,7 @@ end function`;
       </div>
       <h1 class="text-3xl sm:text-4xl font-bold text-white mb-4">BrightScript Formatter</h1>
       <p class="text-lg text-slate-400 max-w-2xl leading-relaxed">
-        A hybrid 27-pass formatter for BrightScript with 49 configuration options. All options default to preserve so you can adopt it incrementally without changing existing style.
+        A hybrid 27-pass formatter for BrightScript with 51 configuration options. All options default to preserve so you can adopt it incrementally without changing existing style.
       </p>
       <div class="flex flex-wrap gap-3 mt-6">
         <a href="https://www.npmjs.com/package/kopytko-formatter" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-[#cc3534] hover:bg-[#b02e2d] text-white text-sm font-medium rounded-lg transition-colors">
@@ -854,7 +884,7 @@ end function`;
     <!-- All options -->
     <section>
       <h2 class="text-2xl font-bold text-white mb-2">All options</h2>
-      <p class="text-slate-400 text-sm mb-8">49 formatting options, all defaulting to <code class="text-slate-300">'preserve'</code>. Click any option's anchor to link directly.</p>
+      <p class="text-slate-400 text-sm mb-8">51 formatting options, all defaulting to <code class="text-slate-300">'preserve'</code>. Click any option's anchor to link directly.</p>
 
       <!-- Indentation -->
       <div class="mb-10">

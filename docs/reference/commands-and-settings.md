@@ -48,7 +48,7 @@ Generated from `package.json` `contributes`, which is the source of truth VS Cod
 | `kopytko.network.toggleCapture` | Toggle Network Capture | Kopytko |
 | `kopytko.network.clear` | Clear Network Capture | Kopytko |
 
-## Settings (131)
+## Settings (133)
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
@@ -92,11 +92,13 @@ Generated from `package.json` `contributes`, which is the source of truth VS Cod
 | `kopytko.format.spaceBeforeAnonymousFunctionParens` | boolean | `false` | Space before `(` in anonymous function expressions. ```brightscript ' true: m.handler = function () ' false: m.handler = function() ``` |
 | `kopytko.format.spaceBeforeCallParens` | boolean | `false` | Space before `(` in function calls. ```brightscript ' true: doWork () ' false: doWork() ``` |
 | `kopytko.format.spaceInsideParens` | enum | `"never"` | Spaces inside '()' in calls and definitions. |
+| `kopytko.format.parenCommaSpacing` | enum | `"preserve"` | Spaces around commas separating arguments in function calls and parameters in function/sub definitions — `foo(a, b)` / `function foo(a, b)`. Applies to whichever `()` most immediately encloses the comma, independent of `associativeArrayCommaSpacing`/`arrayCommaSpacing` for `{}`/`[]` elsewhere on the same line. Only applies to commas on the same line as `(` and `)` — multi-line parameter/argument lists are not affected. |
 | `kopytko.format.paramAlignmentStyle` | enum | `"preserve"` | Multi-line parameter alignment style. |
 | `kopytko.format.maxLineLength` | integer | `120` | Max line length before the formatter wraps long strings. `0` = no limit. |
 | `kopytko.format.wrapLongStrings` | enum | `"preserve"` | How to break long string literals. - `plus`: break with `+` concatenation - `array-join`: break with `[..., ...].join("")` |
 | `kopytko.format.associativeArrayBracketSpacing` | boolean | `true` | Spaces inside `{}`: `{ key: value }` (true) vs `{key: value}` (false). |
 | `kopytko.format.associativeArrayCommaSpacing` | enum | `"preserve"` | Spaces around commas separating key-value pairs in inline associative arrays `{}`. Only applies to commas on the same line as `{` and `}` — multi-line AAs are not affected. |
+| `kopytko.format.arrayCommaSpacing` | enum | `"preserve"` | Spaces around commas separating elements in inline arrays `[]`. Applies to whichever `[]` most immediately encloses the comma — independent of `associativeArrayCommaSpacing` for nested `{}` elements, e.g. in `[{a: 1}, {b: 2}]`. Only applies to commas on the same line as `[` and `]` — multi-line arrays are not affected. |
 | `kopytko.format.trailingComma` | enum | `"never"` | Trailing comma after the last item in multi-line arrays and associative arrays. |
 | `kopytko.format.arrayCommaStyle` | enum | `"preserve"` | Comma separators in multi-line arrays. BrightScript allows omitting commas when items are on separate lines. ```brightscript ' "always": arr = [ 1, 2, 3, ] ' "never": arr = [ 1 2 3 ] ``` |
 | `kopytko.format.associativeArrayCommaStyle` | enum | `"preserve"` | Comma separators in multi-line associative arrays. BrightScript allows omitting commas when entries are on separate lines. ```brightscript ' "always": obj = { name: "foo", value: 42, } ' "never": obj = { name: "foo" value: 42 } ``` |

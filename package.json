@@ -602,6 +602,25 @@
           "default": "never",
           "description": "Spaces inside '()' in calls and definitions."
         },
+        "kopytko.format.parenCommaSpacing": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "after",
+            "before",
+            "both",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Keep existing spacing around commas.",
+            "Space after comma only: `a(\"1\", \"2\")`.",
+            "Space before comma only: `a(\"1\" ,\"2\")`.",
+            "Space on both sides: `a(\"1\" , \"2\")`.",
+            "No spaces around commas: `a(\"1\",\"2\")`."
+          ],
+          "default": "preserve",
+          "markdownDescription": "Spaces around commas separating arguments in function calls and parameters in function/sub definitions — `foo(a, b)` / `function foo(a, b)`. Applies to whichever `()` most immediately encloses the comma, independent of `associativeArrayCommaSpacing`/`arrayCommaSpacing` for `{}`/`[]` elsewhere on the same line. Only applies to commas on the same line as `(` and `)` — multi-line parameter/argument lists are not affected."
+        },
         "kopytko.format.paramAlignmentStyle": {
           "type": "string",
           "enum": [
@@ -651,6 +670,25 @@
           ],
           "default": "preserve",
           "markdownDescription": "Spaces around commas separating key-value pairs in inline associative arrays `{}`. Only applies to commas on the same line as `{` and `}` — multi-line AAs are not affected."
+        },
+        "kopytko.format.arrayCommaSpacing": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "after",
+            "before",
+            "both",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Keep existing spacing around commas.",
+            "Space after comma only: `[\"1\", \"2\"]`.",
+            "Space before comma only: `[\"1\" ,\"2\"]`.",
+            "Space on both sides: `[\"1\" , \"2\"]`.",
+            "No spaces around commas: `[\"1\",\"2\"]`."
+          ],
+          "default": "preserve",
+          "markdownDescription": "Spaces around commas separating elements in inline arrays `[]`. Applies to whichever `[]` most immediately encloses the comma — independent of `associativeArrayCommaSpacing` for nested `{}` elements, e.g. in `[{a: 1}, {b: 2}]`. Only applies to commas on the same line as `[` and `]` — multi-line arrays are not affected."
         },
         "kopytko.format.trailingComma": {
           "type": "string",

@@ -532,27 +532,44 @@ function applySpacingToCode(code: string, config: FormattingConfig, fullLine: st
   return r;
 }
 
+type CommaSpacingMode = 'after' | 'before' | 'both' | 'none' | 'preserve';
+type BracketKind = '{' | '[' | '(';
+
 /**
- * Applies `associativeArrayBracketSpacing` and `associativeArrayCommaSpacing` to a fully-assembled line
- * (code + string-literal segments joined together).
+ * Applies `associativeArrayBracketSpacing` and the three comma-spacing options
+ * (`associativeArrayCommaSpacing`, `arrayCommaSpacing`, `parenCommaSpacing`) to
+ * a fully-assembled line (code + string-literal segments joined together).
  *
  * This runs after all code segments are assembled so that the rules work
  * correctly across string-literal boundaries — e.g. `{ key: "value"}` → `{ key: "value" }`
  * where the closing `}` lives in a different segment than the preceding `"`.
  *
+ * A comma is spaced according to whichever bracket *most immediately* encloses
+ * it (tracked via a stack, not a flat depth count per bracket type) — so
+ * `[{a: 1, b: 2}, {c: 3}]` spaces the AA-internal commas per
+ * `associativeArrayCommaSpacing` and the top-level array commas per
+ * `arrayCommaSpacing`, independently, regardless of the nesting order.
+ *
+ * Called once per physical line with a fresh (empty) stack each time — a
+ * bracket opened on a previous line is not remembered, so none of the three
+ * comma-spacing options ever touch a multi-line collection's commas. This
+ * doesn't need reconciling with `trailingCommasPass` (which only ever adds a
+ * comma to a *multi-line* collection, running later in the pipeline): the
+ * two features have disjoint scopes by construction, not by pass ordering.
+ *
  * String literal contents are never modified.
  */
 function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): string {
   const addBracket = config.associativeArrayBracketSpacing;
-  const commaMode = config.associativeArrayCommaSpacing ?? 'preserve';
-  // Fast path: nothing to process if the line has no braces at all
-  if (!line.includes('{') && !line.includes('}')) return line;
+  const aaCommaMode = config.associativeArrayCommaSpacing ?? 'preserve';
+  const arrayCommaMode = config.arrayCommaSpacing ?? 'preserve';
+  const parenCommaMode = config.parenCommaSpacing ?? 'preserve';
+  // Fast path: nothing to process if the line has no brackets at all
+  if (!/[{}[\]()]/.test(line)) return line;
 
   let result = '';
   let inString = false;
-  let braceDepth = 0;
-  let parenDepth = 0;
-  let squareDepth = 0;
+  const stack: BracketKind[] = [];
 
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
@@ -581,15 +598,13 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
       break;
     }
 
-    // ── Depth tracking for non-brace brackets ───────────────────────────────
-    if (ch === '(') { parenDepth++; result += ch; continue; }
-    if (ch === ')') { parenDepth--; result += ch; continue; }
-    if (ch === '[') { squareDepth++; result += ch; continue; }
-    if (ch === ']') { squareDepth--; result += ch; continue; }
+    // ── Non-brace brackets — just track nesting ─────────────────────────────
+    if (ch === '(' || ch === '[') { stack.push(ch); result += ch; continue; }
+    if (ch === ')' || ch === ']') { stack.pop(); result += ch; continue; }
 
     // ── Opening brace ────────────────────────────────────────────────────────
     if (ch === '{') {
-      braceDepth++;
+      stack.push('{');
       result += ch;
       if (addBracket) {
         // Add space after { unless immediately followed by space or }
@@ -604,7 +619,7 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
 
     // ── Closing brace ────────────────────────────────────────────────────────
     if (ch === '}') {
-      braceDepth--;
+      stack.pop();
       if (addBracket) {
         // Add space before } unless already preceded by space or {
         const last = result.length > 0 ? result[result.length - 1] : '';
@@ -619,18 +634,26 @@ function applyBracketAndCommaSpacing(line: string, config: FormattingConfig): st
       continue;
     }
 
-    // ── AA comma spacing ─────────────────────────────────────────────────────
-    if (ch === ',' && commaMode !== 'preserve' && braceDepth > 0 && parenDepth === 0 && squareDepth === 0) {
-      const spaceBefore = commaMode === 'before' || commaMode === 'both';
-      const spaceAfter = commaMode === 'after' || commaMode === 'both';
-      // Remove any existing spaces before the comma
-      while (result.length > 0 && result[result.length - 1] === ' ') result = result.slice(0, -1);
-      if (spaceBefore) result += ' ';
-      result += ',';
-      // Skip any existing spaces after the comma in the source
-      while (i + 1 < line.length && line[i + 1] === ' ') i++;
-      if (spaceAfter) result += ' ';
-      continue;
+    // ── Comma spacing — mode depends on the innermost enclosing bracket ────
+    if (ch === ',') {
+      const innermost = stack[stack.length - 1];
+      const mode: CommaSpacingMode | undefined =
+        innermost === '{' ? aaCommaMode :
+        innermost === '[' ? arrayCommaMode :
+        innermost === '(' ? parenCommaMode :
+        undefined;
+      if (mode && mode !== 'preserve') {
+        const spaceBefore = mode === 'before' || mode === 'both';
+        const spaceAfter = mode === 'after' || mode === 'both';
+        // Remove any existing spaces before the comma
+        while (result.length > 0 && result[result.length - 1] === ' ') result = result.slice(0, -1);
+        if (spaceBefore) result += ' ';
+        result += ',';
+        // Skip any existing spaces after the comma in the source
+        while (i + 1 < line.length && line[i + 1] === ' ') i++;
+        if (spaceAfter) result += ' ';
+        continue;
+      }
     }
 
     result += ch;
