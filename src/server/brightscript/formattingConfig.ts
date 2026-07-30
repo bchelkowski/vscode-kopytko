@@ -59,6 +59,10 @@ export interface FormattingConfig {
   associativeArrayBracketSpacing: boolean;
   /** Spaces around commas separating key-value pairs inside inline `{}`. 'after' = `{a: 1, b: 2}`, 'before' = `{a: 1 ,b: 2}`, 'both' = `{a: 1 , b: 2}`, 'none' = `{a: 1,b: 2}`. Only applied to commas inside `{}` on the same line (not multi-line AAs). */
   associativeArrayCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
+  /** Spaces around commas separating elements inside inline `[]`. Same values as `associativeArrayCommaSpacing`; applied to whichever bracket most immediately encloses the comma. */
+  arrayCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
+  /** Spaces around commas separating arguments/parameters inside `()`. Same values as `associativeArrayCommaSpacing`. */
+  parenCommaSpacing: 'after' | 'before' | 'both' | 'none' | 'preserve';
   /** Trailing comma after the last item in multi-line arrays/AAs. */
   trailingComma: 'never' | 'always' | 'multiline';
   /** Comma separators between items in multi-line arrays. BrightScript allows omitting commas when items are on separate lines. */
@@ -69,6 +73,28 @@ export interface FormattingConfig {
   arraySplitOpenBracket: boolean;
   /** Max number of keys before forcing an AA to multi-line. 0 = no limit. */
   associativeArraySingleLineThreshold: number;
+
+  // ── Sorting: Associative Arrays ───────────────────────────────────────────
+  /** Sort assoc-array ({ key: value }) entries alphabetically by key. 'preserve' leaves entry order as written. */
+  associativeArrayKeySortOrder: 'alphabetical' | 'preserve';
+  /** Global default priority-key list used by every sort scope unless that scope's own override list is non-empty. */
+  sortPriorityKeys: string[];
+  /** Priority-key override for plain assoc-array sorting. Empty = fall back to sortPriorityKeys. */
+  associativeArraySortPriorityKeys: string[];
+
+  // ── Sorting: XML Interface ─────────────────────────────────────────────────
+  /** Sort <field>/<function> entries inside a SceneGraph <interface> block alphabetically (by id/name). 'preserve' leaves them in document order. */
+  xmlInterfaceSortOrder: 'alphabetical' | 'preserve';
+  /** Relative grouping of <field> vs <function> entries. */
+  xmlInterfaceGroupOrder: 'preserve' | 'fields-first' | 'functions-first';
+  /** Priority-key override for XML interface sorting. Empty = fall back to sortPriorityKeys. */
+  xmlInterfaceSortPriorityKeys: string[];
+
+  // ── Kopytko Template Object Structuring ─────────────────────────────────────
+  /** Top-level key order enforced on detected Kopytko UI template objects. Empty = feature disabled. */
+  kopytkoTemplateKeyOrder: string[];
+  /** Priority-key override for the nested props/dynamicProps/events objects of a detected template object. Empty = fall back to sortPriorityKeys. */
+  kopytkoTemplatePropsSortPriorityKeys: string[];
 
   // ── Operators & Expressions ──────────────────────────────────────────────
   /** Spaces around binary operators (+, -, *, /, <>, <, >, and, or, mod). */
@@ -163,11 +189,27 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   // Arrays & AAs
   associativeArrayBracketSpacing: true,
   associativeArrayCommaSpacing: 'preserve',
+  arrayCommaSpacing: 'preserve',
+  parenCommaSpacing: 'preserve',
   trailingComma: 'never',
   arrayCommaStyle: 'preserve',
   associativeArrayCommaStyle: 'preserve',
   arraySplitOpenBracket: false,
   associativeArraySingleLineThreshold: 0,
+
+  // Sorting: Associative Arrays
+  associativeArrayKeySortOrder: 'preserve',
+  sortPriorityKeys: [],
+  associativeArraySortPriorityKeys: [],
+
+  // Sorting: XML Interface
+  xmlInterfaceSortOrder: 'preserve',
+  xmlInterfaceGroupOrder: 'preserve',
+  xmlInterfaceSortPriorityKeys: [],
+
+  // Kopytko Template Object Structuring
+  kopytkoTemplateKeyOrder: [],
+  kopytkoTemplatePropsSortPriorityKeys: [],
 
   // Operators & Expressions
   spaceAroundOperators: true,
@@ -223,6 +265,10 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     const v = cfg[key];
     return typeof v === 'boolean' ? v : def;
   };
+  const strArr = (key: string, def: string[]): string[] => {
+    const v = cfg[key];
+    return Array.isArray(v) && v.every((item) => typeof item === 'string') ? v : def;
+  };
 
   return {
     indentSize: num('indentSize', d.indentSize),
@@ -251,11 +297,24 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
 
     associativeArrayBracketSpacing: bool('associativeArrayBracketSpacing', d.associativeArrayBracketSpacing),
     associativeArrayCommaSpacing: str('associativeArrayCommaSpacing', d.associativeArrayCommaSpacing) as FormattingConfig['associativeArrayCommaSpacing'],
+    arrayCommaSpacing: str('arrayCommaSpacing', d.arrayCommaSpacing) as FormattingConfig['arrayCommaSpacing'],
+    parenCommaSpacing: str('parenCommaSpacing', d.parenCommaSpacing) as FormattingConfig['parenCommaSpacing'],
     trailingComma: str('trailingComma', d.trailingComma) as FormattingConfig['trailingComma'],
     arrayCommaStyle: str('arrayCommaStyle', d.arrayCommaStyle) as FormattingConfig['arrayCommaStyle'],
     associativeArrayCommaStyle: str('associativeArrayCommaStyle', d.associativeArrayCommaStyle) as FormattingConfig['associativeArrayCommaStyle'],
     arraySplitOpenBracket: bool('arraySplitOpenBracket', d.arraySplitOpenBracket),
     associativeArraySingleLineThreshold: num('associativeArraySingleLineThreshold', d.associativeArraySingleLineThreshold),
+
+    associativeArrayKeySortOrder: str('associativeArrayKeySortOrder', d.associativeArrayKeySortOrder) as FormattingConfig['associativeArrayKeySortOrder'],
+    sortPriorityKeys: strArr('sortPriorityKeys', d.sortPriorityKeys),
+    associativeArraySortPriorityKeys: strArr('associativeArraySortPriorityKeys', d.associativeArraySortPriorityKeys),
+
+    xmlInterfaceSortOrder: str('xmlInterfaceSortOrder', d.xmlInterfaceSortOrder) as FormattingConfig['xmlInterfaceSortOrder'],
+    xmlInterfaceGroupOrder: str('xmlInterfaceGroupOrder', d.xmlInterfaceGroupOrder) as FormattingConfig['xmlInterfaceGroupOrder'],
+    xmlInterfaceSortPriorityKeys: strArr('xmlInterfaceSortPriorityKeys', d.xmlInterfaceSortPriorityKeys),
+
+    kopytkoTemplateKeyOrder: strArr('kopytkoTemplateKeyOrder', d.kopytkoTemplateKeyOrder),
+    kopytkoTemplatePropsSortPriorityKeys: strArr('kopytkoTemplatePropsSortPriorityKeys', d.kopytkoTemplatePropsSortPriorityKeys),
 
     spaceAroundOperators: bool('spaceAroundOperators', d.spaceAroundOperators),
     spaceAroundAssignment: bool('spaceAroundAssignment', d.spaceAroundAssignment),

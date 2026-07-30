@@ -39,8 +39,8 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | `packages/brightscript-parser/src/utils` | 3 | Parser-side helpers: glob matching, position math, XML parsing. |
 | **packages/formatter** | | |
 | `packages/formatter/bin` | 1 | kopytko-format CLI entry. |
-| `packages/formatter/src` | 7 | Formatter engine, configuration, and casing rules. |
-| `packages/formatter/src/cst-passes` | 18 | Structure-aware formatting passes applied over the CST, one concern per file. |
+| `packages/formatter/src` | 8 | Formatter engine, configuration, and casing rules. |
+| `packages/formatter/src/cst-passes` | 19 | Structure-aware formatting passes applied over the CST, one concern per file. |
 | **packages/linter** | | |
 | `packages/linter/bin` | 1 | kopytko-lint CLI entry. |
 | `packages/linter/src` | 10 | Linter core: rule running, config, suppression, fixing, project indexing. |
@@ -67,7 +67,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | **src** | | |
 | `src` | 1 | Extension entry point; delegates everything to src/client/activation/. |
 | `src/client` | 2 | Shared client-side helpers used across every VS Code-facing feature. |
-| `src/client/activation` | 14 | One module per feature, each wiring its commands, views, and services on extension start. |
+| `src/client/activation` | 15 | One module per feature, each wiring its commands, views, and services on extension start. |
 | `src/client/console` | 2 | Kopytko Console controller and severity/line classification for debug output. |
 | `src/client/console/views` | 1 | Console panel view provider (tree/webview host registration). |
 | `src/client/console/webview` | 5 | Kopytko Console webview: xterm.js terminal, completion, colouring, filtering. |
@@ -142,7 +142,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | Glob pattern matching | `matchesGlob`, `findMatchingGlob` |
 | Position-based node lookup (for LSP providers) | `findNodeAtPosition`, `findTokenAtPosition`, `getWordAtPosition`, `escapeRegex` |
 | BrightScript component catalog (ro* objects, interfaces, methods) | `BRIGHTSCRIPT_COMPONENTS`, `BRIGHTSCRIPT_INTERFACES`, `findComponent`, `findInterface`, `getComponentMethods`, `findMethodInterface`, `CATALOG_LAST_VERIFIED` |
-| SceneGraph XML parsing (pure functions — no file system) | `parseXmlScriptUris`, `parseXmlInterface`, `parseXmlExtends`, `parseXmlComponentName` |
+| SceneGraph XML parsing (pure functions — no file system) | `parseXmlScriptUris`, `parseXmlInterface`, `parseXmlExtends`, `parseXmlComponentName`, `tokenizeXmlInterfaceElements` |
 | AST-based type inference | `inferTypesFromAst`, `getVariableType` |
 | Call graph (who calls whom, argument tracking) | `buildCallGraph` |
 | Context (m) analysis (m.field tracking, function binding to AAs) | `analyzeContext` |
@@ -153,7 +153,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 
 | Group | Symbols |
 |---|---|
-| Exports | `formatText`, `checkFormatting`, `FormattingConfig`, `DEFAULT_FORMATTING_CONFIG`, `parseFormattingConfig`, `FunctionDefinition` |
+| Exports | `formatText`, `checkFormatting`, `formatXml`, `checkXml`, `FormattingConfig`, `DEFAULT_FORMATTING_CONFIG`, `parseFormattingConfig`, `getEffectiveSortPriorityKeys`, `FunctionDefinition` |
 | Re-export from brightscript-parser (canonical source) | `CasingConfig`, `CasingOption`, `DEFAULT_CASING_CONFIG`, `applyCasing`, `applyCasingWithOverrides`, `resolveKeywordCasing`, `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `getKeywordCategory` |
 
 ### `kopytko-linter` — `packages/linter/src/index.ts`

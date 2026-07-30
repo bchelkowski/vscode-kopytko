@@ -48,7 +48,7 @@ Generated from `package.json` `contributes`, which is the source of truth VS Cod
 | `kopytko.network.toggleCapture` | Toggle Network Capture | Kopytko |
 | `kopytko.network.clear` | Clear Network Capture | Kopytko |
 
-## Settings (133)
+## Settings (141)
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
@@ -104,6 +104,14 @@ Generated from `package.json` `contributes`, which is the source of truth VS Cod
 | `kopytko.format.associativeArrayCommaStyle` | enum | `"preserve"` | Comma separators in multi-line associative arrays. BrightScript allows omitting commas when entries are on separate lines. ```brightscript ' "always": obj = { name: "foo", value: 42, } ' "never": obj = { name: "foo" value: 42 } ``` |
 | `kopytko.format.associativeArraySingleLineThreshold` | integer | `0` | Max number of keys before forcing an AA to multi-line. 0 = no limit. |
 | `kopytko.format.arraySplitOpenBracket` | boolean | `false` | When `true`, splits `[{` onto separate lines in multi-item arrays for better readability. ```brightscript ' true: return [ { name: "Component", }, otherItem() ] ' false: return [{ name: "Component", }, otherItem() ] ``` |
+| `kopytko.format.associativeArrayKeySortOrder` | enum | `"preserve"` | Sort assoc-array (`{ key: value }`) entries alphabetically by key. See `kopytko.format.sortPriorityKeys`/`kopytko.format.associativeArraySortPriorityKeys` to pin specific keys first. |
+| `kopytko.format.sortPriorityKeys` | array | `[]` | Global default priority-key list used by every sort scope (assoc arrays, XML interface fields, Kopytko template props) unless that scope's own override list is non-empty. Keys listed here always sort first, in this order (only for keys actually present); everything else follows alphabetically. **Example:** ```json ["id", "width", "height"] ``` |
+| `kopytko.format.associativeArraySortPriorityKeys` | array | `[]` | Priority-key override for plain assoc-array sorting (`associativeArrayKeySortOrder`). When empty, falls back to `kopytko.format.sortPriorityKeys`. |
+| `kopytko.format.kopytkoTemplateKeyOrder` | array | `[]` | Top-level key order enforced on detected Kopytko UI template objects — assoc arrays shaped like `{ name, props, dynamicProps, children, events }`, where a `name` key plus an `id` key inside `props`/`dynamicProps` is required for detection. Applies regardless of `associativeArrayKeySortOrder`. Nested `props`/`dynamicProps`/`events` objects are always alphabetically sorted (see `kopytkoTemplatePropsSortPriorityKeys`); `children` (an array of nested template objects) is recursed into the same way. **Empty = feature disabled.** Example: ```json ["name", "props", "dynamicProps", "events", "children"] ``` |
+| `kopytko.format.kopytkoTemplatePropsSortPriorityKeys` | array | `[]` | Priority-key override for the nested `props`/`dynamicProps`/`events` objects of a detected Kopytko template object. When empty, falls back to `kopytko.format.sortPriorityKeys`. Only has an effect when `kopytkoTemplateKeyOrder` is non-empty. |
+| `kopytko.format.xmlInterfaceSortOrder` | enum | `"preserve"` | Sort `<field>`/`<function>` entries inside a SceneGraph `<interface>` block alphabetically. Works through *Format Document* on `.xml` component files, and via the `kopytko-format` CLI. See `kopytko.format.xmlInterfaceGroupOrder` for field/function grouping and `kopytko.format.xmlInterfaceSortPriorityKeys` for pinning specific fields/functions first. |
+| `kopytko.format.xmlInterfaceGroupOrder` | enum | `"preserve"` | Relative grouping of `<field>` vs `<function>` entries inside a SceneGraph `<interface>` block. |
+| `kopytko.format.xmlInterfaceSortPriorityKeys` | array | `[]` | Priority-key override for XML interface sorting — matched against each `<field>`'s `id` attribute or `<function>`'s `name` attribute. When empty, falls back to `kopytko.format.sortPriorityKeys`. |
 | `kopytko.format.spaceAroundOperators` | boolean | `true` | Spaces around binary operators (+, -, *, /, <>, and, or, mod). |
 | `kopytko.format.spaceAroundAssignment` | boolean | `true` | Spaces around = in assignments. |
 | `kopytko.format.unarySpacing` | boolean | `true` | Space after unary 'not'. |
