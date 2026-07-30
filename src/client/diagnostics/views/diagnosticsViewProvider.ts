@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { buildWebviewHtml } from '../../webview/htmlShell';
 import type { DiagnosticsController } from '../diagnosticsController';
 import type { DiagnosticsSession } from '../session/diagnosticsSession';
 import type {
@@ -701,24 +702,10 @@ export class DiagnosticsViewProvider implements vscode.WebviewViewProvider {
   // ── HTML ──────────────────────────────────────────────────────────────────────
 
   private buildHtml(webview: vscode.Webview): string {
-    const outDir = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'diagnostics-webview');
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
-    const csp = webview.cspSource;
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp}; img-src ${csp} data:;">
-  <link href="${styleUri}" rel="stylesheet">
-  <title>Kopytko Diagnostics</title>
-</head>
-<body>
-  <div id="status-banner" style="display:none;padding:6px 10px;background:var(--vscode-inputValidation-warningBackground);border-bottom:1px solid var(--vscode-inputValidation-warningBorder);font-size:12px;line-height:1.4"></div>
-  <script src="${scriptUri}"></script>
-</body>
-</html>`;
+    return buildWebviewHtml(this.context, webview, {
+      outDir: 'diagnostics-webview',
+      title: 'Kopytko Diagnostics',
+      bodyContent: '  <div id="status-banner" style="display:none;padding:6px 10px;background:var(--vscode-inputValidation-warningBackground);border-bottom:1px solid var(--vscode-inputValidation-warningBorder);font-size:12px;line-height:1.4"></div>',
+    });
   }
 }

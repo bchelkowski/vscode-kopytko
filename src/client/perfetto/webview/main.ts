@@ -5,6 +5,7 @@ import type {
   WebviewState,
   SerializedPerfettoSession,
 } from './protocol';
+import { el, formatBytes } from '../../webview/domUtils';
 
 declare function acquireVsCodeApi(): {
   postMessage(msg: WebMsg): void;
@@ -13,12 +14,6 @@ declare function acquireVsCodeApi(): {
 };
 
 const vscode = acquireVsCodeApi();
-
-// ── DOM helpers ───────────────────────────────────────────────────────────────
-
-function el<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -144,12 +139,6 @@ function appendChunk(data: ArrayBuffer): void {
   liveBuffer = combined;
   updateBufferInfo();
   updateSyncBadge();
-}
-
-function formatBytes(b: number): string {
-  if (b < 1024)           return `${b} B`;
-  if (b < 1024 * 1024)    return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function updateBufferInfo(): void {

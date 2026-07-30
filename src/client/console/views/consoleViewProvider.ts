@@ -13,6 +13,7 @@ import type {
   SerializedCatalog,
   WebMsg,
 } from '../webview/protocol';
+import { buildWebviewHtml } from '../../webview/htmlShell';
 
 const VIEW_ID = 'kopytko.console';
 /** Outbound line batching — 8085 under load is the busiest stream we carry. */
@@ -293,24 +294,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   // ── HTML ──────────────────────────────────────────────────────────────────
 
   private buildHtml(webview: vscode.Webview): string {
-    const outDir = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'console-webview');
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
-    const csp = webview.cspSource;
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp}; img-src ${csp} data:;">
-  <link href="${styleUri}" rel="stylesheet">
-  <title>Kopytko Console</title>
-</head>
-<body>
-  <script src="${scriptUri}"></script>
-</body>
-</html>`;
+    return buildWebviewHtml(this.context, webview, { outDir: 'console-webview', title: 'Kopytko Console' });
   }
 }
 

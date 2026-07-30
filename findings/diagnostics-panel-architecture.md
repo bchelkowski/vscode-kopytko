@@ -147,6 +147,36 @@ flushes every 400 ms and **retains the batch on failure** for the next cycle, so
 **Replay size**: node-counts `types` are included only for the first and last snapshot; intermediate
 points carry `{ wall, totalCount, types: [] }` to keep the `postMessage` small.
 
+**Webview-side live ring cap**: the host's `DiagnosticsSession` rings (3600/stream, see
+`diagnosticsSession.ts`) only bound its *resend-on-reconnect* snapshot — every `'batch'` message
+during an active live session still streams new points on top of whatever the webview already holds.
+`diagnostics/webview/main.ts` mirrors the same 3600-entry cap client-side (`trimLiveRing`, called only
+from the `'batch'` handler) so a long-running live session doesn't grow `mcTimes`/`nodeTimes`/etc. and
+their per-redraw scans without bound. **Deliberately not applied to `'init'`/`'replay'`** (bulk history
+load via `ingestHistory`) — a replayed session must still show everything that was recorded; only the
+live streaming path needs windowing. Paired arrays (e.g. `nodeTimes`+`nodeCounts`, the 9 `mc*` series)
+are trimmed together via `trimLiveRing([...])` so they stay index-aligned — trimming one without the
+other corrupts every subsequent lookup by index.
+
+`renEvents` is capped the same way, but `renGroups` (the file:line aggregate the Rendezvous table
+renders from) is **not** — it's a running Map built incrementally in `ingestRendezvous`, not re-derived
+from `renEvents`, so evicting old events doesn't retroactively shrink it. For a live session with more
+than 3600 rendezvous events this means the "N events · M ms total" badge (from `renEvents`) reads as a
+recent window while the per-row counts (from `renGroups`) stay cumulative for the whole session — a
+known, accepted inconsistency, not a bug. Recomputing `renGroups` from the capped array on every trim
+was considered and rejected: it would make the per-row counts *also* windowed, which is a worse UX
+regression than the label mismatch (loses the "which rendezvous site is the worst offender all
+session" view the table exists for).
+
+**Diagnostics webview table renders are gated per-stream**: the `'batch'` handler only calls
+`renderNodeTable()`/`renderObjectsTable()`/`renderRendezvousTable()`/`renderTexturesTable()` when that
+stream's `ingest*` function reports it actually updated its snapshot this batch (`ingestNodes` etc.
+return a boolean). A batch usually touches one or two of the four streams, and each render does a full
+`tbody.innerHTML` rebuild — the chart path already did the equivalent (rAF-gated, skips non-visible
+charts); the table path didn't until this was added. The rendezvous table's per-row click listener is
+attached **once**, delegated on `tbody-rendezvous` (`initRendezvousTableEvents()`, called at bootstrap)
+— it used to re-attach a fresh listener to every row on every render.
+
 ---
 
 ## Perfetto panel

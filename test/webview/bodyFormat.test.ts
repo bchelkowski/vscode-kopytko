@@ -1,7 +1,7 @@
 import { expect } from 'chai';
-import { formatBodyForEditor, tryFormatXml } from '../../src/client/network/bodyFormat';
+import { formatBodyForEditor, tryFormatXml } from '../../src/client/webview/bodyFormat';
 
-describe('network/bodyFormat', () => {
+describe('webview/bodyFormat', () => {
   describe('formatBodyForEditor', () => {
     it('pretty-prints JSON and picks the json language id', () => {
       const { content, language } = formatBodyForEditor('{"a":1,"b":[true,null]}', 'application/json');

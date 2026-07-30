@@ -5,9 +5,10 @@
  */
 
 import './styles.css';
-import { tryFormatXml } from '../bodyFormat';
+import { tryFormatXml } from '../../webview/bodyFormat';
 import { diffLines } from '../textDiff';
 import { findBlock, matchHost, matchPath } from '../capture/rewrite/rules';
+import { el as byId, formatBytes as fmtBytes } from '../../webview/domUtils';
 import type {
   BlockRule,
   BodyRewriteRule,
@@ -1561,10 +1562,6 @@ function submitIntercept(action: 'continue' | 'abort'): void {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
-}
-
 function selectedDetail(): FlowDetail | undefined {
   return state.selectedId ? state.details.get(state.selectedId) : undefined;
 }
@@ -1601,12 +1598,6 @@ function renderSearchResults(query: string, hits: Array<{ id: string; where: str
       </div>`;
     })
     .join('');
-}
-
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** Selects a row (highlight + detail pane), exiting any diff view — shared by row click and right-click. */

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { diagnosticsLock, type DiagnosticsLockOwner } from '../../diagnostics/diagnosticsLock';
 import type { PerfettoController } from '../perfettoController';
 import type { ExtMsg, WebMsg, WebviewState, SerializedPerfettoSession } from '../webview/protocol';
+import { buildWebviewHtml } from '../../webview/htmlShell';
 
 const VIEW_TYPE = 'kopytkoPercetto';
 const TITLE     = 'Kopytko Perfetto';
@@ -265,27 +266,11 @@ export class PerfettoEditorPanel {
   // ── HTML ──────────────────────────────────────────────────────────────────
 
   private _buildHtml(webview: vscode.Webview): string {
-    const outDir = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'perfetto-webview');
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
-    const csp = webview.cspSource;
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none';
-                 style-src ${csp} 'unsafe-inline';
-                 script-src ${csp};
-                 img-src ${csp} data:;
-                 frame-src https://ui.perfetto.dev;">
-  <link href="${styleUri}" rel="stylesheet">
-  <title>Kopytko Perfetto</title>
-</head>
-<body>
-  <div id="top-bar">
+    return buildWebviewHtml(this.context, webview, {
+      outDir: 'perfetto-webview',
+      title: 'Kopytko Perfetto',
+      extraCsp: 'frame-src https://ui.perfetto.dev;',
+      bodyContent: `  <div id="top-bar">
     <div id="toolbar">
       <div class="status-dot" id="status-dot"></div>
       <span id="device-label">No device</span>
@@ -314,9 +299,7 @@ export class PerfettoEditorPanel {
   <div id="placeholder">
     <p>Click <strong>Start</strong> to deploy your app with Perfetto tracing enabled and begin a live trace session.</p>
     <p style="font-size:11px">Requires Roku firmware 15.2+. On first use, Perfetto will ask you to trust this origin — click <em>Always trust</em>.</p>
-  </div>
-  <script src="${scriptUri}"></script>
-</body>
-</html>`;
+  </div>`,
+    });
   }
 }

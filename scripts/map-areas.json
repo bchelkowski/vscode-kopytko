@@ -9,6 +9,8 @@
   "src/client/console/views": "Console panel view provider (tree/webview host registration).",
   "src/client/console/webview": "Kopytko Console webview: xterm.js terminal, completion, colouring, filtering.",
 
+  "src/client/webview": "Shared host- and webview-side helpers reused across the webview tools: HTML shell/CSP, DOM/escaping utilities, body formatting.",
+
   "src/client/debug": "Debug Adapter Protocol implementation and the session controller driving a Roku debug run.",
   "src/client/debug/services": "Debug session sub-services: breakpoints, source-path mapping, variable inspection.",
 

@@ -1,5 +1,6 @@
 import './styles.css';
 import type { ChannelInfo, DeepLinkParam, ExtMsg, SavedSet, SendMode, WebMsg } from './protocol';
+import { el, esc } from '../../webview/domUtils';
 
 interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -214,16 +215,6 @@ function buildDom(): void {
 <datalist id="key-suggestions">${KEY_SUGGESTIONS.map((k) => `<option value="${k}">`).join('')}</datalist>
 <datalist id="mediatype-values">${MEDIA_TYPES.map((v) => `<option value="${v}">`).join('')}</datalist>
 <datalist id="set-label-suggestions"></datalist>`;
-}
-
-function esc(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
 }
 
 // ── channels ─────────────────────────────────────────────────────────────────

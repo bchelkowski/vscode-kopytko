@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { DeepLinkingController } from '../deepLinkingController';
 import type { ExtMsg, SavedSet, WebMsg } from '../webview/protocol';
+import { buildWebviewHtml } from '../../webview/htmlShell';
 
 const VIEW_TYPE = 'kopytkoDeepLinking';
 const TITLE     = 'Deep Linking';
@@ -142,24 +143,6 @@ export class DeepLinkingPanel {
   // ── HTML ──────────────────────────────────────────────────────────────────
 
   private _buildHtml(webview: vscode.Webview): string {
-    const outDir    = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'deep-linking-webview');
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
-    const csp       = webview.cspSource;
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp}; img-src ${csp} data:;">
-  <link href="${styleUri}" rel="stylesheet">
-  <title>Deep Linking</title>
-</head>
-<body>
-  <script src="${scriptUri}"></script>
-</body>
-</html>`;
+    return buildWebviewHtml(this.context, webview, { outDir: 'deep-linking-webview', title: 'Deep Linking' });
   }
 }

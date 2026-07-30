@@ -13,7 +13,7 @@
 
 import './styles.css';
 import { hierarchy, partition as d3partition } from 'd3-hierarchy';
-import { tryFormatXml } from '../../network/bodyFormat';
+import { tryFormatXml } from '../../webview/bodyFormat';
 import { diffTrees, domToLite, type FieldEdit, type LiteEl } from './xmlDiff';
 import type { ExtMsg, NodeCollection, WebMsg } from './protocol';
 

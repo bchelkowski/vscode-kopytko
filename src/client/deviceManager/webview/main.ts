@@ -1,5 +1,6 @@
 import './styles.css';
 import type { AbilityAction, DeviceSummary, ExtMsg, RunProgress, ScriptListItem, TextEntryView, WebMsg } from './protocol';
+import { el, esc } from '../../webview/domUtils';
 
 interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -160,17 +161,6 @@ function renderFilterSortToolbar(
   }
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-function esc(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
 
 function post(msg: WebMsg): void {
   vscode.postMessage(msg);

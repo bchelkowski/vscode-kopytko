@@ -5,6 +5,7 @@ import { RaleTrackerClient, type RaleItemList } from 'kopytko-roku-device';
 import { resolveRalePath, subtypeCompatible, type ItemListFetcher } from './ralePathResolver';
 import type { ExtMsg, NodeCollection, WebMsg } from './webview/protocol';
 import type { FieldEdit } from './webview/xmlDiff';
+import { buildWebviewHtml } from '../webview/htmlShell';
 
 const VIEW_TYPE = 'kopytkoNodeTree';
 const TITLE     = 'SceneGraph Tree';
@@ -249,23 +250,10 @@ export class NodeTreePanel {
   // ── HTML ──────────────────────────────────────────────────────────────────
 
   private _buildHtml(webview: vscode.Webview): string {
-    const outDir    = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'node-tree-webview');
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
-    const csp       = webview.cspSource;
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp}; img-src ${csp} data:;">
-  <link href="${styleUri}" rel="stylesheet">
-  <title>SceneGraph Tree</title>
-</head>
-<body>
-  <div id="toolbar">
+    return buildWebviewHtml(this.context, webview, {
+      outDir: 'node-tree-webview',
+      title: 'SceneGraph Tree',
+      bodyContent: `  <div id="toolbar">
     <div class="status-dot" id="status-dot"></div>
     <span id="channel-label">No device</span>
     <div class="seg-group" id="collection-group" title="Node collection to fetch">
@@ -292,9 +280,7 @@ export class NodeTreePanel {
     <div id="overlay" class="visible"><span>Loading…</span></div>
     <div id="tooltip"></div>
   </div>
-  <div id="legend-bar"></div>
-  <script src="${scriptUri}"></script>
-</body>
-</html>`;
+  <div id="legend-bar"></div>`,
+    });
   }
 }

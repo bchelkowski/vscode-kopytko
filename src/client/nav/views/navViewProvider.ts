@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { WebMsg } from '../webview/protocol';
+import { buildWebviewHtml } from '../../webview/htmlShell';
 
 /**
  * WebviewViewProvider for the "Kopytko Tools" sidebar panel — buttons that
@@ -54,23 +55,6 @@ export class NavViewProvider implements vscode.WebviewViewProvider {
   }
 
   private buildHtml(webview: vscode.Webview): string {
-    const outDir = vscode.Uri.joinPath(this.context.extensionUri, 'out', 'nav-webview');
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.js'));
-    const styleUri  = webview.asWebviewUri(vscode.Uri.joinPath(outDir, 'main.css'));
-    const csp = webview.cspSource;
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp};">
-  <link href="${styleUri}" rel="stylesheet">
-  <title>Tools</title>
-</head>
-<body>
-  <script src="${scriptUri}"></script>
-</body>
-</html>`;
+    return buildWebviewHtml(this.context, webview, { outDir: 'nav-webview', title: 'Tools', includeImgSrc: false });
   }
 }

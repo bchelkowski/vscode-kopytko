@@ -1,9 +1,13 @@
 import '../vscode-mock';
 import { expect } from 'chai';
+import type * as vscode from 'vscode';
 import {
   parseRegistryXml,
   formatRegistryAsJson,
+  RegistryContentProvider,
 } from '../../../src/client/roku/views/registryProvider';
+
+const fakeUri = (id: string): vscode.Uri => ({ toString: () => id } as unknown as vscode.Uri);
 
 // ---------------------------------------------------------------------------
 // parseRegistryXml
@@ -169,5 +173,63 @@ describe('formatRegistryAsJson', () => {
     const parsed = JSON.parse(json);
 
     expect(parsed.sections).to.deep.equal({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RegistryContentProvider
+// ---------------------------------------------------------------------------
+
+describe('RegistryContentProvider', () => {
+  it('returns the content set for a uri', () => {
+    const provider = new RegistryContentProvider();
+    const uri = fakeUri('roku-registry://registry/a.json');
+    provider.setContent(uri, '{"a":1}');
+    expect(provider.provideTextDocumentContent(uri)).to.equal('{"a":1}');
+  });
+
+  it('returns empty string for an unknown uri', () => {
+    const provider = new RegistryContentProvider();
+    expect(provider.provideTextDocumentContent(fakeUri('roku-registry://registry/missing.json'))).to.equal('');
+  });
+
+  it('overwrites content for a uri that is set again', () => {
+    const provider = new RegistryContentProvider();
+    const uri = fakeUri('roku-registry://registry/a.json');
+    provider.setContent(uri, 'first');
+    provider.setContent(uri, 'second');
+    expect(provider.provideTextDocumentContent(uri)).to.equal('second');
+  });
+
+  it('fires onDidChange for the updated uri', () => {
+    const provider = new RegistryContentProvider();
+    const uri = fakeUri('roku-registry://registry/a.json');
+    const fired: vscode.Uri[] = [];
+    provider.onDidChange((u) => fired.push(u));
+    provider.setContent(uri, 'content');
+    expect(fired).to.deep.equal([uri]);
+  });
+
+  it('evicts the oldest entry once more than 50 distinct uris are stored', () => {
+    const provider = new RegistryContentProvider();
+    for (let i = 0; i < 51; i++) {
+      provider.setContent(fakeUri(`uri-${i}`), `content-${i}`);
+    }
+    expect(provider.provideTextDocumentContent(fakeUri('uri-0'))).to.equal('');
+    expect(provider.provideTextDocumentContent(fakeUri('uri-1'))).to.equal('content-1');
+    expect(provider.provideTextDocumentContent(fakeUri('uri-50'))).to.equal('content-50');
+  });
+
+  it('re-setting an existing uri counts as most-recently-used, protecting it from eviction', () => {
+    const provider = new RegistryContentProvider();
+    for (let i = 0; i < 50; i++) {
+      provider.setContent(fakeUri(`uri-${i}`), `content-${i}`);
+    }
+    // Touch uri-0 again so it becomes the most-recently-used entry.
+    provider.setContent(fakeUri('uri-0'), 'content-0-refreshed');
+    // Adding one more distinct uri should now evict uri-1 (the new oldest), not uri-0.
+    provider.setContent(fakeUri('uri-new'), 'content-new');
+    expect(provider.provideTextDocumentContent(fakeUri('uri-0'))).to.equal('content-0-refreshed');
+    expect(provider.provideTextDocumentContent(fakeUri('uri-1'))).to.equal('');
   });
 });

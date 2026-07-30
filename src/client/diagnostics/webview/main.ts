@@ -33,14 +33,11 @@ import type {
   TableId,
   RecordableAppOption,
 } from './protocol';
+import { el } from '../../webview/domUtils';
 
 interface VsCodeApi { postMessage(msg: WebMsg): void; }
 declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
-
-function el<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
 
 // ── Panel / session state ─────────────────────────────────────────────────────
 
@@ -946,7 +943,9 @@ function ingestMemCpu(pts: SerializedMemCpuPoint[]): void {
   }
 }
 
-function ingestNodes(pts: SerializedNodePoint[]): void {
+/** Returns true when this batch updated `lastNodeTypes` (so the node table needs a re-render). */
+function ingestNodes(pts: SerializedNodePoint[]): boolean {
+  const hasTypes = pts.some(p => p.types.length > 0);
   for (const p of pts) {
     nodeTimes.push(p.wall); nodeCounts.push(p.totalCount);
     if (p.types.length > 0) {
@@ -954,10 +953,13 @@ function ingestNodes(pts: SerializedNodePoint[]): void {
       nodeTypeHistory.push({ wall: p.wall, types: new Map(p.types.map(t => [t.type, t.count])) });
     }
   }
-  if (pts.some(p => p.types.length > 0) && nodeSeriesDefs.length > 0) updateNodeLegend();
+  if (hasTypes && nodeSeriesDefs.length > 0) updateNodeLegend();
+  return hasTypes;
 }
 
-function ingestObjects(pts: SerializedObjectPoint[]): void {
+/** Returns true when this batch updated `lastObjectTypes` (so the objects table needs a re-render). */
+function ingestObjects(pts: SerializedObjectPoint[]): boolean {
+  const hasTypes = pts.some(p => p.types.length > 0);
   for (const p of pts) {
     objTimes.push(p.wall); objCounts.push(p.totalCount);
     if (p.types.length > 0) {
@@ -969,10 +971,12 @@ function ingestObjects(pts: SerializedObjectPoint[]): void {
       objTypeHistory.push({ wall: p.wall, types: byType });
     }
   }
-  if (pts.some(p => p.types.length > 0) && objectSeriesDefs.length > 0) updateObjectLegend();
+  if (hasTypes && objectSeriesDefs.length > 0) updateObjectLegend();
+  return hasTypes;
 }
 
-function ingestRendezvous(pts: SerializedRendezvousPoint[]): void {
+/** Returns true when this batch added any rendezvous events (so the rendezvous table needs a re-render). */
+function ingestRendezvous(pts: SerializedRendezvousPoint[]): boolean {
   for (const p of pts) {
     renEvents.push({ wall: p.wall, durationMs: p.durationMs, file: p.file, line: p.line });
     const key = `${p.file}:${p.line}`;
@@ -980,15 +984,19 @@ function ingestRendezvous(pts: SerializedRendezvousPoint[]): void {
     g.count++; g.totalMs += p.durationMs;
     renGroups.set(key, g);
   }
+  return pts.length > 0;
 }
 
-function ingestTextures(pts: SerializedTexturePoint[]): void {
+/** Returns true when this batch updated `lastBitmaps` (so the textures table needs a re-render). */
+function ingestTextures(pts: SerializedTexturePoint[]): boolean {
+  let hasBitmaps = false;
   for (const p of pts) {
     texTimes.push(p.wall);
     texUsedMB.push((p.usedBytes ?? 0) / (1024 * 1024));
     texMaxMB.push((p.maxBytes ?? 0) / (1024 * 1024));
-    if (p.bitmaps.length > 0) lastBitmaps = p.bitmaps;
+    if (p.bitmaps.length > 0) { lastBitmaps = p.bitmaps; hasBitmaps = true; }
   }
+  return hasBitmaps;
 }
 
 function ingestAppState(pts: SerializedAppStatePoint[]): void {
@@ -1014,6 +1022,21 @@ function updateAppStateBadge(state: AppStatePoint['state']): void {
 
 function ingestBeacons(pts: SerializedBeaconPoint[]): void {
   for (const p of pts) beaconEvents.push({ wall: p.wall, name: p.name });
+}
+
+// Mirrors the host's per-stream ring size (DiagnosticsSession.ringSize default,
+// see diagnosticsSession.ts) so a long-running live session doesn't grow these
+// arrays — and the per-redraw scans over them — without bound. Only applied to
+// live 'batch' ingestion, never to bulk history ('init'/'replay') — a replayed
+// session should still show everything that was recorded.
+const LIVE_RING_CAP = 3600;
+
+/** Evicts the oldest entries in lockstep across parallel time-series arrays so
+ * they stay index-aligned with each other and none exceeds LIVE_RING_CAP. */
+function trimLiveRing(arrays: unknown[][]): void {
+  const excess = arrays[0].length - LIVE_RING_CAP;
+  if (excess <= 0) return;
+  for (const arr of arrays) arr.splice(0, excess);
 }
 
 function clearData(): void {
@@ -1092,10 +1115,15 @@ function renderRendezvousTable(): void {
   }).join('');
   const totalMs = renEvents.reduce((sum, e) => sum + e.durationMs, 0);
   el('rdv-badge').textContent = `${renEvents.length} events · ${totalMs.toFixed(0)} ms total`;
-  tbody.querySelectorAll<HTMLElement>('.nav-row').forEach(row => {
-    row.addEventListener('click', () => {
-      vscode.postMessage({ kind: 'open-rendezvous', file: row.dataset.file!, line: Number(row.dataset.line) });
-    });
+}
+
+/** One-time delegated click handler for rendezvous rows — avoids re-attaching
+ * a listener per row on every table render. */
+function initRendezvousTableEvents(): void {
+  el('tbody-rendezvous').addEventListener('click', e => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('.nav-row');
+    if (!row) return;
+    vscode.postMessage({ kind: 'open-rendezvous', file: row.dataset.file!, line: Number(row.dataset.line) });
   });
 }
 
@@ -1322,11 +1350,35 @@ window.addEventListener('message', ev => {
       el<HTMLSelectElement>('session-select').value = 'live';
       redrawCharts(); renderAllTables();
       break;
-    case 'batch':
-      ingestMemCpu(msg.memCpu); ingestNodes(msg.nodes); ingestObjects(msg.objects); ingestRendezvous(msg.rendezvous);
-      ingestTextures(msg.textures); ingestAppState(msg.appState); ingestBeacons(msg.beacons);
-      scheduleRedraw(); renderAllTables();
+    case 'batch': {
+      ingestMemCpu(msg.memCpu);
+      const nodesChanged = ingestNodes(msg.nodes);
+      const objectsChanged = ingestObjects(msg.objects);
+      const rendezvousChanged = ingestRendezvous(msg.rendezvous);
+      const texturesChanged = ingestTextures(msg.textures);
+      ingestAppState(msg.appState); ingestBeacons(msg.beacons);
+
+      // Bound live-session memory/scan cost — never applied to bulk history.
+      trimLiveRing([mcTimes, mcMem, mcAnon, mcFile, mcShared, mcSwap, mcCpu, mcUser, mcSys]);
+      trimLiveRing([nodeTimes, nodeCounts]);
+      trimLiveRing([nodeTypeHistory]);
+      trimLiveRing([objTimes, objCounts]);
+      trimLiveRing([objTypeHistory]);
+      trimLiveRing([texTimes, texUsedMB, texMaxMB]);
+      trimLiveRing([appStateEvents]);
+      trimLiveRing([beaconEvents]);
+      trimLiveRing([renEvents]);
+
+      scheduleRedraw();
+      // Only re-render a table when its own stream actually had new data this
+      // batch — a batch usually only touches one or two of the four streams,
+      // and each render does a full tbody.innerHTML rebuild.
+      if (nodesChanged) renderNodeTable();
+      if (objectsChanged) renderObjectsTable();
+      if (rendezvousChanged) renderRendezvousTable();
+      if (texturesChanged) renderTexturesTable();
       break;
+    }
     case 'state':
       applyState(msg.state);
       break;
@@ -1493,3 +1545,4 @@ initCharts();
 applyChartVisibility();
 applyTableVisibility();
 initResizeHandle();
+initRendezvousTableEvents();

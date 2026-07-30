@@ -33,6 +33,9 @@ export function formatRegistryAsJson(data: RegistryData, channelId: string, devi
  * Virtual document content provider for `roku-registry:` URIs.
  * Stores registry content in memory, keyed by URI.
  */
+/** Registry URIs are keyed by device + channel, so this bounds distinct entries, not re-reads of the same one. */
+const MAX_ENTRIES = 50;
+
 export class RegistryContentProvider implements vscode.TextDocumentContentProvider {
   private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri>();
   readonly onDidChange = this._onDidChange.event;
@@ -40,7 +43,13 @@ export class RegistryContentProvider implements vscode.TextDocumentContentProvid
   private _contents = new Map<string, string>();
 
   setContent(uri: vscode.Uri, content: string): void {
-    this._contents.set(uri.toString(), content);
+    const key = uri.toString();
+    this._contents.delete(key); // re-insert at the end so it counts as most-recently-used
+    this._contents.set(key, content);
+    if (this._contents.size > MAX_ENTRIES) {
+      const oldest = this._contents.keys().next().value;
+      if (oldest !== undefined) this._contents.delete(oldest);
+    }
     this._onDidChange.fire(uri);
   }
 

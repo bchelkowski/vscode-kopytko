@@ -15,6 +15,7 @@ import { LineEditor } from './lineEditor';
 import { CompletionPopup } from './completion';
 import { classifyLine, type Severity } from '../lineClassifier';
 import type { CompletionItem, ConsoleState, ExtMsg, WebMsg } from './protocol';
+import { el } from '../../webview/domUtils';
 
 declare function acquireVsCodeApi(): { postMessage(msg: WebMsg): void };
 const vscode = acquireVsCodeApi();
@@ -64,10 +65,6 @@ function buildDom(): void {
       <div id="terminal" class="terminal"></div>
       <div id="footer" class="footer"></div>
     </div>`;
-}
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
 }
 
 function escapeHtml(text: string): string {
