@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.3.0] - 2026-07-30
+
+### Added
+- Add tokenizeXmlInterfaceElements for SceneGraph XML interface reordering
+
 ## [1.2.2] - 2026-07-28
 
 ### Fixed
