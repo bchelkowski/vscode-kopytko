@@ -74,6 +74,28 @@ export interface FormattingConfig {
   /** Max number of keys before forcing an AA to multi-line. 0 = no limit. */
   associativeArraySingleLineThreshold: number;
 
+  // ── Sorting: Associative Arrays ───────────────────────────────────────────
+  /** Sort assoc-array ({ key: value }) entries alphabetically by key. 'preserve' leaves entry order as written. Quoted ("key":) and unquoted (key:) forms sort identically. */
+  associativeArrayKeySortOrder: 'alphabetical' | 'preserve';
+  /** Global default priority-key list used by every sort scope (assoc arrays, XML interface, Kopytko template props) unless that scope's own override list below is non-empty. Keys listed here always sort first, in this order (only for keys actually present); everything else follows alphabetically. Empty = no priority keys (pure alphabetical). */
+  sortPriorityKeys: string[];
+  /** Priority-key override for plain assoc-array sorting (associativeArrayKeySortOrder). Empty = fall back to sortPriorityKeys. */
+  associativeArraySortPriorityKeys: string[];
+
+  // ── Sorting: XML Interface ─────────────────────────────────────────────────
+  /** Sort <field>/<function> entries inside a SceneGraph <interface> block alphabetically (by id/name). 'preserve' leaves them in document order. */
+  xmlInterfaceSortOrder: 'alphabetical' | 'preserve';
+  /** Relative grouping of <field> vs <function> entries. 'preserve' keeps their original relative interleaving; 'fields-first'/'functions-first' groups all of one kind before the other. */
+  xmlInterfaceGroupOrder: 'preserve' | 'fields-first' | 'functions-first';
+  /** Priority-key override for XML interface sorting. Empty = fall back to sortPriorityKeys. */
+  xmlInterfaceSortPriorityKeys: string[];
+
+  // ── Kopytko Template Object Structuring ─────────────────────────────────────
+  /** Top-level key order enforced on detected Kopytko UI template objects ({ name, props, dynamicProps, children, events }-shaped AAs — a `name` key plus an `id` key inside `props`/`dynamicProps` is required to be recognized). Regardless of associativeArrayKeySortOrder. Empty = feature disabled (template objects are treated as plain AAs). */
+  kopytkoTemplateKeyOrder: string[];
+  /** Priority-key override for the nested props/dynamicProps/events objects of a detected template object — these are always alphabetically sorted (by this list then A-Z) whenever kopytkoTemplateKeyOrder is non-empty and the object is detected as a template, independent of associativeArrayKeySortOrder. Empty = fall back to sortPriorityKeys. */
+  kopytkoTemplatePropsSortPriorityKeys: string[];
+
   // ── Operators & Expressions ──────────────────────────────────────────────
   /** Spaces around binary operators (+, -, *, /, <>, <, >, and, or, mod). */
   spaceAroundOperators: boolean;
@@ -179,6 +201,20 @@ export const DEFAULT_FORMATTING_CONFIG: FormattingConfig = {
   arraySplitOpenBracket: false,
   associativeArraySingleLineThreshold: 0,
 
+  // Sorting: Associative Arrays
+  associativeArrayKeySortOrder: 'preserve',
+  sortPriorityKeys: [],
+  associativeArraySortPriorityKeys: [],
+
+  // Sorting: XML Interface
+  xmlInterfaceSortOrder: 'preserve',
+  xmlInterfaceGroupOrder: 'preserve',
+  xmlInterfaceSortPriorityKeys: [],
+
+  // Kopytko Template Object Structuring
+  kopytkoTemplateKeyOrder: [],
+  kopytkoTemplatePropsSortPriorityKeys: [],
+
   // Operators & Expressions
   spaceAroundOperators: true,
   spaceAroundAssignment: true,
@@ -246,5 +282,24 @@ export function parseFormattingConfig(cfg: Record<string, unknown> | null | unde
     result.emptyLineBeforeReturn = false;
   }
 
+  const stringArrayFields: (keyof FormattingConfig)[] = [
+    'sortPriorityKeys', 'associativeArraySortPriorityKeys', 'xmlInterfaceSortPriorityKeys',
+    'kopytkoTemplateKeyOrder', 'kopytkoTemplatePropsSortPriorityKeys',
+  ];
+  for (const key of stringArrayFields) {
+    const value = cfg[key];
+    if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+      (result as Record<keyof FormattingConfig, unknown>)[key] = value;
+    }
+  }
+
   return result;
+}
+
+/**
+ * Resolves the effective priority-key list for a given sort scope: the scope's own override
+ * when non-empty, else the global `sortPriorityKeys` default.
+ */
+export function getEffectiveSortPriorityKeys(config: FormattingConfig, scopeOverride: string[]): string[] {
+  return scopeOverride.length > 0 ? scopeOverride : config.sortPriorityKeys;
 }

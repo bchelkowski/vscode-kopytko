@@ -3,6 +3,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { formatText, checkFormatting } from '../src/formatter';
+import { formatXml, checkXml } from '../src/xmlFormatter';
 import { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from '../src/config';
 import { CasingConfig, DEFAULT_CASING_CONFIG } from '../src/casing';
 import { parseJsonc } from '../src/jsonc';
@@ -20,7 +21,8 @@ interface CliOptions {
 function printUsage(): void {
   console.log(`
 kopytko-format v${VERSION}
-BrightScript formatter for the Kopytko ecosystem.
+BrightScript formatter for the Kopytko ecosystem. Also formats SceneGraph .xml
+component <interface> blocks (field/function sorting only).
 
 USAGE
   kopytko-format [options] <glob ...>
@@ -36,6 +38,7 @@ OPTIONS
 EXAMPLES
   kopytko-format --check "src/**/*.brs"
   kopytko-format --write "src/**/*.brs"
+  kopytko-format --write "components/**/*.xml"
   kopytko-format --check --config kopytko-formatter.json "components/**/*.brs"
 
 CONFIG
@@ -290,7 +293,7 @@ function walkDir(dir: string, out: string[]): void {
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules' || entry.name === '.git') continue;
       walkDir(full, out);
-    } else if (entry.name.endsWith('.brs')) {
+    } else if (entry.name.endsWith('.brs') || entry.name.endsWith('.xml')) {
       out.push(full);
     }
   }
@@ -341,7 +344,7 @@ function main(): void {
     : allFiles;
 
   if (files.length === 0) {
-    console.error('No .brs files found matching the given patterns.');
+    console.error('No .brs or .xml files found matching the given patterns.');
     process.exit(1);
   }
 
@@ -351,8 +354,9 @@ function main(): void {
 
   for (const file of files) {
     try {
+      const isXml = file.endsWith('.xml');
       const source = fs.readFileSync(file, 'utf-8');
-      const isClean = checkFormatting(source, config, casing);
+      const isClean = isXml ? checkXml(source, config) : checkFormatting(source, config, casing);
 
       if (isClean) {
         formatted++;
@@ -362,14 +366,14 @@ function main(): void {
       unformatted++;
 
       if (opts.write) {
-        const result = formatText(source, config, casing);
+        const result = isXml ? formatXml(source, config) : formatText(source, config, casing);
         fs.writeFileSync(file, result, 'utf-8');
         console.log(`  ✓ ${file}`);
       } else if (opts.check) {
         console.log(`  ✗ ${file}`);
       } else {
         // Default: print to stdout
-        const result = formatText(source, config, casing);
+        const result = isXml ? formatXml(source, config) : formatText(source, config, casing);
         console.log(`--- ${file} ---`);
         console.log(result);
       }

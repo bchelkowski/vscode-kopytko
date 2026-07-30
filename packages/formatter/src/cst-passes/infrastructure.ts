@@ -102,6 +102,16 @@ export function rawText(node: SyntaxNode, source: string): string {
   return source.slice(first.pos, last.end);
 }
 
+/** Trivia-inclusive start offset of a bare token (includes its leading comments/blank lines). */
+export function triviaStart(token: Token): number {
+  return token.leadingTrivia.length > 0 ? token.leadingTrivia[0].pos : token.pos;
+}
+
+/** Trivia-inclusive end offset of a bare token (includes its trailing same-line comment + line break). */
+export function triviaEnd(token: Token): number {
+  return token.trailingTrivia.length > 0 ? token.trailingTrivia[token.trailingTrivia.length - 1].end : token.end;
+}
+
 /** Last non-`.` direct-child token of a dot-access node (`a.b` → `b`) — the member name. */
 export function dotMemberToken(node: SyntaxNode): Token | undefined {
   const children = node.children;

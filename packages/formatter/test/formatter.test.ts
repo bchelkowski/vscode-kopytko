@@ -1723,6 +1723,204 @@ describe('kopytko-formatter', () => {
     });
   });
 
+  // ── associativeArrayKeySortOrder ──────────────────────────────────────────
+  describe('associativeArrayKeySortOrder', () => {
+    it("'preserve' (default) leaves assoc array key order unchanged", () => {
+      const result = format(['sub init()', '  a = { b: 2, a: 1 }', 'end sub']);
+      expect(result).to.include('{ b: 2, a: 1 }');
+    });
+
+    it("'alphabetical' sorts single-line AA keys", () => {
+      const result = format(['sub init()', '  a = { b: 2, a: 1 }', 'end sub'], { associativeArrayKeySortOrder: 'alphabetical' });
+      expect(result).to.include('{ a: 1, b: 2 }');
+    });
+
+    it('sorts quoted and unquoted keys identically (quotes ignored for comparison)', () => {
+      const result = format(['sub init()', '  a = { "zeta": 1, alpha: 2 }', 'end sub'], { associativeArrayKeySortOrder: 'alphabetical' });
+      expect(result).to.include('{ alpha: 2, "zeta": 1 }');
+    });
+
+    it('applies associativeArraySortPriorityKeys before falling back to alphabetical', () => {
+      const result = format(['sub init()', '  a = { width: 100, id: "x", height: 50 }', 'end sub'], {
+        associativeArrayKeySortOrder: 'alphabetical',
+        associativeArraySortPriorityKeys: ['id', 'width', 'height'],
+      });
+      expect(result).to.include('{ id: "x", width: 100, height: 50 }');
+    });
+
+    it('falls back to the global sortPriorityKeys when the assoc-array-specific override is empty', () => {
+      const result = format(['sub init()', '  a = { width: 100, id: "x" }', 'end sub'], {
+        associativeArrayKeySortOrder: 'alphabetical',
+        sortPriorityKeys: ['id', 'width'],
+      });
+      expect(result.indexOf('id: "x"')).to.be.lessThan(result.indexOf('width: 100'));
+    });
+
+    it('moves a leading comment along with its member when reordering', () => {
+      const result = format([
+        'sub init()',
+        '  a = {',
+        "    ' comment about b",
+        '    b: 2,',
+        '    a: 1',
+        '  }',
+        'end sub',
+      ], { associativeArrayKeySortOrder: 'alphabetical' });
+      expect(result.indexOf('a: 1')).to.be.lessThan(result.indexOf("' comment about b"));
+      expect(result.indexOf("' comment about b")).to.be.lessThan(result.indexOf('b: 2'));
+    });
+
+    it('moves a same-line trailing comment (after the comma) along with the member it describes, not whichever member ends up next to it', () => {
+      const result = format([
+        'sub init()',
+        '  a = {',
+        "    zeta: 1, ' comment about zeta",
+        '    alpha: 2',
+        '  }',
+        'end sub',
+      ], { associativeArrayKeySortOrder: 'alphabetical' });
+      // alpha now comes first; the comment must stay on zeta's line, not alpha's.
+      expect(result).to.not.match(/alpha: 2[^\n]*comment about zeta/);
+      const zetaLineIdx = result.indexOf('zeta: 1');
+      const commentIdx = result.indexOf("' comment about zeta");
+      expect(commentIdx).to.be.greaterThan(zetaLineIdx);
+      expect(result.slice(zetaLineIdx, commentIdx)).to.not.include('\n');
+    });
+
+    it('moves a same-line trailing comment on the originally-last member (no comma) along with it, without leaving a stray comma inside the comment', () => {
+      const result = format([
+        'sub init()',
+        '  a = {',
+        '    zeta: 1,',
+        "    alpha: 2 ' final note about alpha",
+        '  }',
+        'end sub',
+      ], { associativeArrayKeySortOrder: 'alphabetical' });
+      expect(result).to.not.match(/final note about alpha\s*,/);
+      const alphaLineIdx = result.indexOf('alpha: 2');
+      const commentIdx = result.indexOf("' final note about alpha");
+      expect(result.slice(alphaLineIdx, commentIdx)).to.not.include('\n');
+    });
+  });
+
+  // ── kopytkoTemplateKeyOrder ────────────────────────────────────────────────
+  describe('kopytkoTemplateKeyOrder', () => {
+    const TEMPLATE_ORDER = ['name', 'props', 'dynamicProps', 'events', 'children'];
+
+    it('reorders a detected template object to the configured top-level key order', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    props: { id: "myGroup", width: 100 },',
+        '    name: "Group"',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER });
+      expect(result.indexOf('name: "Group"')).to.be.lessThan(result.indexOf('props:'));
+    });
+
+    it('does not treat an AA as a template object when props/dynamicProps lack an id key', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    props: { width: 100 },',
+        '    name: "Group"',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER });
+      expect(result.indexOf('props:')).to.be.lessThan(result.indexOf('name:'));
+    });
+
+    it('does not treat an AA as a template object without a name key', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    props: { id: "x" },',
+        '    dynamicProps: { y: 1 }',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER });
+      expect(result.indexOf('props:')).to.be.lessThan(result.indexOf('dynamicProps:'));
+    });
+
+    it('does not treat an AA as a template object when it has a key outside the configured set', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    props: { id: "x" },',
+        '    name: "Group",',
+        '    extra: 1',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER });
+      expect(result.indexOf('props:')).to.be.lessThan(result.indexOf('name:'));
+    });
+
+    it('always alphabetically sorts nested props/dynamicProps/events even when associativeArrayKeySortOrder is preserve', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    name: "Group",',
+        '    props: { width: 100, id: "x" },',
+        '    dynamicProps: { visible: true, opacity: 1 },',
+        '    events: { someField: "onSomeField", myField: "onMyField" }',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER, associativeArrayKeySortOrder: 'preserve' });
+      expect(result.indexOf('id: "x"')).to.be.lessThan(result.indexOf('width: 100'));
+      expect(result.indexOf('opacity:')).to.be.lessThan(result.indexOf('visible:'));
+      expect(result.indexOf('myField:')).to.be.lessThan(result.indexOf('someField:'));
+    });
+
+    it('applies kopytkoTemplatePropsSortPriorityKeys to nested props/dynamicProps/events', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    name: "Group",',
+        '    props: { width: 100, id: "x", height: 50 }',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER, kopytkoTemplatePropsSortPriorityKeys: ['id', 'width', 'height'] });
+      const idIdx = result.indexOf('id: "x"');
+      const widthIdx = result.indexOf('width: 100');
+      const heightIdx = result.indexOf('height: 50');
+      expect(idIdx).to.be.lessThan(widthIdx);
+      expect(widthIdx).to.be.lessThan(heightIdx);
+    });
+
+    it('recurses into children array elements, treating each as its own template object', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    name: "Group",',
+        '    props: { id: "myGroup" },',
+        '    children: [',
+        '      {',
+        '        props: { id: "background" },',
+        '        name: "Rectangle"',
+        '      }',
+        '    ]',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: TEMPLATE_ORDER });
+      const nameIdx = result.lastIndexOf('name: "Rectangle"');
+      const propsIdx = result.indexOf('props: { id: "background" }');
+      expect(nameIdx).to.be.lessThan(propsIdx);
+    });
+
+    it('empty kopytkoTemplateKeyOrder disables the feature entirely', () => {
+      const result = format([
+        'function build() as object',
+        '  return {',
+        '    props: { id: "x" },',
+        '    name: "Group"',
+        '  }',
+        'end function',
+      ], { kopytkoTemplateKeyOrder: [] });
+      expect(result.indexOf('props:')).to.be.lessThan(result.indexOf('name:'));
+    });
+  });
+
   // ── Catch parentheses (always stripped) ──────────────────────────────────
 
   describe('catch parentheses', () => {

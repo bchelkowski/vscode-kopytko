@@ -11,7 +11,8 @@
  */
 
 export { formatText, checkFormatting } from './formatter';
-export { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig } from './config';
+export { formatXml, checkXml } from './xmlFormatter';
+export { FormattingConfig, DEFAULT_FORMATTING_CONFIG, parseFormattingConfig, getEffectiveSortPriorityKeys } from './config';
 export { FunctionDefinition } from './types';
 
 // Re-export from brightscript-parser (canonical source)

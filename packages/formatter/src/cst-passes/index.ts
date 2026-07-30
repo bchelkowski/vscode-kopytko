@@ -30,3 +30,5 @@ export { parenthesisIfCasePass } from './parenthesisIfCase';
 export { stringConcatStylePass } from './stringConcatStyle';
 export { elseOnNewLinePass } from './elseOnNewLine';
 export { aaThresholdPass } from './aaThreshold';
+export { associativeArraySortPass } from './associativeArraySort';
+export type { AASortConfig } from './associativeArraySort';

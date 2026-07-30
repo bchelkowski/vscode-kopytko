@@ -34,12 +34,17 @@ npm run format:check    # CI — exit 1 if any file needs formatting
 
 ## CLI Usage
 
+Formats both `.brs` files and `.xml` component `<interface>` blocks — pass either extension in your glob patterns.
+
 ```bash
 # Check mode — exit 1 if any file needs formatting (use in CI)
 kopytko-format --check "src/**/*.brs"
 
 # Write mode — format files in place
 kopytko-format --write "src/**/*.brs"
+
+# XML component <interface> sorting
+kopytko-format --write "components/**/*.xml"
 
 # With explicit config
 kopytko-format --check --config .kopytkorc "components/**/*.brs"
@@ -180,11 +185,32 @@ When used inside the [Kopytko extension](https://github.com/bchelkowski/vscode-k
 | `kopytko.format.associativeArrayBracketSpacing` | `boolean` | `true` | Spaces inside `{}`: `{ key: value }` (true) vs `{key: value}` (false) |
 | `kopytko.format.associativeArrayCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in inline associative arrays |
 | `kopytko.format.arrayCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in inline arrays |
+| `kopytko.format.parenCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in function calls and definitions |
 | `kopytko.format.trailingComma` | `"never" \| "always" \| "multiline"` | `"never"` | Trailing comma after the last item in multi-line arrays and AAs |
 | `kopytko.format.arrayCommaStyle` | `"always" \| "never" \| "preserve"` | `"preserve"` | Comma separators in multi-line arrays |
 | `kopytko.format.associativeArrayCommaStyle` | `"always" \| "never" \| "preserve"` | `"preserve"` | Comma separators in multi-line associative arrays |
 | `kopytko.format.associativeArraySingleLineThreshold` | `integer` | `0` | Max keys before forcing an AA to multi-line; `0` = no limit |
 | `kopytko.format.arraySplitOpenBracket` | `boolean` | `false` | Splits `[{` onto separate lines in multi-item arrays |
+
+### Sorting & Kopytko Template Structuring
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.format.associativeArrayKeySortOrder` | `"preserve" \| "alphabetical"` | `"preserve"` | Sort assoc-array entries alphabetically by key (quoted/unquoted keys sort identically) |
+| `kopytko.format.sortPriorityKeys` | `string[]` | `[]` | Global default priority-key list for every sort scope below |
+| `kopytko.format.associativeArraySortPriorityKeys` | `string[]` | `[]` | Priority-key override for plain assoc arrays; empty falls back to `sortPriorityKeys` |
+| `kopytko.format.kopytkoTemplateKeyOrder` | `string[]` | `[]` | Top-level key order for detected Kopytko template objects (`{ name, props, dynamicProps, children, events }`-shaped); empty disables the feature |
+| `kopytko.format.kopytkoTemplatePropsSortPriorityKeys` | `string[]` | `[]` | Priority-key override for nested `props`/`dynamicProps`/`events`; empty falls back to `sortPriorityKeys` |
+
+### XML Formatting
+
+Applies to SceneGraph component `.xml` `<interface>` blocks (`<field>`/`<function>` entries only — see [docs/formatting.md](../../docs/formatting.md#xml-formatting)).
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `kopytko.format.xmlInterfaceSortOrder` | `"preserve" \| "alphabetical"` | `"preserve"` | Sort `<field>`/`<function>` entries — fields by `id`, functions by `name` |
+| `kopytko.format.xmlInterfaceGroupOrder` | `"preserve" \| "fields-first" \| "functions-first"` | `"preserve"` | Relative grouping of `<field>` vs `<function>` entries |
+| `kopytko.format.xmlInterfaceSortPriorityKeys` | `string[]` | `[]` | Priority-key override for XML interface sorting; empty falls back to `sortPriorityKeys` |
 
 ### Operators & Expressions
 
@@ -265,7 +291,7 @@ Casing values: `preserve`, `upper-case`, `lower-case`, `capitalize`, `pascal-cas
 ## Library Usage
 
 ```typescript
-import { formatText, checkFormatting, DEFAULT_FORMATTING_CONFIG } from 'kopytko-formatter';
+import { formatText, checkFormatting, formatXml, checkXml, DEFAULT_FORMATTING_CONFIG } from 'kopytko-formatter';
 
 // Format a BrightScript source string
 const formatted = formatText(source, {
@@ -276,13 +302,17 @@ const formatted = formatText(source, {
 
 // Check if source is already formatted (returns boolean)
 const isClean = checkFormatting(source, DEFAULT_FORMATTING_CONFIG);
+
+// Sort a SceneGraph component's <interface> block
+const formattedXml = formatXml(xmlSource, { ...DEFAULT_FORMATTING_CONFIG, xmlInterfaceSortOrder: 'alphabetical' });
+const isXmlClean = checkXml(xmlSource, DEFAULT_FORMATTING_CONFIG);
 ```
 
 ### API
 
 #### `formatText(source, config, casing?, userFunctions?): string`
 
-Formats BrightScript source code by running it through a fixed pipeline of roughly 25 numbered sub-passes (labeled 1 through 14, with several stages split further into lettered sub-passes, e.g. `4b`/`4c`, `6b`/`6c`, `7b`/`7c`, `8b`/`8c`/`8d`, `9b`, `10a`) — a mix of CST-based passes (structural rewrites like casing and print-statement handling) and regex-based passes (spacing, indentation, blank lines, comment style, ...).
+Formats BrightScript source code by running it through a fixed pipeline of roughly 25 numbered sub-passes (labeled 1 through 14, with several stages split further into lettered sub-passes, e.g. `4b`/`4c`, `6b`/`6c`/`6d`, `7b`/`7c`, `8b`/`8c`/`8d`, `9b`, `10a`) — a mix of CST-based passes (structural rewrites like casing and print-statement handling) and regex-based passes (spacing, indentation, blank lines, comment style, ...).
 
 - `source` — raw BrightScript source text
 - `config` — `FormattingConfig` object
@@ -293,15 +323,26 @@ Formats BrightScript source code by running it through a fixed pipeline of rough
 
 Returns `true` if the source text is already formatted (no changes needed).
 
+#### `formatXml(source, config): string`
+
+Sorts a SceneGraph component XML's `<interface>` `<field>`/`<function>` entries per `xmlInterfaceSortOrder`/`xmlInterfaceGroupOrder`/`xmlInterfaceSortPriorityKeys`. Nothing else in the file is touched; malformed or unrecognized content inside `<interface>` returns the source unchanged.
+
+#### `checkXml(source, config): boolean`
+
+Returns `true` if the XML is already sorted (no changes needed).
+
 ### Full export surface
 
 | Export | Description |
 |---|---|
 | `formatText(source, config, casing?, userFunctions?)` | Format BrightScript source; returns the formatted string |
 | `checkFormatting(source, config, casing?, userFunctions?)` | Returns `true` if the source is already formatted |
-| `FormattingConfig` | The full formatting-options type (51 fields — everything under `kopytko.format.*`) |
+| `formatXml(source, config)` | Sort a SceneGraph component XML's `<interface>` entries; returns the formatted string |
+| `checkXml(source, config)` | Returns `true` if the XML `<interface>` is already sorted |
+| `FormattingConfig` | The full formatting-options type (59 fields — everything under `kopytko.format.*`) |
 | `DEFAULT_FORMATTING_CONFIG` | A `FormattingConfig` with every option at its VS Code default |
 | `parseFormattingConfig(raw)` | Parse/validate a raw settings object (e.g. from `kopytko-formatter.json` or `.vscode/settings.json`) into a `FormattingConfig` |
+| `getEffectiveSortPriorityKeys(config, scopeOverride)` | Resolve a sort scope's effective priority-key list — the scope override when non-empty, else `config.sortPriorityKeys` |
 | `FunctionDefinition` | Shape of a parsed function/sub definition, used for the `userFunctions` casing parameter |
 | `CasingConfig`, `CasingOption`, `DEFAULT_CASING_CONFIG` | Re-exported from `kopytko-brightscript-parser` — the casing configuration shape, its option union, and its all-`preserve` default |
 | `applyCasing(name, option)` / `applyCasingWithOverrides(name, option, exact?)` | Re-exported casing transforms — apply a `CasingOption` to an identifier, optionally checking a per-identifier `exact` override map first |

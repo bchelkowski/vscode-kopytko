@@ -1,7 +1,7 @@
 
 import { CasingConfig, DEFAULT_CASING_CONFIG } from 'kopytko-brightscript-parser';
 import { FunctionDefinition } from './types';
-import { FormattingConfig } from './config';
+import { FormattingConfig, getEffectiveSortPriorityKeys } from './config';
 import { parse } from 'kopytko-brightscript-parser';
 import {
   applyEdits,
@@ -22,9 +22,13 @@ import {
   stringConcatStylePass,
   elseOnNewLinePass,
   aaThresholdPass,
+  associativeArraySortPass,
 } from './cst-passes/index';
-import type { CstPass } from './cst-passes/index';
+import type { CstPass, AASortConfig } from './cst-passes/index';
 import type { ParseResult } from 'kopytko-brightscript-parser';
+
+/** Bound on the reorder-then-reparse loop for nested AA/template sorting — generous headroom for realistic nesting depth. */
+const MAX_SORT_ITERATIONS = 20;
 
 /**
  * Formats BrightScript source code using a hybrid multi-pass engine —
@@ -105,6 +109,21 @@ export function formatText(
   // Pass 6c — String concatenation style (CST)
   if (config.stringConcatStyle !== 'preserve') {
     lines = runCstOnLines(lines, lineEndStr, stringConcatStylePass(config.stringConcatStyle), parseCache);
+  }
+
+  // Pass 6d — Associative array key sorting / Kopytko template structuring (CST, iterative to convergence)
+  if (config.associativeArrayKeySortOrder === 'alphabetical' || config.kopytkoTemplateKeyOrder.length > 0) {
+    const aaSortConfig: AASortConfig = {
+      associativeArrayKeySortOrder: config.associativeArrayKeySortOrder,
+      associativeArraySortPriorityKeys: getEffectiveSortPriorityKeys(config, config.associativeArraySortPriorityKeys),
+      kopytkoTemplateKeyOrder: config.kopytkoTemplateKeyOrder,
+      kopytkoTemplatePropsSortPriorityKeys: getEffectiveSortPriorityKeys(config, config.kopytkoTemplatePropsSortPriorityKeys),
+    };
+    for (let i = 0; i < MAX_SORT_ITERATIONS; i++) {
+      const before = lines.join(lineEndStr);
+      lines = runCstOnLines(lines, lineEndStr, associativeArraySortPass(aaSortConfig), parseCache);
+      if (lines.join(lineEndStr) === before) break;
+    }
   }
 
   // Pass 7b — Split array open bracket (regex)
