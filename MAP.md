@@ -23,6 +23,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | Webview — nodes | `src/client/nodes/webview/main.ts` |
 | Webview — perfetto | `src/client/perfetto/webview/main.ts` |
 | Webview — rokuPay | `src/client/rokuPay/webview/main.ts` |
+| Webview — webview | `src/client/webview/main.ts` |
 | CLI — `kopytko-format` | `packages/formatter/bin/kopytko-format.ts` |
 | CLI — `kopytko-lint` | `packages/linter/bin/kopytko-lint.ts` |
 | CLI — `kopytko-roku` | `packages/roku-device/bin/kopytko-roku.ts` |
@@ -39,14 +40,14 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | **packages/formatter** | | |
 | `packages/formatter/bin` | 1 | kopytko-format CLI entry. |
 | `packages/formatter/src` | 7 | Formatter engine, configuration, and casing rules. |
-| `packages/formatter/src/cst-passes` | 29 | Structure-aware formatting passes applied over the CST, one concern per file. |
+| `packages/formatter/src/cst-passes` | 9 | Structure-aware formatting passes applied over the CST, one concern per file. |
 | **packages/linter** | | |
 | `packages/linter/bin` | 1 | kopytko-lint CLI entry. |
 | `packages/linter/src` | 10 | Linter core: rule running, config, suppression, fixing, project indexing. |
-| `packages/linter/src/analysis` | 11 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
-| `packages/linter/src/catalog` | 3 | Linter-side catalogs for built-ins, components, and test globals. |
+| `packages/linter/src/analysis` | 10 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
+| `packages/linter/src/catalog` | 1 | Linter-side catalogs for built-ins, components, and test globals. |
 | `packages/linter/src/output` | 3 | Report formatters: text, JSON, SARIF. |
-| `packages/linter/src/rules` | 3 | Rule registry split into syntax-level and AST-level rule sets. |
+| `packages/linter/src/rules` | 2 | Rule registry split into syntax-level and AST-level rule sets. |
 | `packages/linter/src/rules/ast` | 23 | AST rule implementations, one rule (or closely related group) per file. |
 | **packages/roku-device** | | |
 | `packages/roku-device/bin` | 1 | kopytko-roku CLI entry. |
@@ -87,7 +88,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | `src/client/diagnostics/webview` | 2 | Diagnostics webview: uPlot charts, tables, navigator/brush. |
 | `src/client/nav/views` | 1 | Kopytko Tools navigation sidebar view provider. |
 | `src/client/nav/webview` | 2 | Kopytko Tools nav sidebar webview. |
-| `src/client/network` | 4 | Network Inspector controller plus body formatting, text diffing, and DNS bypass. |
+| `src/client/network` | 3 | Network Inspector controller plus body formatting, text diffing, and DNS bypass. |
 | `src/client/network/capture` | 3 | Intercepting proxy: https<->http bridging, flow records, cURL export. |
 | `src/client/network/capture/rewrite` | 2 | Request/response rewrite rule engine (map-local, headers, latency, block). |
 | `src/client/network/discovery` | 1 | Gateway IP detection used to scope the transparent redirect. |
@@ -111,12 +112,13 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | `src/client/rokuPay` | 5 | Roku Pay Web Services client, endpoint catalog, credential profiles, request history. |
 | `src/client/rokuPay/views` | 1 | Roku Pay view provider. |
 | `src/client/rokuPay/webview` | 2 | Roku Pay webview: request builder and response viewer. |
+| `src/client/webview` | 3 | Shared host- and webview-side helpers reused across the webview tools: HTML shell/CSP, DOM/escaping utilities, body formatting. |
 | `src/server` | 2 | LSP server entry and handler registration. |
 | `src/server/brightscript` | 8 | Server-side BrightScript analysis: function index, XML script parsing, m.top resolution, casing, formatting config. |
 | `src/server/kopytko` | 3 | Kopytko-specific server logic: @import resolution, module catalog, unit-test framework support. |
 | `src/server/providers` | 17 | The LSP feature providers (completion, hover, definition, rename, semantic tokens, ...). |
 | `src/server/providers/completion` | 5 | Completion sub-builders split by context: members, imports, tests. |
-| `src/server/providers/shared` | 2 | Symbol resolution shared by definition, hover, references, and rename. |
+| `src/server/providers/shared` | 4 | Symbol resolution shared by definition, hover, references, and rename. |
 | `src/server/services` | 2 | Cross-cutting server services: cache invalidation on watched-file changes, workspace-level component diagnostics. |
 | `src/server/utils` | 9 | Server performance layer: document/parse caches, workspace indexes, stubbable fs wrapper. |
 
