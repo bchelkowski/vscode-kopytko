@@ -20,7 +20,7 @@ import {
   checkDuplicateFunctionsAst,
   checkMtopFieldAccessAst,
   checkUnreachableCodeAst,
-} from '../../src/rules/astRules';
+} from '../../src/rules/ast';
 import type { RuleContext, LintDiagnostic } from '../../src/types';
 import type { LintContext } from '../../src/context';
 
@@ -529,7 +529,7 @@ describe('AST-based lint rules', () => {
       const ctx = makeCtx('unknownFunc()');
       ctx.filePath = '/project/source/utils.brs';
       (ctx.config as Record<string, string>)['identifier/undefined-function'] = 'error';
-      const { checkUndefinedCallsAst } = require('../../src/rules/astRules');
+      const { checkUndefinedCallsAst } = require('../../src/rules/ast');
       const diags = checkUndefinedCallsAst(ctx);
       expect(diags).to.have.length(0);
     });
@@ -538,7 +538,7 @@ describe('AST-based lint rules', () => {
       const ctx = makeCtx('function foo()\n  return unknownVar\nend function');
       ctx.filePath = '/project/source/main.brs';
       (ctx.config as Record<string, string>)['identifier/undefined-variable'] = 'error';
-      const { checkUndefinedVariablesAst } = require('../../src/rules/astRules');
+      const { checkUndefinedVariablesAst } = require('../../src/rules/ast');
       const diags = checkUndefinedVariablesAst(ctx);
       expect(diags).to.have.length(1);
       expect(diags[0].code).to.equal('identifier/undefined-variable');
@@ -548,7 +548,7 @@ describe('AST-based lint rules', () => {
       const ctx = makeCtx('unknownFunc()');
       ctx.filePath = '/project/components/MyScreen.brs';
       (ctx.config as Record<string, string>)['identifier/undefined-function'] = 'error';
-      const { checkUndefinedCallsAst } = require('../../src/rules/astRules');
+      const { checkUndefinedCallsAst } = require('../../src/rules/ast');
       const diags = checkUndefinedCallsAst(ctx);
       expect(codes(diags)).to.include('identifier/undefined-function');
     });
@@ -570,7 +570,7 @@ describe('AST-based lint rules', () => {
         readFile: () => null,
       } as any;
       (ctx.config as Record<string, string>)['import/unresolved'] = 'warning';
-      const { checkImportsAst } = require('../../src/rules/astRules');
+      const { checkImportsAst } = require('../../src/rules/ast');
       const diags = checkImportsAst(ctx);
       expect(codes(diags)).not.to.include('import/unresolved');
     });
@@ -580,7 +580,7 @@ describe('AST-based lint rules', () => {
     it('does not flag @ attribute access as error', () => {
       const ctx = makeCtx('function foo(node)\n  w = node@width\n  return w\nend function');
       (ctx.config as Record<string, string>)['identifier/undefined-variable'] = 'error';
-      const { checkUndefinedVariablesAst } = require('../../src/rules/astRules');
+      const { checkUndefinedVariablesAst } = require('../../src/rules/ast');
       const diags = checkUndefinedVariablesAst(ctx);
       expect(diags).to.have.length(0);
     });

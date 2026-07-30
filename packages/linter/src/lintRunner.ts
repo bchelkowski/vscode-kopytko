@@ -4,9 +4,8 @@ import type { LintContext } from './context';
 import type { LinterConfig } from './config';
 import { ALL_RULE_GROUPS } from './rules/index';
 import { parseSuppressionMap, isSuppressed } from './suppression';
-import { matchesGlob } from './analysis/globMatcher';
 import { DUPLICATE_COMPONENT_RULE, duplicateComponentDiagnostics } from './analysis/duplicateComponents';
-import { parse } from 'kopytko-brightscript-parser';
+import { matchesGlob, parse } from 'kopytko-brightscript-parser';
 import { analyzeFile } from './analysis/fileAnalysis';
 import type { ParseResult } from 'kopytko-brightscript-parser';
 

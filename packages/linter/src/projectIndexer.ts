@@ -9,8 +9,7 @@ import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
 import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName, parseXmlInterface, parseComponentNamePosition } from './analysis/xmlParser';
 import type { ComponentDeclaration } from './analysis/duplicateComponents';
-import { findSgNode, getAllSgNodeFields, getAllSgNodeMethods } from 'kopytko-brightscript-parser';
-import { matchesGlob } from './analysis/globMatcher';
+import { findSgNode, getAllSgNodeFields, getAllSgNodeMethods, matchesGlob } from 'kopytko-brightscript-parser';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 

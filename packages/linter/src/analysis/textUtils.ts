@@ -1,8 +1,3 @@
-/** Escapes special regex characters in a string for use in `new RegExp(...)`. */
-export function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /**
  * Replaces string literal contents with spaces, preserving character offsets.
  * When `stripComments` is true, truncates at the first `'` comment marker

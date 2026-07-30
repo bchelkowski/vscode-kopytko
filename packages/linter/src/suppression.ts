@@ -1,4 +1,4 @@
-import { matchesGlob } from './analysis/globMatcher';
+import { matchesGlob } from 'kopytko-brightscript-parser';
 import type { LintDiagnostic } from './types';
 
 // Map from 0-based line number to suppressed rule code patterns.
