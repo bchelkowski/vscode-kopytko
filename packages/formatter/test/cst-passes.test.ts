@@ -4,7 +4,6 @@ import { endKeywordStylePass } from '../src/cst-passes/endKeywordStyle';
 import { casingPass } from '../src/cst-passes/casingPass';
 import { commentNormalizationPass } from '../src/cst-passes/commentNormalization';
 import { printStatementRemovalPass } from '../src/cst-passes/printStatementRemoval';
-import { importSortingPass } from '../src/cst-passes/importSorting';
 import { functionVsSubPass } from '../src/cst-passes/functionVsSub';
 import { thenStylePass } from '../src/cst-passes/thenStyle';
 import { applyEdits, runCstPasses } from '../src/cst-passes/infrastructure';
@@ -311,211 +310,42 @@ describe('CST Passes', () => {
       expect(output.trim()).to.equal('');
     });
   });
+});
 
-  describe('importSortingPass', () => {
-    it('sorts local imports alphabetically', () => {
-      const source = "' @import /z/file\n' @import /a/file\nprint 1";
-      const result = parse(source);
-      const edits = importSortingPass({ sortImports: true, emptyLineAfterImports: false })(result.root, source);
-      const output = applyEdits(source, edits);
-      const lines = output.split('\n');
-      expect(lines[0]).to.contain('/a/file');
-      expect(lines[1]).to.contain('/z/file');
-    });
-
-    it('puts module imports before local imports', () => {
-      const source = "' @import /local/file\n' @import /path from my-module\nprint 1";
-      const result = parse(source);
-      const edits = importSortingPass({ sortImports: true, emptyLineAfterImports: false })(result.root, source);
-      const output = applyEdits(source, edits);
-      const lines = output.split('\n');
-      expect(lines[0]).to.contain('from my-module');
-      expect(lines[1]).to.contain('/local/file');
-    });
-
-    it('does nothing when already sorted', () => {
-      const source = "' @import /a/file\n' @import /z/file\nprint 1";
-      const result = parse(source);
-      const edits = importSortingPass({ sortImports: true, emptyLineAfterImports: false })(result.root, source);
-      expect(edits).to.have.length(0);
-    });
-
-    it('preserves non-import content', () => {
-      const source = "' @import /z/file\n' @import /a/file\nsub main()\n  print 1\nend sub";
-      const result = parse(source);
-      const edits = importSortingPass({ sortImports: true, emptyLineAfterImports: false })(result.root, source);
-      const output = applyEdits(source, edits);
-      expect(output).to.contain('sub main()');
-      expect(output).to.contain('end sub');
-    });
+describe('trailingWhitespacePass', () => {
+  const { trailingWhitespacePass } = require('../src/cst-passes/trailingWhitespace');
+  it('removes trailing spaces', () => {
+    const source = 'x = 1   \ny = 2  ';
+    const result = parse(source);
+    const edits = trailingWhitespacePass()(result.root, source);
+    const output = applyEdits(source, edits);
+    expect(output).to.equal('x = 1\ny = 2');
+  });
+  it('preserves lines without trailing spaces', () => {
+    const source = 'x = 1\ny = 2';
+    const edits = trailingWhitespacePass()(parse(source).root, source);
+    expect(edits).to.have.length(0);
   });
 });
 
-  describe('trailingWhitespacePass', () => {
-    const { trailingWhitespacePass } = require('../src/cst-passes/trailingWhitespace');
-    it('removes trailing spaces', () => {
-      const source = 'x = 1   \ny = 2  ';
-      const result = parse(source);
-      const edits = trailingWhitespacePass()(result.root, source);
-      const output = applyEdits(source, edits);
-      expect(output).to.equal('x = 1\ny = 2');
-    });
-    it('preserves lines without trailing spaces', () => {
-      const source = 'x = 1\ny = 2';
-      const edits = trailingWhitespacePass()(parse(source).root, source);
-      expect(edits).to.have.length(0);
-    });
+describe('thenStylePass', () => {
+  const { thenStylePass } = require('../src/cst-passes/thenStyle');
+  it('adds then when style is always', () => {
+    const source = 'if x > 0\n  print 1\nend if';
+    const edits = thenStylePass('always')(parse(source).root, source);
+    const output = applyEdits(source, edits);
+    expect(output).to.contain('then');
   });
-
-  describe('thenStylePass', () => {
-    const { thenStylePass } = require('../src/cst-passes/thenStyle');
-    it('adds then when style is always', () => {
-      const source = 'if x > 0\n  print 1\nend if';
-      const edits = thenStylePass('always')(parse(source).root, source);
-      const output = applyEdits(source, edits);
-      expect(output).to.contain('then');
-    });
-    it('preserve returns no edits', () => {
-      const edits = thenStylePass('preserve')(parse('if x then\nend if').root, 'if x then\nend if');
-      expect(edits).to.have.length(0);
-    });
+  it('preserve returns no edits', () => {
+    const edits = thenStylePass('preserve')(parse('if x then\nend if').root, 'if x then\nend if');
+    expect(edits).to.have.length(0);
   });
+});
 
-  describe('functionVsSubPass', () => {
-    const { functionVsSubPass } = require('../src/cst-passes/functionVsSub');
-    it('preserve returns no edits', () => {
-      const edits = functionVsSubPass('preserve')(parse('sub foo()\nend sub').root, 'sub foo()\nend sub');
-      expect(edits).to.have.length(0);
-    });
+describe('functionVsSubPass', () => {
+  const { functionVsSubPass } = require('../src/cst-passes/functionVsSub');
+  it('preserve returns no edits', () => {
+    const edits = functionVsSubPass('preserve')(parse('sub foo()\nend sub').root, 'sub foo()\nend sub');
+    expect(edits).to.have.length(0);
   });
-
-  describe('spacingPass', () => {
-    const { spacingPass } = require('../src/cst-passes/spacing');
-    it('no-op when both disabled', () => {
-      const edits = spacingPass({ spaceAroundOperators: false, spaceAroundAssignment: false })(
-        parse('x=1+2').root, 'x=1+2');
-      expect(edits).to.have.length(0);
-    });
-  });
-
-  describe('indentationPass', () => {
-    const { indentationPass } = require('../src/cst-passes/indentation');
-    it('creates edits for misindented code', () => {
-      const source = 'function foo()\nreturn 1\nend function';
-      const edits = indentationPass({ indentSize: 4, useTabs: false })(parse(source).root, source);
-      expect(edits.length).to.be.greaterThan(0);
-    });
-  });
-
-  describe('trailingCommaPass', () => {
-    const { trailingCommaPass } = require('../src/cst-passes/trailingCommas');
-    it('preserve returns no edits', () => {
-      const edits = trailingCommaPass('preserve')(parse('a = [1, 2]').root, 'a = [1, 2]');
-      expect(edits).to.have.length(0);
-    });
-    it('returns no edits for array where last direct token is comma', () => {
-      const source = 'a = [\n  1,\n  2\n]';
-      const edits = trailingCommaPass('always')(parse(source).root, source);
-      const output = applyEdits(source, edits);
-      expect(edits).to.have.length(0); // last direct child token is already comma
-    });
-  });
-
-  describe('blankLinePass', () => {
-    const { blankLinePass } = require('../src/cst-passes/blankLines');
-    it('no-op when maxEmptyLines is 0', () => {
-      const edits = blankLinePass({ maxEmptyLines: 0, emptyLinesBetweenFunctions: 0 })(
-        parse('a = 1\n\n\n\nb = 2').root, 'a = 1\n\n\n\nb = 2');
-      expect(edits).to.have.length(0);
-    });
-  });
-
-  describe('stripCatchParensPass', () => {
-    const { stripCatchParensPass } = require('../src/cst-passes/stripCatchParens');
-    it('is a valid pass function', () => {
-      const pass = stripCatchParensPass();
-      expect(typeof pass).to.equal('function');
-    });
-  });
-
-  describe('parenthesisIfCasePass', () => {
-    const { parenthesisIfCasePass } = require('../src/cst-passes/parenthesisIfCase');
-    it('preserve returns no edits', () => {
-      const edits = parenthesisIfCasePass('preserve')(parse('if x then\nend if').root, 'if x then\nend if');
-      expect(edits).to.have.length(0);
-    });
-  });
-
-  describe('lineCommentPositionPass', () => {
-    const { lineCommentPositionPass } = require('../src/cst-passes/lineCommentPosition');
-    it('preserve returns no edits', () => {
-      const edits = lineCommentPositionPass('preserve')(parse("x = 1 ' comment").root, "x = 1 ' comment");
-      expect(edits).to.have.length(0);
-    });
-  });
-
-  describe('observeFieldStylePass', () => {
-    const { observeFieldStylePass } = require('../src/cst-passes/observeFieldStyle');
-    it('preserve returns no edits', () => {
-      const edits = observeFieldStylePass('preserve')(parse('m.top.observeField("f", "cb")').root, 'm.top.observeField("f", "cb")');
-      expect(edits).to.have.length(0);
-    });
-    it('always-scoped converts observeField', () => {
-      const source = 'm.top.observeField("f", "cb")';
-      const edits = observeFieldStylePass('always-scoped')(parse(source).root, source);
-      const output = applyEdits(source, edits);
-      expect(output).to.contain('observeFieldScoped');
-    });
-  });
-
-  describe('commentWidthPass', () => {
-    const { commentWidthPass } = require('../src/cst-passes/commentWidth');
-    it('no-op when maxWidth is 0', () => {
-      const edits = commentWidthPass(0)(parse("' short").root, "' short");
-      expect(edits).to.have.length(0);
-    });
-  });
-
-  describe('stub passes (infrastructure ready)', () => {
-    const { elseOnNewLinePass } = require('../src/cst-passes/elseOnNewLine');
-    const { splitArrayOpenBracketPass } = require('../src/cst-passes/splitArrayOpenBracket');
-    const { alignAssignmentsPass } = require('../src/cst-passes/alignAssignments');
-    const { emptyLinesBetweenMethodsPass } = require('../src/cst-passes/emptyLinesBetweenMethods');
-    const { mPrefixStylePass } = require('../src/cst-passes/mPrefixStyle');
-    const { fieldAccessConsistencyPass } = require('../src/cst-passes/fieldAccessConsistency');
-    const { wrapLongStringsPass } = require('../src/cst-passes/wrapLongStrings');
-    const { stringConcatStylePass } = require('../src/cst-passes/stringConcatStyle');
-    const { aaThresholdPass } = require('../src/cst-passes/aaThreshold');
-    const { paramAlignmentPass } = require('../src/cst-passes/paramAlignment');
-
-    it('elseOnNewLine: no-op when keepOnNewLine', () => {
-      expect(elseOnNewLinePass(true)(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('splitArrayOpenBracket: no-op when disabled', () => {
-      expect(splitArrayOpenBracketPass(false)(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('alignAssignments: no-op when disabled', () => {
-      expect(alignAssignmentsPass(false)(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('emptyLinesBetweenMethods: no-op when 0', () => {
-      expect(emptyLinesBetweenMethodsPass(0)(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('mPrefixStyle: no-op when preserve', () => {
-      expect(mPrefixStylePass('preserve')(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('fieldAccessConsistency: no-op when preserve', () => {
-      expect(fieldAccessConsistencyPass('preserve')(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('wrapLongStrings: no-op when preserve', () => {
-      expect(wrapLongStringsPass('preserve', 0)(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('stringConcatStyle: no-op when preserve', () => {
-      expect(stringConcatStylePass('preserve')(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('aaThreshold: no-op when 0', () => {
-      expect(aaThresholdPass(0)(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-    it('paramAlignment: no-op when preserve', () => {
-      expect(paramAlignmentPass('preserve')(parse('x = 1').root, 'x = 1')).to.have.length(0);
-    });
-  });
+});

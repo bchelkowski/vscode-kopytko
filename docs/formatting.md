@@ -2,7 +2,7 @@
 
 ## Overview
 
-The BrightScript formatter is a **hybrid multi-pass engine** that rewrites `.brs` files with structure-aware CST passes plus inline text/regex passes. `packages/formatter/src/cst-passes/index.ts` exports 28 CST pass files; `packages/formatter/src/formatter.ts` composes the enabled rules and keeps text-oriented transformations inline where they are still simpler.
+The BrightScript formatter is a **hybrid multi-pass engine** that rewrites `.brs` files with a small set of structure-aware CST passes plus inline text/regex passes. `packages/formatter/src/cst-passes/index.ts` exports 8 CST pass files (`endKeywordStyle`, `casingPass`, `commentNormalization`, `printStatementRemoval`, `thenStyle`, `functionVsSub`, `trailingWhitespace`, plus shared `infrastructure`); `packages/formatter/src/formatter.ts` composes the 7 formatting passes with the remaining rules, which are implemented as inline text/regex transforms.
 
 CST passes run through a small bridge that joins the current lines, applies token/node-position edits, and splits back to lines. Consecutive style passes (`endKeywordStyle`, `functionVsSubForVoid`, `thenStyle`) are batched through `runCstPasses`, while single-pass CST transforms reuse a per-format parse cache. This parse-once batching keeps typical formatting to roughly two parser runs instead of repeatedly reparsing for every rule. Pass files are regular linted TypeScript modules; they no longer carry a blanket unused-variable ESLint disable.
 

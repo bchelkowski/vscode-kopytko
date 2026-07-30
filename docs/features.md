@@ -96,7 +96,7 @@ Backed by the standalone linter's 32 rules (shared by the editor and CI). Full r
 
 ### Formatting & Casing
 
-Multi-pass engine (28 CST passes + text passes, 49 configurable options), shared by the editor and the `kopytko-format` CLI. Full settings: [formatting.md](./formatting.md).
+Multi-pass engine (8 CST passes + text passes, 49 configurable options), shared by the editor and the `kopytko-format` CLI. Full settings: [formatting.md](./formatting.md).
 
 | Feature | Status |
 |---|---|

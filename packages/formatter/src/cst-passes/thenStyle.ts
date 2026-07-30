@@ -10,7 +10,7 @@
 
 import { SyntaxNode, SyntaxKind, TokenKind, isToken, isNode } from 'kopytko-brightscript-parser';
 import type { Token } from 'kopytko-brightscript-parser';
-import { TextEdit } from './infrastructure';
+import { TextEdit, walkTokens } from './infrastructure';
 
 type ThenStyle = 'always' | 'never' | 'multiline-only' | 'singleline-only' | 'preserve';
 
@@ -131,12 +131,9 @@ function findThenInsertPosition(node: SyntaxNode): number {
 }
 
 function findFirstTokenInNode(node: SyntaxNode): Token | undefined {
-  for (const child of node.children) {
-    if (isToken(child)) return child;
-    if (isNode(child)) {
-      const found = findFirstTokenInNode(child);
-      if (found) return found;
-    }
-  }
-  return undefined;
+  let found: Token | undefined;
+  walkTokens(node, (token) => {
+    if (!found) found = token;
+  });
+  return found;
 }
