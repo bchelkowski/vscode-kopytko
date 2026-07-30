@@ -1,6 +1,16 @@
 # Changelog
 
 
+## [1.1.16] - 2026-07-30
+
+### Fixed
+- Correct stale docs/site claims found in a final audit
+
+### Changed
+- Dedupe CST pass helpers and remove stale comments
+- Migrate regex passes to CST where it removes real risk
+- Drop the dead CST-pass migration demo
+
 ## [1.1.15] - 2026-07-28
 
 - Release 1.1.15
