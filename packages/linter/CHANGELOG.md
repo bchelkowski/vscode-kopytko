@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.7.1] - 2026-07-30
+
+### Changed
+- Remove dead code and a duplicated glob matcher
+
 ## [1.7.0] - 2026-07-29
 
 ### Added
