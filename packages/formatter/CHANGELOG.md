@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [1.2.0] - 2026-07-30
+
+### Added
+- Add assoc-array key sorting, Kopytko template structuring, and XML interface sorting
+- Add arrayCommaSpacing and parenCommaSpacing options
+
 ## [1.1.16] - 2026-07-30
 
 ### Fixed
