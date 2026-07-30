@@ -1,7 +1,7 @@
-import * as path from 'path';
 import fsWrapper from '../utils/fsWrapper';
 import { parseFunctionDefs } from '../brightscript/functionIndex';
 import { KopytkoImportResolver } from './importResolver';
+import { walkTree } from '../utils/dirWalker';
 
 /** A single exported function or sub discovered in an installed Kopytko package. */
 export interface KopytkoExportEntry {
@@ -25,7 +25,6 @@ export interface KopytkoExportEntry {
 export class KopytkoModuleCatalog {
   private _entries: KopytkoExportEntry[] = [];
   private _lookupMap = new Map<string, KopytkoExportEntry>();
-  private _namesLower = new Set<string>();
   private _sourceDirNamesCache: Set<string> | null = null;
 
   /**
@@ -35,13 +34,13 @@ export class KopytkoModuleCatalog {
   scan(rootPath: string, importResolver: KopytkoImportResolver): void {
     this._entries = [];
     this._lookupMap = new Map();
-    this._namesLower = new Set();
     this._sourceDirNamesCache = null;
     const packages = importResolver.getInstalledKopytkoPackages(rootPath);
     for (const pkg of packages) {
       const baseDir = importResolver.resolvePackageBaseDir(pkg, rootPath);
       if (!baseDir) continue;
-      walkBrsFiles(baseDir, (filePath) => {
+      walkTree(baseDir, (filePath, entryName) => {
+        if (!entryName.endsWith('.brs')) return;
         let text: string;
         try {
           text = fsWrapper.readFileSync(filePath, 'utf-8');
@@ -60,23 +59,14 @@ export class KopytkoModuleCatalog {
           this._entries.push(entry);
           const lower = def.name.toLowerCase();
           if (!this._lookupMap.has(lower)) this._lookupMap.set(lower, entry);
-          this._namesLower.add(lower);
         }
-      });
+      }, { skipNodeModules: false });
     }
   }
 
   /** Case-insensitive lookup by function/sub name. Returns the first match. */
   findExport(name: string): KopytkoExportEntry | undefined {
     return this._lookupMap.get(name.toLowerCase());
-  }
-
-  /**
-   * Returns a set of all exported function/sub names in lowercase.
-   * Used for fast membership tests (e.g. suppressing undefined-function warnings).
-   */
-  getAllNamesLower(): Set<string> {
-    return this._namesLower;
   }
 
   /**
@@ -102,24 +92,5 @@ export class KopytkoModuleCatalog {
   /** Returns all catalogued entries (for completion provider). */
   getEntries(): readonly KopytkoExportEntry[] {
     return this._entries;
-  }
-}
-
-/** Recursively walks a directory and invokes callback for every .brs file. */
-function walkBrsFiles(dir: string, callback: (filePath: string) => void): void {
-  let entries: ReturnType<typeof fsWrapper.readdirTyped>;
-  try {
-    entries = fsWrapper.readdirTyped(dir);
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory) {
-      walkBrsFiles(full, callback);
-    } else if (entry.name.endsWith('.brs')) {
-      callback(full);
-    }
   }
 }

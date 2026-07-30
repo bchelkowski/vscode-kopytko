@@ -1,11 +1,10 @@
-import * as path from 'path';
-import fsWrapper from './fsWrapper';
 import { FunctionDefinition } from '../brightscript/functionIndex';
 import {
   getCachedFunctionDefs,
   invalidateFileParseCache,
   clearFileParseCache,
 } from './fileParseCache';
+import { walkTree } from './dirWalker';
 
 /**
  * A workspace-wide index of function/sub definitions from all .brs files.
@@ -78,11 +77,6 @@ export class WorkspaceFunctionIndex {
     return this._fileIndex.keys();
   }
 
-  /** Returns function definitions for a specific file. */
-  getFileFunctions(filePath: string): FunctionDefinition[] {
-    return this._fileIndex.get(filePath) ?? [];
-  }
-
   /** Returns all function definitions across the workspace. */
   getAllFunctions(): FunctionDefinition[] {
     const all: FunctionDefinition[] = [];
@@ -144,24 +138,13 @@ export class WorkspaceFunctionIndex {
   }
 
   private _walkDir(dir: string): void {
-    let entries: ReturnType<typeof fsWrapper.readdirTyped>;
-    try {
-      entries = fsWrapper.readdirTyped(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory) {
-        this._walkDir(full);
-      } else if (entry.name.endsWith('.brs')) {
-        const defs = getCachedFunctionDefs(full);
-        if (defs) {
-          this._fileIndex.set(full, defs);
-          for (const def of defs) this._allNames.add(def.nameLower);
-        }
+    walkTree(dir, (full, name) => {
+      if (!name.endsWith('.brs')) return;
+      const defs = getCachedFunctionDefs(full);
+      if (defs) {
+        this._fileIndex.set(full, defs);
+        for (const def of defs) this._allNames.add(def.nameLower);
       }
-    }
+    });
   }
 }

@@ -7,7 +7,7 @@
 1. **Debounced diagnostics** — use `scheduleValidation()`, not `validateDocument()` (300ms stale-request-ID debounce). Direct calls block the UI thread on every keystroke.
 2. **Document cache** — import from `utils/documentCache.ts`: `getCachedLines`, `getCachedTypeMap`, `getCachedAllFunctions`. Never call `text.split()`, `inferTypes()`, or `collectAllFunctions()` directly in a provider — these are expensive and uncached.
 3. **Static data cached** — `getInstalledKopytkoPackages()`, `resolvePackageBaseDir()` are cached in the import resolver; `KopytkoModuleCatalog` scans once at startup. Both invalidate via `onDidChangeWatchedFiles`.
-4. **Workspace function index** — use `WorkspaceFunctionIndex` for Find References and Rename. Never walk the workspace with `collectBrsFiles` in a provider.
+4. **Workspace function index** — use `WorkspaceFunctionIndex` for Find References, Rename, and Workspace Symbol search (all query it, never walk the disk directly). There is no standalone `collectBrsFiles`/`brsFileCollector.ts` any more — it was a raw uncached workspace walk that `workspaceSymbolProvider.ts` used to call on every keystroke of "Go to Symbol in Workspace"; it was deleted once that provider was wired to the index like the others. If a provider seems to need a fresh full-workspace walk, that is a sign it should be reading from an index instead, not a reason to re-add a walker.
 5. **Catalog lookups** — `findComponent()`, `findBuiltin()`, `getComponentMethods()` are O(1) map lookups.
 6. **Cache invalidation** — `CacheInvalidationService` handles `onDidChangeWatchedFiles` and clears/updates caches on disk changes. Document caches auto-invalidate on version change.
 
@@ -169,6 +169,20 @@ one-interface fix.
 ## Kopytko module catalog
 
 `src/server/kopytko/moduleCatalog.ts` scans installed packages at runtime. Tests in `test/kopytko/moduleCatalog.test.ts`.
+Its walk passes `walkTree(..., { skipNodeModules: false })` — every other workspace walker skips
+`node_modules` to avoid descending into installed packages, but this walk's root *is* an installed
+package's own base dir, so the default skip would silently make its own contents invisible.
+
+## Directory walkers that stay separate from `dirWalker.ts`
+
+`findComponentXml`'s two helpers in `xmlScriptParser.ts` (`findFileInTree`, `findXmlByComponentName`)
+look like more copies of the same walk-and-collect pattern but are not: both are depth-limited
+(`maxDepth`, since they run for every link in an `extends` chain) and **early-exit** — they check all
+files at the current level before recursing into subdirectories, and return as soon as a match is
+found, so a shallow match never pays for a full subtree walk. `dirWalker.ts`'s `walkTree` always visits
+every file (it takes a void callback, not a predicate), so routing these through it would force a full
+tree walk on every call — a real regression on a hot, repeatedly-called path. Leave them as-is unless
+`walkTree` grows early-exit support.
 
 ---
 
@@ -267,6 +281,7 @@ is verified by `scripts/check-doc-claims.mjs`, run from `npm run lint` and CI.
 | Document cache | `src/server/utils/documentCache.ts` |
 | Cache invalidation | `src/server/services/cacheInvalidation.ts` |
 | Import resolution | `src/server/kopytko/importResolver.ts` |
+| Directory walk (skip dot-dirs/node_modules, callback per file) | `src/server/utils/dirWalker.ts` — shared by `WorkspaceFunctionIndex`, `WorkspaceCallIndex`, `WorkspaceComponentIndex`, `KopytkoModuleCatalog` (passes `skipNodeModules: false` — its root is already inside `node_modules`, see below) |
 | Built-in catalog | `packages/brightscript-parser/src/catalog/builtins.ts` |
 | Component catalog | `packages/brightscript-parser/src/catalog/components.ts` |
 | Formatting engine | `packages/formatter/src/formatter.ts` + `cst-passes/` |

@@ -6,7 +6,7 @@ import type { ParseResult } from 'kopytko-brightscript-parser';
 import { getDocumentPath } from '../utils/textUtils';
 import { getCachedLines, getCachedImports, getCachedKnownFuncNames, getCachedParseResult } from '../utils/documentCache';
 import { isTestFile } from '../kopytko/testFramework';
-import fsWrapper from '../utils/fsWrapper';
+import { readCachedFileText, getCachedFunctionDefs } from '../utils/fileParseCache';
 import { parseFunctionDefs as extParseFunctionDefs } from '../brightscript/functionIndex';
 import { findSiblingFiles } from '../brightscript/patternSiblings';
 import { findTestSiblings } from '../brightscript/functionIndex';
@@ -169,20 +169,12 @@ export class BrightScriptDiagnosticsProvider {
       },
 
       readFile: (filePath: string): string | null => {
-        try {
-          return fsWrapper.readFileSync(filePath, 'utf-8');
-        } catch {
-          return null;
-        }
+        return readCachedFileText(filePath) ?? null;
       },
 
       parseFunctionsFromFile: (filePath: string): string[] => {
-        try {
-          const text = fsWrapper.readFileSync(filePath, 'utf-8');
-          return extParseFunctionDefs(text, filePath).map(f => f.nameLower);
-        } catch {
-          return [];
-        }
+        const defs = getCachedFunctionDefs(filePath);
+        return defs ? defs.map(f => f.nameLower) : [];
       },
 
       getSiblingFiles: (filePath: string): string[] => {

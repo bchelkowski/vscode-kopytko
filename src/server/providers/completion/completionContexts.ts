@@ -1,4 +1,6 @@
 import { Position, Range } from 'vscode-languageserver/node';
+import { walkBackToWordStart } from '../../brightscript/typeInference';
+import { findAssignedConstructor } from '../shared/receiverAssignment';
 
 export type TestDotContext = 'expect' | 'expect.not' | 'mockFunction' | 'fakeClock' | 'testSuite';
 
@@ -16,26 +18,16 @@ export function resolveReceiverOwnerFunction(
   lines: string[],
   cursorLine: number,
 ): string | null {
-  const assignRe = new RegExp(
-    `^\\s*${receiverName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*(\\w+)\\s*\\(`,
-    'i'
-  );
-  for (let i = cursorLine - 1; i >= 0; i--) {
-    const m = assignRe.exec(lines[i]);
-    if (m) return m[1];
-  }
-  return null;
+  return findAssignedConstructor(lines, cursorLine - 1, receiverName, { anchorToLineStart: true });
 }
 
 export function isDotAccessContext(line: string, charPos: number): boolean {
-  let pos = charPos;
-  while (pos > 0 && /\w/.test(line[pos - 1])) pos--;
+  const pos = walkBackToWordStart(line, charPos);
   return pos > 0 && line[pos - 1] === '.';
 }
 
 export function getInlineFunctionCallName(line: string, charPos: number): string | null {
-  let pos = charPos;
-  while (pos > 0 && /\w/.test(line[pos - 1])) pos--;
+  const pos = walkBackToWordStart(line, charPos);
   if (pos <= 0 || line[pos - 1] !== '.') return null;
 
   const beforeDot = line.substring(0, pos - 1);
@@ -112,8 +104,7 @@ export function getCreateObjectStringContext(
 }
 
 export function isMtopAccess(line: string, charPos: number): boolean {
-  let pos = charPos;
-  while (pos > 0 && /\w/.test(line[pos - 1])) pos--;
+  const pos = walkBackToWordStart(line, charPos);
   if (pos <= 0 || line[pos - 1] !== '.') return false;
   return /\bm\.top$/i.test(line.substring(0, pos - 1));
 }

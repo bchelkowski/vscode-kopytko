@@ -264,10 +264,6 @@ function offsetToPosition(text: string, offset: number): { line: number; column:
 }
 
 /**
- * Searches `searchRoots` recursively (up to `maxDepth` levels) for a file named
- * `<componentName>.xml` and returns its absolute path, or undefined if not found.
- */
-/**
  * Memoizes component-name → XML-path resolution, including negative results.
  * `findComponentXml` does full recursive directory walks (reading and
  * regex-scanning every XML), and is called for each link in an `extends` chain
@@ -282,6 +278,10 @@ export function clearComponentXmlCache(): void {
   _componentXmlCache.clear();
 }
 
+/**
+ * Searches `searchRoots` recursively (up to `maxDepth` levels) for a file named
+ * `<componentName>.xml` and returns its absolute path, or undefined if not found.
+ */
 export function findComponentXml(
   componentName: string,
   searchRoots: string[],

@@ -3,29 +3,9 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   walk,
   SyntaxNode,
-  isToken,
 } from 'kopytko-brightscript-parser';
-import type { Token } from 'kopytko-brightscript-parser';
 import { getCachedParseResult, getCachedLines } from '../utils/documentCache';
-
-function firstToken(node: SyntaxNode): Token | undefined {
-  for (const child of node.children) {
-    if (isToken(child)) return child;
-    const tok = firstToken(child);
-    if (tok) return tok;
-  }
-  return undefined;
-}
-
-function lastToken(node: SyntaxNode): Token | undefined {
-  for (let i = node.children.length - 1; i >= 0; i--) {
-    const child = node.children[i];
-    if (isToken(child)) return child;
-    const tok = lastToken(child);
-    if (tok) return tok;
-  }
-  return undefined;
-}
+import { firstToken, lastToken } from './shared/tokenBounds';
 
 function blockRange(node: SyntaxNode): FoldingRange | null {
   const first = firstToken(node);

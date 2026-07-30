@@ -8,6 +8,7 @@ import { getDocumentPath } from '../utils/textUtils';
 import { getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { SymbolResolver, functionLocation, resolveWordContext } from './shared/symbolResolver';
+import { findAssignedConstructor } from './shared/receiverAssignment';
 
 export class BrightScriptDefinitionProvider {
   private readonly symbolResolver: SymbolResolver;
@@ -61,7 +62,7 @@ export class BrightScriptDefinitionProvider {
             if (candidates.length > 1) {
               const receiver = getReceiverName(currentLine, position.character);
               if (receiver) {
-                const constructor = findConstructorForReceiver(lines, position.line, receiver);
+                const constructor = findAssignedConstructor(lines, position.line, receiver);
                 if (constructor) {
                   const typed = candidates.filter(
                     (m) => m.ownerFunction?.toLowerCase() === constructor.toLowerCase()
@@ -111,16 +112,3 @@ function deduplicateLocations(locations: Location[]): Location[] {
   });
 }
 
-/**
- * Scans backward from `cursorLine` for `receiverName = ConstructorName(...)` and
- * returns `ConstructorName`. Returns null if no such assignment is found.
- */
-function findConstructorForReceiver(lines: string[], cursorLine: number, receiverName: string): string | null {
-  const escaped = receiverName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`\\b${escaped}\\s*=\\s*(\\w+)\\s*\\(`, 'i');
-  for (let i = cursorLine; i >= 0; i--) {
-    const match = re.exec(lines[i]);
-    if (match) return match[1];
-  }
-  return null;
-}

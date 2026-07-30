@@ -190,17 +190,6 @@ export class KopytkoImportResolver {
     return this.resolveInternalImport(importEntry, documentPath);
   }
 
-  /**
-   * Check whether a resolved import path actually exists on disk.
-   */
-  importExists(resolvedPath: string): boolean {
-    try {
-      return fsWrapper.existsSync(resolvedPath);
-    } catch {
-      return false;
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------

@@ -1,11 +1,10 @@
-import * as path from 'path';
 import {
   parse, buildCallGraph, walk, SyntaxKind, TokenKind,
   CallExpression, AALiteral,
 } from 'kopytko-brightscript-parser';
 import type { AstNode } from 'kopytko-brightscript-parser';
 import { readCachedFileText, invalidateFileParseCache } from './fileParseCache';
-import fsWrapper from './fsWrapper';
+import { walkTree } from './dirWalker';
 
 // Regex constants for XML interface parsing (same patterns as xmlScriptParser.ts).
 const INTERFACE_BLOCK_RE = /<interface\b[^>]*>([\s\S]*?)<\/interface>/i;
@@ -151,25 +150,15 @@ export class WorkspaceCallIndex {
   }
 
   private _walkDir(dir: string): void {
-    let entries: ReturnType<typeof fsWrapper.readdirTyped>;
-    try {
-      entries = fsWrapper.readdirTyped(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory) {
-        this._walkDir(full);
-      } else if (entry.name.endsWith('.brs')) {
+    walkTree(dir, (full, name) => {
+      if (name.endsWith('.brs')) {
         const names = this._extractCalledNames(full);
         if (names && names.size > 0) this._fileCalledNames.set(full, names);
-      } else if (entry.name.endsWith('.xml')) {
+      } else if (name.endsWith('.xml')) {
         const names = this._extractCalledNamesFromXml(full);
         if (names) this._fileCalledNames.set(full, names);
       }
-    }
+    });
   }
 }
 

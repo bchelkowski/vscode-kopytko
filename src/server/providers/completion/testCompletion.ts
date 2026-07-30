@@ -44,9 +44,7 @@ export function testFrameworkDotCompletions(ctx: TestDotContext): CompletionItem
 export function testGlobalCompletions(): CompletionItem[] {
   return ALL_TEST_GLOBALS.map((entry) => ({
     label: entry.name,
-    kind: entry.name === 'expect' || entry.name === 'mockFunction'
-      ? CompletionItemKind.Function
-      : CompletionItemKind.Function,
+    kind: CompletionItemKind.Function,
     detail: entry.signature,
     sortText: `1_${entry.name}`,
     documentation: {

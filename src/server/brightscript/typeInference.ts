@@ -43,6 +43,20 @@ const INLINE_CREATE_OBJECT_RE = /CreateObject\s*\(\s*"([a-zA-Z]+)"\s*(?:,[^)]*?)
 
 
 /**
+ * Walks backward from `charPos` past word characters (`\w`) and returns the
+ * index of the first word character — the start of the identifier ending at
+ * `charPos`. Returns `charPos` unchanged if the preceding character isn't a
+ * word character.
+ */
+export function walkBackToWordStart(line: string, charPos: number): number {
+  let pos = charPos;
+  while (pos > 0 && WORD_CHAR_RE.test(line[pos - 1])) {
+    pos--;
+  }
+  return pos;
+}
+
+/**
  * Given the source text and a cursor position, returns the variable name
  * immediately before the `.` that triggered member completion, or null.
  *
@@ -51,11 +65,7 @@ const INLINE_CREATE_OBJECT_RE = /CreateObject\s*\(\s*"([a-zA-Z]+)"\s*(?:,[^)]*?)
  *   `m.transfer.`  → "transfer"   (the last segment)
  */
 export function getReceiverName(line: string, charPos: number): string | null {
-  // Walk back past any word characters (cursor may be inside a method name)
-  let pos = charPos;
-  while (pos > 0 && WORD_CHAR_RE.test(line[pos - 1])) {
-    pos--;
-  }
+  const pos = walkBackToWordStart(line, charPos);
 
   // The character immediately before the word start must be a dot
   if (pos <= 0 || line[pos - 1] !== '.') return null;
@@ -73,9 +83,7 @@ export function getReceiverName(line: string, charPos: number): string | null {
  * name directly. Returns undefined if the cursor is not after such a pattern.
  */
 export function getInlineCreateObjectType(line: string, charPos: number): string | undefined {
-  // Walk back past any word characters (cursor may be inside a method name)
-  let pos = charPos;
-  while (pos > 0 && WORD_CHAR_RE.test(line[pos - 1])) pos--;
+  const pos = walkBackToWordStart(line, charPos);
 
   // Must have a dot before the word
   if (pos <= 0 || line[pos - 1] !== '.') return undefined;

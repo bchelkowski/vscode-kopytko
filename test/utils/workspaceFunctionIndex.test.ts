@@ -180,4 +180,27 @@ describe('WorkspaceFunctionIndex — source/ directory caching', () => {
       expect(afterFns).to.not.equal(beforeFns);
     });
   });
+
+  describe('build() — file filtering', () => {
+    it('skips unreadable files without throwing', () => {
+      readdirStub.withArgs('/other').returns([{ name: 'Bad.brs', isDirectory: false }]);
+      readFileStub.withArgs('/other/Bad.brs', 'utf-8').throws(new Error('EACCES'));
+
+      const other = new WorkspaceFunctionIndex();
+      expect(() => other.build(['/other'])).not.to.throw();
+      expect(other.getAllFunctions()).to.be.empty;
+    });
+
+    it('ignores non-.brs files', () => {
+      readdirStub.withArgs('/other').returns([
+        { name: 'script.js', isDirectory: false },
+        { name: 'App.brs', isDirectory: false },
+      ]);
+      readFileStub.withArgs('/other/App.brs', 'utf-8').returns('function appFn()\nend function');
+
+      const other = new WorkspaceFunctionIndex();
+      other.build(['/other']);
+      expect(other.getAllFunctions().map(f => f.nameLower)).to.deep.equal(['appfn']);
+    });
+  });
 });

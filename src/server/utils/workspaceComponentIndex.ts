@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { parseComponentTag, findParentXmls } from '../brightscript/xmlScriptParser';
 import { readCachedFileText, invalidateFileParseCache } from './fileParseCache';
-import fsWrapper from './fsWrapper';
+import { walkTree } from './dirWalker';
 
 /** A SceneGraph component declared by a workspace `.xml` file. */
 export interface ComponentEntry {
@@ -182,22 +182,11 @@ export class WorkspaceComponentIndex {
   }
 
   private _walkDir(dir: string): void {
-    let entries: ReturnType<typeof fsWrapper.readdirTyped>;
-    try {
-      entries = fsWrapper.readdirTyped(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory) {
-        this._walkDir(full);
-      } else if (entry.name.endsWith('.xml')) {
-        const component = this._parseFile(full);
-        if (component) this._byFile.set(full, component);
-      }
-    }
+    walkTree(dir, (full, name) => {
+      if (!name.endsWith('.xml')) return;
+      const component = this._parseFile(full);
+      if (component) this._byFile.set(full, component);
+    });
   }
 }
 

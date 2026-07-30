@@ -239,43 +239,6 @@ describe('KopytkoModuleCatalog', () => {
     });
   });
 
-  // ── getAllNamesLower ──────────────────────────────────────────────────────
-
-  describe('getAllNamesLower()', () => {
-    it('returns an empty set when catalog is empty', () => {
-      const resolver = makeResolver([]);
-      catalog.scan('/workspace', resolver);
-      expect(catalog.getAllNamesLower().size).to.equal(0);
-    });
-
-    it('returns all function names in lowercase', () => {
-      const resolver = makeResolver();
-      readdirStub.withArgs(BASE_DIR).returns([
-        { name: 'Renderer.brs', isDirectory: false },
-      ]);
-      readFileStub.withArgs(path.join(BASE_DIR, 'Renderer.brs'), 'utf-8').returns(
-        'sub setState(newState as Object)\nend sub\n\nfunction GetState() as Object\nend function'
-      );
-      catalog.scan('/workspace', resolver);
-      const names = catalog.getAllNamesLower();
-      expect(names.has('setstate')).to.be.true;
-      expect(names.has('getstate')).to.be.true;
-    });
-
-    it('does not include names in original casing', () => {
-      const resolver = makeResolver();
-      readdirStub.withArgs(BASE_DIR).returns([
-        { name: 'Renderer.brs', isDirectory: false },
-      ]);
-      readFileStub.withArgs(path.join(BASE_DIR, 'Renderer.brs'), 'utf-8').returns(
-        'sub setState(newState as Object)\nend sub'
-      );
-      catalog.scan('/workspace', resolver);
-      const names = catalog.getAllNamesLower();
-      expect(names.has('setState')).to.be.false;
-    });
-  });
-
   // ── getSourceDirNamesLower ────────────────────────────────────────────────
 
   describe('getSourceDirNamesLower()', () => {
