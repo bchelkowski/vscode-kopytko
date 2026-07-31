@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.3.1] - 2026-07-31
+
+### Fixed
+- Correct ifUtils.HasComponent name, tag since 15.2
+
 ## [1.3.0] - 2026-07-30
 
 ### Added
