@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.4.0] - 2026-07-31
+
+### Added
+- Parse ECP chanperf proc-stat field (RokuOS 15.2)
+
 ## [1.3.3] - 2026-07-28
 
 ### Fixed
