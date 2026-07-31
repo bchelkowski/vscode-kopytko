@@ -21,6 +21,7 @@ const FIXTURE = `<?xml version="1.0" encoding="UTF-8" ?>
 </memory>
 <id>dev</id>
 </plugin>
+<proc-stat>dev 1234 (channel) S 1 1234 1234 0 -1 4194560 5678 0 0 0 12 3 0 0 20 0 4 0 98765 123456789 4567 18446744073709551615</proc-stat>
 <status>OK</status>
 </chanperf>`;
 
@@ -40,6 +41,19 @@ describe('parseEcpChanperf', () => {
     const noLimit = FIXTURE.replace('<limit>859832320</limit>', '');
     const s = parseEcpChanperf(noLimit);
     expect(s!.limitKiB).to.be.undefined;
+  });
+
+  it('parses the Roku OS 15.2+ <proc-stat> field verbatim', () => {
+    const s = parseEcpChanperf(FIXTURE);
+    expect(s!.procStat).to.equal(
+      'dev 1234 (channel) S 1 1234 1234 0 -1 4194560 5678 0 0 0 12 3 0 0 20 0 4 0 98765 123456789 4567 18446744073709551615',
+    );
+  });
+
+  it('leaves procStat undefined on pre-15.2 firmware that omits <proc-stat>', () => {
+    const noProcStat = FIXTURE.replace(/<proc-stat>.*<\/proc-stat>\n/, '');
+    const s = parseEcpChanperf(noProcStat);
+    expect(s!.procStat).to.be.undefined;
   });
 
   it('parses CPU float percentages', () => {

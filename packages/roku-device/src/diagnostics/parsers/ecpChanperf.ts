@@ -23,6 +23,10 @@ import type { ChanperfSample } from './chanperf';
  * `<limit>` is the device-reported foreground memory ceiling for the channel
  * (bytes) — exceeding it gets the app terminated by the Roku OS. Not present
  * on the raw debug-console `chanperf` command, only ECP.
+ *
+ * `<proc-stat>` (Roku OS 15.2+) carries raw Linux `/proc`-style CPU/process
+ * status text for the channel, opaque to this parser — passed through as-is.
+ * Absent on pre-15.2 firmware and on the raw debug-console `chanperf` command.
  */
 export function parseEcpChanperf(xml: string): ChanperfSample | null {
   if (!xml.includes('<status>OK</status>')) return null;
@@ -32,14 +36,20 @@ export function parseEcpChanperf(xml: string): ChanperfSample | null {
     return m ? parseFloat(m[1]) : NaN;
   };
 
-  const used    = num('used');
-  const anon    = num('anon');
-  const file    = num('file');
-  const shared  = num('shared');
-  const swap    = num('swap');
-  const limit   = num('limit');
-  const cpuUser = num('user');
-  const cpuSys  = num('sys');
+  const str = (tag: string): string | undefined => {
+    const m = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+    return m ? m[1].trim() : undefined;
+  };
+
+  const used     = num('used');
+  const anon     = num('anon');
+  const file     = num('file');
+  const shared   = num('shared');
+  const swap     = num('swap');
+  const limit    = num('limit');
+  const cpuUser  = num('user');
+  const cpuSys   = num('sys');
+  const procStat = str('proc-stat');
 
   if (isNaN(used) || isNaN(cpuUser)) return null;
 
@@ -52,6 +62,7 @@ export function parseEcpChanperf(xml: string): ChanperfSample | null {
     sharedKiB: toKiB(shared),
     swapKiB:   toKiB(swap),
     limitKiB:  isNaN(limit) ? undefined : toKiB(limit),
+    procStat,
     cpuPct:    Math.round(cpuUser + (isNaN(cpuSys) ? 0 : cpuSys)),
     cpuUser:   Math.round(cpuUser),
     cpuSys:    Math.round(isNaN(cpuSys) ? 0 : cpuSys),

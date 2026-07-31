@@ -82,6 +82,7 @@ exits non-zero. Test exit codes with `&&`/`||` chaining instead.
 | `/query/r2d2-bitmaps` | GET | XML — **completely different format** from the 8080 `r2d2_bitmaps` text command |
 | `/query/tv-channels`, `/query/tv-active-channel` | GET | 404 on non-TV hardware; ⚠️ success shape unverified |
 | `/query/media-player` | GET | ⚠️ docs-derived shape only — verify before trusting `validate_streaming` |
+| `/query/chanperf` | GET | Per-channel mem/CPU, XML — see below. **Different units from the 8080 `chanperf` text command.** |
 
 **Binary bodies need `httpGetBuffer`**, not `httpGet` — the string-accumulating version corrupts them.
 
@@ -130,6 +131,29 @@ Text request/response. Send `command\r\n`, read until idle ~250 ms.
 channel: mem=53920KiB{anon=31968,file=21756,shared=196,swap=0},%cpu=0{user=0,sys=0}
 ```
 `anon` = heap (allocations, SG nodes) · `file` = code/mmapped assets · `swap` > 0 means device pressure.
+
+**ECP `/query/chanperf` (port 8060) is a separate, richer encoding of the same signal** — XML,
+**bytes** not KiB, float CPU percentages, and (firmware **15.2+**) a `<proc-stat>` element:
+```xml
+<chanperf>
+  <plugin>
+    <cpu-percent><user>0.0</user><sys>0.0</sys></cpu-percent>
+    <memory>
+      <used>42905600</used><anon>21086208</anon><file>21618688</file>
+      <shared>200704</shared><swap>0</swap><limit>859832320</limit>
+    </memory>
+  </plugin>
+  <proc-stat>… raw /proc/[pid]/stat-style text …</proc-stat>
+  <status>OK</status>
+</chanperf>
+```
+`<limit>` (foreground memory ceiling) and `<proc-stat>` have **no equivalent on the 8080 text
+command** — both parse to `undefined`/absent there. `parseEcpChanperf` (`packages/roku-device/src/
+diagnostics/parsers/ecpChanperf.ts`) treats `<proc-stat>` as opaque text (Roku's own docs describe it
+only as "raw Linux CPU and processing status information for integration into custom monitoring
+tools") — passed through the whole diagnostics pipeline (`ChanperfSample` → `MemCpuEvent` →
+`SerializedMemCpuPoint`) unparsed and surfaced in the diagnostics webview as a hover tooltip on the
+CPU chart (`host-cpu`), not a chart series, since it's not a plottable number.
 
 **`sgnodes counts`** — `<type>` includes **custom project components**, which is how node leaks are
 found: track count per type over time.

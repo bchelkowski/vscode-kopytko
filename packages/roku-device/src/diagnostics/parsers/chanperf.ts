@@ -19,6 +19,8 @@ export interface ChanperfSample {
   swapKiB: number;
   /** Foreground memory limit for the channel, KiB — undefined when the device doesn't report it (raw debug-console `chanperf` has no limit field). */
   limitKiB?: number;
+  /** Raw Linux `/proc`-style CPU/process status text (Roku OS 15.2+, ECP only — undefined on older firmware or the debug-console `chanperf` command). */
+  procStat?: string;
   /** Total CPU usage of the channel, percent. */
   cpuPct: number;
   /** User-space CPU usage, percent. */

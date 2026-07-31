@@ -35,6 +35,8 @@ export interface MemCpuEvent extends BaseEvent {
   swapKiB: number;
   /** Device-reported foreground memory limit, KiB — undefined when not reported (raw debug-console chanperf). */
   limitKiB?: number;
+  /** Raw Linux `/proc`-style CPU/process status text (Roku OS 15.2+, ECP only). */
+  procStat?: string;
   cpuPct: number;
   cpuUser: number;
   cpuSys: number;
