@@ -475,7 +475,7 @@ checkboxes) above up to five charts, each independently shown/hidden via the
 | Chart | Series | Source |
 |---|---|---|
 | **Memory** | Total MB (area), Anon, File, Shared, Swap, plus a device-reported foreground-limit line ("FG Limit") and Roku's published background-DRAM-guidance line ("BG Limit", default 100 MB, `kopytko.diagnostics.memoryLimits.backgroundMB`) | `chanperf` |
-| **CPU** | Total %, User, Sys | `chanperf` |
+| **CPU** | Total %, User, Sys, plus a hover tooltip with the raw `proc-stat` text when the device reports it (Roku OS 15.2+, ECP only) | `chanperf` |
 | **SceneGraph Nodes** | Stacked area by node type (top 8 + "Other"), with a legend | `sgnodes counts` |
 | **Objects** (hidden by default) | Stacked area of BrightScript object counts by type (top 8 + "Other"), with a legend — `roSGNode` subtypes are summed into a single `roSGNode` series here; the Objects table shows the per-subtype breakdown | ECP `/query/app-object-counts` |
 | **Textures** | Used MB (area) + a max-texture-memory reference line | `r2d2_bitmaps` |

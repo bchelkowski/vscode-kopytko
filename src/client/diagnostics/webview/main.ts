@@ -60,6 +60,8 @@ const mcCpu:    number[] = [];   // %
 const mcUser:   number[] = [];
 const mcSys:    number[] = [];
 let mcLimitMB: number | null = null;
+/** Latest raw Linux `/proc`-style CPU/process status text (Roku OS 15.2+, ECP only) — surfaced as a hover tooltip on the CPU chart, not a chart series. */
+let mcProcStat: string | null = null;
 /** Roku's published background-app DRAM guidance — not device-reported, see WebviewState.backgroundMemLimitMB. */
 let bgMemLimitMB = 100;
 
@@ -940,7 +942,9 @@ function ingestMemCpu(pts: SerializedMemCpuPoint[]): void {
     mcShared.push((p.sharedKiB ?? 0) / 1024); mcSwap.push((p.swapKiB ?? 0) / 1024);
     mcCpu.push(p.cpuPct);  mcUser.push(p.cpuUser); mcSys.push(p.cpuSys);
     if (p.limitKiB != null) mcLimitMB = p.limitKiB / 1024;
+    if (p.procStat != null) mcProcStat = p.procStat;
   }
+  el('host-cpu').title = mcProcStat != null ? `proc-stat: ${mcProcStat}` : '';
 }
 
 /** Returns true when this batch updated `lastNodeTypes` (so the node table needs a re-render). */
@@ -1048,8 +1052,9 @@ function clearData(): void {
   nodeTypeHistory.length = 0;
   objTypeHistory.length = 0;
   lastObjectTypes = []; lastObjectTotal = 0; prevObjectRows.clear();
-  renGroups.clear(); lastNodeTypes = []; prevNodeTypes.clear(); lastBitmaps = []; mcLimitMB = null;
+  renGroups.clear(); lastNodeTypes = []; prevNodeTypes.clear(); lastBitmaps = []; mcLimitMB = null; mcProcStat = null;
   xVisible = null; el('btn-reset-zoom').style.display = 'none';
+  el('host-cpu').title = '';
   const badge = document.getElementById('app-state-badge');
   if (badge) badge.style.display = 'none';
 }

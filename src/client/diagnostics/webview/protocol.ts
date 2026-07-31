@@ -40,6 +40,8 @@ export interface SerializedMemCpuPoint {
   swapKiB: number;
   /** Device-reported foreground memory limit, KiB — undefined when not reported. */
   limitKiB?: number;
+  /** Raw Linux `/proc`-style CPU/process status text (Roku OS 15.2+, ECP only) — undefined when not reported. */
+  procStat?: string;
   cpuPct: number;
   cpuUser: number;
   cpuSys: number;
