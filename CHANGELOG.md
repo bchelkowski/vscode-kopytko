@@ -1,6 +1,28 @@
 # Changelog
 
 
+## [1.14.0] - 2026-07-31
+
+### Added
+- Surface chanperf proc-stat in diagnostics panel
+- Wire up new formatter sorting settings and XML interface formatting
+
+### Fixed
+- Persist network inspector body tab and detail scroll across flows
+
+### Changed
+- Consolidate webview helpers, fix diagnostics panel perf
+- Consolidate LSP server duplication, fix dead code and perf
+
+### Maintenance
+- Bump kopytko-linter to v1.7.3
+- Bump kopytko-formatter to v1.2.1
+- Bump kopytko-roku-device to v1.4.0
+- Bump kopytko-linter to v1.7.2
+- Bump kopytko-formatter to v1.2.0
+- Bump kopytko-linter to v1.7.1
+- Bump kopytko-formatter to v1.1.16
+
 ## [1.13.1] - 2026-07-29
 
 ### Maintenance
