@@ -114,6 +114,30 @@ Each entry: `name`, `signature`, `returnType`, `description`, `category`. Add co
 - Update `CATALOG_LAST_VERIFIED` **only** after verifying against live Roku docs
 - Update `docs/brightscript-components.md` + matching component catalog tests
 
+**Editing `packages/brightscript-parser/src/catalog/components.ts` does not affect the extension
+until republished** — the root `test/brightscript/components.test.ts` and the language server both
+consume the *published* `kopytko-brightscript-parser` npm dependency pinned in the root
+`package.json`, not the local package source (same rule as the rest of `packages/*`, see the root
+CLAUDE.md). A catalog edit is invisible to `npm test`/F5 until the package is version-bumped and
+published and the extension's dependency is bumped to match.
+
+### RokuOS 15.2 review (2026-07-31) — two items deliberately deferred
+
+Cross-checked the [15.2 release notes](https://developer.roku.com/dev/docs/release-notes#roku-os-152)
+against the catalog. `roAppMemoryMonitor`'s multi-threshold description and `ifUtils.HasComponent`
+were already present (the latter had the wrong name in `docs/brightscript-components.md` — fixed).
+Two items are confirmed **missing but not added**, because Roku's own interface reference pages
+(`ifevpcipher.md`, `ifremoteinfo.md`) had not been updated with real signatures yet as of this date —
+only release-notes prose existed ("new **setTag** and **getTag** functions", "functions for querying
+... remote repeat settings"), no parameter/return types or exact method names:
+
+- `roEVPCipher` — `SetTag`/`GetTag` for AES-GCM authenticated encryption
+- `roDeviceInfo`/`ifRemoteInfo` — remote-control repeat delay/rate query functions (EN 301 549
+  accessibility)
+
+Per the rule above (never write catalog entries from memory), do not guess these signatures. Re-check
+`ifevpcipher.md`/`ifremoteinfo.md` on a future pass and add them once real signatures are published.
+
 ### ⛔ Never write catalog entries from memory
 
 `ifDateTime` shipped **seven fabricated method names** and one method that does not exist at all:

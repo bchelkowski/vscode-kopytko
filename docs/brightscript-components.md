@@ -1,6 +1,6 @@
 # BrightScript Component Reference
 
-> **Last verified against Roku documentation:** 2026-07-28 (full method-by-method sweep of all interfaces)
+> **Last verified against Roku documentation:** 2026-07-31 (RokuOS 15.2 release-note review — see change log; the 2026-07-28 entry is the last full method-by-method sweep)
 >
 > This date must be updated whenever the component catalog in
 > `packages/brightscript-parser/src/catalog/components.ts` is refreshed.
@@ -36,6 +36,7 @@
 | 2026-07-07 | Docs sync | Catalog now at 62 components, 80 interfaces — added `roUtils`/`ifUtils` (firmware 15.0+) and documented `ifRenderThreadQueue` in the interfaces quick-reference |
 | 2026-07-28 | Full audit | Every interface checked against its live Roku docs page. Removed 51 methods that were fabricated or filed under the wrong interface, added 14 documented ones that were missing, and wired `ifHttpAgent` onto `roUrlTransfer`. Method total 691 → 654. See the interface notes below for the renames. |
 | 2026-07-28 | Audit follow-up | Two pre-existing tests expected `Values` on `roAssociativeArray` and `GetResponseCode` on `roUrlTransfer` — both were wrong (re-verified against the docs). `GetResponseCode`/`GetResponseHeaders`/`GetResponseHeadersArray` are real, but belong to `roUrlEvent`, the async-completion object delivered via message port — a component the catalog never had. Added `roUrlEvent`/`ifUrlEvent`. Catalog now 63 components, 81 interfaces, 662 methods. |
+| 2026-07-31 | RokuOS 15.2 review | Cross-checked the [RokuOS 15.2 release notes](https://developer.roku.com/dev/docs/release-notes#roku-os-152) against the catalog. `ifUtils.HasComponent` was already implemented but this table listed it under the wrong name (`IsComponentRegistered`) — fixed, and tagged `since: '15.2'` in the catalog to match. `roAppMemoryMonitor`'s multi-threshold (80/85/90/95%) description already matched 15.2 behavior — no change needed. `roEVPCipher.SetTag`/`GetTag` (AES-GCM) and new `roDeviceInfo`/`ifRemoteInfo` remote-repeat-rate query functions are confirmed missing but **deliberately deferred** — Roku's own `ifevpcipher`/`ifremoteinfo` reference pages had not been updated with real signatures as of this date, only the release-notes prose existed. Revisit once those pages publish exact signatures. |
 
 ---
 
@@ -230,7 +231,7 @@
 | `ifCompositor` | SetDrawTo, Draw, DrawAll, NewSprite, NewAnimatedSprite, AnimationTick, ChangeMatchingRegions |
 | `ifSprite` | MoveTo, MoveOffset, GetX, GetY, SetZ, GetZ, SetDrawableFlag, GetDrawableFlag, SetMemberFlags, GetMemberFlags, SetCollidableFlags, GetCollidableFlags, SetRegion, GetRegion, OffsetRegion, SetData, GetData, CheckCollision, CheckMultipleCollisions, Remove |
 | `ifRegex` | IsMatch, Match, MatchAll, Replace, ReplaceAll, Split |
-| `ifUtils` | DeepCopy, IsSameObject, IsComponentRegistered *(since 15.2)* |
+| `ifUtils` | DeepCopy, IsSameObject, HasComponent *(since 15.2)* |
 | `ifLocalization` | GetLocalizedAsset, GetPluralString |
 | `ifSystemLog` | EnableType |
 | `ifAppManager` | GetUptime, GetScreensaverTimeout, SetUserSignedIn, SetAutomaticAudioGuideEnabled, IsAppInstalled, SetNowPlayingContentMetaData, StartVoiceActionSelectionRequest, SetVoiceActionStrings, GetLastExitInfo |

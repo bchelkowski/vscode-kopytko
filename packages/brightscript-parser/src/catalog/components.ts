@@ -536,7 +536,7 @@ export const BRIGHTSCRIPT_INTERFACES: Record<string, BrightScriptInterface> = {
     methods: [
       { name: 'DeepCopy', signature: 'DeepCopy(data as Object) as Object', returnType: 'Object', description: 'Performs a deep copy of an object and all nested objects. Non-copyable items are skipped.', since: '15.0' },
       { name: 'IsSameObject', signature: 'IsSameObject(data1 as Object, data2 as Object) as Boolean', returnType: 'Boolean', description: 'Returns true if both arguments reference the same object instance.', since: '15.0' },
-      { name: 'HasComponent', signature: 'HasComponent(component as String) as Boolean', returnType: 'Boolean', description: 'Returns true when the named component is available on this device.' },
+      { name: 'HasComponent', signature: 'HasComponent(component as String) as Boolean', returnType: 'Boolean', description: 'Returns true when the named component is available on this device.', since: '15.2' },
     ],
   },
 
@@ -1919,4 +1919,4 @@ export function findMethodInterface(componentName: string, methodName: string): 
  * `ifSGNode` is exempt, because Roku has no interface by that name — it is our
  * aggregate of the six real `ifSGNode*` interfaces.
  */
-export const CATALOG_LAST_VERIFIED = '2026-07-28';
+export const CATALOG_LAST_VERIFIED = '2026-07-31';
