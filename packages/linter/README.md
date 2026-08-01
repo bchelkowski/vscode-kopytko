@@ -150,7 +150,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 
 | Rule | Default | Description |
 |---|---|---|
-| `import/duplicate` | error | Same import path imported twice |
+| `import/duplicate` | warning | Same import path imported twice |
 | `import/missing-path` | error | `@import` / `@mock` with empty path |
 | `import/path-not-absolute` | warning | Import path doesn't start with `/` |
 | `import/wrong-comment-style` | error | `@import` written with `"` instead of `'` comment |
@@ -322,6 +322,12 @@ The CLI itself (`bin/kopytko-lint.ts`) lints projects via `lintProjectAsync`, no
 | `parseFunctionDefs(text, path)` / `parseInnerMethodDefs(text, path)` | Parse top-level function/sub definitions, or AA-literal inner methods, from source text |
 | `isTestFile(path)` / `isMockFile(path)` / `isTestRelatedFile(path)` | Classify a file path as a test file, a `_mocks/*.mock.brs` file, or either |
 | `getTestBaseName(path)` / `findTestSiblings(path)` | Resolve a test file's base component name, or find its split-suite sibling test files |
+| `findDuplicateComponents(declarations, isExcluded?)` | Group `ComponentDeclaration[]` by name (case-insensitively), returning only names declared more than once |
+| `duplicateComponentDiagnostics(declarations, options?)` | The whole `component/duplicate-name` check: group, then emit one `LintDiagnostic` per reportable declaration. Pure — takes declarations, touches no filesystem — so a CLI project pass and an editor's incremental component index can share it |
+| `duplicateComponentMessage(declaration, others, displayPath?)` | Render the message shown on one declaration, naming the others it collides with |
+| `isProjectFile(filePath)` | Default `isReportable` predicate for `duplicateComponentDiagnostics` — true for any file outside `node_modules` |
+| `DUPLICATE_COMPONENT_RULE` | The rule code string (`'component/duplicate-name'`) used by the check above |
+| `parseComponentNamePosition(xmlText)` | Get a `<component name="...">` declaration's name and the position of the `name` attribute value, for building `ComponentDeclaration[]` |
 | `matchesGlob`, `findMatchingGlob`, `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `findComponent`, `escapeRegex`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE` | Re-exported from `kopytko-brightscript-parser` for convenience — see [that package's README](../brightscript-parser/README.md) for details |
 
 ## CI Integration

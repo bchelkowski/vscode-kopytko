@@ -185,6 +185,24 @@ fn.body;        // [ReturnStatement, ...]
 fn.syntax;      // escape hatch to the raw SyntaxNode
 ```
 
+### Error Recovery
+
+The parser is error-tolerant — it always produces a tree, even for invalid input. A construct that
+can't be attached to its expected parent node (or a missing/unexpected token `expect()` can't
+recover from inline) surfaces as an `ErrorNode` in the CST, wrapped by `ErrorNodeWrapper` when
+`wrapNode()` encounters one. `result.diagnostics` lists what went wrong; `walk()`'s default visitor
+does not special-case `ErrorNode`, so a query written against a specific node kind simply won't match
+it — check `result.diagnostics.length > 0` first if a caller needs to know the tree is incomplete
+before deciding whether to trust it.
+
+### Conditional Compilation
+
+`#if <condition> ... [#elseif <condition> ...]* [#else ...] #end if` parses as a single
+`ConditionalCompilation` node — unlike `IfStatement`, its `#elseif`/`#else` branches are not nested
+child nodes, just a flat, token-interleaved children list. `ConditionalCompilation.elseIfBranches`
+returns `ConditionalCompilationBranch[]` (`{ condition: AstNode | null; body: AstNode[] }`), and
+`.elseBody` returns the trailing `#else` branch's statements, or `undefined` if there is none.
+
 ## API Reference
 
 ### Core

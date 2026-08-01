@@ -167,7 +167,6 @@ When used inside the [Kopytko extension](https://github.com/bchelkowski/vscode-k
 | `kopytko.format.spaceBeforeAnonymousFunctionParens` | `boolean` | `false` | Space before `(` in anonymous function expressions |
 | `kopytko.format.spaceBeforeCallParens` | `boolean` | `false` | Space before `(` in function calls |
 | `kopytko.format.spaceInsideParens` | `"never" \| "always"` | `"never"` | Spaces inside `()` in calls and definitions |
-| `kopytko.format.parenCommaSpacing` | `"preserve" \| "after" \| "before" \| "both" \| "none"` | `"preserve"` | Spaces around commas in function calls and definition parameter lists |
 | `kopytko.format.paramAlignmentStyle` | `"indent" \| "align-to-paren" \| "preserve"` | `"preserve"` | Multi-line parameter alignment style |
 
 ### Strings
@@ -349,7 +348,7 @@ Returns `true` if the XML is already sorted (no changes needed).
 | `CasingConfig`, `CasingOption`, `DEFAULT_CASING_CONFIG` | Re-exported from `kopytko-brightscript-parser` — the casing configuration shape, its option union, and its all-`preserve` default |
 | `applyCasing(name, option)` / `applyCasingWithOverrides(name, option, exact?)` | Re-exported casing transforms — apply a `CasingOption` to an identifier, optionally checking a per-identifier `exact` override map first |
 | `resolveKeywordCasing(category, config)` | Re-exported — resolve the effective `CasingOption` for a keyword category, falling back to `config.keyword` |
-| `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin(name)`, `getKeywordCategory(name)` | Re-exported catalog lookups used internally for casing and built-in-aware passes — see [`kopytko-brightscript-parser`'s README](../brightscript-parser/README.md) for details |
+| `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin(name)`, `getKeywordCategory(name)`, `BrightScriptBuiltin`, `KeywordCategory` | Re-exported catalog lookups (and their types) used internally for casing and built-in-aware passes — see [`kopytko-brightscript-parser`'s README](../brightscript-parser/README.md) for details |
 
 ## GitHub Actions
 

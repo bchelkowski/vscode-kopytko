@@ -22,6 +22,7 @@ Requires Node.js >= 24. No runtime dependencies beyond `ws` (Perfetto streaming)
 
 | Subsystem | Port | Exports |
 |---|---|---|
+| Low-level networking | — | `httpGet`, `httpGetBuffer`, `httpPost`, `httpPostMultipartDigest`, `httpGetBufferDigest`, `buildMultipartBody`, `parseDigestChallenge`, `buildDigestAuthHeader`, `computeNetworkId` — the digest-auth/multipart plumbing shared by `EcpClient` and `InstallerClient`; exported for callers writing their own device requests |
 | SSDP discovery | UDP 1900 | `SsdpClient` — M-SEARCH scans + NOTIFY monitoring, per-IP debounce |
 | ECP (External Control Protocol) | HTTP 8060, 80 | `EcpClient`, `parseRegistryXml`, `enablePerfettoTracing`, `triggerHeapSnapshot` |
 | Device discovery orchestration | — | `DeviceManager` + `DeviceStorage` / `NetworkWatcher` injection interfaces |
@@ -184,7 +185,6 @@ ECP-2 WebSocket session/subscription endpoints. See `findings/roku-device-api.md
 in the extension repo for the full rationale.
 
 ```ts
-// New in this release: TV queries, exit-app, sgnodes scope/by-id, r2d2-bitmaps, graphics-frame-rate
 await ecp.exitApp('192.168.1.20', 'dev');            // suspend (or terminate if unsupported)
 await ecp.exitApp('192.168.1.20', 'dev', true);       // force-terminate, bypassing Instant Resume
 
@@ -318,7 +318,7 @@ kopytko-roku installer <op> --host <ip> --password <pw> [op flags...]
 Every `ecp` op maps 1:1 to an `EcpClient` method (`device-info`, `apps`,
 `active-app`, `media-player`, `icon`, `launch`, `input`, `keypress`/`keydown`/`keyup`,
 `text`, `exit-app`, `tv-channels`, `tv-active-channel`, `registry`, `chanperf`,
-`sgnodes`, `app-object-counts`, `app-state`, `rendezvous-track`/`-untrack`/`-query`,
+`sgnodes`, `app-ui`, `app-object-counts`, `app-state`, `rendezvous-track`/`-untrack`/`-query`,
 `fwbeacons-track`/`-untrack`/`-query`, `graphics-frame-rate`, `r2d2-bitmaps`,
 `perfetto-enable`, `perfetto-trigger-heap-snapshot`); every `installer` op maps to
 `InstallerClient` (`screenshot`, `install`, `delete`, `rekey`, `package`, `update`,
@@ -337,7 +337,7 @@ environment variables. The CLI intentionally does **not** read `.vscode/settings
 or any `.kopytkorc` — unlike `kopytko-format`/`kopytko-lint`, this package stays
 Kopytko-ecosystem- and editor-unaware even at the CLI layer.
 
-**Output**: ops returning a device's raw XML body (`chanperf`, `sgnodes`,
+**Output**: ops returning a device's raw XML body (`chanperf`, `sgnodes`, `app-ui`,
 `r2d2-bitmaps`, `graphics-frame-rate`, `registry`, `tv-channels`, `tv-active-channel`)
 always print that XML as-is — `--json` is a deliberate no-op there, since
 JSON-escaping an XML document just produces an unreadable quoted blob. Everything else
