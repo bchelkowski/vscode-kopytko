@@ -19,6 +19,7 @@ import {
   lineCommentPositionPass,
   trailingCommasPass,
   parenthesisIfCasePass,
+  stripCatchParensPass,
   stringConcatStylePass,
   elseOnNewLinePass,
   aaThresholdPass,
@@ -81,11 +82,13 @@ export function formatText(
   }
   lines = runCstOnLines(lines, lineEndStr, styleCstPasses, parseCache);
 
-  // Pass 4 — Parenthesis if case (CST) + catch paren strip (regex)
+  // Pass 4 — Parenthesis if case (CST)
   if (config.parenthesisIfCase !== 'preserve') {
     lines = runCstOnLines(lines, lineEndStr, parenthesisIfCasePass(config.parenthesisIfCase), parseCache);
   }
-  lines = passStripCatchParens(lines);
+
+  // Pass 4b — Strip catch parentheses (CST, always — BrightScript does not allow them)
+  lines = runCstOnLines(lines, lineEndStr, stripCatchParensPass(), parseCache);
 
   // Pass 4c — Else on new line (CST)
   lines = runCstOnLines(lines, lineEndStr, elseOnNewLinePass(config.elseOnNewLine), parseCache);
@@ -397,30 +400,6 @@ function passImportSorting(lines: string[], config: FormattingConfig): string[] 
 
   return [...sorted, ...lines.slice(blockEnd)];
 }
-
-// ---------------------------------------------------------------------------
-// Pass 4b — Strip catch parentheses (always — BrightScript does not allow them)
-//
-// Deliberately NOT a CST pass, and never should be: the grammar's CatchClause
-// rule requires `catch <Identifier>` with no paren support at all, so
-// `catch (e)` is a real parse error (verified: "Expected exception variable
-// name"). Every CST pass bails out and returns the source unchanged whenever
-// the parse has any diagnostics (see runCstPasses/runCstOnLines) — so a CST
-// version of this pass would never fire on the exact input it exists to fix.
-// This has to run on raw text before the source can parse cleanly.
-// ---------------------------------------------------------------------------
-
-function passStripCatchParens(lines: string[]): string[] {
-  return lines.map(line => {
-    const trimmed = line.trim();
-    const m = /^(catch)\s+\(?([a-zA-Z_]\w*)\)?((?:\s*'.*)?)$/i.exec(trimmed);
-    if (!m) return line;
-
-    const indent = line.match(/^(\s*)/)?.[1] ?? '';
-    return indent + 'catch ' + m[2] + m[3];
-  });
-}
-
 
 /** Splits a code line into code and trailing tick comment, ignoring `'` inside strings. */
 function splitTrailingComment(s: string): { code: string; comment: string } {

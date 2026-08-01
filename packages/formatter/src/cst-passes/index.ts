@@ -27,6 +27,7 @@ export { lineCommentPositionPass } from './lineCommentPosition';
 export { trailingCommasPass } from './trailingCommas';
 export type { TrailingCommaConfig } from './trailingCommas';
 export { parenthesisIfCasePass } from './parenthesisIfCase';
+export { stripCatchParensPass } from './stripCatchParens';
 export { stringConcatStylePass } from './stringConcatStyle';
 export { elseOnNewLinePass } from './elseOnNewLine';
 export { aaThresholdPass } from './aaThreshold';

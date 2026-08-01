@@ -768,6 +768,45 @@ describe('parenthesisIfCasePass', () => {
   });
 });
 
+describe('stripCatchParensPass', () => {
+  const { stripCatchParensPass } = require('../src/cst-passes/stripCatchParens');
+
+  it('strips parentheses around the exception variable', () => {
+    const source = 'sub t()\n  try\n    doWork()\n  catch (e)\n    print e.message\n  end try\nend sub';
+    const edits = stripCatchParensPass()(parse(source).root, source);
+    const output = applyEdits(source, edits);
+    expect(output).to.contain('catch e');
+  });
+
+  it('leaves a bare catch variable alone', () => {
+    const source = 'sub t()\n  try\n    doWork()\n  catch err\n    print err.message\n  end try\nend sub';
+    const edits = stripCatchParensPass()(parse(source).root, source);
+    expect(edits).to.have.length(0);
+  });
+
+  it('does not touch a trailing comment', () => {
+    const source = "sub t()\n  try\n    doWork()\n  catch (e) ' handle error\n  end try\nend sub";
+    const edits = stripCatchParensPass()(parse(source).root, source);
+    const output = applyEdits(source, edits);
+    expect(output).to.contain("catch e ' handle error");
+  });
+
+  it('normalizes catch(e) with no space around parens', () => {
+    const source = 'sub t()\n  try\n    doWork()\n  catch(e)\n    print e.message\n  end try\nend sub';
+    const edits = stripCatchParensPass()(parse(source).root, source);
+    const output = applyEdits(source, edits);
+    expect(output).to.contain('catch e');
+    expect(output).to.not.contain('catche');
+  });
+
+  it('normalizes catch ( e ) with interior spaces', () => {
+    const source = 'sub t()\n  try\n    doWork()\n  catch ( e )\n    print e.message\n  end try\nend sub';
+    const edits = stripCatchParensPass()(parse(source).root, source);
+    const output = applyEdits(source, edits);
+    expect(output).to.contain('catch e');
+  });
+});
+
 describe('stringConcatStylePass', () => {
   const { stringConcatStylePass } = require('../src/cst-passes/stringConcatStyle');
 

@@ -319,6 +319,8 @@ Formats BrightScript source code by running it through a fixed pipeline of rough
 - `casing` — optional `CasingConfig` for identifier casing rules
 - `userFunctions` — optional array of known function definitions for casing normalization
 
+**One pass runs unconditionally, with no config toggle:** `catch (e)` is always rewritten to `catch e`. BrightScript's own docs only show the bare form; the parenthesized form is accepted on parse but never preserved by the formatter.
+
 #### `checkFormatting(source, config, casing?, userFunctions?): boolean`
 
 Returns `true` if the source text is already formatted (no changes needed).

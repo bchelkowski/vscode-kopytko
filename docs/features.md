@@ -96,7 +96,7 @@ Backed by the standalone linter's 32 rules (shared by the editor and CI). Full r
 
 ### Formatting & Casing
 
-Multi-pass engine (18 CST passes + text passes, 59 configurable options), shared by the editor and the `kopytko-format` CLI. Also formats SceneGraph `.xml` `<interface>` blocks (field/function sorting). Full settings: [formatting.md](./formatting.md).
+Multi-pass engine (19 CST passes + text passes, 59 configurable options), shared by the editor and the `kopytko-format` CLI. Also formats SceneGraph `.xml` `<interface>` blocks (field/function sorting). Full settings: [formatting.md](./formatting.md).
 
 | Feature | Status |
 |---|---|
