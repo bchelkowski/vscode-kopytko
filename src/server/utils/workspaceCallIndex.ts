@@ -1,15 +1,11 @@
 import {
   parse, buildCallGraph, walk, SyntaxKind, TokenKind,
   CallExpression, AALiteral,
+  parseXmlInterface,
 } from 'kopytko-brightscript-parser';
 import type { AstNode } from 'kopytko-brightscript-parser';
 import { readCachedFileText, invalidateFileParseCache } from './fileParseCache';
 import { walkTree } from './dirWalker';
-
-// Regex constants for XML interface parsing (same patterns as xmlScriptParser.ts).
-const INTERFACE_BLOCK_RE = /<interface\b[^>]*>([\s\S]*?)<\/interface>/i;
-const FUNCTION_TAG_RE = /<function\b([^>]*)>/gi;
-const ATTR_NAME_RE = /\bname\s*=\s*["']([^"']+)["']/i;
 
 /**
  * Workspace-wide index of all function names that are referenced as call targets
@@ -135,18 +131,12 @@ export class WorkspaceCallIndex {
     const text = readCachedFileText(filePath);
     if (!text) return undefined;
 
-    const ifaceMatch = INTERFACE_BLOCK_RE.exec(text);
-    if (!ifaceMatch) return undefined;
-    const ifaceText = ifaceMatch[1];
+    const iface = parseXmlInterface(text);
+    if (iface.functions.length === 0) return undefined;
 
     const names = new Set<string>();
-    FUNCTION_TAG_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = FUNCTION_TAG_RE.exec(ifaceText)) !== null) {
-      const nameMatch = ATTR_NAME_RE.exec(m[1]);
-      if (nameMatch) names.add(nameMatch[1].toLowerCase());
-    }
-    return names.size > 0 ? names : undefined;
+    for (const fn of iface.functions) names.add(fn.name.toLowerCase());
+    return names;
   }
 
   private _walkDir(dir: string): void {

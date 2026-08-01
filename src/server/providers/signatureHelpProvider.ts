@@ -5,12 +5,18 @@ import {
   Position,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import {
+  SyntaxKind, TokenKind, TriviaKind, isToken,
+  findNodeAtPosition,
+  CallExpression, IdentifierExpression, DotExpression,
+} from 'kopytko-brightscript-parser';
+import type { SyntaxNode, Token } from 'kopytko-brightscript-parser';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
-import { stripStringLiterals } from '../utils/textUtils';
-import { getCachedLines } from '../utils/documentCache';
+import { getCachedParseResult } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { SymbolResolver } from './shared/symbolResolver';
+import { findPrecedingToken, isAtOrBefore } from './shared/tokenPosition';
 
 interface ActiveCall {
   funcName: string;
@@ -38,12 +44,10 @@ export class BrightScriptSignatureHelpProvider {
   }
 
   provideSignatureHelp(document: TextDocument, position: Position, siblingPatterns: string[][] = []): SignatureHelp | null {
-    const lines = getCachedLines(document);
-    const line = lines[position.line] ?? '';
+    const parseResult = getCachedParseResult(document);
+    if (isInComment(parseResult.root, position)) return null;
 
-    if (!line.trim() || isInComment(line, position.character)) return null;
-
-    const call = findActiveCall(line, position.character);
+    const call = findActiveCall(parseResult.tokens, position);
     if (!call) return null;
 
     const { funcName, receiverName, activeParam } = call;
@@ -72,72 +76,90 @@ export class BrightScriptSignatureHelpProvider {
 // ---------------------------------------------------------------------------
 
 /**
- * Scans backwards from charPos to find whether the cursor is inside a function
- * call, returning the function name, optional receiver name, and comma-based
- * active parameter index.
+ * Finds the enclosing function call at `position` and its active (comma-based)
+ * parameter index, by walking up from the nearest token at-or-before the
+ * cursor through `Token.parent`/`SyntaxNode.parent` to the nearest
+ * `ArgumentList` the cursor is still genuinely inside of.
  *
- * String literals in the line are replaced with spaces before scanning so
- * that commas or parens inside strings do not confuse the depth tracker.
+ * A plain `findNodeAtPosition` lookup isn't enough on its own: signature help
+ * is almost always requested with the cursor sitting right after an unclosed
+ * `(` or `,` — i.e. past the last real token, at the position the lexer's
+ * `Eof` token occupies — and `Eof` is a sibling of the unclosed call, not a
+ * descendant of its `ArgumentList`. Walking from the nearest real token
+ * instead works for both the open and closed cases.
  */
-function findActiveCall(line: string, charPos: number): ActiveCall | null {
-  const stripped = stripStringLiterals(line.slice(0, charPos));
-  let depth = 0;
-  let commaCount = 0;
+function findActiveCall(tokens: readonly Token[], position: Position): ActiveCall | null {
+  const token = findPrecedingToken(tokens, position);
+  if (!token) return null;
 
-  for (let i = stripped.length - 1; i >= 0; i--) {
-    const ch = stripped[i];
-
-    if (ch === ')' || ch === ']') {
-      depth++;
-    } else if (ch === '(' || ch === '[') {
-      if (depth > 0) {
-        depth--;
-      } else if (ch === '(') {
-        // Unmatched `(` — this is the opening paren of the active call.
-        const before = stripped.substring(0, i).trimEnd();
-        const nameMatch = /(\w+)$/.exec(before);
-        if (!nameMatch) return null;
-        const funcName = nameMatch[1];
-        const beforeName = before.slice(0, before.length - nameMatch[0].length);
-        const receiverName = beforeName.endsWith('.')
-          ? (/(\w+)\.$/.exec(beforeName)?.[1] ?? null)
-          : null;
-        return { funcName, receiverName, activeParam: commaCount };
-      } else {
-        // Unmatched `[` — commas counted so far were array indices, reset them
-        // and continue scanning outward for an enclosing function call.
-        commaCount = 0;
-      }
-    } else if (ch === ',' && depth === 0) {
-      commaCount++;
+  let node: SyntaxNode | null = token.parent ?? null;
+  while (node) {
+    if (node.kind === SyntaxKind.ArgumentList) {
+      const active = activeCallFromArgumentList(node, position);
+      if (active) return active;
     }
+    node = node.parent;
   }
-
   return null;
 }
 
 /**
- * Returns true when the cursor at charPos is inside a line comment
- * (`'` or `REM` outside of a string literal).
+ * Builds an `ActiveCall` from `argList` if the cursor is genuinely still
+ * inside its parens: at-or-after the `(`, and — when a real (non-missing)
+ * `)` exists — at-or-before it. Returns `null` (not "try an outer call") is
+ * the caller's job via the parent-chain walk; this only judges `argList` itself.
  */
-function isInComment(line: string, charPos: number): boolean {
-  if (/^\s*rem\b/i.test(line.substring(0, charPos))) return true;
-  let inString = false;
-  for (let i = 0; i < charPos; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (!inString) {
-        inString = true;
-      } else if (line[i + 1] === '"') {
-        i++; // BrightScript escaped quote ""
-      } else {
-        inString = false;
-      }
-    } else if (!inString && ch === "'") {
-      return true;
+function activeCallFromArgumentList(argList: SyntaxNode, position: Position): ActiveCall | null {
+  const openParen = argList.findToken(TokenKind.LeftParen);
+  if (!openParen) return null;
+  if (!isAtOrBefore(openParen.line, openParen.column + openParen.text.length, position.line, position.character)) {
+    return null; // cursor is before the '(' itself
+  }
+
+  const closeParen = argList.findToken(TokenKind.RightParen);
+  if (closeParen && !closeParen.isMissing) {
+    if (!isAtOrBefore(position.line, position.character, closeParen.line, closeParen.column)) {
+      return null; // cursor is past a real ')'
     }
   }
-  return false;
+
+  const callExprNode = argList.parent;
+  if (!callExprNode || callExprNode.kind !== SyntaxKind.CallExpression) return null;
+  const callee = new CallExpression(callExprNode).callee;
+
+  let funcName: string;
+  let receiverName: string | null;
+  if (callee instanceof DotExpression && !callee.isAttributeAccess) {
+    funcName = callee.member;
+    const obj = callee.object;
+    receiverName = obj instanceof IdentifierExpression ? obj.name
+      : obj instanceof DotExpression ? obj.member
+      : null;
+  } else if (callee instanceof IdentifierExpression) {
+    funcName = callee.name;
+    receiverName = null;
+  } else {
+    return null;
+  }
+
+  // Count commas that are direct children of this ArgumentList (not nested
+  // inside an argument's own array literal / call / etc.) before the cursor.
+  let activeParam = 0;
+  for (const child of argList.children) {
+    if (isToken(child) && child.kind === TokenKind.Comma
+        && isAtOrBefore(child.line, child.column, position.line, position.character)) {
+      activeParam++;
+    }
+  }
+
+  return { funcName, receiverName, activeParam };
+}
+
+/** True when `position` falls inside a comment (tick or REM), via the CST's trivia. */
+function isInComment(root: SyntaxNode, position: Position): boolean {
+  const result = findNodeAtPosition(root, position.line, position.character);
+  const kind = result?.trivia?.kind;
+  return kind === TriviaKind.Comment || kind === TriviaKind.RemComment;
 }
 
 /**
@@ -167,6 +189,10 @@ function buildSignatureHelp(rawSignature: string, activeParam: number): Signatur
  * Splits the parameter list out of a signature string into individual
  * parameter strings.  Handles default values that contain string literals
  * (e.g. `arg = ""`) and nested parentheses.
+ *
+ * This operates on a catalog/declaration *signature string* (e.g.
+ * `Mid(s as String, start as Integer, length = -1 as Integer) as String`),
+ * not BrightScript source — there is no CST for it to walk.
  *
  * `Mid(s as String, start as Integer, length = -1 as Integer) as String`
  * → `["s as String", "start as Integer", "length = -1 as Integer"]`

@@ -5,7 +5,8 @@ import { getScriptPathsFromXml, getXmlSiblingPaths, findComponentXml, parseXmlEx
 import { findSiblingFiles } from './patternSiblings';
 import { buildSearchRoots } from '../utils/workspaceUtils';
 import { isTestFile, getTestBaseName } from '../kopytko/testFramework';
-import { parse, walk, FunctionDeclaration } from 'kopytko-brightscript-parser';
+import { parse, walk, FunctionDeclaration, analyzeContext } from 'kopytko-brightscript-parser';
+import type { SyntaxNode } from 'kopytko-brightscript-parser';
 import { readCachedFileText, getCachedFunctionDefs, getCachedInnerMethodDefs } from '../utils/fileParseCache';
 
 /**
@@ -42,11 +43,6 @@ export interface InnerMethodDefinition {
   ownerFunction?: string;
 }
 
-const INNER_METHOD_RE = /^\s*\w+\.(\w+)\s*=\s*(?:function|sub)\s*\(/i;
-const INNER_COLON_METHOD_RE = /^\s*(\w+)\s*:\s*(?:function|sub)\s*\(/i;
-/** Comment-only line (used to skip lines while scanning for inner methods). */
-const COMMENT_LINE_RE = /^\s*'/;
-
 /** Removes duplicate definitions that share the same file, line, and column. */
 function deduplicateByLocation<T extends { filePath: string; line: number; column: number }>(defs: T[]): T[] {
   const seen = new Set<string>();
@@ -64,12 +60,22 @@ function deduplicateByLocation<T extends { filePath: string; line: number; colum
  */
 export function parseFunctionDefs(text: string, filePath: string, preLines?: string[]): FunctionDefinition[] {
   const result = parse(text);
-  const defs: FunctionDefinition[] = [];
   // Open documents pass cached lines from documentCache; cold file-walk callers
   // legitimately split raw on-disk text here because no TextDocument cache exists.
   const lines = preLines ?? text.split(/\r?\n/);
+  return functionDefsFromRoot(result.root, filePath, lines);
+}
 
-  walk(result.root, {
+/**
+ * Same as `parseFunctionDefs`, but takes an already-parsed CST root instead of
+ * raw text — for callers that already hold a cached `ParseResult` (e.g. the
+ * open document's `getCachedParseResult`) and would otherwise re-parse the
+ * same text a second time just to get its function defs.
+ */
+export function functionDefsFromRoot(root: SyntaxNode, filePath: string, lines: string[]): FunctionDefinition[] {
+  const defs: FunctionDefinition[] = [];
+
+  walk(root, {
     visitFunctionDeclaration(node: InstanceType<typeof FunctionDeclaration>) {
       const nameToken = node.nameToken;
       if (!nameToken) return;
@@ -153,8 +159,8 @@ function ownFunctionDefs(filePath: string, fileText: string, isEntry: boolean, e
 }
 
 /** Inner-method counterpart of {@link ownFunctionDefs}. */
-function ownInnerMethodDefs(filePath: string, fileText: string, isEntry: boolean, entryLines?: string[]): InnerMethodDefinition[] {
-  if (isEntry) return parseInnerMethodDefs(fileText, nodePath.normalize(filePath), entryLines);
+function ownInnerMethodDefs(filePath: string, fileText: string, isEntry: boolean): InnerMethodDefinition[] {
+  if (isEntry) return parseInnerMethodDefs(fileText, nodePath.normalize(filePath));
   return getCachedInnerMethodDefs(filePath) ?? parseInnerMethodDefs(fileText, nodePath.normalize(filePath));
 }
 
@@ -253,42 +259,47 @@ function _collectAllFunctions(
 }
 
 /**
- * Parses all associative-array method assignments of the form
- * `<obj>.<name> = function|sub (...)` from a BrightScript text.
+ * Parses all associative-array method assignments — both
+ * `<obj>.<name> = function|sub (...)` (including `m.<name> = ...`, the
+ * standard SceneGraph event-handler pattern) and `<name>: function|sub (...)`
+ * inside an AA literal — from a BrightScript text.
+ *
+ * Backed by the parser's `analyzeContext()`, whose traversal tracks the real
+ * enclosing function via the AST (a `functionStack`), not "the nearest
+ * top-level declaration by line number" — the old regex-based version's
+ * heuristic for `ownerFunction` was wrong for a method assignment that
+ * appears after a function but outside any function, or inside a nested
+ * function. `analyzeContext()` also can't match inside a comment or string
+ * literal, unlike the two regexes this replaces.
  */
-export function parseInnerMethodDefs(text: string, filePath: string, preLines?: string[]): InnerMethodDefinition[] {
-  // Open documents pass cached lines from documentCache; cold file-walk callers
-  // legitimately split raw on-disk text here because no TextDocument cache exists.
-  const lines = preLines ?? text.split(/\r?\n/);
-  const funcDefs = parseFunctionDefs(text, filePath, lines);
+export function parseInnerMethodDefs(text: string, filePath: string): InnerMethodDefinition[] {
+  const result = parse(text);
+  const ctx = analyzeContext(result.root);
   const defs: InnerMethodDefinition[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (COMMENT_LINE_RE.test(line)) continue;
-
-    let name: string, column: number;
-
-    const dotMatch = INNER_METHOD_RE.exec(line);
-    if (dotMatch) {
-      name = dotMatch[1];
-      const dotIdx = line.indexOf('.');
-      column = line.indexOf(name, dotIdx >= 0 ? dotIdx : 0);
-    } else {
-      const colonMatch = INNER_COLON_METHOD_RE.exec(line);
-      if (!colonMatch) continue;
-      name = colonMatch[1];
-      column = line.search(/\S/);
-    }
-
-    // Owner = last top-level function whose declaration line is <= i
-    let ownerFunction: string | undefined;
-    for (let j = funcDefs.length - 1; j >= 0; j--) {
-      if (funcDefs[j].line <= i) { ownerFunction = funcDefs[j].name; break; }
-    }
-
-    defs.push({ name, nameLower: name.toLowerCase(), line: i, column, filePath, ownerFunction });
+  for (const f of ctx.dotAssignedFunctions) {
+    defs.push({
+      name: f.fieldName,
+      nameLower: f.fieldName.toLowerCase(),
+      line: f.line,
+      column: f.column,
+      filePath,
+      ownerFunction: f.enclosingFunction || undefined,
+    });
   }
+  for (const f of ctx.inlineAAFunctions) {
+    defs.push({
+      name: f.aaFieldNameOriginal,
+      nameLower: f.aaFieldName,
+      line: f.line,
+      column: f.column,
+      filePath,
+      ownerFunction: f.enclosingFunction || undefined,
+    });
+  }
+
+  // Document order, matching the old line-scan's output order.
+  defs.sort((a, b) => a.line - b.line || a.column - b.column);
   return defs;
 }
 
@@ -302,9 +313,8 @@ export function collectAllInnerMethods(
   importResolver: KopytkoImportResolver,
   visited: Set<string> = new Set(),
   siblingPatterns: string[][] = [],
-  entryLines?: string[],
 ): InnerMethodDefinition[] {
-  return _collectAllInnerMethods(filePath, fileText, importResolver, visited, siblingPatterns, true, entryLines);
+  return _collectAllInnerMethods(filePath, fileText, importResolver, visited, siblingPatterns, true);
 }
 
 function _collectAllInnerMethods(
@@ -314,14 +324,13 @@ function _collectAllInnerMethods(
   visited: Set<string>,
   siblingPatterns: string[][],
   isEntry: boolean,
-  entryLines?: string[],
 ): InnerMethodDefinition[] {
   const normalPath = nodePath.normalize(filePath);
   const pathKey = normalizePathKey(filePath);
   if (visited.has(pathKey)) return [];
   visited.add(pathKey);
 
-  const defs: InnerMethodDefinition[] = [...ownInnerMethodDefs(filePath, fileText, isEntry, entryLines)];
+  const defs: InnerMethodDefinition[] = [...ownInnerMethodDefs(filePath, fileText, isEntry)];
 
   const imports = importResolver.parseImports(fileText);
   for (const imp of imports) {

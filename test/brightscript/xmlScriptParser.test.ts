@@ -83,9 +83,11 @@ describe('xmlScriptParser', () => {
     it('returns sibling brs paths from shared XML, excluding self', () => {
       readdirStub.returns(['App.view.xml']);
       readFileStub.withArgs('/dir/App.view.xml', 'utf-8').returns(`
+        <component name="App" extends="Group">
         <script type="text/brightscript" uri="App.routing.brs" />
         <script type="text/brightscript" uri="App.template.brs" />
-        <script type="text/brightscript" uri="App.view.brs" />`);
+        <script type="text/brightscript" uri="App.view.brs" />
+        </component>`);
       existsStub.callsFake((p: string) =>
         ['/dir/App.routing.brs', '/dir/App.template.brs', '/dir/App.view.brs'].includes(p)
       );

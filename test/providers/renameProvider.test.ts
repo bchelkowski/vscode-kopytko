@@ -365,4 +365,103 @@ describe('BrightScriptRenameProvider', () => {
       expect(() => provider.provideRename(doc, { line: 0, character: 5 }, 'newName')).not.to.throw();
     });
   });
+
+  // ── regression: AST-based rename must not touch comments or string literals ──
+
+  describe('does not corrupt comments or string literals (regex-based rename used to)', () => {
+    it('local rename: does not rewrite the word inside a same-line comment', () => {
+      const src = [
+        'function foo()',
+        "  count = 1     ' count is the running total",
+        '  return count',
+        'end function',
+      ].join('\n');
+      const doc = makeDocument(src);
+      const result = provider.provideRename(doc, { line: 1, character: 2 }, 'total');
+      const edits = Object.values(result!.changes!)[0];
+      // Exactly the two real occurrences of `count` (the declaration on line 1
+      // and the read on line 2) — never the mention inside the comment, which
+      // also sits on line 1 but at a different column.
+      expect(edits).to.have.length(2);
+      const commentColumn = src.split('\n')[1].indexOf('count is');
+      expect(edits.some((e) => e.range.start.line === 1 && e.range.start.character === commentColumn)).to.be.false;
+    });
+
+    it('local rename: does not rewrite the word inside a string literal', () => {
+      const src = [
+        'function foo()',
+        '  count = 1',
+        '  print "count: " + str(count)',
+        'end function',
+      ].join('\n');
+      const doc = makeDocument(src);
+      const result = provider.provideRename(doc, { line: 1, character: 2 }, 'total');
+      const edits = Object.values(result!.changes!)[0];
+      // Real occurrences: the declaration (line 1) and the `count` argument to
+      // str() (line 2) — never the "count: " text inside the string literal.
+      expect(edits).to.have.length(2);
+      const stringLiteralColumn = src.split('\n')[2].indexOf('count: ') + 1; // inside the quotes
+      expect(edits.some((e) => e.range.start.line === 2 && e.range.start.character === stringLiteralColumn)).to.be.false;
+    });
+
+    it('local rename: renames a closure reference to an outer local, without renaming an inner shadowed one', () => {
+      const src = [
+        'function outer()',
+        '  x = 1',
+        '  inner = function()',
+        '    return x',        // line 3 — closes over outer's x
+        '  end function',
+        '  innerShadow = function()',
+        '    x = 99',          // line 6 — its OWN local x (re-declaration), must NOT be renamed
+        '    return x',
+        '  end function',
+        'end function',
+      ].join('\n');
+      const doc = makeDocument(src);
+      const result = provider.provideRename(doc, { line: 1, character: 2 }, 'count');
+      const edits = Object.values(result!.changes!)[0];
+      const lines = edits.map((e) => e.range.start.line).sort();
+      // Declaration (1) + the closure's read (3) — not the shadowed x at 6/7.
+      expect(lines).to.deep.equal([1, 3]);
+    });
+
+    it('workspace-wide rename: does not rewrite a dot-member access that happens to share the name', () => {
+      readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns(
+        'function doWork()\nend function\ndoWork()\nobj.doWork()',
+      );
+      index.build(['/project']);
+      provider = new BrightScriptRenameProvider(makeResolver(), index);
+      const doc = makeDocument('function doWork()\nend function\ndoWork()\nobj.doWork()');
+      const result = provider.provideRename(doc, { line: 0, character: 12 }, 'runTask');
+      const edits = Object.values(result!.changes!)[0];
+      // Declaration (line 0) + bare call (line 2) — NOT obj.doWork() on line 3,
+      // which may be an entirely unrelated method on some other object.
+      expect(edits).to.have.length(2);
+      expect(edits.some((e) => e.range.start.line === 3)).to.be.false;
+    });
+
+    it('workspace-wide rename: does not rewrite the word inside a comment or string literal', () => {
+      readdirStub.withArgs('/project').returns([{ name: 'App.brs', isDirectory: false }]);
+      readFileStub.withArgs('/project/App.brs', 'utf-8').returns(
+        [
+          'function doWork()',
+          'end function',
+          "' calls doWork to start processing",
+          'x = "doWork completed"',
+          'doWork()',
+        ].join('\n'),
+      );
+      index.build(['/project']);
+      provider = new BrightScriptRenameProvider(makeResolver(), index);
+      const doc = makeDocument(
+        ['function doWork()', 'end function', "' calls doWork to start processing", 'x = "doWork completed"', 'doWork()'].join('\n'),
+      );
+      const result = provider.provideRename(doc, { line: 0, character: 12 }, 'runTask');
+      const edits = Object.values(result!.changes!)[0];
+      // Declaration (line 0) + the bare call (line 4) only.
+      expect(edits).to.have.length(2);
+      expect(edits.every((e) => e.range.start.line === 0 || e.range.start.line === 4)).to.be.true;
+    });
+  });
 });

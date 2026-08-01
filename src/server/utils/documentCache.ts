@@ -1,14 +1,13 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { KopytkoImportResolver, KopytkoImport } from '../kopytko/importResolver';
-import { FunctionDefinition, collectFunctionsFromImports, collectFunctionsFromExtends, collectAllFunctions, collectAllInnerMethods, InnerMethodDefinition, resolveTestedFiles, findTestSiblings, parseFunctionDefs } from '../brightscript/functionIndex';
+import { FunctionDefinition, collectFunctionsFromImports, collectFunctionsFromExtends, collectAllFunctions, collectAllInnerMethods, InnerMethodDefinition, resolveTestedFiles, findTestSiblings } from '../brightscript/functionIndex';
 import { TypeMap } from '../brightscript/typeInference';
 import { findSiblingFiles } from '../brightscript/patternSiblings';
 import * as nodePath from 'path';
-import fsWrapper from './fsWrapper';
 import { isTestFile } from '../kopytko/testFramework';
 import { parse, inferTypesFromAst, getVariableType, buildScopes } from 'kopytko-brightscript-parser';
 import type { ParseResult, Scope } from 'kopytko-brightscript-parser';
-import { clearFileParseCache } from './fileParseCache';
+import { clearFileParseCache, readCachedFileText, getCachedFunctionDefs } from './fileParseCache';
 import { clearComponentXmlCache } from '../brightscript/xmlScriptParser';
 
 /**
@@ -167,32 +166,28 @@ export function getCachedKnownFuncNames(
         const dir = nodePath.dirname(resolved);
         const basename = nodePath.basename(resolved, '.brs');
         const configPath = nodePath.join(dir, '_mocks', `${basename}.config.brs`);
-        try {
-          const configText = fsWrapper.readFileSync(configPath, 'utf-8');
-          for (const fn of parseFunctionDefs(configText, configPath)) {
-            names.add(fn.nameLower);
-          }
-        } catch { /* no config file */ }
+        const configFuncs = getCachedFunctionDefs(configPath);
+        if (configFuncs) {
+          for (const fn of configFuncs) names.add(fn.nameLower);
+        }
 
         // Also auto-import mock implementation files (_mocks/*.mock.brs)
         // The build replaces the original with the mock, which may define new functions
         const mockPath = nodePath.join(dir, '_mocks', `${basename}.mock.brs`);
-        try {
-          const mockText = fsWrapper.readFileSync(mockPath, 'utf-8');
-          for (const fn of parseFunctionDefs(mockText, mockPath)) {
-            names.add(fn.nameLower);
-          }
-        } catch { /* no mock file */ }
+        const mockFuncs = getCachedFunctionDefs(mockPath);
+        if (mockFuncs) {
+          for (const fn of mockFuncs) names.add(fn.nameLower);
+        }
       }
 
       for (const testedPath of resolveTestedFiles(documentPath)) {
-        try {
-          const testedText = fsWrapper.readFileSync(testedPath, 'utf-8');
+        const testedText = readCachedFileText(testedPath);
+        if (testedText !== undefined) {
           // Use collectAllFunctions to include XML siblings + pattern siblings + imports
           for (const fn of collectAllFunctions(testedPath, testedText, importResolver, new Set(), siblingPatterns)) {
             names.add(fn.nameLower);
           }
-        } catch { /* skip */ }
+        }
         for (const fn of collectFunctionsFromExtends(testedPath, importResolver)) {
           names.add(fn.nameLower);
         }
@@ -200,12 +195,12 @@ export function getCachedKnownFuncNames(
 
       // Include sibling test files (Foo.test.brs ↔ Foo_Bar.test.brs share scope)
       for (const siblingTest of findTestSiblings(documentPath)) {
-        try {
-          const sibText = fsWrapper.readFileSync(siblingTest, 'utf-8');
+        const sibText = readCachedFileText(siblingTest);
+        if (sibText !== undefined) {
           for (const fn of collectFunctionsFromImports(siblingTest, sibText, importResolver)) {
             names.add(fn.nameLower);
           }
-        } catch { /* skip */ }
+        }
       }
     }
 
@@ -250,7 +245,7 @@ export function getCachedAllInnerMethods(
   const siblingKey = JSON.stringify(siblingPatterns);
   if (!entry.allInnerMethods || entry.allMethodsSiblingKey !== siblingKey) {
     entry.allInnerMethods = collectAllInnerMethods(
-      documentPath, document.getText(), importResolver, new Set(), siblingPatterns, getCachedLines(document),
+      documentPath, document.getText(), importResolver, new Set(), siblingPatterns,
     );
     entry.allMethodsSiblingKey = siblingKey;
   }

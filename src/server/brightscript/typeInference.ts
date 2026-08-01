@@ -35,10 +35,9 @@
 export type TypeMap = Map<string, string>;
 
 // Hoisted to module scope so these aren't re-allocated on every completion/hover
-// trigger (getReceiverName / getInlineCreateObjectType run on each keystroke).
-// All non-global, so they carry no lastIndex state and are safe to share.
+// trigger (getInlineCreateObjectType runs on each keystroke). Both non-global,
+// so they carry no lastIndex state and are safe to share.
 const WORD_CHAR_RE = /\w/;
-const TRAILING_IDENT_RE = /(\w+)$/;
 const INLINE_CREATE_OBJECT_RE = /CreateObject\s*\(\s*"([a-zA-Z]+)"\s*(?:,[^)]*?)?\s*\)\s*$/i;
 
 
@@ -54,28 +53,6 @@ export function walkBackToWordStart(line: string, charPos: number): number {
     pos--;
   }
   return pos;
-}
-
-/**
- * Given the source text and a cursor position, returns the variable name
- * immediately before the `.` that triggered member completion, or null.
- *
- * Handles patterns like:
- *   `myArr.`       → "myArr"
- *   `m.transfer.`  → "transfer"   (the last segment)
- */
-export function getReceiverName(line: string, charPos: number): string | null {
-  const pos = walkBackToWordStart(line, charPos);
-
-  // The character immediately before the word start must be a dot
-  if (pos <= 0 || line[pos - 1] !== '.') return null;
-
-  // Extract the identifier before the dot
-  const beforeDot = line.substring(0, pos - 1);
-  const identMatch = TRAILING_IDENT_RE.exec(beforeDot);
-  if (!identMatch) return null;
-
-  return identMatch[1];
 }
 
 /**

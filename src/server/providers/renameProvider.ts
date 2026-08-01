@@ -7,10 +7,15 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
-import { readCachedFileText } from '../utils/fileParseCache';
-import { getWordAtPosition, escapeRegex } from 'kopytko-brightscript-parser';
+import { readCachedFileText, getCachedFileParseResult } from '../utils/fileParseCache';
+import {
+  getWordAtPosition, walk, parse as parseBrs,
+  FunctionDeclaration, IdentifierExpression,
+} from 'kopytko-brightscript-parser';
+import type { Token, Scope, Declaration } from 'kopytko-brightscript-parser';
 import { BRIGHTSCRIPT_BUILTINS, BRIGHTSCRIPT_KEYWORDS } from 'kopytko-brightscript-parser';
-import { getCachedLines } from '../utils/documentCache';
+import { getCachedLines, getCachedScopeTree } from '../utils/documentCache';
+import { findScopeAtLine } from 'kopytko-brightscript-parser';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { SymbolResolver } from './shared/symbolResolver';
 
@@ -58,6 +63,13 @@ export class BrightScriptRenameProvider {
    *   top-level functions are effectively global identifiers in BrightScript.
    * - **Everything else** (local variables, parameters, AA fields) — renamed only within
    *   the body of the innermost enclosing function in the current file.
+   *
+   * Both cases walk the parsed AST rather than regex-matching `\bword\b` — a
+   * regex match fires inside comments and string literals too (renaming
+   * `count` used to rewrite `' count is the total` and `"count: " + str(count)`
+   * alike), and for the local case a regex over "the enclosing function's raw
+   * line range" has no way to tell a real declaration from prose that happens
+   * to mention the same word.
    */
   provideRename(
     document: TextDocument,
@@ -82,35 +94,43 @@ export class BrightScriptRenameProvider {
       return this._renameWorkspaceWide(word, newName);
     }
 
-    // Local variable / parameter — rename only within the enclosing function body.
-    const funcRange = findEnclosingFunctionLines(lines, position.line);
-    const startLine = funcRange ? funcRange.start : 0;
-    const endLine = funcRange ? funcRange.end : lines.length - 1;
-    return buildFileRangeEdit(document.uri, lines, word, newName, startLine, endLine);
+    return this._renameLocal(document, position, word, newName);
   }
 
+  /**
+   * Renames a top-level function/sub: its own declaration, plus every bare
+   * `name(...)` / bare `name` reference (an `IdentifierExpression`) in every
+   * workspace file. Deliberately does NOT touch `obj.name` (a `DotExpression`
+   * member) — that's a field/method on some other object, not necessarily
+   * this function, even when it happens to share the name.
+   */
   private _renameWorkspaceWide(word: string, newName: string): WorkspaceEdit {
-    const wordRe = new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi');
+    const wordLower = word.toLowerCase();
     const changes: { [uri: string]: TextEdit[] } = {};
 
     const files = this._index ? this._index.getFiles() : [];
     for (const filePath of files) {
-      const fileText = readCachedFileText(filePath);
-      if (fileText === undefined) continue;
-      // Workspace-wide renames operate on cached on-disk file text, not an open
-      // TextDocument, so splitting here does not bypass the document cache.
-      const fileLines = fileText.split(/\r?\n/);
-      const edits: TextEdit[] = [];
-      for (let lineIdx = 0; lineIdx < fileLines.length; lineIdx++) {
-        wordRe.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = wordRe.exec(fileLines[lineIdx])) !== null) {
-          edits.push(TextEdit.replace(
-            Range.create(lineIdx, match.index, lineIdx, match.index + word.length),
-            newName,
-          ));
-        }
+      let parseResult = getCachedFileParseResult(filePath);
+      if (!parseResult) {
+        const text = readCachedFileText(filePath);
+        if (text === undefined) continue;
+        parseResult = parseBrs(text);
       }
+
+      const edits: TextEdit[] = [];
+      walk(parseResult.root, {
+        visitFunctionDeclaration(node: FunctionDeclaration) {
+          if (node.name.toLowerCase() !== wordLower) return;
+          const t = node.nameToken;
+          if (t) edits.push(tokenEdit(t, newName));
+        },
+        visitIdentifierExpression(node: IdentifierExpression) {
+          if (node.name.toLowerCase() !== wordLower) return;
+          const t = node.nameToken;
+          if (t) edits.push(tokenEdit(t, newName));
+        },
+      });
+
       if (edits.length > 0) {
         changes[URI.file(filePath).toString()] = edits;
       }
@@ -118,86 +138,89 @@ export class BrightScriptRenameProvider {
 
     return { changes };
   }
+
+  /**
+   * Renames a local variable / parameter / for-loop-or-catch variable within
+   * the scope it's declared in, plus any nested (closure) scope that reads it
+   * without re-declaring it locally — but never a same-named variable in a
+   * sibling function or a shadowing inner re-declaration.
+   */
+  private _renameLocal(document: TextDocument, position: Position, word: string, newName: string): WorkspaceEdit {
+    const wordLower = word.toLowerCase();
+    const fileScope = getCachedScopeTree(document);
+    const cursorScope = findScopeAtLine(fileScope, position.line);
+    const declScope = findDeclaringScope(cursorScope, wordLower);
+
+    // No resolvable declaration anywhere in the scope chain (e.g. the cursor
+    // landed on plain prose inside a comment, which the AST never sees) —
+    // there is nothing well-defined to rename.
+    if (!declScope) return { changes: {} };
+
+    const decl = declScope.declarations.get(wordLower)!;
+    const targets = collectRenameTargets(declScope, decl, wordLower);
+    const edits = targets.map(t => rangeEdit(t.line, t.column, t.length, newName));
+
+    return { changes: edits.length > 0 ? { [document.uri]: edits } : {} };
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Scans `lines` to find the innermost function/sub body that contains `cursorLine`.
- * Handles both named (`function foo()`) and anonymous (`this.x = function()`) starts.
- * Returns line indices { start, end } inclusive, or null when the cursor is not inside
- * any function.
- */
-function findEnclosingFunctionLines(
-  lines: string[],
-  cursorLine: number,
-): { start: number; end: number } | null {
-  // Matches any function/sub start: named, anonymous, or colon-syntax AA method.
-  const ANY_FUNC_RE = /\b(?:function|sub)\b/i;
-  const FUNC_END_RE = /^\s*end\s+(?:function|sub)\b/i;
+function tokenEdit(token: Token, newName: string): TextEdit {
+  return TextEdit.replace(
+    Range.create(token.line, token.column, token.line, token.column + token.text.length),
+    newName,
+  );
+}
 
-  // Scan backwards from the cursor to find the nearest unclosed function start.
-  let depth = 0;
-  let funcStart = -1;
-  for (let i = cursorLine; i >= 0; i--) {
-    const ln = lines[i];
-    if (/^\s*'/.test(ln)) continue;
-    if (i < cursorLine && FUNC_END_RE.test(ln)) {
-      // A closing keyword we haven't yet accounted for — skip its matching open.
-      depth++;
-    } else if (ANY_FUNC_RE.test(ln) && !FUNC_END_RE.test(ln)) {
-      if (depth === 0) {
-        funcStart = i;
-        break;
-      }
-      depth--;
-    }
+function rangeEdit(line: number, column: number, length: number, newName: string): TextEdit {
+  return TextEdit.replace(Range.create(line, column, line, column + length), newName);
+}
+
+/** Walks up the scope chain from `scope`, returning the nearest scope that declares `nameLower`, or `null`. */
+function findDeclaringScope(scope: Scope, nameLower: string): Scope | null {
+  let current: Scope | null = scope;
+  while (current) {
+    if (current.declarations.has(nameLower)) return current;
+    current = current.parent;
   }
-
-  if (funcStart < 0) return null;
-
-  // Scan forwards from funcStart to find the matching end function/sub.
-  let innerDepth = 0;
-  for (let j = funcStart; j < lines.length; j++) {
-    const ln = lines[j];
-    if (/^\s*'/.test(ln)) continue;
-    if (ANY_FUNC_RE.test(ln) && !FUNC_END_RE.test(ln)) {
-      innerDepth++;
-    } else if (FUNC_END_RE.test(ln)) {
-      innerDepth--;
-      if (innerDepth === 0) return { start: funcStart, end: j };
-    }
-  }
-
   return null;
 }
 
-/** Builds a WorkspaceEdit replacing every word-boundary match within [startLine, endLine]. */
-function buildFileRangeEdit(
-  uri: string,
-  lines: string[],
-  word: string,
-  newName: string,
-  startLine: number,
-  endLine: number,
-): WorkspaceEdit {
-  const wordRe = new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi');
-  const edits: TextEdit[] = [];
+/**
+ * Collects every position that must change when renaming `decl` (declared in
+ * `declScope`) to a new name: the declaration site itself, every reference to
+ * it in `declScope`, and every reference in a descendant scope that resolves
+ * to the SAME declaration (a closure reading an outer local) — stopping at
+ * any descendant scope that re-declares `nameLower` locally, since that
+ * subtree's occurrences refer to a different variable (shadowing).
+ */
+function collectRenameTargets(
+  declScope: Scope,
+  decl: Declaration,
+  nameLower: string,
+): { line: number; column: number; length: number }[] {
+  const targets: { line: number; column: number; length: number }[] = [
+    { line: decl.line, column: decl.column, length: decl.name.length },
+  ];
+  const seen = new Set<string>([`${decl.line}:${decl.column}`]);
 
-  for (let i = startLine; i <= endLine; i++) {
-    wordRe.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = wordRe.exec(lines[i])) !== null) {
-      edits.push(TextEdit.replace(
-        Range.create(i, match.index, i, match.index + word.length),
-        newName,
-      ));
+  function visit(scope: Scope, isDeclaringScope: boolean): void {
+    if (!isDeclaringScope && scope.declarations.has(nameLower)) return; // shadowed — a different variable
+    for (const ref of scope.references) {
+      if (ref.nameLower !== nameLower) continue;
+      const key = `${ref.line}:${ref.column}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      targets.push({ line: ref.line, column: ref.column, length: ref.name.length });
     }
+    for (const child of scope.children) visit(child, false);
   }
 
-  return { changes: edits.length > 0 ? { [uri]: edits } : {} };
+  visit(declScope, true);
+  return targets;
 }
 
 function isProtected(word: string): boolean {

@@ -151,8 +151,10 @@ describe('BrightScriptDefinitionProvider', () => {
 
       readdirStub.withArgs('/dir').returns(['App.view.xml']);
       readFileStub.withArgs('/dir/App.view.xml', 'utf-8').returns(
-        `<script type="text/brightscript" uri="App.view.brs" />
-         <script type="text/brightscript" uri="App.template.brs" />`
+        `<component name="App" extends="Group">
+         <script type="text/brightscript" uri="App.view.brs" />
+         <script type="text/brightscript" uri="App.template.brs" />
+         </component>`
       );
       existsStub.withArgs('/dir/App.view.brs').returns(true);
       existsStub.withArgs('/dir/App.template.brs').returns(true);

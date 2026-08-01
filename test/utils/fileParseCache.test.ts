@@ -41,6 +41,12 @@ describe('fileParseCache', () => {
       expect(readFileStub.calledTwice).to.be.true;
     });
 
+    it('returns undefined and does not cache when the read resolves to a non-string value', () => {
+      readFileStub.withArgs('/unstubbed.brs', 'utf-8').returns(undefined);
+      expect(readCachedFileText('/unstubbed.brs')).to.be.undefined;
+      expect(fileParseCacheSize()).to.equal(0);
+    });
+
     it('keys on normalized path only, independent of the encoding string', () => {
       // Only a 'utf-8' stub is configured. A second access hitting the cache
       // (without a 'utf8' stub) proves the key is the path, not (path, encoding).
@@ -81,6 +87,18 @@ describe('fileParseCache', () => {
     it('returns undefined when the file cannot be read', () => {
       readFileStub.withArgs('/missing.brs', 'utf-8').throws(new Error('ENOENT'));
       expect(getCachedFunctionDefs('/missing.brs')).to.be.undefined;
+    });
+
+    it('returns undefined instead of crashing when the read "succeeds" with a non-string result', () => {
+      // Real fs.readFileSync always either returns a string or throws — it never
+      // resolves to undefined. A test double or misbehaving fsWrapper that does
+      // (e.g. a sinon stub with no matching withArgs()) used to slip an
+      // `undefined` "text" into the cache, which then crashed inside the parser
+      // instead of being treated as a missing file.
+      readFileStub.withArgs('/unstubbed.brs', 'utf-8').returns(undefined);
+      expect(() => getCachedFunctionDefs('/unstubbed.brs')).to.not.throw();
+      expect(getCachedFunctionDefs('/unstubbed.brs')).to.be.undefined;
+      expect(fileParseCacheSize()).to.equal(0);
     });
 
     it('shares a single read with readCachedFileText', () => {

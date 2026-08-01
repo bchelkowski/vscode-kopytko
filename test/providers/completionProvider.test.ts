@@ -1158,6 +1158,85 @@ describe('BrightScriptCompletionProvider', () => {
       const labels = items.map((i) => i.label);
       expect(labels).to.include('item');
     });
+
+    it('includes parameters from a multi-line parameter list (the old regex only matched a single-line param list)', () => {
+      const doc = TextDocument.create('file:///app/components/Foo.brs', 'brightscript', 1, [
+        'function myFunc(name as String,',
+        '                count as Integer)',
+        '  ',
+        'end function',
+      ].join('\n'));
+      const items = provider.provideCompletions(doc, { line: 2, character: 2 });
+      const labels = items.map((i) => i.label);
+      expect(labels).to.include('name');
+      expect(labels).to.include('count');
+    });
+
+    it('includes a dim-declared array variable (the old regex only recognized assignment/for-loop patterns)', () => {
+      const doc = TextDocument.create('file:///app/components/Foo.brs', 'brightscript', 1, [
+        'sub init()',
+        '  dim items[5]',
+        '  ',
+        'end sub',
+      ].join('\n'));
+      const items = provider.provideCompletions(doc, { line: 2, character: 2 });
+      const labels = items.map((i) => i.label);
+      expect(labels).to.include('items');
+    });
+
+    it('includes a catch variable (the old regex did not recognize catch at all)', () => {
+      const doc = TextDocument.create('file:///app/components/Foo.brs', 'brightscript', 1, [
+        'sub init()',
+        '  try',
+        '    doWork()',
+        '  catch e',
+        '    ',
+        '  end try',
+        'end sub',
+      ].join('\n'));
+      const items = provider.provideCompletions(doc, { line: 4, character: 4 });
+      const labels = items.map((i) => i.label);
+      expect(labels).to.include('e');
+    });
+
+    it('includes an outer function\'s local via closure (the old version only ever looked at ONE enclosing function)', () => {
+      const doc = TextDocument.create('file:///app/components/Foo.brs', 'brightscript', 1, [
+        'sub outer()',
+        '  total = 0',
+        '  inner = function()',
+        '    ',
+        '  end function',
+        'end sub',
+      ].join('\n'));
+      const items = provider.provideCompletions(doc, { line: 3, character: 4 });
+      const labels = items.map((i) => i.label);
+      expect(labels).to.include('total');
+    });
+
+    it('does not offer a variable that is only assigned after the cursor', () => {
+      const doc = TextDocument.create('file:///app/components/Foo.brs', 'brightscript', 1, [
+        'sub init()',
+        '  ',
+        '  laterVar = 1',
+        'end sub',
+      ].join('\n'));
+      const items = provider.provideCompletions(doc, { line: 1, character: 2 });
+      const labels = items.map((i) => i.label);
+      expect(labels).to.not.include('laterVar');
+    });
+
+    it('does not offer top-level function names as local variables (already covered by user-defined function completions)', () => {
+      const doc = TextDocument.create('file:///app/components/Foo.brs', 'brightscript', 1, [
+        'sub helper()',
+        'end sub',
+        'sub init()',
+        '  ',
+        'end sub',
+      ].join('\n'));
+      const items = provider.provideCompletions(doc, { line: 3, character: 2 });
+      const variableItems = items.filter((i) => i.label === 'helper' && i.kind === CompletionItemKind.Variable);
+      expect(variableItems).to.have.length(0);
+    });
   });
 
   // ── source/ directory completions ──────────────────────────────────────────

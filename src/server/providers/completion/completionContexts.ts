@@ -1,6 +1,5 @@
 import { Position, Range } from 'vscode-languageserver/node';
 import { walkBackToWordStart } from '../../brightscript/typeInference';
-import { findAssignedConstructor } from '../shared/receiverAssignment';
 
 export type TestDotContext = 'expect' | 'expect.not' | 'mockFunction' | 'fakeClock' | 'testSuite';
 
@@ -11,19 +10,6 @@ export interface CreateObjectStringContext {
   contentEnd: number;
   /** Text typed so far inside the quotes. */
   prefix: string;
-}
-
-export function resolveReceiverOwnerFunction(
-  receiverName: string,
-  lines: string[],
-  cursorLine: number,
-): string | null {
-  return findAssignedConstructor(lines, cursorLine - 1, receiverName, { anchorToLineStart: true });
-}
-
-export function isDotAccessContext(line: string, charPos: number): boolean {
-  const pos = walkBackToWordStart(line, charPos);
-  return pos > 0 && line[pos - 1] === '.';
 }
 
 export function getInlineFunctionCallName(line: string, charPos: number): string | null {

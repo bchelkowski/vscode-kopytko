@@ -10,8 +10,11 @@ import {
   CasingConfig,
   DEFAULT_CASING_CONFIG,
 } from 'kopytko-brightscript-parser';
-import { getReceiverName, getInlineCreateObjectType, resolveReceiverType } from '../brightscript/typeInference';
-import { getCachedTypeMap, getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
+import { getInlineCreateObjectType, resolveReceiverType } from '../brightscript/typeInference';
+import { getCachedTypeMap, getCachedAllFunctions, getCachedAllInnerMethods, getCachedLines, getCachedScopeTree } from '../utils/documentCache';
+import { findScopeAtLine } from 'kopytko-brightscript-parser';
+import type { Scope } from 'kopytko-brightscript-parser';
+import { getReceiverNameAtPosition, isDotAccessAtPosition, findAssignedConstructor } from './shared/receiverContext';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { KopytkoModuleCatalog } from '../kopytko/moduleCatalog';
@@ -28,13 +31,11 @@ import {
   getCreateObjectStringContext,
   getInlineFunctionCallName,
   getTestDotContext,
-  isDotAccessContext,
   isImportPackageContext,
   isImportPathContext,
   isKopytkoAnnotationContext,
   isMtopAccess,
   isTypeAnnotationContext,
-  resolveReceiverOwnerFunction,
 } from './completion/completionContexts';
 import {
   importModuleCompletions,
@@ -117,7 +118,7 @@ export class BrightScriptCompletionProvider {
       if (methodItems.length > 0) return methodItems;
     }
 
-    const receiverName = getReceiverName(currentLine, position.character);
+    const receiverName = getReceiverNameAtPosition(document, position);
     if (receiverName !== null) {
       if (isMtopAccess(currentLine, position.character)) {
         return mtopCompletions(documentPath, this._importResolver, casing);
@@ -129,14 +130,14 @@ export class BrightScriptCompletionProvider {
       }
 
       const allMethods = getCachedAllInnerMethods(document, documentPath, this._importResolver, siblingPatterns);
-      const ownerFunc = resolveReceiverOwnerFunction(receiverName, lines, position.line);
+      const ownerFunc = findAssignedConstructor(document, position.line, receiverName, { beforeLine: true });
       const methodItems = innerMethodCompletions(ownerFunc, allMethods);
       if (methodItems.length > 0) return methodItems;
 
       return [];
     }
 
-    if (isDotAccessContext(currentLine, position.character)) {
+    if (isDotAccessAtPosition(document, position)) {
       return [];
     }
 
@@ -146,7 +147,7 @@ export class BrightScriptCompletionProvider {
       ...kopytkoExportCompletions(document.uri, this._catalog),
       ...this.userFunctionCompletions(document, documentPath, siblingPatterns),
       ...this.sourceDirFunctionCompletions(document, documentPath, siblingPatterns),
-      ...this.localVariableCompletions(lines, position.line),
+      ...this.localVariableCompletions(document, position.line),
     ];
 
     if (isTestFile(document.uri)) {
@@ -215,58 +216,38 @@ export class BrightScriptCompletionProvider {
       }));
   }
 
-  private localVariableCompletions(lines: string[], cursorLine: number): CompletionItem[] {
+  /**
+   * Offers parameters, `dim`/assignment locals, `for`/`for each` counters,
+   * and `catch` variables visible at the cursor — the cursor's own scope
+   * plus every enclosing scope up to file scope, since a nested (closure)
+   * function genuinely sees its outer function's locals in BrightScript.
+   * `function`/`sub` declarations are skipped here — `userFunctionCompletions`
+   * already offers those, scope-tree-backed so a regex can't miss a
+   * multi-line parameter list, a `dim`, or a `catch` variable the way the
+   * old text-scanning version did, and can't offer a variable that's only
+   * assigned *after* the cursor (declarations are still filtered by line,
+   * except parameters — those exist for the whole function body).
+   */
+  private localVariableCompletions(document: TextDocument, cursorLine: number): CompletionItem[] {
     const items: CompletionItem[] = [];
     const seen = new Set<string>();
 
-    let funcStartLine = -1;
-    for (let i = cursorLine; i >= 0; i--) {
-      if (/^\s*(?:function|sub)\b/i.test(lines[i])) {
-        funcStartLine = i;
-        break;
-      }
-    }
-    if (funcStartLine < 0) return items;
+    const fileScope = getCachedScopeTree(document);
+    let scope: Scope | null = findScopeAtLine(fileScope, cursorLine);
 
-    const declLine = lines[funcStartLine];
-    const paramMatch = /\(([^)]*)\)/.exec(declLine);
-    if (paramMatch && paramMatch[1].trim()) {
-      for (const param of paramMatch[1].split(',')) {
-        const nameMatch = /^\s*(\w+)/.exec(param.trim());
-        if (nameMatch && !seen.has(nameMatch[1].toLowerCase())) {
-          seen.add(nameMatch[1].toLowerCase());
-          items.push({
-            label: nameMatch[1],
-            kind: CompletionItemKind.Variable,
-            sortText: `1_${nameMatch[1]}`,
-          });
-        }
-      }
-    }
-
-    for (let i = funcStartLine + 1; i < cursorLine; i++) {
-      const line = lines[i];
-      if (/^\s*'/.test(line) || /^\s*rem\b/i.test(line)) continue;
-
-      const assignMatch = /^\s*(\w+)\s*[+\-*\/\\]?=\s/i.exec(line);
-      if (assignMatch && !seen.has(assignMatch[1].toLowerCase())) {
-        seen.add(assignMatch[1].toLowerCase());
+    while (scope) {
+      for (const decl of scope.declarations.values()) {
+        if (decl.kind === 'function') continue;
+        if (decl.kind !== 'parameter' && decl.line >= cursorLine) continue;
+        if (seen.has(decl.nameLower)) continue;
+        seen.add(decl.nameLower);
         items.push({
-          label: assignMatch[1],
+          label: decl.name,
           kind: CompletionItemKind.Variable,
-          sortText: `1_${assignMatch[1]}`,
+          sortText: `1_${decl.name}`,
         });
       }
-
-      const forMatch = /^\s*for\s+(?:each\s+)?(\w+)\s/i.exec(line);
-      if (forMatch && !seen.has(forMatch[1].toLowerCase())) {
-        seen.add(forMatch[1].toLowerCase());
-        items.push({
-          label: forMatch[1],
-          kind: CompletionItemKind.Variable,
-          sortText: `1_${forMatch[1]}`,
-        });
-      }
+      scope = scope.parent;
     }
 
     return items;

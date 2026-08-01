@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { parse, inferTypesFromAst, getVariableType } from 'kopytko-brightscript-parser';
-import { getReceiverName, resolveReceiverType } from '../../src/server/brightscript/typeInference';
+import { resolveReceiverType } from '../../src/server/brightscript/typeInference';
 
 /** Helper: infer types using the parser and return a simple name→type map. */
 function inferTypes(text: string): Map<string, string> {
@@ -172,35 +172,6 @@ describe('typeInference', () => {
       const map = inferTypes(src);
       // CreateObject/typed-param bindings take precedence
       expect(map.get('x')).to.equal('roArray');
-    });
-  });
-
-  // ── getReceiverName ────────────────────────────────────────────────────────
-
-  describe('getReceiverName', () => {
-    it('extracts the receiver before a dot', () => {
-      expect(getReceiverName('myArr.', 6)).to.equal('myArr');
-    });
-
-    it('extracts the receiver from a longer line', () => {
-      expect(getReceiverName('  myUrl.GetToString()', 9)).to.equal('myUrl');
-    });
-
-    it('handles m. receiver returning the field name', () => {
-      // cursor right after the second dot: `m.transfer.`
-      expect(getReceiverName('m.transfer.', 11)).to.equal('transfer');
-    });
-
-    it('returns null when cursor is not after a dot', () => {
-      expect(getReceiverName('myArr', 5)).to.be.null;
-    });
-
-    it('returns null for an empty line', () => {
-      expect(getReceiverName('', 0)).to.be.null;
-    });
-
-    it('returns null when only a dot is present with no identifier before it', () => {
-      expect(getReceiverName('.', 1)).to.be.null;
     });
   });
 

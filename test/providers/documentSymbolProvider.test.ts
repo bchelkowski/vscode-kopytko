@@ -346,6 +346,26 @@ describe('BrightScriptDocumentSymbolProvider', () => {
     expect(symbols[0].children).to.be.empty;
   });
 
+  it('does not mistake a method-shaped string literal for a real inner method assignment', () => {
+    // AST-based detection requires an actual DotExpression/AAField parent —
+    // text that merely *looks* like `obj.fake = function()` inside a string
+    // literal was never a real syntax match to begin with, but this pins the
+    // guarantee explicitly (the old regex only skipped comment lines, not
+    // string literals).
+    const doc = makeDocument([
+      `function createObj() as Object`,
+      `  msg = "obj.fake = function()"`,
+      `  this = {}`,
+      `  this.real = function()`,
+      `  end function`,
+      `  return this`,
+      `end function`,
+    ].join('\n'));
+    const symbols = provider.provideDocumentSymbols(doc);
+    expect(symbols[0].children).to.have.length(1);
+    expect(symbols[0].children![0].name).to.equal('real');
+  });
+
   it('handles nested function bodies inside inner methods without misattributing end function', () => {
     const doc = makeDocument([
       `function createObj() as Object`,   // line 0

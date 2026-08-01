@@ -3,9 +3,9 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   findNodeAtPosition,
   SyntaxNode,
+  firstToken, lastToken,
 } from 'kopytko-brightscript-parser';
 import { getCachedParseResult } from '../utils/documentCache';
-import { firstToken, lastToken } from './shared/tokenBounds';
 
 function nodeToRange(node: SyntaxNode): Range | null {
   const first = firstToken(node);

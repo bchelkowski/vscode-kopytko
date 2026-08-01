@@ -102,8 +102,10 @@ describe('functionIndex', () => {
 
       readdirStub.withArgs('/dir').returns(['Component.xml']);
       readFileStub.withArgs('/dir/Component.xml', 'utf-8').returns(
-        `<script type="text/brightscript" uri="main.brs" />
-         <script type="text/brightscript" uri="sibling.brs" />`
+        `<component name="Component" extends="Group">
+         <script type="text/brightscript" uri="main.brs" />
+         <script type="text/brightscript" uri="sibling.brs" />
+         </component>`
       );
       existsStub.withArgs('/dir/main.brs').returns(true);
       existsStub.withArgs('/dir/sibling.brs').returns(true);
@@ -292,8 +294,10 @@ describe('functionIndex', () => {
 
       readdirStub.withArgs('/dir').returns(['Component.xml']);
       readFileStub.withArgs('/dir/Component.xml', 'utf-8').returns(
-        `<script type="text/brightscript" uri="main.brs" />
-         <script type="text/brightscript" uri="sibling.brs" />`
+        `<component name="Component" extends="Group">
+         <script type="text/brightscript" uri="main.brs" />
+         <script type="text/brightscript" uri="sibling.brs" />
+         </component>`
       );
       existsStub.withArgs('/dir/main.brs').returns(true);
       existsStub.withArgs('/dir/sibling.brs').returns(true);

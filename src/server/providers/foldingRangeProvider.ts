@@ -3,9 +3,9 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   walk,
   SyntaxNode,
+  firstToken, lastToken,
 } from 'kopytko-brightscript-parser';
 import { getCachedParseResult, getCachedLines } from '../utils/documentCache';
-import { firstToken, lastToken } from './shared/tokenBounds';
 
 function blockRange(node: SyntaxNode): FoldingRange | null {
   const first = firstToken(node);

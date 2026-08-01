@@ -71,6 +71,10 @@ function ensureRecord(filePath: string): FileRecord | undefined {
   } catch {
     return undefined;
   }
+  // Real fs.readFileSync always either returns a string or throws, but test
+  // doubles (a bare sinon stub with no matching `.withArgs()`) return `undefined`
+  // instead — guard against caching that as if it were real file content.
+  if (typeof text !== 'string') return undefined;
 
   if (_cache.size >= MAX_FILE_CACHE) {
     const oldest = _cache.keys().next().value;

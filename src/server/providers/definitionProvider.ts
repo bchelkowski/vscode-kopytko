@@ -3,12 +3,11 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 import { KopytkoImportResolver } from '../kopytko/importResolver';
 import { InnerMethodDefinition } from '../brightscript/functionIndex';
-import { getReceiverName } from '../brightscript/typeInference';
 import { getDocumentPath } from '../utils/textUtils';
 import { getCachedAllInnerMethods, getCachedLines } from '../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../utils/workspaceFunctionIndex';
 import { SymbolResolver, functionLocation, resolveWordContext } from './shared/symbolResolver';
-import { findAssignedConstructor } from './shared/receiverAssignment';
+import { getReceiverNameAtPosition, findAssignedConstructor } from './shared/receiverContext';
 
 export class BrightScriptDefinitionProvider {
   private readonly symbolResolver: SymbolResolver;
@@ -60,9 +59,9 @@ export class BrightScriptDefinitionProvider {
           // When names collide across classes, narrow by receiver type inference.
           const selected = (() => {
             if (candidates.length > 1) {
-              const receiver = getReceiverName(currentLine, position.character);
+              const receiver = getReceiverNameAtPosition(document, position);
               if (receiver) {
-                const constructor = findAssignedConstructor(lines, position.line, receiver);
+                const constructor = findAssignedConstructor(document, position.line, receiver);
                 if (constructor) {
                   const typed = candidates.filter(
                     (m) => m.ownerFunction?.toLowerCase() === constructor.toLowerCase()

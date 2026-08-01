@@ -7,7 +7,7 @@ import { getDocumentPath } from '../utils/textUtils';
 import { getCachedLines, getCachedImports, getCachedKnownFuncNames, getCachedParseResult } from '../utils/documentCache';
 import { isTestFile } from '../kopytko/testFramework';
 import { readCachedFileText, getCachedFunctionDefs } from '../utils/fileParseCache';
-import { parseFunctionDefs as extParseFunctionDefs } from '../brightscript/functionIndex';
+import { functionDefsFromRoot } from '../brightscript/functionIndex';
 import { findSiblingFiles } from '../brightscript/patternSiblings';
 import { findTestSiblings } from '../brightscript/functionIndex';
 import {
@@ -113,8 +113,9 @@ export class BrightScriptDiagnosticsProvider {
     let externalFuncNames: Set<string> | undefined;
     if (DEFAULT_LINTER_CONFIG.rules['identifier/duplicate-function'] !== 'off') {
       // Own-file function names (lowercased) — used to exclude them from crossScopeNames.
+      // Reuses the already-cached parse result instead of re-parsing `content`.
       const ownFuncNamesLower = new Set(
-        extParseFunctionDefs(content, documentPath).map(f => f.nameLower),
+        functionDefsFromRoot(getCachedParseResult(document).root, documentPath, cachedLines).map(f => f.nameLower),
       );
       // External = everything knownFuncNames provides EXCEPT the current file's own functions.
       externalFuncNames = new Set([...knownFuncNames].filter(n => !ownFuncNamesLower.has(n)));

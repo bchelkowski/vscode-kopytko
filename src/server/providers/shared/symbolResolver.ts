@@ -19,6 +19,7 @@ type ComponentMethod = ReturnType<typeof getComponentMethods>[number];
 type ComponentInterface = NonNullable<ReturnType<typeof findMethodInterface>>;
 import { FunctionDefinition } from '../../brightscript/functionIndex';
 import { getInlineCreateObjectType, resolveReceiverType } from '../../brightscript/typeInference';
+import { getReceiverNameAtPosition } from './receiverContext';
 import { getDocumentPath } from '../../utils/textUtils';
 import { getCachedAllFunctions, getCachedLines, getCachedTypeMap } from '../../utils/documentCache';
 import { WorkspaceFunctionIndex } from '../../utils/workspaceFunctionIndex';
@@ -67,14 +68,11 @@ export class SymbolResolver {
     const inlineMethod = inlineType ? this.resolveComponentMethod(inlineType, context.word) : null;
     if (inlineMethod) return inlineMethod;
 
-    if (context.start > 0 && context.line[context.start - 1] === '.') {
-      const receiverMatch = /(\w+)$/.exec(context.line.substring(0, context.start - 1));
-      const receiverName = receiverMatch?.[1];
-      if (receiverName) {
-        const componentType = resolveReceiverType(receiverName, getCachedTypeMap(document));
-        const member = componentType ? this.resolveComponentMethod(componentType, context.word) : null;
-        if (member) return member;
-      }
+    const receiverName = getReceiverNameAtPosition(document, { line: position.line, character: context.start });
+    if (receiverName) {
+      const componentType = resolveReceiverType(receiverName, getCachedTypeMap(document));
+      const member = componentType ? this.resolveComponentMethod(componentType, context.word) : null;
+      if (member) return member;
     }
 
     return this.resolveByName(document, context.word, null, siblingPatterns, options);
