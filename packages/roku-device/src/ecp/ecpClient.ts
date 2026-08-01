@@ -300,6 +300,16 @@ export function buildEcpQueryString(params: Record<string, string>): string {
   return pairs.length > 0 ? `?${pairs.join('&')}` : '';
 }
 
+/** Optional filters for {@link EcpClient.queryRegistry}. */
+export interface RegistryQueryOptions {
+  /** Adds `u=1` — percent-escapes registry values in the response. */
+  escaped?: boolean;
+  /** Adds `k=key1|key2` — only return these registry keys. */
+  keys?: string[];
+  /** Adds `s=sec1|sec2` — only return these registry sections. */
+  sections?: string[];
+}
+
 /**
  * ECP (External Control Protocol) client for communicating with Roku devices.
  *
@@ -615,16 +625,26 @@ export class EcpClient {
    * (failure — e.g. dev ID mismatch). The caller should parse the body
    * and check the `<status>` tag to distinguish success from failure.
    *
+   * @param options - ⚠️ Docs-derived, never confirmed live (see `findings/roku-device-api.md`):
+   *   `escaped` adds `u=1` (percent-escapes registry values in the response); `keys` adds
+   *   `k=key1|key2` (only return these keys); `sections` adds `s=sec1|sec2` (only return these
+   *   sections). All three come from Roku's published ECP docs, not a device capture.
    * @returns The raw XML response body.
    * @throws On network errors, timeouts, or unexpected HTTP status codes.
    */
   async queryRegistry(
     ip: string,
     channelId: string,
+    options: RegistryQueryOptions = {},
     port: number = DEFAULT_ECP_PORT,
     timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ): Promise<string> {
-    const url = `http://${ip}:${port}/query/registry/${encodeURIComponent(channelId)}`;
+    const queryParams: Record<string, string> = {};
+    if (options.escaped) queryParams.u = '1';
+    if (options.keys?.length) queryParams.k = options.keys.join('|');
+    if (options.sections?.length) queryParams.s = options.sections.join('|');
+
+    const url = `http://${ip}:${port}/query/registry/${encodeURIComponent(channelId)}${buildEcpQueryString(queryParams)}`;
     const { statusCode, body } = await httpGet(url, timeoutMs);
 
     if (statusCode !== 200 && statusCode !== 202) {

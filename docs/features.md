@@ -157,16 +157,16 @@ Multi-pass engine (19 CST passes + text passes, 59 configurable options), shared
 | Package upload from sidebar (`Ctrl+Shift+F5`) and start-debug per device | ✅ | [device-discovery.md](./device-discovery.md) |
 | Context-menu actions (copy IP, open web portal, set password) | ✅ | [device-discovery.md](./device-discovery.md) |
 | Registry viewer (read device registry via ECP) | ✅ | [device-discovery.md](./device-discovery.md) |
-| ECP `exit-app`, `tv-channels`/`tv-active-channel` (Roku TV), `sgnodes` roots/by-id scope, `graphics-frame-rate`, `r2d2-bitmaps` | ✅ | [packages/roku-device/README.md](../packages/roku-device/README.md#ecp-method-reference) |
+| ECP `exit-app`, `tv-channels`/`tv-active-channel` (Roku TV), `sgnodes` roots/by-id scope, `graphics-frame-rate`, `r2d2-bitmaps`, registry filtering (`escaped`/`keys`/`sections`) | ✅ | [packages/roku-device/README.md](../packages/roku-device/README.md#ecp-method-reference) |
 | `kopytko-roku` terminal CLI — ECP + web-admin operations from the shell, independent of VS Code | ✅ | [roku-device-cli.md](./roku-device-cli.md) |
 
 ## Web-Admin Automation (Installer / Utilities / Packager / Update)
 
 `kopytko-roku-device`'s `InstallerClient` drives the Roku developer web-admin page
 (`http://<device-ip>/`, HTTP Digest auth) the same way a developer would in a
-browser. 7 of the 9 operations below are surfaced in the extension through the
+browser. 7 of the 10 operations below are surfaced in the extension through the
 Device Manager's Device actions section (inside the Remote Control view); the
-other two remain package/CLI-only (see the 🟡 rows). See
+other three remain package/CLI-only (see the 🟡 rows). See
 [roku-webadmin.md](./roku-webadmin.md).
 
 | Feature | Status | Doc |
@@ -178,6 +178,7 @@ other two remain package/CLI-only (see the 🟡 rows). See
 | Screenshot capture + download | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Profiling data download — package/CLI-only, no Device Manager UI action | 🟡 | [roku-webadmin.md](./roku-webadmin.md) |
 | Package (sign) a channel into a `.pkg` | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
+| Package (sign) the already-installed channel, no zip re-upload — package/CLI-only, no Device Manager UI action | 🟡 | [roku-webadmin.md](./roku-webadmin.md) |
 | OS update check | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 | Reboot | ✅ | [roku-webadmin.md](./roku-webadmin.md) |
 

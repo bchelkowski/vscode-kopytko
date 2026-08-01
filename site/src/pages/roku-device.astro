@@ -142,6 +142,11 @@ await installer.packageChannel(
   'MyApp/1.0', 'my-signing-password', './out/signed.pkg',
 );
 
+// Packager tab — signs whatever is already installed, no re-upload
+await installer.packageInstalledChannel(
+  '192.168.1.20', password, 'MyApp/1.0', 'my-signing-password', './out/signed.pkg',
+);
+
 // Utilities tab
 await installer.takeScreenshot('192.168.1.20', password, './out/screenshot.jpg');
 await installer.downloadProfilingData('192.168.1.20', password, './out/channel.bsprof');

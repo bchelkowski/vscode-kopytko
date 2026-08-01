@@ -56,6 +56,7 @@ export {
   type MediaPlayerInfo,
   type RendezvousEvent as EcpRendezvousEvent,
   type FwBeaconEcpEvent,
+  type RegistryQueryOptions,
 } from './ecp/ecpClient';
 export {
   EcpKeys,

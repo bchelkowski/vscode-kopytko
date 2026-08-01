@@ -55,6 +55,7 @@ Every method takes the device `ip`, the developer `password`, and a `port` (defa
 | `takeScreenshot(ip, password, destPath)` | Utilities → Screenshot | Captures the running dev channel and saves the JPEG to `destPath`. |
 | `downloadProfilingData(ip, password, destPath)` | Utilities → Profiling Data | Downloads the BrightScript profiler export and saves it to `destPath`. |
 | `packageChannel(ip, password, zipPath, appNameVersion, signingPassword, destPkgPath)` | Packager | Installs the zip, packages it into a signed `.pkg` (`app_name` e.g. `"MyApp/1.0"`), and saves the result to `destPkgPath`. |
+| `packageInstalledChannel(ip, password, appNameVersion, signingPassword, destPkgPath)` | Packager | Same as `packageChannel` minus the install step — packages whatever channel is already on the device. `/plugin_package` takes no archive field, so re-uploading isn't required. |
 | `checkForUpdate(ip, password)` | Update → Check for Update | Triggers a device OS update check. |
 | `reboot(ip, password)` | Update → Reboot | Reboots the device. |
 

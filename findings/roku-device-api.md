@@ -65,7 +65,7 @@ exits non-zero. Test exit codes with `&&`/`||` chaining instead.
 | `/query/active-app` | GET | Attribute set varies by state/firmware — rely only on `id`/`type`/`version` |
 | `/query/apps` | GET | Sideloaded app is `id="dev"` |
 | `/query/app-state/<appId>` | GET | `active` / `background` |
-| `/query/registry/<channelId>` | GET | Use `dev` for sideloaded |
+| `/query/registry/<channelId>` | GET | Use `dev` for sideloaded. ⚠️ `?u=1`/`?k=`/`?s=` filter params (`RegistryQueryOptions`) are docs-derived, never confirmed live |
 | `/query/sgrendezvous` | GET | **Drains** the queue |
 | `/sgrendezvous/track` \| `/untrack` | POST | Channel-agnostic |
 | `/query/fwbeacons` | GET | **Drains**. Beacon tags are hyphenated-lowercase here |
@@ -265,7 +265,7 @@ Digest auth (RFC 7616), username always `rokudev`. Implemented as `InstallerClie
 | Rekey | `/plugin_inspect` | `mysubmit=Rekey`, `passwd`, `archive=<.pkg>` — ⚠️ success path unverified |
 | Screenshot | `/plugin_inspect` | `mysubmit=Screenshot` → scrape `pkgs/dev.jpg?time=…`, GET it |
 | Profiling | `/plugin_inspect` | `mysubmit=dloadProf` → scrape `pkgs/channel.bsprof` (fixed name) |
-| Package | `/plugin_package` | `mysubmit=Package`, `app_name`, `passwd`, `pkg_time` — ⚠️ success path unverified |
+| Package | `/plugin_package` | `mysubmit=Package`, `app_name`, `passwd`, `pkg_time` — ⚠️ success path unverified. **No archive field** — packages whatever channel is already installed, so `InstallerClient.packageInstalledChannel` skips the install step entirely (unlike `packageChannel`, which installs first) |
 | Check update / Reboot | `/plugin_swup` | `mysubmit=CheckUpdate` \| `Reboot` |
 
 ### The success signal is a JSON `messages` array, not the HTTP status

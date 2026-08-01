@@ -290,7 +290,43 @@ export class InstallerClient {
     timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ): Promise<void> {
     await this.installChannel(ip, password, zipPath, port, timeoutMs);
+    await this.packageCurrentChannel(ip, password, appNameVersion, signingPassword, destPkgPath, port, timeoutMs);
+  }
 
+  /**
+   * Packages the channel *already installed* on the device into a signed
+   * `.pkg`, without (re)uploading a zip first (Packager tab). Unlike
+   * {@link packageChannel}, `/plugin_package` takes no archive field — it
+   * always packages whatever is currently on the device — so this is safe to
+   * call standalone when the app was installed by an earlier
+   * {@link installChannel} call or sideloaded by hand.
+   *
+   * @param appNameVersion - e.g. `"MyApp/1.0"`.
+   * @param signingPassword - The developer key's signing password.
+   * @throws If no channel is installed, the packaging response reports a
+   *   failure, or no download link is found.
+   */
+  async packageInstalledChannel(
+    ip: string,
+    password: string,
+    appNameVersion: string,
+    signingPassword: string,
+    destPkgPath: string,
+    port: number = DEFAULT_PORT,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  ): Promise<void> {
+    await this.packageCurrentChannel(ip, password, appNameVersion, signingPassword, destPkgPath, port, timeoutMs);
+  }
+
+  private async packageCurrentChannel(
+    ip: string,
+    password: string,
+    appNameVersion: string,
+    signingPassword: string,
+    destPkgPath: string,
+    port: number,
+    timeoutMs: number,
+  ): Promise<void> {
     const response = await this.postForm(
       ip, port, password, '/plugin_package',
       [

@@ -697,7 +697,7 @@ describe('EcpClient', () => {
       });
 
       try {
-        const body = await client.queryRegistry('127.0.0.1', 'dev', port);
+        const body = await client.queryRegistry('127.0.0.1', 'dev', {}, port);
         expect(body).to.equal(xml);
       } finally {
         await closeServer(server);
@@ -712,7 +712,7 @@ describe('EcpClient', () => {
       });
 
       try {
-        const body = await client.queryRegistry('127.0.0.1', '12345', port);
+        const body = await client.queryRegistry('127.0.0.1', '12345', {}, port);
         expect(body).to.include('FAILED');
         expect(body).to.include('does not match');
       } finally {
@@ -727,10 +727,74 @@ describe('EcpClient', () => {
       });
 
       try {
-        await client.queryRegistry('127.0.0.1', 'dev', port);
+        await client.queryRegistry('127.0.0.1', 'dev', {}, port);
         expect.fail('should have thrown');
       } catch (err) {
         expect((err as Error).message).to.include('status 500');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('sends no query string when no options are given', async () => {
+      let requestUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestUrl = req.url ?? '';
+        res.writeHead(200);
+        res.end('<plugin-registry></plugin-registry>');
+      });
+
+      try {
+        await client.queryRegistry('127.0.0.1', 'dev', {}, port);
+        expect(requestUrl).to.equal('/query/registry/dev');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('adds u=1 when escaped is set', async () => {
+      let requestUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestUrl = req.url ?? '';
+        res.writeHead(200);
+        res.end('<plugin-registry></plugin-registry>');
+      });
+
+      try {
+        await client.queryRegistry('127.0.0.1', 'dev', { escaped: true }, port);
+        expect(requestUrl).to.equal('/query/registry/dev?u=1');
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('adds a pipe-joined k= param for keys', async () => {
+      let requestUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestUrl = req.url ?? '';
+        res.writeHead(200);
+        res.end('<plugin-registry></plugin-registry>');
+      });
+
+      try {
+        await client.queryRegistry('127.0.0.1', 'dev', { keys: ['foo', 'bar'] }, port);
+        expect(requestUrl).to.equal(`/query/registry/dev?k=${encodeURIComponent('foo|bar')}`);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('adds a pipe-joined s= param for sections, combined with other options', async () => {
+      let requestUrl = '';
+      const { server, port } = await createTestServer((req, res) => {
+        requestUrl = req.url ?? '';
+        res.writeHead(200);
+        res.end('<plugin-registry></plugin-registry>');
+      });
+
+      try {
+        await client.queryRegistry('127.0.0.1', 'dev', { escaped: true, sections: ['general', 'other'] }, port);
+        expect(requestUrl).to.equal(`/query/registry/dev?u=1&s=${encodeURIComponent('general|other')}`);
       } finally {
         await closeServer(server);
       }

@@ -153,7 +153,7 @@ Every `EcpClient` method, mapped to its endpoint (default port 8060 unless noted
 | `queryActiveApp` | `GET /query/active-app` | Foreground channel |
 | `queryMediaPlayer` | `GET /query/media-player` | Playback state/position/duration |
 | `queryAppIcon` | `GET /query/icon/{appId}` | Channel icon bytes |
-| `queryRegistry` | `GET /query/registry/{channelId}` | Channel registry dump (dev mode) |
+| `queryRegistry` | `GET /query/registry/{channelId}` | Channel registry dump (dev mode); optional `RegistryQueryOptions` (`escaped`, `keys`, `sections`) filter the response |
 | `queryChanperf` | `GET /query/chanperf` | Per-channel CPU/memory (raw XML) |
 | `querySgNodes` | `GET /query/sgnodes/{all\|roots}` | SceneGraph node tree, all nodes or only un-parented roots (raw XML) |
 | `querySgNodesById` | `GET /query/sgnodes/nodes?node-id=` | SceneGraph nodes matching one node id (raw XML) |
@@ -281,6 +281,12 @@ await installer.packageChannel(
   '192.168.1.20', password, './build/archive.zip',
   'MyApp/1.0', 'my-signing-password', './out/signed.pkg',
 );
+
+// Package whatever is already on the device, without re-uploading a zip
+await installer.packageInstalledChannel(
+  '192.168.1.20', password, 'MyApp/1.0', 'my-signing-password', './out/signed.pkg',
+);
+
 await installer.takeScreenshot('192.168.1.20', password, './out/screenshot.jpg');
 await installer.checkForUpdate('192.168.1.20', password);
 
@@ -321,9 +327,9 @@ Every `ecp` op maps 1:1 to an `EcpClient` method (`device-info`, `apps`,
 `sgnodes`, `app-ui`, `app-object-counts`, `app-state`, `rendezvous-track`/`-untrack`/`-query`,
 `fwbeacons-track`/`-untrack`/`-query`, `graphics-frame-rate`, `r2d2-bitmaps`,
 `perfetto-enable`, `perfetto-trigger-heap-snapshot`); every `installer` op maps to
-`InstallerClient` (`screenshot`, `install`, `delete`, `rekey`, `package`, `update`,
-`reboot`). Run `kopytko-roku --help` for the full flag reference, or see
-`docs/roku-device-cli.md` in the extension repo.
+`InstallerClient` (`screenshot`, `install`, `delete`, `rekey`, `package`,
+`package-installed`, `update`, `reboot`). Run `kopytko-roku --help` for the full flag
+reference, or see `docs/roku-device-cli.md` in the extension repo.
 
 ```bash
 kopytko-roku ecp keypress --host 192.168.1.20 --key Home

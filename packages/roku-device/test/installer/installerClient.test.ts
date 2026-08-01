@@ -630,6 +630,91 @@ describe('InstallerClient', () => {
     });
   });
 
+  describe('packageInstalledChannel', () => {
+    it('packages and downloads the already-installed channel without ever hitting /plugin_install', async () => {
+      const pkgBytes = Buffer.from([0x99, 0x88, 0x77]);
+      const requestOrder: string[] = [];
+      let packageFields = '';
+
+      const { server, port } = await createTestServer(async (req, res) => {
+        if (req.method === 'POST') {
+          const body = await readRawBody(req);
+          const authorized = !!req.headers.authorization;
+          if (!authorized) {
+            res.writeHead(401, { 'WWW-Authenticate': DIGEST_CHALLENGE });
+            res.end();
+            return;
+          }
+          requestOrder.push(req.url ?? '');
+          if (req.url === '/plugin_package') {
+            packageFields = body.toString('latin1');
+            res.writeHead(200);
+            res.end('<a href="pkgs/myapp.pkg">download</a>');
+            return;
+          }
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+
+        // GET (signed pkg download)
+        const authorized = !!req.headers.authorization;
+        if (!authorized) {
+          res.writeHead(401, { 'WWW-Authenticate': DIGEST_CHALLENGE });
+          res.end();
+          return;
+        }
+        res.writeHead(200);
+        res.end(pkgBytes);
+      });
+
+      try {
+        const destPkgPath = path.join(tmpDir, 'signed.pkg');
+        await client.packageInstalledChannel('127.0.0.1', 'pw', 'MyApp/1.0', 'signingPw', destPkgPath, port);
+
+        expect(requestOrder).to.deep.equal(['/plugin_package']);
+        expect(packageFields).to.include('name="app_name"');
+        expect(packageFields).to.include('MyApp/1.0');
+        expect(packageFields).to.include('name="passwd"');
+        expect(packageFields).to.include('signingPw');
+        expect(packageFields).to.include('name="pkg_time"');
+
+        const written = await fs.readFile(destPkgPath);
+        expect(Buffer.compare(written, pkgBytes)).to.equal(0);
+      } finally {
+        await closeServer(server);
+      }
+    });
+
+    it('throws with the captured reason when packaging fails', async () => {
+      const { server, port } = await createTestServer(async (req, res) => {
+        const body = await readRawBody(req);
+        const authorized = !!req.headers.authorization;
+        if (!authorized) {
+          res.writeHead(401, { 'WWW-Authenticate': DIGEST_CHALLENGE });
+          res.end();
+          return;
+        }
+        void body;
+        res.writeHead(200);
+        res.end('<font color="red">Failed: bad signing password</font>');
+      });
+
+      try {
+        let threw = false;
+        try {
+          await client.packageInstalledChannel('127.0.0.1', 'pw', 'MyApp/1.0', 'wrongSigningPw', path.join(tmpDir, 'out.pkg'), port);
+        } catch (err) {
+          threw = true;
+          expect((err as Error).message).to.include('Package failed: bad signing password');
+        }
+        expect(threw).to.be.true;
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
   describe('checkForUpdate', () => {
     it('sends mysubmit=CheckUpdate to /plugin_swup and resolves on 200', async () => {
       let receivedPath = '';

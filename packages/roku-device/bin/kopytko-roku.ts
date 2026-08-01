@@ -26,7 +26,7 @@ function resolveVersion(): string {
 
 const VERSION = resolveVersion();
 
-const BOOLEAN_FLAGS = new Set(['--force', '--json', '--help', '-h', '--version', '-v']);
+const BOOLEAN_FLAGS = new Set(['--force', '--escaped', '--json', '--help', '-h', '--version', '-v']);
 
 export interface CliFlags {
   host?: string;
@@ -45,6 +45,9 @@ export interface CliFlags {
   'app-name-version'?: string;
   'node-id'?: string;
   scope?: string;
+  escaped: boolean;
+  keys?: string;
+  sections?: string;
   json: boolean;
   help: boolean;
   version: boolean;
@@ -59,7 +62,7 @@ export interface ParsedArgs {
 
 /** Parses `process.argv.slice(2)` into a group, an op, and a flag bag. */
 export function parseArgs(argv: string[]): ParsedArgs {
-  const flags: CliFlags = { force: false, json: false, help: false, version: false, params: [] };
+  const flags: CliFlags = { force: false, escaped: false, json: false, help: false, version: false, params: [] };
   const positional: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -69,6 +72,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (arg === '--version' || arg === '-v') { flags.version = true; continue; }
     if (arg === '--json') { flags.json = true; continue; }
     if (arg === '--force') { flags.force = true; continue; }
+    if (arg === '--escaped') { flags.escaped = true; continue; }
 
     if (arg === '--param') {
       const pair = argv[++i] ?? '';
@@ -186,7 +190,11 @@ const ECP_OPS: Record<string, Handler> = {
   },
   'tv-channels': (f) => ecp.queryTvChannels(requireHost(resolveConfig(f)), resolveConfig(f).port),
   'tv-active-channel': (f) => ecp.queryTvActiveChannel(requireHost(resolveConfig(f)), resolveConfig(f).port),
-  registry: (f) => ecp.queryRegistry(requireHost(resolveConfig(f)), requireFlag(f, 'app'), resolveConfig(f).port),
+  registry: (f) => ecp.queryRegistry(requireHost(resolveConfig(f)), requireFlag(f, 'app'), {
+    escaped: f.escaped,
+    keys: f.keys ? f.keys.split('|') : undefined,
+    sections: f.sections ? f.sections.split('|') : undefined,
+  }, resolveConfig(f).port),
   chanperf: (f) => ecp.queryChanperf(requireHost(resolveConfig(f)), resolveConfig(f).port),
   sgnodes: (f) => {
     const config = resolveConfig(f);
@@ -247,6 +255,20 @@ const INSTALLER_OPS: Record<string, Handler> = {
         requireHost(config),
         requireFlag(f, 'password'),
         requireFlag(f, 'zip'),
+        requireFlag(f, 'app-name-version'),
+        requireFlag(f, 'signing-password'),
+        out,
+        config.port,
+      )
+      .then(() => ({ savedTo: out }));
+  },
+  'package-installed': (f) => {
+    const config = resolveConfig(f);
+    const out = requireFlag(f, 'out');
+    return installer
+      .packageInstalledChannel(
+        requireHost(config),
+        requireFlag(f, 'password'),
         requireFlag(f, 'app-name-version'),
         requireFlag(f, 'signing-password'),
         out,
@@ -335,8 +357,9 @@ ECP OPS
   launch --app <id> [--param k=v ...], input [--param k=v ...],
   keypress|keydown|keyup --key <KEY>, text --text "...",
   exit-app --app <id> [--force], tv-channels, tv-active-channel,
-  registry --app <id>, chanperf, sgnodes [--scope all|roots] [--node-id <id>],
+  chanperf, sgnodes [--scope all|roots] [--node-id <id>],
   app-ui, app-object-counts --app <id>, app-state --app <id>,
+  registry --app <id> [--escaped] [--keys k1|k2] [--sections s1|s2],
   rendezvous-track|rendezvous-untrack|rendezvous-query,
   fwbeacons-track|fwbeacons-untrack --app <id>, fwbeacons-query,
   graphics-frame-rate, r2d2-bitmaps,
@@ -346,6 +369,7 @@ INSTALLER OPS (require --password, developer web-admin on port 80)
   screenshot --out <file>, install --zip <path>, delete,
   rekey --pkg <path> --signing-password <pw>,
   package --zip <path> --app-name-version "Name/1.0" --signing-password <pw> --out <path>,
+  package-installed --app-name-version "Name/1.0" --signing-password <pw> --out <path>,
   update, reboot
 
 EXAMPLES

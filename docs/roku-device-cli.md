@@ -92,7 +92,7 @@ for the underlying endpoint each one calls.
 | `exit-app` | `--app <id> [--force]` | `--force` bypasses Instant Resume |
 | `tv-channels` | | Roku TV models only |
 | `tv-active-channel` | | Roku TV models only |
-| `registry` | `--app <id>` | Requires developer mode |
+| `registry` | `--app <id> [--escaped] [--keys k1\|k2] [--sections s1\|s2]` | Requires developer mode. Filter flags are ⚠️ docs-derived (never confirmed live) |
 | `chanperf` | | Requires developer mode |
 | `sgnodes` | `[--scope all\|roots] [--node-id <id>]` | `--node-id` overrides `--scope` |
 | `app-ui` | | Rendered UI tree of the foreground app; fails with `No active app` when nothing is running |
@@ -127,6 +127,7 @@ require `--password` (username is always `rokudev`) and default to port 80.
 | `delete` | |
 | `rekey` | `--pkg <path> --signing-password <pw>` |
 | `package` | `--zip <path> --app-name-version "Name/1.0" --signing-password <pw> --out <path>` |
+| `package-installed` | `--app-name-version "Name/1.0" --signing-password <pw> --out <path>` (packages the already-installed channel — no `--zip`/re-upload) |
 | `update` | |
 | `reboot` | |
 

@@ -14,7 +14,7 @@ import {
 } from '../../bin/kopytko-roku';
 
 function emptyFlags(overrides: Partial<CliFlags> = {}): CliFlags {
-  return { force: false, json: false, help: false, version: false, params: [], ...overrides };
+  return { force: false, escaped: false, json: false, help: false, version: false, params: [], ...overrides };
 }
 
 describe('kopytko-roku CLI', () => {
@@ -36,6 +36,17 @@ describe('kopytko-roku CLI', () => {
     it('collects repeatable --param key=value pairs', () => {
       const parsed = parseArgs(['ecp', 'launch', '--host', 'x', '--app', 'dev', '--param', 'contentId=42', '--param', 'mediaType=movie']);
       expect(parsed.flags.params).to.deep.equal([['contentId', '42'], ['mediaType', 'movie']]);
+    });
+
+    it('parses --escaped as a boolean flag and --keys/--sections as pipe-separated strings', () => {
+      const parsed = parseArgs([
+        'ecp', 'registry', '--host', 'x', '--app', 'dev',
+        '--escaped', '--keys', 'foo|bar', '--sections', 'general',
+      ]);
+      expect(parsed.flags.escaped).to.be.true;
+      expect(parsed.flags.keys).to.equal('foo|bar');
+      expect(parsed.flags.sections).to.equal('general');
+      expect(parsed.flags.app).to.equal('dev');
     });
 
     it('parses --help and --json', () => {
