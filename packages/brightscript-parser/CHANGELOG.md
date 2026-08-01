@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.4.0] - 2026-08-01
+
+### Added
+- Add SceneGraph XML CST, harden error recovery, wire dead analysis
+
 ## [1.3.1] - 2026-07-31
 
 ### Fixed
