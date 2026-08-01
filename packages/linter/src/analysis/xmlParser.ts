@@ -1,22 +1,26 @@
 import * as nodePath from 'path';
 import fsWrapper from './fsWrapper';
+import { parseXmlScriptUris, parseXmlExtends, parseXmlComponentName, parseXmlInterface, parseComponentTag } from 'kopytko-brightscript-parser';
 
-/**
- * Returns raw URI strings from all <script> tags in an XML text.
- */
-export function parseXmlScriptUris(xmlText: string): string[] {
-  const uris: string[] = [];
-  const pattern = /<script\b[^>]*\buri\s*=\s*"([^"]+)"[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(xmlText)) !== null) {
-    uris.push(match[1]);
-  }
-  return uris;
-}
+// parseXmlScriptUris / parseXmlExtends / parseXmlComponentName / parseXmlInterface
+// are the parser package's CST-based versions — same names and shapes as the
+// regex functions they replaced here, so projectIndexer.ts and index.ts did
+// not need to change. This also picks up the bug fixes already proven in the
+// extension's own equivalent migration (findings/lsp-architecture.md): a
+// single-quoted `uri='...'` now matches (the regex here only matched double
+// quotes), and a commented-out `<field id="ghost"/>` is no longer reported as
+// real (comments are CST trivia, invisible to a structural query, where the
+// regex version had no comment awareness at all).
+export { parseXmlScriptUris, parseXmlExtends, parseXmlComponentName, parseXmlInterface };
+export type { ParsedXmlInterface, XmlInterfaceField, XmlInterfaceFunction } from 'kopytko-brightscript-parser';
 
 /**
  * Resolves a script URI from an XML file to an absolute filesystem path.
  * Supports `pkg:/path/file.brs` and relative paths.
+ *
+ * Filesystem-dependent, so — same as `kopytko-roku-device` staying Kopytko-
+ * ecosystem-unaware — this stays local rather than moving into the parser
+ * package, which owns per-file structural facts only, never disk I/O.
  */
 export function resolveScriptUri(
   uri: string,
@@ -57,22 +61,6 @@ export function getScriptPathsFromXml(
     .filter((p): p is string => p !== undefined);
 }
 
-/**
- * Returns the `extends` attribute value from a <component> tag, or null.
- */
-export function parseXmlExtends(xmlText: string): string | null {
-  const match = /<component\b[^>]*\bextends\s*=\s*["']([^"']+)["']/i.exec(xmlText);
-  return match ? match[1] : null;
-}
-
-/**
- * Returns the `name` attribute value from a <component> tag, or null.
- */
-export function parseXmlComponentName(xmlText: string): string | null {
-  const match = /<component\b[^>]*\bname\s*=\s*["']([^"']+)["']/i.exec(xmlText);
-  return match ? match[1] : null;
-}
-
 /** A `<component>` tag's declared name, with the source position of the value. */
 export interface ComponentNamePosition {
   name: string;
@@ -85,76 +73,17 @@ export interface ComponentNamePosition {
  * Like `parseXmlComponentName`, but also reports where the value is written.
  *
  * Needed by any diagnostic that has to point at the declaration itself rather
- * than at the file as a whole. Matching is scoped to the `<component>` tag's own
- * attribute list, so a `<function name="…">` inside `<interface>` is not picked
- * up by mistake.
+ * than at the file as a whole. Thin adapter over the parser's
+ * `parseComponentTag`, which is already scoped to the `<component>` tag's own
+ * attribute list (so a `<function name="…">` inside `<interface>` is never
+ * picked up by mistake) and reports `nameLine`/`nameColumn` with the exact
+ * same "first character of the attribute value" semantics this used to
+ * compute by hand.
  */
 export function parseComponentNamePosition(xmlText: string): ComponentNamePosition | null {
-  const tagMatch = /<component\b([^>]*)>/i.exec(xmlText);
-  if (!tagMatch) return null;
-
-  const attrMatch = /\bname\s*=\s*["']([^"']+)["']/i.exec(tagMatch[1]);
-  if (!attrMatch) return null;
-
-  // '<component'.length === 10, then the offset of the value past its quote
-  const valueOffset = tagMatch.index + 10 + attrMatch.index + attrMatch[0].search(/["']/) + 1;
-
-  let line = 0;
-  let lineStart = 0;
-  for (let i = 0; i < valueOffset; i++) {
-    if (xmlText.charCodeAt(i) === 10 /* \n */) {
-      line++;
-      lineStart = i + 1;
-    }
-  }
-
-  return { name: attrMatch[1], line, column: valueOffset - lineStart };
-}
-
-export interface XmlInterfaceField {
-  name: string;
-  type: string;
-}
-
-export interface XmlInterfaceFunction {
-  name: string;
-}
-
-export interface ParsedXmlInterface {
-  fields: XmlInterfaceField[];
-  functions: XmlInterfaceFunction[];
-}
-
-/**
- * Parses the <interface> section of a SceneGraph XML file.
- */
-export function parseXmlInterface(xmlText: string): ParsedXmlInterface {
-  const fields: XmlInterfaceField[] = [];
-  const functions: XmlInterfaceFunction[] = [];
-
-  const ifaceMatch = /<interface\b[^>]*>([\s\S]*?)<\/interface>/i.exec(xmlText);
-  if (!ifaceMatch) return { fields, functions };
-  const ifaceText = ifaceMatch[1];
-
-  const fieldRe = /<field\b([^>]*)>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = fieldRe.exec(ifaceText)) !== null) {
-    const attrs = m[1];
-    const idMatch = /\bid\s*=\s*["']([^"']+)["']/i.exec(attrs);
-    const typeMatch = /\btype\s*=\s*["']([^"']+)["']/i.exec(attrs);
-    if (idMatch) {
-      fields.push({ name: idMatch[1], type: typeMatch ? typeMatch[1] : 'dynamic' });
-    }
-  }
-
-  const funcRe = /<function\b([^>]*)>/gi;
-  while ((m = funcRe.exec(ifaceText)) !== null) {
-    const attrs = m[1];
-    const nameMatch = /\bname\s*=\s*["']([^"']+)["']/i.exec(attrs);
-    if (nameMatch) functions.push({ name: nameMatch[1] });
-  }
-
-  return { fields, functions };
+  const tag = parseComponentTag(xmlText);
+  if (!tag) return null;
+  return { name: tag.name, line: tag.nameLine, column: tag.nameColumn };
 }
 
 /**
@@ -199,8 +128,8 @@ function findXmlByComponentName(dir: string, nameLower: string, depth: number): 
     const xmlPath = nodePath.join(dir, entry.name);
     try {
       const text = fsWrapper.readFileSync(xmlPath, 'utf-8');
-      const nameMatch = /<component\b[^>]*\bname\s*=\s*"([^"]+)"/i.exec(text);
-      if (nameMatch && nameMatch[1].toLowerCase() === nameLower) {
+      const name = parseXmlComponentName(text);
+      if (name && name.toLowerCase() === nameLower) {
         return xmlPath;
       }
     } catch { /* skip */ }

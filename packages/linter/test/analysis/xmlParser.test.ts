@@ -60,6 +60,11 @@ describe('xmlParser', () => {
       const xml = `<script uri="style.css" />`;
       expect(parseXmlScriptUris(xml)).to.deep.equal(['style.css']);
     });
+
+    it('matches a single-quoted uri (the old regex here only matched double quotes)', () => {
+      const xml = `<component><script type="text/brightscript" uri='pkg:/components/Foo.brs'/></component>`;
+      expect(parseXmlScriptUris(xml)).to.deep.equal(['pkg:/components/Foo.brs']);
+    });
   });
 
   // ── resolveScriptUri ─────────────────────────────────────────────────────
@@ -204,6 +209,20 @@ describe('xmlParser', () => {
       const result = parseXmlInterface(xml);
       expect(result.fields).to.have.length(1);
       expect(result.functions).to.have.length(1);
+    });
+
+    it('skips a commented-out field instead of reporting it as real', () => {
+      // The old regex here had no comment awareness at all — it matched
+      // `<field .../>` text regardless of whether it sat inside an XML comment.
+      const xml = `<component name="X">
+        <interface>
+          <!-- <field id="ghost" type="string"/> -->
+          <field id="real" type="string" />
+        </interface>
+      </component>`;
+      const result = parseXmlInterface(xml);
+      expect(result.fields).to.have.length(1);
+      expect(result.fields[0].name).to.equal('real');
     });
   });
 

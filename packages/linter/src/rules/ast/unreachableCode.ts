@@ -1,11 +1,11 @@
 import {
-  SyntaxKind, SyntaxNode, walk, isNode, isToken,
+  SyntaxKind, walk, firstToken,
   FunctionDeclaration, FunctionExpression,
   IfStatement, ElseIfClause, ElseClause,
   ForStatement, ForEachStatement, WhileStatement,
   TryStatement, CatchClause,
 } from 'kopytko-brightscript-parser';
-import type { AstNode, Token, ParseResult } from 'kopytko-brightscript-parser';
+import type { AstNode, ParseResult } from 'kopytko-brightscript-parser';
 import type { LintDiagnostic, LintSeverity, RuleContext, RuleDefinition } from '../../types';
 
 const TERMINATING_SYNTAX_KINDS = new Set<SyntaxKind>([
@@ -19,17 +19,6 @@ const TERMINATING_SYNTAX_KINDS = new Set<SyntaxKind>([
   SyntaxKind.ContinueForStatement,
   SyntaxKind.ContinueWhileStatement,
 ]);
-
-function getFirstToken(node: SyntaxNode): Token | undefined {
-  for (const child of node.children) {
-    if (isToken(child)) return child;
-    if (isNode(child)) {
-      const t = getFirstToken(child);
-      if (t) return t;
-    }
-  }
-  return undefined;
-}
 
 function collectAst<T>(ctx: RuleContext, parseResult: ParseResult, analysisKey: keyof NonNullable<RuleContext['analysis']>, visit: string): T[] {
   const fromAnalysis = ctx.analysis?.[analysisKey] as T[] | undefined;
@@ -55,15 +44,15 @@ function checkBodyForUnreachable(
   if (terminatorIdx < 0 || terminatorIdx >= body.length - 1) return;
 
   const unreachable = body[terminatorIdx + 1];
-  const firstToken = getFirstToken(unreachable.syntax);
-  if (!firstToken) return;
+  const token = firstToken(unreachable.syntax);
+  if (!token) return;
 
   diagnostics.push({
     severity: (config['syntax/unreachable-code'] as LintSeverity) ?? 'warning',
     code: 'syntax/unreachable-code',
     message: 'This code is unreachable — it follows a `return`, `throw`, or other terminating statement.',
-    line: firstToken.line, column: firstToken.column,
-    endLine: firstToken.line, endColumn: Number.MAX_SAFE_INTEGER,
+    line: token.line, column: token.column,
+    endLine: token.line, endColumn: Number.MAX_SAFE_INTEGER,
     filePath,
   });
 }

@@ -31,7 +31,6 @@ export { escapeRegex } from 'kopytko-brightscript-parser';
 export { parseImports, ImportResolver } from './analysis/importParser';
 export { parseFunctionDefs, parseInnerMethodDefs } from './analysis/functionIndex';
 export { isTestFile, isMockFile, isTestRelatedFile, getTestBaseName, findTestSiblings } from './analysis/testUtils';
-export { stripStringLiterals } from './analysis/textUtils';
 export {
   DUPLICATE_COMPONENT_RULE,
   findDuplicateComponents,

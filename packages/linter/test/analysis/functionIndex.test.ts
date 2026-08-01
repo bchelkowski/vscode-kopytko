@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { parseFunctionDefs } from '../../src/analysis/functionIndex';
+import { parseFunctionDefs, parseInnerMethodDefs } from '../../src/analysis/functionIndex';
 
 describe('functionIndex', () => {
   describe('parseFunctionDefs', () => {
@@ -64,6 +64,61 @@ describe('functionIndex', () => {
     it('does not parse anonymous functions (no name)', () => {
       const text = 'm.handler = function()\nend function';
       expect(parseFunctionDefs(text, '/file.brs')).to.deep.equal([]);
+    });
+  });
+
+  describe('parseInnerMethodDefs', () => {
+    it('detects a dot-assigned method', () => {
+      const text = 'function build()\n  m.doIt = function()\n  end function\nend function';
+      const defs = parseInnerMethodDefs(text, '/file.brs');
+      expect(defs).to.have.length(1);
+      expect(defs[0].name).to.equal('doIt');
+      expect(defs[0].nameLower).to.equal('doit');
+      expect(defs[0].line).to.equal(1);
+      expect(defs[0].ownerFunction).to.equal('build');
+    });
+
+    it('detects an AA-literal colon-style method', () => {
+      const text = [
+        'function build()',
+        '  obj = {',
+        '    onClick: function()',
+        '    end function',
+        '  }',
+        'end function',
+      ].join('\n');
+      const defs = parseInnerMethodDefs(text, '/file.brs');
+      expect(defs.map((d) => d.name)).to.include('onClick');
+    });
+
+    it('still does not detect a nested-receiver assignment (a known limitation carried over from the regex)', () => {
+      // Both the old line-scan regex and analyzeContext()'s dotAssignedFunctions
+      // require the assignment's receiver to be a single identifier, so
+      // `m.handlers.onClick = function()` goes undetected either way. Pinned
+      // here so a future change to this behavior is a deliberate decision,
+      // not a silent regression.
+      const text = 'function build()\n  m.handlers.onClick = function()\n  end function\nend function';
+      const defs = parseInnerMethodDefs(text, '/file.brs');
+      expect(defs.map((d) => d.name)).not.to.include('onClick');
+    });
+
+    it('does not flag a commented-out inner method', () => {
+      const text = "function build()\n  ' m.doIt = function()\nend function";
+      const defs = parseInnerMethodDefs(text, '/file.brs');
+      expect(defs).to.have.length(0);
+    });
+
+    it('returns definitions in document order', () => {
+      const text = [
+        'function build()',
+        '  m.first = function()',
+        '  end function',
+        '  m.second = function()',
+        '  end function',
+        'end function',
+      ].join('\n');
+      const defs = parseInnerMethodDefs(text, '/file.brs');
+      expect(defs.map((d) => d.name)).to.deep.equal(['first', 'second']);
     });
   });
 });

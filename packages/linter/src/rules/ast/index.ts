@@ -23,6 +23,7 @@ export { checkUnreachableCodeAst, descriptor as unreachableCodeRule } from './un
 
 import { descriptor as createObjectArgsRule } from './createObjectArgs';
 import { descriptor as throwStatementsRule } from './throwStatements';
+import { descriptor as trailingCommaRule } from './trailingComma';
 import { descriptor as loopFlowControlRule } from './loopFlowControl';
 import { descriptor as missingTypeAnnotationsRule } from './missingTypeAnnotations';
 import { descriptor as shadowedBuiltinsRule } from './shadowedBuiltins';
@@ -55,6 +56,7 @@ export const AST_RULES: RuleDefinition[] = [
   wrongArgCountRule,
   throwStatementsRule,
   createObjectArgsRule,
+  trailingCommaRule,
   loopFlowControlRule,
   testFileStructureRule,
   missingTypeAnnotationsRule,

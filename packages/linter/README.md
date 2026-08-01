@@ -322,7 +322,6 @@ The CLI itself (`bin/kopytko-lint.ts`) lints projects via `lintProjectAsync`, no
 | `parseFunctionDefs(text, path)` / `parseInnerMethodDefs(text, path)` | Parse top-level function/sub definitions, or AA-literal inner methods, from source text |
 | `isTestFile(path)` / `isMockFile(path)` / `isTestRelatedFile(path)` | Classify a file path as a test file, a `_mocks/*.mock.brs` file, or either |
 | `getTestBaseName(path)` / `findTestSiblings(path)` | Resolve a test file's base component name, or find its split-suite sibling test files |
-| `stripStringLiterals(text)` | Replace string-literal contents with placeholders, to avoid false-positive identifier matches inside strings |
 | `matchesGlob`, `findMatchingGlob`, `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `findComponent`, `escapeRegex`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE` | Re-exported from `kopytko-brightscript-parser` for convenience — see [that package's README](../brightscript-parser/README.md) for details |
 
 ## CI Integration

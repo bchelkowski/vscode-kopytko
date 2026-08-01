@@ -213,12 +213,30 @@ describe('AST-based lint rules', () => {
       expect(diags).to.have.length(0);
     });
 
-    it('skips files with parse errors (trailing comma causes parse error)', () => {
-      // The parser itself reports an error for `return 1,` — the AST rule
-      // correctly skips files with parse errors. The regex-based rule handles this case.
+    it('detects a trailing comma even though the parser itself reports it as a syntax error', () => {
+      // `return 1,` is a parse error — the parser cannot attach the unexpected
+      // comma to the ReturnStatement node, so it surfaces as an ErrorNode in
+      // the next sibling slot instead. The rule must detect that shape too,
+      // not just a comma that landed as the ReturnStatement's own last token.
       const ctx = makeCtx('function foo()\n  return 1,\nend function');
       const diags = checkTrailingCommaAst(ctx);
-      expect(diags).to.have.length(0); // skipped due to parse errors
+      expect(diags).to.have.length(1);
+      expect(diags[0].message).to.include('Trailing comma');
+      expect(diags[0].line).to.equal(1);
+    });
+
+    it('does not flag a comma on the following line after a return value', () => {
+      const ctx = makeCtx('function foo()\n  return 1\n  x = [1, 2]\nend function');
+      const diags = checkTrailingCommaAst(ctx);
+      expect(diags).to.have.length(0);
+    });
+
+    it('detects a trailing comma followed by a comment', () => {
+      // The regex version this replaces required the comma to be the last
+      // character on the line, so `return a,  ' comment` was missed.
+      const ctx = makeCtx('function foo()\n  a = 1\n  return a,  \' comment\nend function');
+      const diags = checkTrailingCommaAst(ctx);
+      expect(diags).to.have.length(1);
     });
   });
 
@@ -630,6 +648,46 @@ describe('AST-based lint rules', () => {
       expect(codes(diags)).not.to.include('import/unused');
     });
 
+    it('reads and parses a sibling file only once, even when checking several @imports against it', () => {
+      // Two @imports, neither used directly nor via the sibling — each import
+      // check walks the same sibling list. Without the shared parse cache,
+      // the sibling file would be re-read and re-parsed once per import.
+      const source = [
+        "' @import /utils/dep1.brs",
+        "' @import /utils/dep2.brs",
+        'function foo()',
+        '  return 1',
+        'end function',
+      ].join('\n');
+      const ctx = makeCtx(source, { 'import/unused': 'warning' });
+      ctx.imports = [
+        { raw: "' @import /utils/dep1.brs", importPath: '/utils/dep1.brs', line: 1, isMock: false },
+        { raw: "' @import /utils/dep2.brs", importPath: '/utils/dep2.brs', line: 2, isMock: false },
+      ];
+      const readFileCalls: string[] = [];
+      const readFileSpy = (p: string): string => { readFileCalls.push(p); return 'function unrelated()\nend function'; };
+      let resolveCalls = 0;
+      ctx.lintContext = {
+        knownFuncNames: new Set(),
+        parseImports: () => [],
+        resolveImportPath: () => { resolveCalls++; return `/resolved/dep${resolveCalls}.brs`; },
+        importExists: () => true,
+        readFile: readFileSpy,
+        parseFunctionsFromFile: () => ['dep1Func', 'dep2Func'],
+        getSiblingFiles: () => ['/project/Sibling.brs'],
+        getTestSiblings: () => [],
+        isTestFile: () => false,
+        generatedPaths: [],
+        generatedModules: [],
+        siblingPatterns: [],
+      } as LintContext;
+
+      checkImportsAst(ctx);
+      // One call per distinct file readFile() actually needs to read — the
+      // shared sibling must be read once, not once per @import checked.
+      expect(readFileCalls).to.deep.equal(['/project/Sibling.brs']);
+    });
+
     it('does not flag PromiseResolve import when .resolvedValue() appears in the same file', () => {
       const source = "' @import /utils/dep.brs\nfunction test()\n  m.mock = mockFunction(\"x\").resolvedValue(1)\nend function";
       const ctx = makeImportCtx(source, ['PromiseResolve'], { isTestFile: () => true });
@@ -649,6 +707,17 @@ describe('AST-based lint rules', () => {
       ctx.filePath = '/project/test/TestSuite__MyTest.test.brs';
       const diags = checkImportsAst(ctx);
       expect(codes(diags)).not.to.include('import/unused');
+    });
+
+    it('still flags PromiseResolve import as unused when .resolvedValue( only appears in a comment', () => {
+      // A `content.includes('.resolvedValue(')` scan would have wrongly treated
+      // this as "used" — it's AST-based now, so a code sample in a comment
+      // doesn't count as a real call.
+      const source = "' @import /utils/dep.brs\nfunction test()\n  ' example: mockFunction(\"x\").resolvedValue(1)\nend function";
+      const ctx = makeImportCtx(source, ['PromiseResolve'], { isTestFile: () => true });
+      ctx.filePath = '/project/test/MyTest.test.brs';
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).to.include('import/unused');
     });
 
     it('does not flag PromiseReject import when .rejectedValue() appears only in a test sibling file', () => {
@@ -758,6 +827,36 @@ describe('AST-based lint rules', () => {
       (ctx.config as Record<string, string>)['import/missing-promise-deps'] = 'off';
       const diags = checkImportsAst(ctx);
       expect(codes(diags)).not.to.include('import/missing-promise-deps');
+    });
+
+    it('does not report when .resolvedValue( only appears inside a comment', () => {
+      // AST-based (a real DotExpression call), unlike a content.includes() scan —
+      // a code sample in a comment must not trigger this.
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  ' example: mockFunction(\"fn\").resolvedValue(1)\nend function",
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/missing-promise-deps');
+    });
+
+    it('does not report when .resolvedValue( only appears inside a string literal', () => {
+      const ctx = makePromiseDepsCtx(
+        'function test()\n  x = "call .resolvedValue(1) on the mock"\nend function',
+      );
+      const diags = checkImportsAst(ctx);
+      expect(codes(diags)).not.to.include('import/missing-promise-deps');
+    });
+
+    it('reports the precise position of the .resolvedValue( call, not just line 0', () => {
+      const ctx = makePromiseDepsCtx(
+        "function test()\n  x = mockFunction(\"fn\").resolvedValue(1)\nend function",
+      );
+      const diags = checkImportsAst(ctx);
+      const diag = diags.find(d => d.code === 'import/missing-promise-deps')!;
+      expect(diag.line).to.equal(1);
+      // Column should point at "resolvedValue" itself, not column 0 of the line.
+      expect(diag.column).to.be.greaterThan(0);
+      expect(diag.endColumn).to.equal(diag.column + 'resolvedValue'.length);
     });
   });
 
