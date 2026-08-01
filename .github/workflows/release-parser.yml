@@ -36,8 +36,8 @@ jobs:
 
       - name: Configure git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "Błażej Chełkowski"
+          git config user.email "bchelkow@gmail.com"
 
       - name: Install dependencies
         run: npm ci
@@ -172,15 +172,33 @@ jobs:
           cd packages/formatter && npm install "kopytko-brightscript-parser@${VERSION}"
           cd "$GITHUB_WORKSPACE/packages/linter" && npm install "kopytko-brightscript-parser@${VERSION}"
 
-      - name: Commit and push dependent updates
+      - name: Commit and push root dependency update
         working-directory: ${{ github.workspace }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          git add package.json package-lock.json \
-                  packages/formatter/package.json packages/formatter/package-lock.json \
-                  packages/linter/package.json packages/linter/package-lock.json
-          git diff --cached --quiet && echo "No changes" || {
-            git commit -m "chore: bump kopytko-brightscript-parser to v${VERSION}"
+          git add package.json package-lock.json
+          git diff --cached --quiet && echo "No root changes" || {
+            git commit -m "chore(vscode-kopytko): bump kopytko-brightscript-parser to v${VERSION}"
+            git push origin HEAD
+          }
+
+      - name: Commit and push formatter dependency update
+        working-directory: ${{ github.workspace }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add packages/formatter/package.json packages/formatter/package-lock.json
+          git diff --cached --quiet && echo "No formatter changes" || {
+            git commit -m "chore(formatter): bump kopytko-brightscript-parser to v${VERSION}"
+            git push origin HEAD
+          }
+
+      - name: Commit and push linter dependency update
+        working-directory: ${{ github.workspace }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add packages/linter/package.json packages/linter/package-lock.json
+          git diff --cached --quiet && echo "No linter changes" || {
+            git commit -m "chore(linter): bump kopytko-brightscript-parser to v${VERSION}"
             git push origin HEAD
           }
 

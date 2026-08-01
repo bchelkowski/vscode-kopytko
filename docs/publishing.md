@@ -54,7 +54,7 @@ npm publishing uses **OIDC provenance** — no token needed. Just link your npm 
 1. Go to **Actions** → **Release kopytko-brightscript-parser**
 2. Click **Run workflow**
 3. Select bump type: `patch`, `minor`, or `major`
-4. The workflow follows the same steps as the linter release (tests, version bump, changelog from `feat(brightscript-parser):` / `fix(brightscript-parser):` commits, tag `kopytko-brightscript-parser-v{version}`, npm publish, GitHub Release, root dependency auto-bump).
+4. The workflow follows the same steps as the linter release (tests, version bump, changelog from `feat(brightscript-parser):` / `fix(brightscript-parser):` commits, tag `kopytko-brightscript-parser-v{version}`, npm publish, GitHub Release), then auto-bumps and separately commits the dependency in the root extension, `kopytko-formatter`, and `kopytko-linter` (each as its own scoped `chore(<scope>):` commit so it surfaces in that package's own next changelog).
 
 ### Releasing kopytko-roku-device
 
