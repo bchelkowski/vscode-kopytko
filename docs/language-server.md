@@ -346,10 +346,12 @@ Declaring a function with a name that collides with an `@import`-ed function, a 
 |---|---|---|
 | `mtop/undefined-field` | Warning | `m.top.<fieldName>` accesses a field not declared in the component's XML `<interface>` or any ancestor component / SG node. |
 
-This rule is **extension-mode only** — it requires companion XML files to be present and is not available in the standalone CLI linter. The extension resolves valid field names by:
+Requires the file to have a companion XML component — a plain `.brs` file with no XML sibling has nothing to check `m.top` against, so the rule skips it. Valid field names are resolved by:
 1. Parsing the component's own XML `<interface>` fields and `<function>` declarations.
 2. Recursively walking the `extends` hierarchy through user-defined parent components.
 3. When the hierarchy reaches a Roku built-in SG node (e.g. `Group`, `Label`, `Video`), including all fields and methods from the SG node catalog.
+
+Both the extension (`diagnosticsProvider.ts`) and the CLI (`projectIndexer.ts`'s `buildGetMtopFields`) run this same resolution and populate `LintContext.getMtopFields`, so the rule works identically in both.
 
 Read accesses (`return m.top.field`) and write accesses (`m.top.field = value`) are both checked.
 

@@ -13,7 +13,9 @@ function collectAst<T>(ctx: RuleContext, parseResult: ParseResult, analysisKey: 
 /**
  * AST-based: detect `m.top.fieldName` accesses where `fieldName` is not declared
  * in the component's XML interface or any ancestor component / SG node.
- * Only runs when `lintContext.getMtopFields` is populated (extension mode).
+ * Requires `lintContext.getMtopFields` — populated in both extension mode
+ * (`diagnosticsProvider.ts`) and CLI mode (`projectIndexer.ts`'s `buildGetMtopFields`).
+ * Returns [] if genuinely absent (a test/mock context, or a file with no companion XML).
  */
 export function checkMtopFieldAccessAst(ctx: RuleContext): LintDiagnostic[] {
   const { filePath, config, parseResult, lintContext } = ctx;

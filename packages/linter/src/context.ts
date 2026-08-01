@@ -23,22 +23,28 @@ export interface LintContext {
    * comment). Undefined when the rule is off (CLI) or before the extension's WorkspaceCallIndex
    * has built (extension) — rules must degrade gracefully. */
   calledWorkwideFuncNames?: Set<string>;
-  /** Functions inherited via the component `extends` chain that may be overridden without error.
-   * Undefined in CLI mode or for files without a companion XML — rules skip the override exemption. */
+  /**
+   * Functions inherited via the component `extends` chain that may be overridden without error.
+   * Populated in both CLI mode (`projectIndexer.ts`'s `buildKnownFunctions`) and extension mode
+   * (`diagnosticsProvider.ts`, gated on `identifier/duplicate-function` being active). Undefined
+   * for a file with no companion XML, or no ancestor functions to report — rules must skip the
+   * override exemption gracefully when absent, not assume one mode always has it.
+   */
   ancestorFuncNames?: Set<string>;
   /**
    * Function names reachable from EXTERNAL sources only (imports, sibling files, /source/).
    * Does NOT include the current file's own function names, unlike `knownFuncNames`.
-   * When set (extension mode), `identifier/duplicate-function` uses this for cross-scope collision
-   * detection to avoid false positives on the file's own declarations.
-   * When absent (tests, CLI), the rule falls back to `knownFuncNames`.
+   * Populated in both CLI mode and extension mode; `identifier/duplicate-function` uses it for
+   * cross-scope collision detection to avoid false positives on the file's own declarations.
+   * When absent (e.g. tests, or a mock context), the rule falls back to `knownFuncNames`.
    */
   externalFuncNames?: Set<string>;
   /**
    * Returns the set of valid lowercased `m.top` field names for a component `.brs` file,
    * including all ancestor component and Roku SG node fields.
-   * Returns `null` when the file has no companion XML or in CLI mode.
-   * Undefined in CLI mode — the `mtop/undefined-field` rule is skipped entirely.
+   * Returns `null` when the file has no companion XML. Populated in both CLI mode
+   * (`projectIndexer.ts`) and extension mode (`diagnosticsProvider.ts`) — undefined only for a
+   * mock/test context that doesn't provide it, in which case `mtop/undefined-field` is skipped.
    */
   getMtopFields?: (filePath: string) => Set<string> | null;
 

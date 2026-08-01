@@ -185,7 +185,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 
 | Rule | Default | Description |
 |---|---|---|
-| `mtop/undefined-field` | warning | `m.top.fieldName` accesses a field not declared in the component's XML `<interface>` or any ancestor component/SG node. Only active when the field catalog is populated (extension mode) |
+| `mtop/undefined-field` | warning | `m.top.fieldName` accesses a field not declared in the component's XML `<interface>` or any ancestor component/SG node |
 
 ### Component Rules
 
