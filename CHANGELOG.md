@@ -1,6 +1,16 @@
 # Changelog
 
 
+## [1.15.0] - 2026-08-01
+
+### Fixed
+- Migrate LSP providers off regex onto the parser CST
+
+### Maintenance
+- Bump kopytko-roku-device to v1.5.0
+- Bump kopytko-linter to v2.0.0
+- Bump kopytko-formatter to v1.2.2
+
 ## [1.14.0] - 2026-07-31
 
 ### Added
