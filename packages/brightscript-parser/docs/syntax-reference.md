@@ -419,12 +419,6 @@ x = a?.b?.c?[0]?.handler?(event)
 #end if
 
 #error TODO: implement this feature
-
-' Block comment idiom
-#if false
-  This code is commented out.
-  It can contain anything.
-#end if
 ```
 
 ### Notes
@@ -432,7 +426,21 @@ x = a?.b?.c?[0]?.handler?(event)
 - `#else if` and `#elseif` are equivalent
 - `#const` only supports boolean values
 - `#error` consumes the rest of the line as its message
-- Content inside `#if false` blocks is not parsed as BrightScript
+
+### ⚠️ Not implemented: `#if false` as a block-comment idiom
+
+Real Roku BrightScript skip-lexes an untaken conditional-compilation branch, so
+`#if false` / arbitrary non-BrightScript text / `#end if` is a common idiom for
+block-commenting code. **This parser does not do that** — `parseConditionalCompilation`
+parses every branch's body as real statements regardless of the condition,
+so non-BrightScript prose inside a `#if false` block produces diagnostics and
+`ErrorNode`s, not a silently-skipped span. Implementing this properly needs a
+lexer-level change (skip-scan the untaken branch as opaque text once the
+condition is known statically false, accounting for `#const`-bound names) —
+real work, not attempted here because nothing in this codebase currently
+depends on it. If a real `.brs` file using this idiom shows up, verify the
+skip-lexing approach against it before implementing (see the root CLAUDE.md's
+rule against speculative changes) rather than guessing at the exact behavior.
 
 ---
 

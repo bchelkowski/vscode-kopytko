@@ -31,4 +31,8 @@ export interface Trivia {
   readonly pos: number;
   /** Byte offset just past the end of this trivia. */
   readonly end: number;
+  /** 0-based line number of the trivia start. */
+  readonly line: number;
+  /** 0-based column (character offset within the line) of the trivia start. */
+  readonly column: number;
 }

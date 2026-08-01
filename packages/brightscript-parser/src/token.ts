@@ -10,6 +10,7 @@
 
 import { TokenKind } from './tokenKind.js';
 import { Trivia } from './trivia.js';
+import type { SyntaxNode } from './syntaxNode.js';
 
 export interface Token {
   readonly kind: TokenKind;
@@ -27,6 +28,23 @@ export interface Token {
   readonly leadingTrivia: readonly Trivia[];
   /** Whitespace / comments that appear after this token on the same line. */
   readonly trailingTrivia: readonly Trivia[];
+  /**
+   * True for a synthetic zero-width token the parser inserts when a required
+   * token is missing from the source (see `Parser.expect()`). Never set by
+   * the lexer. `text` is always `''` and `pos === end` for a missing token,
+   * so it contributes nothing to `tokenFullText`/round-trip reconstruction.
+   */
+  readonly isMissing?: boolean;
+  /**
+   * The `SyntaxNode` this token is a direct child of. Set by `SyntaxNode`'s
+   * constructor (mirroring how it stamps `parent` on child nodes) — `undefined`
+   * until the token is attached to a tree. Mutable (unlike every other Token
+   * field) for exactly that reason. Lets a position lookup that already found
+   * a token (e.g. via `findTokenAtPositionIndexed`) recover the full ancestor
+   * chain in O(depth) by walking `.parent` upward, instead of a fresh O(n)
+   * tree walk from the root.
+   */
+  parent?: SyntaxNode;
 }
 
 /**

@@ -254,6 +254,24 @@ describe('Parser', () => {
       const outer = firstStatement(r);
       expect(outer.kind).to.equal(SyntaxKind.TryStatement);
     });
+
+    it('parses parenthesized catch variable with no diagnostics', () => {
+      const r = parseOk('try\n  print 1/0\ncatch (e)\n  print e.message\nend try');
+      const tryStmt = firstStatement(r);
+      const catchClause = tryStmt.findChild(SyntaxKind.CatchClause)!;
+      expect(catchClause.findToken(TokenKind.Identifier)?.text).to.equal('e');
+    });
+
+    it('bare and parenthesized catch variable round-trip identically', () => {
+      const sources = [
+        'try\n  print 1\ncatch e\n  print e\nend try',
+        'try\n  print 1\ncatch (e)\n  print e\nend try',
+      ];
+      for (const src of sources) {
+        const r = parseOk(src);
+        expect(r.root.getText()).to.equal(src);
+      }
+    });
   });
 
   // ─── Simple statements ──────────────────────────────────────────────────
@@ -272,6 +290,30 @@ describe('Parser', () => {
     it('parses print', () => {
       const r = parseOk('print "hello"');
       expect(firstStatement(r).kind).to.equal(SyntaxKind.PrintStatement);
+    });
+
+    it('parses adjacent (no-separator) print arguments as one PrintStatement', () => {
+      // `print tab(5) "hello"` — no `;`/`,` between tab(5) and "hello",
+      // which is valid PRINT syntax (see docs/syntax-reference.md). Previously
+      // the parser stopped collecting arguments at the first missing
+      // separator, so "hello" ended up as an unrelated second top-level
+      // statement instead of PrintStatement's second argument.
+      const r = parseOk('print tab(5) "hello"');
+      const stmts = statements(r);
+      expect(stmts.length).to.equal(1);
+      const printStmt = stmts[0];
+      expect(printStmt.kind).to.equal(SyntaxKind.PrintStatement);
+      expect(printStmt.childNodes).to.have.length(2);
+      expect(printStmt.childNodes[0].kind).to.equal(SyntaxKind.CallExpression);
+      expect(printStmt.childNodes[1].kind).to.equal(SyntaxKind.LiteralExpression);
+    });
+
+    it('mixes separator and no-separator print arguments', () => {
+      const r = parseOk('print "a"; tab(5) "b", "c"');
+      const printStmt = statements(r)[0];
+      expect(printStmt.kind).to.equal(SyntaxKind.PrintStatement);
+      // "a" ; tab(5) "b" , "c"  →  4 expressions + 2 separator tokens = 6 children
+      expect(printStmt.childNodes).to.have.length(4);
     });
 
     it('parses ? (print shorthand)', () => {
@@ -411,6 +453,39 @@ describe('Parser', () => {
       expect(firstStatement(r).kind).to.equal(SyntaxKind.AssignmentStatement);
     });
 
+    it('respects operator precedence for a bare (non-assignment) statement-position expression', () => {
+      // `a + b * c` in statement position (not `x = a + b * c`) exercises
+      // continueAsBinaryExpression — the assignment-RHS path already used the
+      // real precedence chain directly and was never affected by this bug.
+      const r = parseOk('a + b * c');
+      const exprStmt = firstStatement(r);
+      expect(exprStmt.kind).to.equal(SyntaxKind.ExpressionStatement);
+      const outer = exprStmt.childNodes[0];
+      expect(outer.kind).to.equal(SyntaxKind.BinaryExpression);
+      expect(outer.children.find(isToken)?.kind).to.equal(TokenKind.Plus);
+      // `b * c` must be the nested right operand — not `(a + b) * c`.
+      const right = outer.childNodes[1];
+      expect(right.kind).to.equal(SyntaxKind.BinaryExpression);
+      expect(right.children.find(isToken)?.kind).to.equal(TokenKind.Star);
+    });
+
+    it('keeps AND binding tighter than OR for a bare statement-position expression', () => {
+      const r = parseOk('a or b and c');
+      const exprStmt = firstStatement(r);
+      const outer = exprStmt.childNodes[0];
+      expect(outer.kind).to.equal(SyntaxKind.BinaryExpression);
+      expect(outer.children.find(isToken)?.kind).to.equal(TokenKind.Or);
+      const right = outer.childNodes[1];
+      expect(right.kind).to.equal(SyntaxKind.BinaryExpression);
+      expect(right.children.find(isToken)?.kind).to.equal(TokenKind.And);
+    });
+
+    it('round-trips a bare statement-position binary expression', () => {
+      const src = 'a + b * c';
+      const r = parse(src);
+      expect(r.root.getText()).to.equal(src);
+    });
+
     it('parses string concatenation', () => {
       const r = parseOk('x = "hello" + " " + "world"');
       expect(firstStatement(r).kind).to.equal(SyntaxKind.AssignmentStatement);
@@ -521,6 +596,20 @@ describe('Parser', () => {
       expect(cc.kind).to.equal(SyntaxKind.ConditionalCompilation);
     });
 
+    it('does NOT skip-lex a #if false block — pins a known, documented gap', () => {
+      // Real Roku BrightScript never lexes/parses an untaken conditional-
+      // compilation branch, so `#if false ... #end if` is a common
+      // block-comment idiom for arbitrary text. This parser doesn't
+      // implement that (see docs/syntax-reference.md's "Not implemented"
+      // note) — it parses the body as real statements regardless of the
+      // condition, so prose produces diagnostics. This test exists so a
+      // future attempt to add skip-lexing has a clear "before" baseline,
+      // and so this gap shows up as a documented, intentional test result
+      // rather than an unnoticed failure.
+      const r = parse('#if false\n  This is not valid BrightScript.\n#end if');
+      expect(r.diagnostics.length).to.be.greaterThan(0);
+    });
+
     it('parses #if/#else/#end if', () => {
       const r = parseOk('#if DEBUG\n  print "debug"\n#else\n  print "release"\n#end if');
       const cc = firstStatement(r);
@@ -595,6 +684,49 @@ describe('Parser', () => {
         const r = parse(src);
         expect(r.root.getText()).to.equal(src);
       }
+    });
+
+    // ── Malformed (not truncated) input: expect() must not duplicate tokens ──
+    // Regression coverage for the bug where `expect()` returned the current
+    // (unconsumed) token on a mismatch, so the same Token object was attached
+    // to the tree more than once and getText() emitted its text repeatedly.
+    // Truncated-input sources above never exercise this path — they only omit
+    // a trailing `end ...` keyword, which `expect()` never sees as "current".
+
+    it('does not duplicate a token when a required parameter identifier is malformed', () => {
+      const src = 'function foo(123)\nend function';
+      const r = parse(src);
+      expect(r.diagnostics.length).to.be.greaterThan(0);
+      expect(r.root.getText()).to.equal(src);
+    });
+
+    it('does not duplicate a token when a catch variable is malformed', () => {
+      const src = 'try\n  print 0\ncatch 42\n  print 1\nend try';
+      const r = parse(src);
+      expect(r.diagnostics.length).to.be.greaterThan(0);
+      expect(r.root.getText()).to.equal(src);
+    });
+
+    it('does not duplicate a token when a constant name is malformed', () => {
+      const src = '#const 42 = 1';
+      const r = parse(src);
+      expect(r.diagnostics.length).to.be.greaterThan(0);
+      expect(r.root.getText()).to.equal(src);
+    });
+
+    it('round-trips a run of unrecognized tokens on one line', () => {
+      // Each unexpected token is individually recovered by the primary-
+      // expression fallback (advance + wrap in a single-token ErrorNode) —
+      // parseStatement() always nets at least one token of progress for any
+      // leftover garbage, so the no-progress guards in parseSourceFile /
+      // parseBodyStatements / parseConditionalBody never fire on input like
+      // this. They exist as a defensive backstop matching the same pattern
+      // in case a future statement-dispatch case can return without
+      // consuming; this test only pins the round-trip, not which recovery
+      // path produced it.
+      const src = 'function foo()\n  ~ ~ ~\nend function';
+      const r = parse(src);
+      expect(r.root.getText()).to.equal(src);
     });
   });
 

@@ -12,11 +12,7 @@
 import { SyntaxNode } from '../syntaxNode.js';
 
 import { walk } from '../visitor.js';
-import {
-  FunctionDeclaration, IdentifierExpression,
-} from '../ast.js';
-import {
-} from '../ast.js';
+import { FunctionDeclaration, IdentifierExpression, DotExpression } from '../ast.js';
 import { findBuiltin } from '../catalog/builtins.js';
 import { Scope, buildScopes, Declaration } from '../scope.js';
 
@@ -47,11 +43,38 @@ export interface SymbolInfo {
 /**
  * Gets symbol info for a function by name.
  * Searches builtins first, then user-defined functions in the AST.
+ *
+ * Does a single combined tree walk to find a matching function declaration
+ * AND collect every reference, rather than a separate walk per concern —
+ * `buildScopes` (also a full walk) only runs afterward, and only when no
+ * function declaration matched.
  */
 export function getSymbolInfo(name: string, root: SyntaxNode): SymbolInfo | null {
   const lower = name.toLowerCase();
 
-  // Check builtins
+  let functionMatch: FunctionDeclaration | undefined;
+  const references: { line: number; column: number }[] = [];
+
+  walk(root, {
+    visitFunctionDeclaration(node: FunctionDeclaration) {
+      if (node.name.toLowerCase() === lower) functionMatch = node;
+    },
+    visitIdentifierExpression(node: IdentifierExpression) {
+      if (node.name.toLowerCase() !== lower) return;
+      const t = node.nameToken;
+      if (t) references.push({ line: t.line, column: t.column });
+    },
+    visitDotExpression(node: DotExpression) {
+      // `obj.add()` / `obj.add` is a reference to `add` — an ordinary member
+      // access, not an `@attr` XML attribute access. Without this, go-to-
+      // references on a method never finds its call sites, since a method
+      // name is never an IdentifierExpression on its own.
+      if (node.isAttributeAccess || node.member.toLowerCase() !== lower) return;
+      const t = node.memberToken;
+      if (t) references.push({ line: t.line, column: t.column });
+    },
+  });
+
   const builtin = findBuiltin(lower);
   if (builtin) {
     return {
@@ -61,39 +84,33 @@ export function getSymbolInfo(name: string, root: SyntaxNode): SymbolInfo | null
       returnType: builtin.returnType,
       description: builtin.description,
       docsUrl: builtin.docsUrl,
-      references: collectReferences(lower, root),
+      references,
     };
   }
 
-  // Check user-defined functions
-  let found: SymbolInfo | null = null;
-  walk(root, {
-    visitFunctionDeclaration(node: FunctionDeclaration) {
-      if (node.name.toLowerCase() !== lower) return;
-      const params = node.params;
-      const paramSigs = params.map(p =>
-        p.typeName ? `${p.name} as ${p.typeName}` : p.name
-      );
-      const retType = node.returnType;
-      const keyword = node.isSub ? 'sub' : 'function';
-      const sig = retType
-        ? `${keyword} ${node.name}(${paramSigs.join(', ')}) as ${retType}`
-        : `${keyword} ${node.name}(${paramSigs.join(', ')})`;
+  if (functionMatch) {
+    const node = functionMatch;
+    const params = node.params;
+    const paramSigs = params.map(p =>
+      p.typeName ? `${p.name} as ${p.typeName}` : p.name
+    );
+    const retType = node.returnType;
+    const keyword = node.isSub ? 'sub' : 'function';
+    const sig = retType
+      ? `${keyword} ${node.name}(${paramSigs.join(', ')}) as ${retType}`
+      : `${keyword} ${node.name}(${paramSigs.join(', ')})`;
 
-      found = {
-        name: node.name,
-        kind: 'function',
-        signature: sig,
-        params: params.map(p => p.name),
-        paramTypes: params.map(p => p.typeName),
-        returnType: retType,
-        location: node.nameToken ? { line: node.nameToken.line, column: node.nameToken.column } : undefined,
-        references: collectReferences(lower, root),
-      };
-    },
-  });
-
-  if (found) return found;
+    return {
+      name: node.name,
+      kind: 'function',
+      signature: sig,
+      params: params.map(p => p.name),
+      paramTypes: params.map(p => p.typeName),
+      returnType: retType,
+      location: node.nameToken ? { line: node.nameToken.line, column: node.nameToken.column } : undefined,
+      references,
+    };
+  }
 
   // Check scope declarations (variables, parameters)
   const scope = buildScopes(root);
@@ -103,26 +120,11 @@ export function getSymbolInfo(name: string, root: SyntaxNode): SymbolInfo | null
       name: decl.name,
       kind: decl.kind === 'parameter' ? 'parameter' : 'variable',
       location: { line: decl.line, column: decl.column },
-      references: collectReferences(lower, root),
+      references,
     };
   }
 
   return null;
-}
-
-function collectReferences(nameLower: string, root: SyntaxNode): { line: number; column: number }[] {
-  const refs: { line: number; column: number }[] = [];
-
-  walk(root, {
-    visitIdentifierExpression(node: IdentifierExpression) {
-      if (node.name.toLowerCase() === nameLower) {
-        const t = node.nameToken;
-        if (t) refs.push({ line: t.line, column: t.column });
-      }
-    },
-  });
-
-  return refs;
 }
 
 function findDeclarationInScopes(nameLower: string, scope: Scope): Declaration | undefined {

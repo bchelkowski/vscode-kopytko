@@ -24,6 +24,27 @@ export function isToken(child: SyntaxChild): child is Token {
   return 'kind' in child && !('children' in child);
 }
 
+/** Finds the first token in `node`'s subtree (depth-first), or `undefined` for a childless node. */
+export function firstToken(node: SyntaxNode): Token | undefined {
+  for (const child of node.children) {
+    if (isToken(child)) return child;
+    const found = firstToken(child);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Finds the last token in `node`'s subtree (depth-first), or `undefined` for a childless node. */
+export function lastToken(node: SyntaxNode): Token | undefined {
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    const child = node.children[i];
+    if (isToken(child)) return child;
+    const found = lastToken(child);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 export class SyntaxNode {
   readonly kind: SyntaxKind;
   readonly children: SyntaxChild[];
@@ -34,17 +55,21 @@ export class SyntaxNode {
   constructor(kind: SyntaxKind, children: SyntaxChild[] = []) {
     this.kind = kind;
     this.children = children;
-    // Set parent references
+    // Set parent references — on child nodes, and on child tokens too (a
+    // token's `parent` is what lets a position lookup that already found the
+    // token recover its ancestor chain without a tree walk; see Token.parent).
     for (const child of children) {
-      if (isNode(child)) {
-        child.parent = this;
-      }
+      child.parent = this;
     }
   }
 
-  /** Byte offset of the start of this node (including trivia of first child). */
+  /**
+   * Byte offset of the start of this node (including trivia of first child).
+   * Returns `-1` for a childless node — there is no valid position to report,
+   * and `0` would silently collide with real content at the start of the file.
+   */
   get pos(): number {
-    if (this.children.length === 0) return 0;
+    if (this.children.length === 0) return -1;
     const first = this.children[0];
     if (isToken(first)) {
       return first.leadingTrivia.length > 0 ? first.leadingTrivia[0].pos : first.pos;
@@ -52,9 +77,12 @@ export class SyntaxNode {
     return first.pos;
   }
 
-  /** Byte offset just past the end of this node (including trivia of last child). */
+  /**
+   * Byte offset just past the end of this node (including trivia of last child).
+   * Returns `-1` for a childless node — see `pos`.
+   */
   get end(): number {
-    if (this.children.length === 0) return 0;
+    if (this.children.length === 0) return -1;
     const last = this.children[this.children.length - 1];
     if (isToken(last)) {
       return last.trailingTrivia.length > 0
@@ -62,6 +90,32 @@ export class SyntaxNode {
         : last.end;
     }
     return last.end;
+  }
+
+  /**
+   * 0-based line number of the start of this node (including trivia of first
+   * child). Returns `-1` for a childless node.
+   */
+  get line(): number {
+    if (this.children.length === 0) return -1;
+    const first = this.children[0];
+    if (isToken(first)) {
+      return first.leadingTrivia.length > 0 ? first.leadingTrivia[0].line : first.line;
+    }
+    return first.line;
+  }
+
+  /**
+   * 0-based column of the start of this node (including trivia of first
+   * child). Returns `-1` for a childless node.
+   */
+  get column(): number {
+    if (this.children.length === 0) return -1;
+    const first = this.children[0];
+    if (isToken(first)) {
+      return first.leadingTrivia.length > 0 ? first.leadingTrivia[0].column : first.column;
+    }
+    return first.column;
   }
 
   /**

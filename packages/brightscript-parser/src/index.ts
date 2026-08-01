@@ -14,7 +14,7 @@ export { tokenize } from './lexer.js';
 
 // CST node types
 export { SyntaxKind } from './syntaxKind.js';
-export { SyntaxNode, isNode, isToken } from './syntaxNode.js';
+export { SyntaxNode, isNode, isToken, firstToken, lastToken } from './syntaxNode.js';
 export type { SyntaxChild } from './syntaxNode.js';
 
 // Parser
@@ -43,7 +43,9 @@ export {
   OptionalChainingExpression, IdentifierExpression, LiteralExpression,
   ArrayLiteral, AALiteral, AAField, ArgumentList,
   ConditionalCompilation, HashConstStatement, HashErrorStatement,
+  ErrorNodeWrapper,
 } from './ast.js';
+export type { ConditionalCompilationBranch } from './ast.js';
 
 // Visitor
 export { walk, findAll } from './visitor.js';
@@ -85,6 +87,13 @@ export { matchesGlob, findMatchingGlob } from './utils/globMatcher.js';
 export { findNodeAtPosition, findTokenAtPosition, getWordAtPosition, escapeRegex } from './utils/position.js';
 export type { NodeAtPosition } from './utils/position.js';
 
+// Position/symbol indexes — build once per parse, reuse across many lookups
+export {
+  buildPositionIndex, findTokenAtPositionIndexed, findNodeAtPositionIndexed,
+  buildSymbolIndex,
+} from './utils/position.js';
+export type { PositionIndex, SymbolIndex } from './utils/position.js';
+
 // BrightScript component catalog (ro* objects, interfaces, methods)
 export {
   BRIGHTSCRIPT_COMPONENTS, BRIGHTSCRIPT_INTERFACES,
@@ -92,21 +101,45 @@ export {
   CATALOG_LAST_VERIFIED,
 } from './catalog/components.js';
 
-// SceneGraph XML parsing (pure functions — no file system)
+// ── SceneGraph XML — lossless CST (mirrors the BrightScript CST above) ──
+
+// XML token/trivia types
+export { XmlTokenKind } from './xml/xmlTokenKind.js';
+export type { XmlToken } from './xml/xmlToken.js';
+export { xmlTokenFullText, xmlTokensToText } from './xml/xmlToken.js';
+export { XmlTriviaKind } from './xml/xmlTrivia.js';
+export type { XmlTrivia } from './xml/xmlTrivia.js';
+
+// XML lexer
+export { xmlTokenize } from './xml/xmlLexer.js';
+
+// XML CST node types
+export { XmlSyntaxKind } from './xml/xmlSyntaxKind.js';
+export { XmlSyntaxNode, isXmlNode, isXmlToken, firstXmlToken, lastXmlToken } from './xml/xmlSyntaxNode.js';
+export type { XmlSyntaxChild } from './xml/xmlSyntaxNode.js';
+
+// XML parser
+export { parseXml } from './xml/xmlParser.js';
+export type { XmlParseResult, XmlParseDiagnostic } from './xml/xmlParser.js';
+
+// Typed XML AST
+export { XmlDocument, XmlElement, XmlAttribute, parseSceneGraphXml } from './xml/xmlAst.js';
+
+// SceneGraph-specific queries over the XML CST (pure functions — no file system)
 export {
   parseXmlScriptUris, parseXmlInterface, parseXmlExtends, parseXmlComponentName,
-  tokenizeXmlInterfaceElements,
-} from './utils/xmlParsing.js';
+  parseComponentTag, tokenizeXmlInterfaceElements,
+} from './xml/sceneGraphQueries.js';
 export type {
   XmlInterfaceField, XmlInterfaceFunction, ParsedXmlInterface,
-  XmlInterfaceElement, XmlInterfaceChunk, TokenizedXmlInterface,
-} from './utils/xmlParsing.js';
+  ComponentTagInfo, XmlInterfaceElement, XmlInterfaceChunk, TokenizedXmlInterface,
+} from './xml/sceneGraphQueries.js';
 
 // ── Analysis modules (for LSP features and advanced linting) ──
 
 // AST-based type inference
-export { inferTypesFromAst, getVariableType } from './analysis/typeInference.js';
-export type { TypeBinding, TypeMap } from './analysis/typeInference.js';
+export { inferTypesFromAst, getVariableType, getVariableTypeInScope } from './analysis/typeInference.js';
+export type { TypeBinding, TypeMap, TypeScopeOwner } from './analysis/typeInference.js';
 
 // Call graph (who calls whom, argument tracking)
 export { buildCallGraph } from './analysis/callGraph.js';
@@ -114,7 +147,9 @@ export type { CallGraph, CallSite, FunctionInfo } from './analysis/callGraph.js'
 
 // Context (m) analysis (m.field tracking, function binding to AAs)
 export { analyzeContext } from './analysis/contextAnalysis.js';
-export type { ContextAnalysis, ContextField, FunctionBinding, FunctionContext } from './analysis/contextAnalysis.js';
+export type {
+  ContextAnalysis, ContextField, FunctionBinding, InlineAAFunction, DotAssignedFunction, FunctionContext,
+} from './analysis/contextAnalysis.js';
 
 // Symbol info (rich hover/definition data for builtins and user functions)
 export { getSymbolInfo } from './analysis/symbolInfo.js';

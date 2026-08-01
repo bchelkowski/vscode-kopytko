@@ -1,8 +1,11 @@
 import { expect } from 'chai';
 import {
-  parse, inferTypesFromAst, getVariableType,
+  parse, inferTypesFromAst, getVariableType, getVariableTypeInScope,
+  buildScopes, findScopeAtLine,
   buildCallGraph, analyzeContext, getSymbolInfo,
   findNodeAtPosition, findTokenAtPosition, getWordAtPosition, escapeRegex,
+  buildPositionIndex, findTokenAtPositionIndexed, findNodeAtPositionIndexed,
+  buildSymbolIndex,
   parseXmlScriptUris, parseXmlInterface, parseXmlExtends, parseXmlComponentName,
   tokenizeXmlInterfaceElements,
   findComponent, findBuiltin, getComponentMethods, matchesGlob, findMatchingGlob,
@@ -44,6 +47,101 @@ describe('Type Inference', () => {
     const r = parse('function foo()\n  x = 1\n  x = CreateObject("roArray", 5, true)\nend function');
     const types = inferTypesFromAst(r.root);
     expect(getVariableType(types, 'x')).to.equal('roArray');
+  });
+
+  it('infers a return-type binding from a same-file function call', () => {
+    const r = parse('function makeThing() as String\n  return "x"\nend function\nsub main()\n  y = makeThing()\nend sub');
+    const types = inferTypesFromAst(r.root);
+    expect(getVariableType(types, 'y')).to.equal('String');
+  });
+
+  it('infers a designator binding from an identifier suffix', () => {
+    const r = parse('sub main()\n  total% = 1\nend sub');
+    const types = inferTypesFromAst(r.root);
+    expect(getVariableType(types, 'total%')).to.equal('Integer');
+  });
+
+  it('infers a designator type on a parameter with no `as` clause', () => {
+    const r = parse('sub main(name$)\nend sub');
+    const types = inferTypesFromAst(r.root);
+    expect(getVariableType(types, 'name$')).to.equal('String');
+  });
+
+  describe('getVariableTypeInScope', () => {
+    it('does not let two functions\' same-named locals collide', () => {
+      const src = [
+        'sub a()',
+        '  x = CreateObject("roUrlTransfer")',
+        'end sub',
+        'sub b()',
+        '  x = 42',
+        'end sub',
+      ].join('\n');
+      const r = parse(src);
+      const types = inferTypesFromAst(r.root);
+      const fileScope = buildScopes(r.root);
+
+      const scopeA = fileScope.children[0];
+      const scopeB = fileScope.children[1];
+      expect(scopeA.ownerName).to.equal('a');
+      expect(scopeB.ownerName).to.equal('b');
+
+      expect(getVariableTypeInScope(types, 'x', scopeA)).to.equal('roUrlTransfer');
+      expect(getVariableTypeInScope(types, 'x', scopeB)).to.equal('Integer');
+    });
+
+    it('resolves a local using the line at the call site via findScopeAtLine', () => {
+      const src = [
+        'sub a()',
+        '  x = "in a"',
+        'end sub',
+        'sub b()',
+        '  x = 7',
+        '  y = x',
+        'end sub',
+      ].join('\n');
+      const r = parse(src);
+      const types = inferTypesFromAst(r.root);
+      const fileScope = buildScopes(r.root);
+      const scopeAtLine5 = findScopeAtLine(fileScope, 5); // `y = x` inside sub b()
+      expect(getVariableTypeInScope(types, 'x', scopeAtLine5)).to.equal('Integer');
+    });
+
+    it('never resolves an m-context field for a plain variable lookup', () => {
+      const src = 'sub init()\n  count = "local"\n  m.count = 1\nend sub';
+      const r = parse(src);
+      const types = inferTypesFromAst(r.root);
+      const fileScope = buildScopes(r.root);
+      const initScope = fileScope.children[0];
+      // Without scope-awareness this could return 'Integer' from m.count —
+      // the whole point of scopeOwner is that it can't.
+      expect(getVariableTypeInScope(types, 'count', initScope)).to.equal('String');
+    });
+
+    it('sees an outer function\'s locals from a nested function expression (closure)', () => {
+      const src = [
+        'sub outer()',
+        '  x = CreateObject("roArray", 0, true)',
+        '  inner = function()',
+        '    y = x',
+        '  end function',
+        'end sub',
+      ].join('\n');
+      const r = parse(src);
+      const types = inferTypesFromAst(r.root);
+      const fileScope = buildScopes(r.root);
+      const outerScope = fileScope.children[0];
+      const innerScope = outerScope.children[0];
+      expect(getVariableTypeInScope(types, 'x', innerScope)).to.equal('roArray');
+    });
+
+    it('returns undefined for a name with no in-scope binding', () => {
+      const r = parse('sub a()\n  x = 1\nend sub\nsub b()\nend sub');
+      const types = inferTypesFromAst(r.root);
+      const fileScope = buildScopes(r.root);
+      expect(getVariableTypeInScope(types, 'x', fileScope.children[1])).to.be.undefined;
+      expect(getVariableTypeInScope(types, 'doesNotExist', fileScope.children[0])).to.be.undefined;
+    });
   });
 });
 
@@ -133,6 +231,57 @@ describe('Context Analysis', () => {
     expect(ctx.functionBindings[0].functionName).to.equal('mycallback');
   });
 
+  it('detects an inline function assigned via dot (obj.method = function() ... end function)', () => {
+    // Mixed-case enclosing function name — enclosingFunction must preserve
+    // original casing (it's a display name), unlike the internal lowercased
+    // functionStack used for scope/lookup purposes elsewhere in this module.
+    const src = 'sub Init()\n  obj.onLoad = function()\n    return 1\n  end function\nend sub';
+    const r = parse(src);
+    const ctx = analyzeContext(r.root);
+    expect(ctx.dotAssignedFunctions).to.have.length(1);
+    const f = ctx.dotAssignedFunctions[0];
+    expect(f.aaName).to.equal('obj');
+    expect(f.fieldName).to.equal('onLoad');
+    expect(f.enclosingFunction).to.equal('Init');
+  });
+
+  it('detects an inline AA-literal function with line/column/enclosingFunction', () => {
+    const src = 'sub Init()\n  obj = {\n    onLoad: function()\n      return 1\n    end function\n  }\nend sub';
+    const r = parse(src);
+    const ctx = analyzeContext(r.root);
+    expect(ctx.inlineAAFunctions).to.have.length(1);
+    const f = ctx.inlineAAFunctions[0];
+    expect(f.aaFieldName).to.equal('onload');
+    expect(f.aaFieldNameOriginal).to.equal('onLoad');
+    expect(f.enclosingFunction).to.equal('Init');
+  });
+
+  it('strips quotes from a quoted AA-literal function key', () => {
+    const src = 'obj = {\n  "onLoad": function()\n  end function\n}';
+    const r = parse(src);
+    const ctx = analyzeContext(r.root);
+    expect(ctx.inlineAAFunctions[0].aaFieldNameOriginal).to.equal('onLoad');
+  });
+
+  it('detects an inline function assigned to m (the standard SceneGraph event-handler pattern)', () => {
+    const src = 'sub init()\n  m.onKeyEvent = function(key, press)\n    return true\n  end function\nend sub';
+    const r = parse(src);
+    const ctx = analyzeContext(r.root);
+    expect(ctx.dotAssignedFunctions).to.have.length(1);
+    expect(ctx.dotAssignedFunctions[0].aaName).to.equal('m');
+    expect(ctx.dotAssignedFunctions[0].fieldName).to.equal('onKeyEvent');
+  });
+
+  it('does not confuse a dot-assigned inline function with a named-function binding', () => {
+    const src = 'sub init()\n  a.handler = existingFn\n  b.handler = function()\n  end function\nend sub';
+    const r = parse(src);
+    const ctx = analyzeContext(r.root);
+    expect(ctx.functionBindings).to.have.length(1);
+    expect(ctx.functionBindings[0].aaName).to.equal('a');
+    expect(ctx.dotAssignedFunctions).to.have.length(1);
+    expect(ctx.dotAssignedFunctions[0].aaName).to.equal('b');
+  });
+
   it('infers simple types for m fields', () => {
     const r = parse('sub init()\n  m.name = "test"\n  m.active = true\nend sub');
     const ctx = analyzeContext(r.root);
@@ -161,6 +310,33 @@ describe('Context Analysis', () => {
     expect(fieldsByName.get('after')).to.equal('outer');
     expect(fieldsByName.get('top')).to.equal('');
     expect(ctx.getFieldsInFunction('outer').map(f => f.name)).to.deep.equal(['before', 'after']);
+  });
+
+  it("infers 'aa' invocationStyle for a function bound as an AA field", () => {
+    const r = parse('function myCallback()\n  return 1\nend function\nsub init()\n  obj.handler = myCallback\nend sub');
+    const ctx = analyzeContext(r.root);
+    const fc = ctx.getFunctionContext('myCallback');
+    expect(fc).to.exist;
+    expect(fc!.invocationStyle).to.equal('aa');
+    expect(fc!.aaOwner).to.equal('obj');
+  });
+
+  it("infers 'standalone' invocationStyle for a directly-called bare function", () => {
+    const r = parse('function helper()\n  return 1\nend function\nsub main()\n  x = helper()\nend sub');
+    const ctx = analyzeContext(r.root);
+    expect(ctx.getFunctionContext('helper')!.invocationStyle).to.equal('standalone');
+  });
+
+  it("falls back to 'unknown' when a function is never called in-file (e.g. an XML-bound component callback)", () => {
+    const r = parse('sub init()\n  m.top.text = "hi"\nend sub');
+    const ctx = analyzeContext(r.root);
+    expect(ctx.getFunctionContext('init')!.invocationStyle).to.equal('unknown');
+  });
+
+  it('does not confuse a method call (obj.helper()) with a standalone call', () => {
+    const r = parse('function helper()\n  return 1\nend function\nsub main()\n  x = obj.helper()\nend sub');
+    const ctx = analyzeContext(r.root);
+    expect(ctx.getFunctionContext('helper')!.invocationStyle).to.equal('unknown');
   });
 });
 
@@ -192,6 +368,19 @@ describe('Symbol Info', () => {
   it('returns null for unknown symbol', () => {
     const info = getSymbolInfo('nonexistent', parse('x = 1').root);
     expect(info).to.be.null;
+  });
+
+  it('finds a method call (obj.add()) as a reference, not just bare identifiers', () => {
+    const r = parse('function add(a, b)\n  return a + b\nend function\nsub main()\n  x = obj.add(1, 2)\nend sub');
+    const info = getSymbolInfo('add', r.root);
+    expect(info!.references.length).to.equal(1);
+  });
+
+  it('does not count an @attr access as a reference', () => {
+    const r = parse('function width(n)\n  return n\nend function\nx = node@width');
+    const info = getSymbolInfo('width', r.root);
+    // node@width is an XML attribute access, not a call to the `width` function.
+    expect(info!.references.length).to.equal(0);
   });
 });
 
@@ -231,6 +420,103 @@ describe('Position Utilities', () => {
 
   it('escapeRegex escapes special chars', () => {
     expect(escapeRegex('a.b*c')).to.equal('a\\.b\\*c');
+  });
+
+  it('findNodeAtPosition resolves a position inside a leading-trivia comment', () => {
+    const r = parse('  \' @import foo.brs\nx = 1');
+    // Column 5 lands inside "@import" in the tick comment on line 0.
+    const result = findNodeAtPosition(r.root, 0, 5);
+    expect(result).to.exist;
+    expect(result!.trivia).to.exist;
+    expect(result!.trivia!.text).to.equal("' @import foo.brs");
+  });
+
+  it('findNodeAtPosition resolves a position inside a trailing-trivia comment', () => {
+    const r = parse("x = 1 ' trailing note");
+    // Column 9 lands inside "trailing" in the same-line comment after `1`.
+    const result = findNodeAtPosition(r.root, 0, 9);
+    expect(result).to.exist;
+    expect(result!.trivia).to.exist;
+    expect(result!.trivia!.text).to.equal("' trailing note");
+  });
+
+  it('findNodeAtPosition returns no trivia hit outside any comment', () => {
+    const r = parse('x = 1');
+    const result = findNodeAtPosition(r.root, 0, 0);
+    expect(result).to.exist;
+    expect(result!.trivia).to.be.undefined;
+  });
+
+  it('SyntaxNode exposes line/column of its first token', () => {
+    const r = parse('x = 1\ny = 2');
+    const secondStmt = r.root.childNodes[1];
+    expect(secondStmt.line).to.equal(1);
+    expect(secondStmt.column).to.equal(0);
+  });
+});
+
+describe('Indexed position lookups', () => {
+  const src = [
+    'function add(a, b)',
+    '  ' + "' a helper comment",
+    '  return a + b',
+    'end function',
+  ].join('\n');
+
+  it('findTokenAtPositionIndexed agrees with findTokenAtPosition', () => {
+    const r = parse(src);
+    const index = buildPositionIndex(r.root);
+    // Every token position in the file should agree between both lookups.
+    for (const t of index.tokens) {
+      const direct = findTokenAtPosition(r.root, t.line, t.column);
+      const indexed = findTokenAtPositionIndexed(index, t.line, t.column);
+      expect(indexed?.pos, `token "${t.text}" at ${t.line}:${t.column}`).to.equal(direct?.pos);
+    }
+  });
+
+  it('findNodeAtPositionIndexed returns the same ancestor chain as findNodeAtPosition', () => {
+    const r = parse(src);
+    const index = buildPositionIndex(r.root);
+    // Column of `a + b`'s `a` on line 2 ("  return a + b").
+    const line = 2, column = 9;
+    const direct = findNodeAtPosition(r.root, line, column);
+    const indexed = findNodeAtPositionIndexed(index, line, column);
+    expect(indexed).to.exist;
+    expect(indexed!.token?.text).to.equal(direct!.token?.text);
+    expect(indexed!.ancestors.map(a => a.kind)).to.deep.equal(direct!.ancestors.map(a => a.kind));
+  });
+
+  it('findNodeAtPositionIndexed resolves a leading-trivia comment like findNodeAtPosition does', () => {
+    const r = parse(src);
+    const index = buildPositionIndex(r.root);
+    // Column inside "helper" in the comment on line 1.
+    const line = 1, column = 6;
+    const direct = findNodeAtPosition(r.root, line, column);
+    const indexed = findNodeAtPositionIndexed(index, line, column);
+    expect(indexed?.trivia?.text).to.equal(direct?.trivia?.text);
+    expect(indexed?.trivia?.text).to.equal("' a helper comment");
+  });
+
+  it('findNodeAtPositionIndexed returns null off the end of the file', () => {
+    const r = parse('x = 1');
+    const index = buildPositionIndex(r.root);
+    expect(findNodeAtPositionIndexed(index, 99, 0)).to.be.null;
+  });
+
+  it('buildSymbolIndex finds a function by name in O(1)', () => {
+    const r = parse('function add(a, b)\n  return a + b\nend function\nfunction subtract(a, b)\n  return a - b\nend function');
+    const index = buildSymbolIndex(r.root);
+    expect(index.functions.has('add')).to.be.true;
+    expect(index.functions.has('subtract')).to.be.true;
+    expect(index.functions.get('add')?.kind).to.exist;
+    expect(index.functions.has('nonexistent')).to.be.false;
+  });
+
+  it('buildSymbolIndex finds a nested named function too', () => {
+    const r = parse('sub outer()\n  function inner()\n    return 1\n  end function\nend sub');
+    const index = buildSymbolIndex(r.root);
+    expect(index.functions.has('outer')).to.be.true;
+    expect(index.functions.has('inner')).to.be.true;
   });
 });
 

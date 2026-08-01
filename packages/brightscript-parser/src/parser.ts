@@ -162,8 +162,30 @@ class Parser {
     if (this.check(kind)) return this.advance();
     const tok = this.peek();
     this.error(message ?? `Expected ${kind} but found ${tok.kind}`, tok);
-    // Return the current token as-is for error recovery (don't advance)
-    return tok;
+    // Synthesize a zero-width missing token instead of returning the current
+    // (unconsumed) one. The caller attaches whatever expect() returns to the
+    // tree; since the real token isn't advanced past, every subsequent
+    // expect()/consume() call that also sees it as "current" would otherwise
+    // attach the SAME Token object again, duplicating its text every time
+    // getText() is called. A missing token carries no text, so it round-trips
+    // as nothing and the real token is attached exactly once, wherever it is
+    // eventually consumed.
+    return this.makeMissingToken(kind, tok);
+  }
+
+  /** A synthetic zero-width token used in place of a required-but-absent token. */
+  private makeMissingToken(kind: TokenKind, at: Token): Token {
+    return {
+      kind,
+      text: '',
+      pos: at.pos,
+      end: at.pos,
+      line: at.line,
+      column: at.column,
+      leadingTrivia: [],
+      trailingTrivia: [],
+      isMissing: true,
+    };
   }
 
   private consume(kind: TokenKind): Token | null {
@@ -221,6 +243,7 @@ class Parser {
     const children: SyntaxChild[] = [];
 
     while (!this.isAtEnd()) {
+      const beforePos = this.current;
       const stmt = this.parseStatement();
       if (stmt) children.push(stmt);
 
@@ -228,9 +251,13 @@ class Parser {
       const term = this.consumeTerminator();
       if (term) children.push(term);
 
-      // Safety: if we didn't make progress, skip one token
-      if (!this.isAtEnd() && children.length === 0) {
-        children.push(this.makeErrorNode([this.advance()]));
+      // Safety: if we didn't make progress, resync to the next line.
+      if (this.current === beforePos) {
+        if (!this.isAtEnd()) {
+          children.push(this.recoverToErrorNode());
+        } else {
+          break;
+        }
       }
     }
 
@@ -516,7 +543,7 @@ class Parser {
       // Safety: prevent infinite loop
       if (this.current === beforePos) {
         if (!this.isAtEnd() && !isBlockEnder(this.peekKind())) {
-          into.push(this.makeErrorNode([this.advance()]));
+          into.push(this.recoverToErrorNode());
         } else {
           break;
         }
@@ -766,8 +793,22 @@ class Parser {
     const children: SyntaxChild[] = [];
     children.push(this.advance()); // catch
 
-    // exception variable name (simple identifier only per Roku docs)
-    children.push(this.expect(TokenKind.Identifier, 'Expected exception variable name'));
+    // exception variable name — bare (`catch e`) or parenthesized (`catch (e)`).
+    // Roku's own docs only show the bare form, but parenthesized shows up
+    // often enough in the wild (defensive/BrighterScript-influenced style)
+    // that treating it as a real parse error just to recover from it one
+    // token at a time isn't worth it — accept both.
+    if (this.check(TokenKind.LeftParen)) {
+      children.push(this.advance()); // (
+      children.push(this.expect(TokenKind.Identifier, 'Expected exception variable name'));
+      if (this.check(TokenKind.RightParen)) {
+        children.push(this.advance()); // )
+      } else {
+        this.error('Expected ")"', this.peek());
+      }
+    } else {
+      children.push(this.expect(TokenKind.Identifier, 'Expected exception variable name'));
+    }
 
     // catch body
     this.parseBodyStatements(children);
@@ -792,16 +833,18 @@ class Parser {
   private parsePrintStatement(): SyntaxNode {
     const children: SyntaxChild[] = [this.advance()]; // print | ?
 
-    // Print arguments (separated by ; or ,)
+    // Print arguments — separated by `;` (no spacing), `,` (tab zone), or by
+    // nothing at all: adjacent expressions with just whitespace between them
+    // are also valid (`print tab(5) "hello"` — see docs/syntax-reference.md's
+    // PRINT examples). An explicit `;`/`,` is consumed as its own child; with
+    // no separator token present, the loop's own top condition (same line,
+    // not a block-ender, not EOF) decides whether another argument follows.
     while (!this.isAtEnd() && !isBlockEnder(this.peekKind())
            && this.isOnSameLine()) {
       children.push(this.nodeFromExpr(this.parseExpression()));
 
-      // Separator: ; or ,
       if (this.match(TokenKind.Semicolon, TokenKind.Comma)) {
         children.push(this.advance());
-      } else {
-        break;
       }
     }
 
@@ -931,7 +974,9 @@ class Parser {
       if (this.current === beforePos) {
         if (!this.isAtEnd()
             && !this.match(TokenKind.HashElseIf, TokenKind.HashElse, TokenKind.HashEndIf)) {
-          into.push(this.makeErrorNode([this.advance()]));
+          into.push(this.recoverToErrorNode(
+            k => k === TokenKind.HashElseIf || k === TokenKind.HashElse || k === TokenKind.HashEndIf,
+          ));
         } else {
           break;
         }
@@ -1034,23 +1079,91 @@ class Parser {
 
   /**
    * Continues parsing binary operators after a left-hand side has already
-   * been parsed as a postfix expression. Used when we initially parsed for
-   * assignment but found no `=`, and the expression continues with operators.
+   * been parsed as a postfix expression (`parseAssignmentLeftHandSide` calls
+   * `parsePostfixExpression` directly, skipping the exponentiation/unary
+   * levels above it). Used when we initially parsed for assignment but found
+   * no `=`, and the expression continues with operators — e.g. a bare
+   * `a + b * c` in statement position.
+   *
+   * Re-enters the real precedence chain (see `parseExpression`'s doc comment)
+   * one level at a time, seeded with `left` instead of re-parsing it, rather
+   * than folding every remaining operator left-to-right at equal precedence —
+   * the previous version built `(a + b) * c` for `a + b * c`, which is wrong.
    */
   private continueAsBinaryExpression(left: SyntaxChild): SyntaxChild {
-    // Check for binary operators and continue parsing
-    while (!this.isAtEnd() && this.isOnSameLine() && !this.check(TokenKind.Colon)
-           && !isBlockEnder(this.peekKind())) {
-      const kind = this.peekKind();
-      if (COMPARISON_OPS.has(kind) || ADDITIVE_OPS.has(kind) || MULTIPLICATIVE_OPS.has(kind)
-          || SHIFT_OPS.has(kind) || kind === TokenKind.Caret
-          || kind === TokenKind.And || kind === TokenKind.Or) {
-        const op = this.advance();
-        const right = this.parseUnaryExpression();
-        left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
-      } else {
-        break;
-      }
+    left = this.continueExponentiation(left);
+    left = this.continueMultiplicative(left);
+    left = this.continueAdditive(left);
+    left = this.continueShift(left);
+    left = this.continueComparison(left);
+    // NOT has no continuation form — it's a unary prefix operator, never
+    // something that follows an already-parsed left-hand side.
+    left = this.continueAnd(left);
+    left = this.continueOr(left);
+    return left;
+  }
+
+  private continueExponentiation(left: SyntaxChild): SyntaxChild {
+    // Right-associative, so this is an `if`, not a `while` — matches
+    // parseExponentiationExpression.
+    if (this.check(TokenKind.Caret)) {
+      const op = this.advance();
+      const right = this.parseExponentiationExpression();
+      return new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
+    }
+    return left;
+  }
+
+  private continueMultiplicative(left: SyntaxChild): SyntaxChild {
+    while (MULTIPLICATIVE_OPS.has(this.peekKind())) {
+      const op = this.advance();
+      const right = this.parseUnaryExpression();
+      left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
+    }
+    return left;
+  }
+
+  private continueAdditive(left: SyntaxChild): SyntaxChild {
+    while (ADDITIVE_OPS.has(this.peekKind())) {
+      const op = this.advance();
+      const right = this.parseMultiplicativeExpression();
+      left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
+    }
+    return left;
+  }
+
+  private continueShift(left: SyntaxChild): SyntaxChild {
+    while (SHIFT_OPS.has(this.peekKind())) {
+      const op = this.advance();
+      const right = this.parseAdditiveExpression();
+      left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
+    }
+    return left;
+  }
+
+  private continueComparison(left: SyntaxChild): SyntaxChild {
+    while (COMPARISON_OPS.has(this.peekKind())) {
+      const op = this.advance();
+      const right = this.parseShiftExpression();
+      left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
+    }
+    return left;
+  }
+
+  private continueAnd(left: SyntaxChild): SyntaxChild {
+    while (this.check(TokenKind.And)) {
+      const op = this.advance();
+      const right = this.parseNotExpression();
+      left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
+    }
+    return left;
+  }
+
+  private continueOr(left: SyntaxChild): SyntaxChild {
+    while (this.check(TokenKind.Or)) {
+      const op = this.advance();
+      const right = this.parseAndExpression();
+      left = new SyntaxNode(SyntaxKind.BinaryExpression, [this.nodeFromExpr(left), op, this.nodeFromExpr(right)]);
     }
     return left;
   }
@@ -1457,6 +1570,22 @@ class Parser {
 
   private makeErrorNode(tokens: Token[]): SyntaxNode {
     return new SyntaxNode(SyntaxKind.ErrorNode, tokens);
+  }
+
+  /**
+   * Panic-mode resync: consumes tokens into a single ErrorNode until a safe
+   * resumption point — the start of a new source line, a block-ending
+   * keyword, EOF, or a caller-supplied stop condition. Used by the
+   * no-progress fallbacks so a run of garbage on one line becomes one
+   * ErrorNode instead of a chain of single-token ones.
+   */
+  private recoverToErrorNode(extraStop?: (kind: TokenKind) => boolean): SyntaxNode {
+    const tokens: Token[] = [this.advance()];
+    while (!this.isAtEnd() && !isBlockEnder(this.peekKind()) && !this.isAfterNewline()
+           && !(extraStop && extraStop(this.peekKind()))) {
+      tokens.push(this.advance());
+    }
+    return this.makeErrorNode(tokens);
   }
 }
 

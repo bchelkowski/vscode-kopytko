@@ -16,7 +16,6 @@
 import { SyntaxNode, isNode, isToken } from './syntaxNode.js';
 import { SyntaxKind } from './syntaxKind.js';
 import { TokenKind } from './tokenKind.js';
-import type { Token } from './token.js';
 
 export interface Declaration {
   /** The declared name (original casing). */
@@ -400,12 +399,10 @@ function collectForEachVariable(node: SyntaxNode, scope: Scope): void {
 }
 
 function collectCatchVariable(node: SyntaxNode, scope: Scope): void {
-  // Try direct child first (catch e)
-  let nameToken = node.findToken(TokenKind.Identifier);
-  // Handle parenthesized syntax (catch (e)) — identifier is nested deeper
-  if (!nameToken) {
-    nameToken = findTokenDeep(node, TokenKind.Identifier);
-  }
+  // `catch e` and `catch (e)` both parse with the identifier as a direct
+  // child now (parseCatchClause accepts both forms) — no need to search
+  // deeper into a leftover `(e)` grouping expression from a parse error.
+  const nameToken = node.findToken(TokenKind.Identifier);
   if (nameToken && !scope.declarations.has(nameToken.text.toLowerCase())) {
     scope.declarations.set(nameToken.text.toLowerCase(), {
       name: nameToken.text,
@@ -416,19 +413,6 @@ function collectCatchVariable(node: SyntaxNode, scope: Scope): void {
       node,
     });
   }
-}
-
-/** Recursively find the first token of the given kind in the subtree. */
-function findTokenDeep(node: SyntaxNode, kind: TokenKind): Token | undefined {
-  for (const child of node.children) {
-    if (isToken(child)) {
-      if (child.kind === kind) return child;
-    } else if (isNode(child)) {
-      const found = findTokenDeep(child, kind);
-      if (found) return found;
-    }
-  }
-  return undefined;
 }
 
 function collectDimVariable(node: SyntaxNode, scope: Scope): void {

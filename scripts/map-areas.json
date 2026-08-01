@@ -74,7 +74,8 @@
   "packages/brightscript-parser/src": "Lexer, CST, typed AST, and diagnostics — the single source of truth for per-file structural facts.",
   "packages/brightscript-parser/src/analysis": "Scope and semantic analysis over the AST: call graph, context, symbols, type inference.",
   "packages/brightscript-parser/src/catalog": "Static BrightScript catalogs: built-ins, ro* components, SceneGraph nodes, casing, numeric literals.",
-  "packages/brightscript-parser/src/utils": "Parser-side helpers: glob matching, position math, XML parsing.",
+  "packages/brightscript-parser/src/utils": "Parser-side helpers: glob matching, position/offset math and indexes.",
+  "packages/brightscript-parser/src/xml": "Lossless SceneGraph XML lexer, CST, typed AST, and query layer — the XML counterpart to the BrightScript CST above.",
 
   "packages/formatter/bin": "kopytko-format CLI entry.",
   "packages/formatter/src": "Formatter engine, configuration, and casing rules.",

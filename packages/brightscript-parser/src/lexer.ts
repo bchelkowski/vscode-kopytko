@@ -94,14 +94,18 @@ export function tokenize(source: string): Token[] {
 
   function scanWhitespace(): Trivia {
     const start = pos;
+    const startLine = line;
+    const startCol = column;
     while (pos < len && isWhitespace(source[pos])) {
       advance();
     }
-    return { kind: TriviaKind.Whitespace, text: source.slice(start, pos), pos: start, end: pos };
+    return { kind: TriviaKind.Whitespace, text: source.slice(start, pos), pos: start, end: pos, line: startLine, column: startCol };
   }
 
   function scanLineBreak(): Trivia {
     const start = pos;
+    const startLine = line;
+    const startCol = column;
     if (source[pos] === '\r') {
       advance();
       if (pos < len && source[pos] === '\n') {
@@ -110,26 +114,30 @@ export function tokenize(source: string): Token[] {
     } else {
       advance(); // \n
     }
-    return { kind: TriviaKind.LineBreak, text: source.slice(start, pos), pos: start, end: pos };
+    return { kind: TriviaKind.LineBreak, text: source.slice(start, pos), pos: start, end: pos, line: startLine, column: startCol };
   }
 
   function scanTickComment(): Trivia {
     const start = pos;
+    const startLine = line;
+    const startCol = column;
     advance(); // consume '
     while (pos < len && source[pos] !== '\n' && source[pos] !== '\r') {
       advance();
     }
-    return { kind: TriviaKind.Comment, text: source.slice(start, pos), pos: start, end: pos };
+    return { kind: TriviaKind.Comment, text: source.slice(start, pos), pos: start, end: pos, line: startLine, column: startCol };
   }
 
   function scanRemComment(): Trivia {
     const start = pos;
+    const startLine = line;
+    const startCol = column;
     // consume 'rem' — we already know it matches
     advance(); advance(); advance();
     while (pos < len && source[pos] !== '\n' && source[pos] !== '\r') {
       advance();
     }
-    return { kind: TriviaKind.RemComment, text: source.slice(start, pos), pos: start, end: pos };
+    return { kind: TriviaKind.RemComment, text: source.slice(start, pos), pos: start, end: pos, line: startLine, column: startCol };
   }
 
   /**

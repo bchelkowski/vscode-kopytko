@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import {
-  parse, SyntaxKind, wrapNode,
+  parse, SyntaxKind, SyntaxNode, wrapNode,
   SourceFile, FunctionDeclaration, FunctionExpression,
   IfStatement, ForStatement, ForEachStatement, WhileStatement,
   TryStatement, CatchClause,
@@ -8,6 +8,8 @@ import {
   AssignmentStatement, ExpressionStatement,
   BinaryExpression, UnaryExpression, CallExpression, DotExpression,
   IdentifierExpression, LiteralExpression, ArrayLiteral, AALiteral,
+  ConditionalCompilation, HashConstStatement, HashErrorStatement,
+  OptionalChainingExpression, ErrorNodeWrapper,
   walk, findAll, buildScopes, resolve,
 } from '../src/index.js';
 import type { AstVisitor } from '../src/index.js';
@@ -281,6 +283,14 @@ describe('Scope analysis', () => {
     expect(fnScope.declarations.get('e')!.kind).to.equal('catch-variable');
   });
 
+  it('collects a parenthesized catch variable the same way', () => {
+    const r = parse('function foo()\n  try\n    print 1\n  catch (e)\n    print e\n  end try\nend function');
+    const scope = buildScopes(r.root);
+    const fnScope = scope.children[0];
+    expect(fnScope.declarations.has('e')).to.be.true;
+    expect(fnScope.declarations.get('e')!.kind).to.equal('catch-variable');
+  });
+
   it('collects dim variable', () => {
     const r = parse('function foo()\n  dim arr[5]\nend function');
     const scope = buildScopes(r.root);
@@ -329,5 +339,151 @@ describe('Scope analysis', () => {
     const refNames = fnScope.references.map(r => r.nameLower);
     expect(refNames).to.include('a');
     expect(refNames).to.include('x');
+  });
+});
+
+describe('wrapNode caching and getter memoization', () => {
+  it('returns the same wrapper instance for the same SyntaxNode', () => {
+    const r = parse('function foo()\n  return 1\nend function');
+    const stmtNode = r.root.childNodes[0];
+    const a = wrapNode(stmtNode);
+    const b = wrapNode(stmtNode);
+    expect(a).to.equal(b);
+  });
+
+  it('returns the same array reference from a memoized getter on repeated access', () => {
+    const file = parseFile('function foo(a, b)\n  return a + b\nend function');
+    const fn = file.statements[0] as FunctionDeclaration;
+    expect(fn.body).to.equal(fn.body);
+    expect(fn.params).to.equal(fn.params);
+  });
+
+  it('memoizes independently per wrapper instance, not globally', () => {
+    const r1 = parse('x = 1');
+    const r2 = parse('y = 2');
+    const w1 = wrapNode(r1.root.childNodes[0]) as AssignmentStatement;
+    const w2 = wrapNode(r2.root.childNodes[0]) as AssignmentStatement;
+    expect((w1.target as IdentifierExpression).name).to.equal('x');
+    expect((w2.target as IdentifierExpression).name).to.equal('y');
+  });
+});
+
+describe('DotExpression.isAttributeAccess', () => {
+  it('is false for a plain member access', () => {
+    const file = parseFile('x = node.field');
+    const stmt = file.statements[0] as AssignmentStatement;
+    const dot = stmt.value as DotExpression;
+    expect(dot.isAttributeAccess).to.be.false;
+    expect(dot.member).to.equal('field');
+  });
+
+  it('is true for an @attr access', () => {
+    const file = parseFile('x = node@field');
+    const stmt = file.statements[0] as AssignmentStatement;
+    const dot = stmt.value as DotExpression;
+    expect(dot.isAttributeAccess).to.be.true;
+    expect(dot.member).to.equal('field');
+  });
+});
+
+describe('OptionalChainingExpression', () => {
+  it('exposes the member for ?.member', () => {
+    const file = parseFile('x = node?.field');
+    const stmt = file.statements[0] as AssignmentStatement;
+    const opt = stmt.value as OptionalChainingExpression;
+    expect(opt.operator).to.equal('?.');
+    expect(opt.member).to.equal('field');
+    expect(opt.args).to.have.length(0);
+  });
+
+  it('exposes the index expression for ?[index]', () => {
+    const file = parseFile('x = arr?[0]');
+    const stmt = file.statements[0] as AssignmentStatement;
+    const opt = stmt.value as OptionalChainingExpression;
+    expect(opt.operator).to.equal('?[');
+    expect(opt.args).to.have.length(1);
+    expect((opt.args[0] as LiteralExpression).value).to.equal('0');
+  });
+
+  it('exposes call arguments for ?(args)', () => {
+    const file = parseFile('x = fn?(1, 2)');
+    const stmt = file.statements[0] as AssignmentStatement;
+    const opt = stmt.value as OptionalChainingExpression;
+    expect(opt.operator).to.equal('?(');
+    expect(opt.args).to.have.length(2);
+  });
+});
+
+describe('ConditionalCompilation', () => {
+  it('exposes the #if condition and body', () => {
+    const r = parse('#if DEBUG\n  x = 1\n#end if');
+    const cc = wrapNode(r.root.childNodes[0]) as ConditionalCompilation;
+    expect(cc).to.be.instanceOf(ConditionalCompilation);
+    expect((cc.condition as IdentifierExpression).name).to.equal('DEBUG');
+    expect(cc.body).to.have.length(1);
+    expect(cc.elseIfBranches).to.have.length(0);
+    expect(cc.elseBody).to.be.undefined;
+  });
+
+  it('exposes #elseif branches and #else body', () => {
+    const src = '#if A\n  x = 1\n#elseif B\n  x = 2\n#else\n  x = 3\n#end if';
+    const r = parse(src);
+    const cc = wrapNode(r.root.childNodes[0]) as ConditionalCompilation;
+    expect((cc.condition as IdentifierExpression).name).to.equal('A');
+    expect(cc.body).to.have.length(1);
+    expect(cc.elseIfBranches).to.have.length(1);
+    expect((cc.elseIfBranches[0].condition as IdentifierExpression).name).to.equal('B');
+    expect(cc.elseIfBranches[0].body).to.have.length(1);
+    expect(cc.elseBody).to.exist;
+    expect(cc.elseBody).to.have.length(1);
+  });
+});
+
+describe('HashConstStatement / HashErrorStatement', () => {
+  it('exposes the constant name and value', () => {
+    const r = parse('#const DEBUG = true');
+    const stmt = wrapNode(r.root.childNodes[0]) as HashConstStatement;
+    expect(stmt.name).to.equal('DEBUG');
+    expect(stmt.value).to.exist;
+  });
+
+  it('exposes the error message text', () => {
+    const r = parse('#error Something went wrong');
+    const stmt = wrapNode(r.root.childNodes[0]) as HashErrorStatement;
+    expect(stmt.message).to.equal('Something went wrong');
+  });
+});
+
+describe('AstNode.leadingComments', () => {
+  it('finds a tick comment directly above a statement', () => {
+    const file = parseFile("' @import foo.brs\nx = 1");
+    const stmt = file.statements[0];
+    expect(stmt.leadingComments).to.have.length(1);
+    expect(stmt.leadingComments[0].text).to.equal("' @import foo.brs");
+  });
+
+  it('is empty when there is no leading comment', () => {
+    const file = parseFile('x = 1');
+    expect(file.statements[0].leadingComments).to.have.length(0);
+  });
+});
+
+describe('ErrorNodeWrapper', () => {
+  it('wraps an ErrorNode and is exported for instanceof checks', () => {
+    // `~` is not a valid expression start, so it recovers via the
+    // primary-expression fallback (advance + wrap in ErrorNode) — unlike a
+    // missing-but-expected token (e.g. a malformed parameter name), which
+    // the parser now represents as a zero-width missing token, not an
+    // ErrorNode. See the A1 parser.test.ts "error recovery" tests.
+    const r = parse('function foo()\n  ~\nend function');
+    const found: SyntaxNode[] = [];
+    const visit = (n: SyntaxNode): void => {
+      if (n.kind === SyntaxKind.ErrorNode) found.push(n);
+      for (const c of n.childNodes) visit(c);
+    };
+    visit(r.root);
+    expect(found.length).to.be.greaterThan(0);
+    const wrapped = wrapNode(found[0]);
+    expect(wrapped).to.be.instanceOf(ErrorNodeWrapper);
   });
 });
