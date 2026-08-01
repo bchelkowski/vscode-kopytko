@@ -58,7 +58,7 @@
     "d3": "^7.9.0",
     "js-yaml": "^5.2.1",
     "kopytko-brightscript-parser": "^1.4.0",
-    "kopytko-formatter": "^1.2.1",
+    "kopytko-formatter": "^1.2.2",
     "kopytko-linter": "^1.7.3",
     "kopytko-roku-device": "^1.4.0",
     "vscode-languageclient": "^10.1.0",
