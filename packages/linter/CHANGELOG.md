@@ -1,6 +1,17 @@
 # Changelog
 
 
+## [2.0.0] - 2026-08-01
+
+### Breaking Changes
+- Split rules per-file, migrate remaining regex to CST, delete dead code
+
+### Fixed
+- Populate calledWorkwideFuncNames in CLI mode for identifier/unused-function
+
+### Changed
+- Split rules per-file, migrate remaining regex to CST, delete dead code
+
 ## [1.7.3] - 2026-07-31
 
 - Release 1.7.3
