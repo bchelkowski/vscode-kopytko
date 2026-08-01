@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.2.2] - 2026-08-01
+
+### Changed
+- Port catch-paren stripping to a CST pass
+
 ## [1.2.1] - 2026-07-31
 
 - Release 1.2.1
