@@ -708,7 +708,7 @@ Invoked by pressing **F2** (or right-click → **Rename Symbol**) on any user-de
 
 4. For workspace-wide function/sub renames, it uses `WorkspaceFunctionIndex.getFiles()` and cached on-disk file text (`readCachedFileText`) instead of walking the filesystem in the provider. Local variable/parameter renames operate only on the live document's enclosing function body.
 
-5. The target lines are scanned with a word-boundary regex (`\bOldName\b`, case-insensitive). **Every match in scope is replaced** — including the definition line.
+5. Target identifiers are located structurally, not by text pattern: workspace-wide function renames walk each candidate file's CST (`walk(visitIdentifierExpression)`/`visitFunctionDeclaration`) for genuine identifier references, and local variable/parameter renames walk the scope tree (`findDeclaringScope` + `collectRenameTargets`), which also detects shadowing — a same-named variable declared in a nested scope is correctly left untouched. Because both walk the parsed structure rather than scanning raw text, a match inside a string literal or a comment is never renamed.
 
 6. A `WorkspaceEdit` with `changes` grouped by file URI is returned. VS Code applies all edits atomically.
 
@@ -717,14 +717,14 @@ Invoked by pressing **F2** (or right-click → **Rename Symbol**) on any user-de
 | Symbol type | Rename scope |
 |---|---|
 | Top-level function or sub name | Workspace-wide — all `.brs` files in every workspace folder. BrightScript top-level functions are effectively global identifiers, so renames must propagate across all callers. |
-| Local variable or parameter | Innermost enclosing function body in the current file only. Variables are function-scoped in BrightScript; a `count` in `funcA` is entirely unrelated to a `count` in `funcB`. |
+| Local variable or parameter | Innermost enclosing function body in the current file only, respecting closures and shadowing via the scope tree. Variables are function-scoped in BrightScript; a `count` in `funcA` is entirely unrelated to a `count` in `funcB`. |
 
-The provider determines which case applies with the shared `SymbolResolver`, using the current file/import scope to check whether the identifier under the cursor is a visible top-level function definition. If it is not, the enclosing function body is found by scanning backwards for the nearest unclosed `function`/`sub` keyword and forwards for the matching `end function`/`end sub`.
+The provider determines which case applies with the shared `SymbolResolver`, using the current file/import scope to check whether the identifier under the cursor is a visible top-level function definition. If it is not, the enclosing scope is found via the parsed scope tree, not a text scan for `function`/`end function`.
 
 **What is NOT renamed:**
 - BrightScript built-in functions (`Abs`, `CreateObject`, …) — `prepareRename` rejects these.
 - Language keywords (`for`, `if`, `function`, …) — `prepareRename` rejects these.
-- Occurrences inside string literals or comments are renamed (the regex does not distinguish — avoid renaming short identifiers that appear as words in comments).
+- Occurrences inside string literals or comments — the provider walks the CST, so text that merely looks like the identifier (inside a string, a comment, or as a `.field` member access) is never touched, whether in the current file or across the workspace.
 
 **Implementation:** `BrightScriptRenameProvider` in `src/server/providers/renameProvider.ts`.
 

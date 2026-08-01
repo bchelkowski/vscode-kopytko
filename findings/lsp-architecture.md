@@ -79,7 +79,9 @@ Two things to know before copying this:
 
 Edit `packages/formatter/src/formatter.ts` for inline text/regex passes, or add a file to `packages/formatter/src/cst-passes/` and export it from `cst-passes/index.ts` for structure-aware passes. Run tests with `cd packages/formatter && npm test`.
 
-**Migrating an existing regex pass to CST — this sweep is complete.** All ~20 original regex passes in `formatter.ts` have a verdict: 9 ported to CST (`observeFieldStyle`, `mPrefixStyle`, `fieldAccessConsistency`, `lineCommentPosition`, `trailingCommas`, `parenthesisIfCase`, `stringConcatStyle`, `elseOnNewLine`, `aaThreshold`), 11 investigated and deliberately staying regex (`stripCatchParens`, `paramAlignment` — architecturally blocked by the parse-first rule; `alignAssignments`, `spacing`, `indentation`, `commentWidth`, `blankLines`, `emptyLinesBetweenMethods`, `importSorting`, `splitArrayOpenBracket`, `wrapLongStrings` — already safe, porting buys no correctness gain). See each pass's own comment in `formatter.ts` for its specific reasoning — the patterns below are the general lessons, not a substitute for reading the per-pass rationale.
+**Migrating an existing regex pass to CST — this sweep was complete, then partially reopened.** All ~20 original regex passes in `formatter.ts` have a verdict: 9 ported to CST (`observeFieldStyle`, `mPrefixStyle`, `fieldAccessConsistency`, `lineCommentPosition`, `trailingCommas`, `parenthesisIfCase`, `stringConcatStyle`, `elseOnNewLine`, `aaThreshold`), 11 investigated and deliberately staying regex (`stripCatchParens`, `paramAlignment` — architecturally blocked by the parse-first rule; `alignAssignments`, `spacing`, `indentation`, `commentWidth`, `blankLines`, `emptyLinesBetweenMethods`, `importSorting`, `splitArrayOpenBracket`, `wrapLongStrings` — already safe, porting buys no correctness gain). See each pass's own comment in `formatter.ts` for its specific reasoning — the patterns below are the general lessons, not a substitute for reading the per-pass rationale.
+
+**`stripCatchParens`'s blocking condition is gone — it has not been re-ported.** The parser grammar work below added parenthesized `catch (e)` support (`parseCatchClause` in `parser.ts`), so `CatchClause` is no longer a guaranteed parse error and the "check it can actually parse first" blocker no longer applies to that one pass. `paramAlignment`'s blocker (multi-line parameter lists are a genuine Roku compile error, verified against real device behavior, not a parser gap) is unchanged and still architecturally blocked. Porting `stripCatchParens` to CST was noted as a now-available follow-up, not committed — do not assume it happened just because the grammar gap closed.
 
 - **Check it can actually parse first.** A pass that exists to *repair* invalid syntax can never become a CST pass: every CST pass bails out and returns the source unchanged whenever `parseResult.diagnostics.length > 0` (`runCstPasses`/`runCstOnLines` in `formatter.ts`/`infrastructure.ts`). Two confirmed cases: `stripCatchParens` (`CatchClause` has no paren support at all, so `catch (e)` is a real parse error) and `paramAlignment` (`parseParameterList` requires every parameter on the opening paren's line *unless* a default value itself contains a multi-line AA/array/function literal — the plain wrapped-params case the pass exists to reformat produces the real error "Function parameters must be on one line"). Verify empirically with `parse(source).diagnostics` before assuming a rule is portable — don't infer it from the regex alone.
 - **Not every safe-to-port pass is worth porting — check what string-literal/comment safety the regex already has for itself before assuming CST would improve it.** `alignAssignments`, `spacing`, and `indentation` are all syntax-safe already: `findSimpleAssignment` tracks strings/bracket depth itself; `spacing` splits string-literal segments out via `splitCodeSegments` before any rule runs and re-walks the assembled line with its own `inString` tracker for the AA-brace/comma rules; `indentation`'s helpers (`isDeindentLine`/`isIndentLine`, `countInlineIndentChange`, `countNetAnonFunctionOpeners`, `netContainerDepth`) all track strings and comments themselves before counting a bracket or matching a keyword. Porting any of them buys no correctness gain, only "prettier architecture" — and the cost scales with pass size: `alignAssignments` would need to handle every statement-block owner's differently-shaped child list (`SourceFile`, `FunctionDeclaration`/`Expression`, each `IfStatement` branch, `ForStatement`, `WhileStatement`, `TryStatement`/`CatchClause`, ...; see each one's `body` getter in ast.ts); `spacing` (238 lines) and `indentation` (76 lines of stateful bracket/chain/block-depth tracking, the highest blast radius of any pass since every line of every formatted file runs through it) would each mean building something closer to a second printer than an incremental rule migration. Weigh implementation cost against actual safety gain, not just "is this pass regex."
@@ -94,7 +96,88 @@ Edit `packages/formatter/src/formatter.ts` for inline text/regex passes, or add 
 - **Verify an "obvious" bug before writing it into `formatter.ts` or here.** `wrapLongStrings`'s string-boundary regex looked exactly like the kind of escaping bug found elsewhere in this migration (stops at the first `"`, so a string with an embedded `""` looks mishandled) — but empirically running `formatText(..., {verifySyntax: false})` on exactly that input showed it reconstitutes correctly: splitting a string token at any position and re-quoting both sides always produces a valid escape at the seam, because two adjacent literal `"` characters are read as one escaped quote by the lexer regardless of which split-piece each one came from. The real, much smaller effect (length of the unprocessed tail isn't counted toward the wrap-width target) only became clear by testing it, not by reading the regex. A plausible-looking bug is still a claim — check it the same way as a plausible-looking fix.
 - Add both a `formatter.test.ts` section (exercises the *composed* `formatText()` pipeline like the old pass did) and a `cst-passes.test.ts` section (exercises the exported pass function directly, including edge cases the top-level tests don't bother with — case-insensitivity, comment interactions, non-identifier content). The direct tests catch position-math bugs (like the trailing-trivia one above) that the composed tests can mask if the corruption happens to still produce parseable-looking output.
 - **Reordering AA/array members (`associativeArraySort.ts`'s key-sort + Kopytko-template-structuring pass) cannot use a member's own trivia-inclusive `.end` as its span boundary, only its trivia-inclusive `.pos`.** A member's leading trivia is correctly its own (a comment directly above a field belongs to that field and must move with it), but trailing trivia extends up to *whatever token comes next* — for the last member in the original AA that's the closing `}`, so its trivia-inclusive `.end` wrongly absorbs the whitespace between it and `}`. Reordering with that boundary produced `{ a: 1 , b: 2}` instead of `{ a: 1, b: 2 }` (space migrated to the wrong side of the comma, no space before `}`) the first time this was written — caught by a same-line before/after test, not by inspection. Fix: use `rawEnd()` (trivia-*exclusive*) for a member's end. Separately, a comma is not a property of the member it follows — it's a positional separator indifferent to which members end up adjacent — so the pass captures `source.slice(members[i].end, members[i+1].pos)` for each of the original `n-1` gaps once and reuses that same ordered separator list between the *reordered* members, rather than trying to pair each member with "its" comma (which breaks the moment the item that used to be last, with no trailing comma, ends up in the middle of the new order).
-- **XML `<interface>` sorting needed a purpose-built, byte-span-aware tokenizer (`tokenizeXmlInterfaceElements` in `packages/brightscript-parser/src/utils/xmlParsing.ts`) — the pre-existing `parseXmlInterface` in the same file is read-only/regex, with no per-element byte span, so it isn't reusable for edit-based reordering.** No general XML parser was needed either: SceneGraph `<interface>` children are always empty/self-closing `<field>`/`<function>` elements per Roku's docs (no nesting, no text content), so a tokenizer scoped to exactly that shape is sufficient. This lives in the parser package (not `packages/formatter`) per the "would another tool need this?" rule — but `kopytko-formatter`'s dependency on `kopytko-brightscript-parser` is a real pinned npm semver version, not a workspace link, so a new parser export needs a parser publish + formatter dependency bump before it ships for real (`npm link`/a packed tarball is enough for local dev — see `docs/publishing.md`'s publishing order). Formatting the XML itself is registered **client-side only** (`src/client/activation/xmlFormatting.ts`, `vscode.languages.registerDocumentFormattingEditProvider`), deliberately bypassing the language server — the LSP client's static `documentSelector` is `.brs`-only, and a dynamically-registered server-side XML capability (the `typeHierarchyProvider` pattern) would only ever see last-saved-to-disk content, since the client only syncs documents matching that static selector; applying edits computed against stale disk text to a live, unsaved buffer risks corrupting it. A client-side provider reads `document.getText()` directly, sidestepping the sync problem entirely with no LSP protocol changes at all.
+- **XML `<interface>` sorting needed a purpose-built, byte-span-aware tokenizer (`tokenizeXmlInterfaceElements`, now in `packages/brightscript-parser/src/xml/sceneGraphQueries.ts`).** No general XML parser was needed either: SceneGraph `<interface>` children are always empty/self-closing `<field>`/`<function>` elements per Roku's docs (no nesting, no text content), so a tokenizer scoped to exactly that shape is sufficient. This lives in the parser package (not `packages/formatter`) per the "would another tool need this?" rule — but `kopytko-formatter`'s dependency on `kopytko-brightscript-parser` is a real pinned npm semver version, not a workspace link, so a new parser export needs a parser publish + formatter dependency bump before it ships for real (`npm link`/a packed tarball is enough for local dev — see `docs/publishing.md`'s publishing order). Formatting the XML itself is registered **client-side only** (`src/client/activation/xmlFormatting.ts`, `vscode.languages.registerDocumentFormattingEditProvider`), deliberately bypassing the language server — the LSP client's static `documentSelector` is `.brs`-only, and a dynamically-registered server-side XML capability (the `typeHierarchyProvider` pattern) would only ever see last-saved-to-disk content, since the client only syncs documents matching that static selector; applying edits computed against stale disk text to a live, unsaved buffer risks corrupting it. A client-side provider reads `document.getText()` directly, sidestepping the sync problem entirely with no LSP protocol changes at all.
+  > **Update:** `packages/brightscript-parser/src/utils/xmlParsing.ts` (the read-only/regex `parseXmlInterface` referenced above) no longer exists — a full lossless SceneGraph XML CST (`src/xml/`: lexer, parser, typed AST) replaced it, and `tokenizeXmlInterfaceElements` was rebuilt on top of that CST rather than staying its own standalone tokenizer. Byte-for-byte behavior (including this pass's edit-based reordering) is pinned by the existing tests, which passed unchanged through the migration. See the new section below for the full sweep.
+
+---
+
+## Regex → CST/AST sweep — parser, server providers, linter
+
+A repo-wide pass migrated the remaining regex-based code onto the parser's CST/AST, added a
+SceneGraph XML CST, and hardened the parser's own error recovery. What's non-obvious enough to be
+worth recording here (the full plan and per-task rationale is not preserved elsewhere — this is it):
+
+- **Missing-token synthesis, not "return the unconsumed token."** `parser.ts`'s `expect()` used to
+  record a diagnostic and return the *current* token without advancing past it — the caller then
+  attached that same `Token` object into the tree, so a syntax error like `function 123()` produced
+  the token's text 4× over in `getText()`. Round-trip tests only ever used truncated input, which
+  never reached this path, so it went unnoticed. Fixed by synthesizing a zero-width `isMissing: true`
+  token (`pos === end`, empty text) instead of re-attaching the real one. If you add a new `expect()`
+  call site, verify round-trip text on *malformed*, not just truncated, input.
+- **A parser being "error-tolerant" (always produces a tree) does not mean a bad construct's tokens
+  land where you'd expect.** `return x,` — an unexpected trailing comma — cannot be attached to the
+  `ReturnStatement` node (the grammar has nowhere to put it), so it surfaces as an `ErrorNode` in the
+  *next sibling slot* instead. A rule/query that only inspects a node's own last child token (e.g. the
+  original `checkTrailingCommaAst` in the linter) silently misses this — the single most common real
+  case. Fix pattern: after finding the node, get `node.syntax.parent`, find the node's index among
+  `parent.childNodes`, and check whether the *next* sibling's first token is the thing you expected —
+  don't assume "attached to this node" is the only place a nearby token can end up. Same lesson
+  applies to any other "X immediately follows Y" check written against the CST.
+- **The dominant LSP-provider pattern for "where is the cursor" is "nearest preceding token, then walk
+  `.parent`," not `findNodeAtPosition`.** Providers are almost always invoked mid-typing — an unclosed
+  call, a dot-access with nothing after the dot yet — where the cursor position doesn't structurally
+  exist as a token/trivia match, so `findNodeAtPosition` (root-to-deepest, containment-verified) finds
+  nothing. `Token.parent`/`SyntaxNode.parent` back-references (added to support this) turn "find the
+  enclosing X" into an O(depth) walk instead of a fresh O(n) tree search. Every rewritten provider
+  (signature help, completion contexts, receiver-context resolution) converged on this same shape —
+  it's the one to reach for first, not `findNodeAtPosition`, whenever a provider needs "what construct
+  is the user currently inside."
+- **A cache that reads through `lintContext.readFile`/`fsWrapper.readFileSync` must not trust that a
+  "successful" read returned a string.** Real `fs.readFileSync` always either returns a string or
+  throws — but a bare `sinon.stub()` with no matching `.withArgs()` returns `undefined` instead of
+  throwing, and the old code in `packages/linter/src/rules/ast` happened to survive that only because
+  a *different* bug (an accidental catch-all `try/catch` around a whole block) swallowed the resulting
+  crash. Once that surrounding try/catch was removed as part of a narrower fix, `getCachedFunctionDefs`
+  started throwing `TypeError: Cannot read properties of undefined` from inside the parser's tokenizer.
+  Fixed by having `fileParseCache.ts`'s `ensureRecord` treat a non-string "successful" read the same as
+  a thrown one (`typeof text !== 'string' → return undefined`) — defend the cache's own contract,
+  don't rely on whatever accidentally protected it before.
+- **Verify a claimed regex bug reproduces before migrating a hot-path caller off it.** The stated
+  justification for migrating `packages/linter/src/analysis/functionIndex.ts`'s `parseFunctionDefs`
+  to a CST walk was "a commented-out function still gets indexed as real" — but `' function foo()`
+  does not match `/^\s*(?:function|sub)\s+(\w+)\s*\(/i` (the leading `'` blocks `^\s*` from ever
+  reaching `function`), confirmed by actually running the regex, not by reading it. `parseFunctionDefs`
+  is called once per file across the *entire* project + package dependency graph during workspace
+  indexing (`projectIndexer.ts`) — a real, unconditional cost with no reproducing bug to justify it —
+  so it stayed a line-scan. `parseInnerMethodDefs` (AA-method detection, same file) *did* migrate: it
+  has no internal caller at all (pure public API), so the migration cost nothing, even though its own
+  most interesting claimed win (detecting a nested receiver like `m.handlers.onClick = function()`)
+  turned out not to hold either — `analyzeContext()`'s `dotAssignedFunctions` has the identical
+  single-identifier-receiver limitation as the regex it replaced (`contextAnalysis.ts`, `obj instanceof
+  IdentifierExpression`), which is now a pinned regression test rather than a silent gap. Two lessons
+  in one: measure the actual regex before deciding it's broken, and verify a *replacement's* claimed
+  improvement the same way you'd verify the original bug.
+- **SceneGraph XML now has a real lossless CST** (`packages/brightscript-parser/src/xml/`: lexer →
+  `XmlToken`/`XmlTrivia` → parser → `XmlSyntaxNode` → typed AST `XmlDocument`/`XmlElement`/
+  `XmlAttribute` → `sceneGraphQueries.ts`), mirroring the BrightScript lexer/parser's own design
+  (missing-token synthesis on error, ErrorNode panic-mode recovery, byte-accurate spans). It replaced
+  three independently-drifted regex implementations: the extension's old `xmlScriptParser.ts`, the
+  linter's old `analysis/xmlParser.ts`, and the parser package's own `utils/xmlParsing.ts`. All three
+  call sites now import the same functions (`parseXmlScriptUris`, `parseXmlInterface`, `parseXmlExtends`,
+  `parseXmlComponentName`, `parseComponentTag`) from `kopytko-brightscript-parser`, fixing the same
+  latent bugs everywhere at once: single-quoted `uri='...'` (previously only matched by some of the
+  three copies), and a commented-out `<field id="ghost"/>` no longer reported as real (comments are
+  CST trivia, structurally invisible to a query, where every regex copy had zero comment awareness).
+  Filesystem-dependent code (`resolveScriptUri`, `findComponentXml`'s recursive directory walk) stays
+  local to each consumer — the parser package owns per-file structural facts only, never disk I/O,
+  same rule as `kopytko-roku-device` staying Kopytko-ecosystem-unaware.
+- **`packages/linter/src/rules/ast/*.ts` is now fully split — no more `legacyRules.ts` monolith.**
+  Each of the 21 rules lives in its own file (`unreachableCode.ts` was the pre-existing template), and
+  each file duplicates its own tiny local `collectAst()` helper rather than importing a shared one —
+  deliberate, to keep every rule file genuinely self-contained with zero cross-file coupling. When
+  adding a new AST rule, copy the shape of the smallest existing file that's structurally similar
+  (e.g. `createObjectArgs.ts` for a single-visitor rule, `imports.ts` for one with several private
+  helpers) rather than reaching into another rule's file for a helper.
 
 ---
 
@@ -237,6 +320,11 @@ found, so a shallow match never pays for a full subtree walk. `dirWalker.ts`'s `
 every file (it takes a void callback, not a predicate), so routing these through it would force a full
 tree walk on every call — a real regression on a hot, repeatedly-called path. Leave them as-is unless
 `walkTree` grows early-exit support.
+
+`packages/linter/src/analysis/xmlParser.ts` carries a second, independent copy of this exact same
+`findFileInTree`/`findXmlByComponentName`/`findComponentXml` pair — deliberately, not an oversight.
+The linter package cannot depend on the extension's `src/server/`, and the same early-exit/depth-limit
+reasoning applies there too. When one copy's walk strategy changes, check the other.
 
 ---
 

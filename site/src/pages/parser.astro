@@ -307,14 +307,27 @@ const tokenColors: Record<string, string> = {
             ],
           },
           {
-            title: 'Glob & XML utilities',
+            title: 'Glob utilities',
             color: 'amber',
             items: [
               { fn: 'matchesGlob(str, pattern)', ret: 'boolean', desc: 'Test a path string against a glob pattern (supports ** wildcards).' },
               { fn: 'findMatchingGlob(globs, str)', ret: 'string | undefined', desc: 'Return the first glob pattern from an array that matches the given string.' },
-              { fn: 'parseXmlScriptUris(xml)', ret: 'string[]', desc: 'Extract all <script uri="…"> URIs from a SceneGraph component XML string.' },
-              { fn: 'parseXmlInterface(xml)', ret: '{ fields, functions }', desc: 'Parse the <interface> block from component XML, returning field and function definitions.' },
-              { fn: 'parseXmlExtends(xml)', ret: 'string | undefined', desc: 'Get the extends attribute value from a <component> XML string.' },
+            ],
+          },
+          {
+            title: 'SceneGraph XML CST',
+            color: 'amber',
+            items: [
+              { fn: 'xmlTokenize(xml)', ret: 'XmlToken[]', desc: 'Lex a SceneGraph XML string into a lossless token stream — same trivia-preserving design as the BrightScript lexer.' },
+              { fn: 'parseXml(xml)', ret: 'XmlParseResult', desc: 'Parse a token stream into a lossless XML CST (XmlSyntaxNode tree). Error-tolerant: always produces a tree, even for malformed markup.' },
+              { fn: 'parseSceneGraphXml(xml)', ret: 'XmlElement | undefined', desc: 'Parse and wrap the root element as a typed XmlElement (tagName, attributes, children, findChildByTagName, findAllDescendants).' },
+              { fn: 'XmlDocument, XmlElement, XmlAttribute', ret: 'class', desc: 'Typed AST wrappers over the XML CST, mirroring the BrightScript AST wrapper pattern.' },
+              { fn: 'parseXmlScriptUris(xml)', ret: 'string[]', desc: 'Extract all <script uri="…"> URIs from a SceneGraph component XML string. Matches single- and double-quoted attributes and skips commented-out tags.' },
+              { fn: 'parseXmlInterface(xml)', ret: '{ fields, functions }', desc: 'Parse the <interface> block from component XML, returning field and function definitions. Skips commented-out elements.' },
+              { fn: 'parseXmlExtends(xml)', ret: 'string | null', desc: 'Get the extends attribute value from a <component> XML string.' },
+              { fn: 'parseXmlComponentName(xml)', ret: 'string | null', desc: 'Get the name attribute value from a <component> XML string.' },
+              { fn: 'parseComponentTag(xml)', ret: 'ComponentTagInfo | undefined', desc: 'Parse the <component> tag\'s name and extends parent, with the source position of each attribute value — for navigation features.' },
+              { fn: 'tokenizeXmlInterfaceElements(xml)', ret: 'TokenizedXmlInterface | null', desc: 'Tokenize an <interface> block\'s field/function children into reorderable chunks (each carrying its own comment), for the formatter\'s XML sort pass.' },
             ],
           },
           {

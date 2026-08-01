@@ -36,7 +36,8 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | `packages/brightscript-parser/src` | 12 | Lexer, CST, typed AST, and diagnostics — the single source of truth for per-file structural facts. |
 | `packages/brightscript-parser/src/analysis` | 4 | Scope and semantic analysis over the AST: call graph, context, symbols, type inference. |
 | `packages/brightscript-parser/src/catalog` | 5 | Static BrightScript catalogs: built-ins, ro* components, SceneGraph nodes, casing, numeric literals. |
-| `packages/brightscript-parser/src/utils` | 3 | Parser-side helpers: glob matching, position math, XML parsing. |
+| `packages/brightscript-parser/src/utils` | 2 | Parser-side helpers: glob matching, position/offset math and indexes. |
+| `packages/brightscript-parser/src/xml` | 9 | Lossless SceneGraph XML lexer, CST, typed AST, and query layer — the XML counterpart to the BrightScript CST above. |
 | **packages/formatter** | | |
 | `packages/formatter/bin` | 1 | kopytko-format CLI entry. |
 | `packages/formatter/src` | 8 | Formatter engine, configuration, and casing rules. |
@@ -44,11 +45,11 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | **packages/linter** | | |
 | `packages/linter/bin` | 1 | kopytko-lint CLI entry. |
 | `packages/linter/src` | 10 | Linter core: rule running, config, suppression, fixing, project indexing. |
-| `packages/linter/src/analysis` | 10 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
+| `packages/linter/src/analysis` | 8 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
 | `packages/linter/src/catalog` | 1 | Linter-side catalogs for built-ins, components, and test globals. |
 | `packages/linter/src/output` | 3 | Report formatters: text, JSON, SARIF. |
-| `packages/linter/src/rules` | 2 | Rule registry split into syntax-level and AST-level rule sets. |
-| `packages/linter/src/rules/ast` | 23 | AST rule implementations, one rule (or closely related group) per file. |
+| `packages/linter/src/rules` | 1 | Rule registry split into syntax-level and AST-level rule sets. |
+| `packages/linter/src/rules/ast` | 22 | AST rule implementations, one rule (or closely related group) per file. |
 | **packages/roku-device** | | |
 | `packages/roku-device/bin` | 1 | kopytko-roku CLI entry. |
 | `packages/roku-device/src` | 2 | Public API surface for all Roku device communication; deliberately Kopytko-unaware. |
@@ -131,9 +132,9 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 |---|---|
 | Token types | `TokenKind`, `KEYWORD_MAP`, `isKeyword`, `isTypeKeyword`, `tokenFullText`, `tokensToText`, `TriviaKind` |
 | Lexer | `tokenize` |
-| CST node types | `SyntaxKind`, `SyntaxNode`, `isNode`, `isToken` |
+| CST node types | `SyntaxKind`, `SyntaxNode`, `isNode`, `isToken`, `firstToken`, `lastToken` |
 | Parser | `parse` |
-| Typed AST | `wrapNode`, `AstNode`, `SourceFile`, `FunctionDeclaration`, `FunctionExpression`, `ParameterList`, `Parameter`, `ReturnTypeClause`, `IfStatement`, `ElseIfClause`, `ElseClause`, `ForStatement`, `ForEachStatement`, `WhileStatement`, `TryStatement`, `CatchClause`, `ReturnStatement`, `PrintStatement`, `ThrowStatement`, `DimStatement`, `GotoStatement`, `LabelStatement`, `StopStatement`, `EndStatement`, `ExitForStatement`, `ExitWhileStatement`, `ContinueForStatement`, `ContinueWhileStatement`, `AssignmentStatement`, `ExpressionStatement`, `BinaryExpression`, `UnaryExpression`, `GroupingExpression`, `CallExpression`, `DotExpression`, `IndexExpression`, `OptionalChainingExpression`, `IdentifierExpression`, `LiteralExpression`, `ArrayLiteral`, `AALiteral`, `AAField`, `ArgumentList`, `ConditionalCompilation`, `HashConstStatement`, `HashErrorStatement` |
+| Typed AST | `wrapNode`, `AstNode`, `SourceFile`, `FunctionDeclaration`, `FunctionExpression`, `ParameterList`, `Parameter`, `ReturnTypeClause`, `IfStatement`, `ElseIfClause`, `ElseClause`, `ForStatement`, `ForEachStatement`, `WhileStatement`, `TryStatement`, `CatchClause`, `ReturnStatement`, `PrintStatement`, `ThrowStatement`, `DimStatement`, `GotoStatement`, `LabelStatement`, `StopStatement`, `EndStatement`, `ExitForStatement`, `ExitWhileStatement`, `ContinueForStatement`, `ContinueWhileStatement`, `AssignmentStatement`, `ExpressionStatement`, `BinaryExpression`, `UnaryExpression`, `GroupingExpression`, `CallExpression`, `DotExpression`, `IndexExpression`, `OptionalChainingExpression`, `IdentifierExpression`, `LiteralExpression`, `ArrayLiteral`, `AALiteral`, `AAField`, `ArgumentList`, `ConditionalCompilation`, `HashConstStatement`, `HashErrorStatement`, `ErrorNodeWrapper` |
 | Visitor | `walk`, `findAll` |
 | Scope analysis | `buildScopes`, `findScopeAtLine`, `resolve` |
 | BrightScript built-in functions catalog | `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `builtinNames`, `keywordNames`, `builtinArity`, `findBuiltin`, `getKeywordCategory` |
@@ -141,9 +142,15 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | Identifier casing transforms | `CasingOption`, `CasingConfig`, `DEFAULT_CASING_CONFIG`, `applyCasing`, `applyCasingWithOverrides`, `resolveKeywordCasing` |
 | Glob pattern matching | `matchesGlob`, `findMatchingGlob` |
 | Position-based node lookup (for LSP providers) | `findNodeAtPosition`, `findTokenAtPosition`, `getWordAtPosition`, `escapeRegex` |
+| Position/symbol indexes — build once per parse, reuse across many lookups | `buildPositionIndex`, `findTokenAtPositionIndexed`, `findNodeAtPositionIndexed`, `buildSymbolIndex` |
 | BrightScript component catalog (ro* objects, interfaces, methods) | `BRIGHTSCRIPT_COMPONENTS`, `BRIGHTSCRIPT_INTERFACES`, `findComponent`, `findInterface`, `getComponentMethods`, `findMethodInterface`, `CATALOG_LAST_VERIFIED` |
-| SceneGraph XML parsing (pure functions — no file system) | `parseXmlScriptUris`, `parseXmlInterface`, `parseXmlExtends`, `parseXmlComponentName`, `tokenizeXmlInterfaceElements` |
-| AST-based type inference | `inferTypesFromAst`, `getVariableType` |
+| XML token/trivia types | `XmlTokenKind`, `xmlTokenFullText`, `xmlTokensToText`, `XmlTriviaKind` |
+| XML lexer | `xmlTokenize` |
+| XML CST node types | `XmlSyntaxKind`, `XmlSyntaxNode`, `isXmlNode`, `isXmlToken`, `firstXmlToken`, `lastXmlToken` |
+| XML parser | `parseXml` |
+| Typed XML AST | `XmlDocument`, `XmlElement`, `XmlAttribute`, `parseSceneGraphXml` |
+| SceneGraph-specific queries over the XML CST (pure functions — no file system) | `parseXmlScriptUris`, `parseXmlInterface`, `parseXmlExtends`, `parseXmlComponentName`, `parseComponentTag`, `tokenizeXmlInterfaceElements` |
+| AST-based type inference | `inferTypesFromAst`, `getVariableType`, `getVariableTypeInScope` |
 | Call graph (who calls whom, argument tracking) | `buildCallGraph` |
 | Context (m) analysis (m.field tracking, function binding to AAs) | `analyzeContext` |
 | Symbol info (rich hover/definition data for builtins and user functions) | `getSymbolInfo` |
@@ -161,7 +168,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | Group | Symbols |
 |---|---|
 | Exports | `lintFile`, `lintProject`, `lintProjectAsync`, `createFileContext`, `LinterConfig`, `DEFAULT_LINTER_CONFIG`, `DEFAULT_RULE_CONFIG`, `parseLinterConfig`, `resolveConfig`, `applyFixes`, `formatJson`, `formatSarif` |
-| Re-export from brightscript-parser (canonical source) | `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `matchesGlob`, `findMatchingGlob`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE`, `findComponent`, `escapeRegex`, `parseImports`, `ImportResolver`, `parseFunctionDefs`, `parseInnerMethodDefs`, `isTestFile`, `isMockFile`, `isTestRelatedFile`, `getTestBaseName`, `findTestSiblings`, `stripStringLiterals`, `DUPLICATE_COMPONENT_RULE`, `findDuplicateComponents`, `duplicateComponentMessage`, `duplicateComponentDiagnostics`, `isProjectFile`, `parseComponentNamePosition` |
+| Re-export from brightscript-parser (canonical source) | `BRIGHTSCRIPT_BUILTINS`, `BRIGHTSCRIPT_KEYWORDS`, `findBuiltin`, `builtinNames`, `keywordNames`, `matchesGlob`, `findMatchingGlob`, `inferNumericLiteralType`, `isNumericLiteral`, `stripNumericLiterals`, `NUMERIC_LITERAL_GLOBAL_RE`, `findComponent`, `escapeRegex`, `parseImports`, `ImportResolver`, `parseFunctionDefs`, `parseInnerMethodDefs`, `isTestFile`, `isMockFile`, `isTestRelatedFile`, `getTestBaseName`, `findTestSiblings`, `DUPLICATE_COMPONENT_RULE`, `findDuplicateComponents`, `duplicateComponentMessage`, `duplicateComponentDiagnostics`, `isProjectFile`, `parseComponentNamePosition` |
 
 ### `kopytko-roku-device` — `packages/roku-device/src/index.ts`
 
