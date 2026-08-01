@@ -396,6 +396,46 @@ Three things this got wrong before it worked:
   this. Note this is also the one place the server publishes diagnostics for a file that is **not** a
   synced document — which works, and is what makes reporting on XML possible at all.
 
+### Dead-function detection — a second project-wide aggregation in the linter
+
+`identifier/unused-function` (off by default) needed the same shape of fix as duplicate-component
+names: a rule that needs to see every file's facts at once, not just the one `RuleContext` a rule
+function receives. Unlike duplicate-component names, the aggregation here lives inside
+`projectIndexer.ts`'s `buildKnownFunctions` rather than `lintRunner.ts`'s post-loop project pass,
+because `calledWorkwideFuncNames` has to be known **before** any per-file rule runs (the rule reads
+it out of `lintContext`), not emitted as its own diagnostic afterward.
+
+`analysis/calledFunctionNames.ts`'s `collectCalledWorkwideFuncNames` is a **deliberate byte-for-byte
+mirror** of the extension's `WorkspaceCallIndex._extractCalledNames`
+(`src/server/utils/workspaceCallIndex.ts`) — direct calls, `observeField`/`observeFieldScoped`/
+`callFunc` string-argument dispatch, the Kopytko `{ prop: "handlerFn" }` events-AA pattern, and
+`<interface><function>` XML declarations, giving the CLI the same detection as the editor. It was
+tempting to ship a narrower first cut (direct calls + XML only, both already reachable via the
+parser's published `buildCallGraph`/`parseXmlInterface`) and defer the string-pattern extraction as
+"a separate follow-up" — but that reasoning doesn't hold up: none of it needs cross-file scope
+resolution, it's all flat per-file syntactic extraction (pull a string out of a known call/AA shape,
+union into a flat set), exactly the same shape as the direct-call case, and every primitive it needs
+(`walk`, `SyntaxKind`, `TokenKind`, `CallExpression`, `AALiteral`) is already published. There was no
+technical reason to leave it out. Same rule as the historical `duplicateComponents.ts`/XML-parser
+mirrors: the linter package cannot depend on the extension's `src/server/`, so this duplicates rather
+than shares the extraction — if it's ever promoted into `kopytko-brightscript-parser` as a shared
+analysis export, delete this file's string-pattern block and update `workspaceCallIndex.ts` to import
+it too; until then, a change to one needs the same change in the other (`test/utils/workspaceCallIndex.test.ts`
+and `calledFunctionNames.test.ts` share the same fixtures on purpose — keep them in sync).
+
+**Gated on the rule being enabled, not unconditional.** A full parse + `buildCallGraph` of every
+project *and package* `.brs` file is a real cost, and the rule defaults to `off` — computing this
+unconditionally on every CLI lint run would be exactly the kind of "a real, unconditional cost with no
+reproducing bug to justify it" mistake `parseFunctionDefs` avoided by staying a regex scan (see the
+sweep notes above). `buildKnownFunctions` checks `config.rules['identifier/unused-function'] !== 'off'`
+before calling `collectCalledWorkwideFuncNames` at all. The sync builder (`buildProjectContext`)
+additionally skips *reading* package `.brs` file text unless this same gate is on — the async builder
+(`buildProjectContextAsync`) already reads it unconditionally as part of its parallel-read design, so
+this keeps the two builders' `fileContentsCache` contents equivalent only when it actually matters. The
+computed `ParseResult`s are threaded through `ProjectContextResult.parseResultCache` into `runLint` (via
+`lintFile`'s existing `preParseResult` param), so enabling the rule costs one extra parse per package
+file, not a second parse of every project file that gets linted anyway.
+
 ---
 
 ---

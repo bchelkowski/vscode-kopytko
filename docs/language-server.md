@@ -301,7 +301,9 @@ Checked against the same function-name scope as `identifier/undefined-function`:
 { "rules": { "identifier/unused-function": "hint" } }
 ```
 
-**How it works:** `WorkspaceCallIndex` is built at startup and updated incrementally on file saves. It collects all function names that appear as call targets (direct calls, `observeField`/`observeFieldScoped` string callbacks, `callFunc` string arguments, Kopytko `events: { prop: "fn" }` AA patterns, and `<interface><function>` XML declarations). The diagnostic rule checks each top-level `FunctionDeclaration` against this workspace-wide set.
+**How it works (editor):** `WorkspaceCallIndex` is built at startup and updated incrementally on file saves. It collects all function names that appear as call targets (direct calls, `observeField`/`observeFieldScoped` string callbacks, `callFunc` string arguments, Kopytko `events: { prop: "fn" }` AA patterns, and `<interface><function>` XML declarations). The diagnostic rule checks each top-level `FunctionDeclaration` against this workspace-wide set.
+
+**How it works (CLI):** `kopytko-lint`/`--check` runs the same rule against a project-wide scan computed by `collectCalledWorkwideFuncNames` (`packages/linter/src/analysis/calledFunctionNames.ts`) — a deliberate mirror of `WorkspaceCallIndex`'s extraction (same call/string-dispatch/events/XML-interface patterns), duplicated rather than shared because the linter package depends on `kopytko-brightscript-parser` via a published npm version, not a workspace link to the extension's code. Only computed when the rule is enabled — it defaults to `off`, so a plain CLI lint run pays nothing extra.
 
 **Not flagged:**
 - Functions in `source/` directories (globally accessible at Roku runtime, may be called from XML)

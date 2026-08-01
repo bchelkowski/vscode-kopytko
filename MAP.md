@@ -45,7 +45,7 @@ For *how* a subsystem behaves and what has already gone wrong in it, read `findi
 | **packages/linter** | | |
 | `packages/linter/bin` | 1 | kopytko-lint CLI entry. |
 | `packages/linter/src` | 10 | Linter core: rule running, config, suppression, fixing, project indexing. |
-| `packages/linter/src/analysis` | 8 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
+| `packages/linter/src/analysis` | 9 | Per-file analysis the rules consume: function index, imports, siblings, XML, text utils. |
 | `packages/linter/src/catalog` | 1 | Linter-side catalogs for built-ins, components, and test globals. |
 | `packages/linter/src/output` | 3 | Report formatters: text, JSON, SARIF. |
 | `packages/linter/src/rules` | 1 | Rule registry split into syntax-level and AST-level rule sets. |

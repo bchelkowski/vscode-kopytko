@@ -170,7 +170,7 @@ In `kopytko-linter.json`, use the `readOnlyPaths` key directly:
 | `identifier/shadows-function` | error | Variable or parameter shadows a user-defined function (local or `@import`-ed) |
 | `identifier/unused-parameter` | warning | Function parameter never used in body (prefix `_` to suppress) |
 | `identifier/unused-variable` | warning | Local variable defined but never read (prefix `_` to suppress) |
-| `identifier/unused-function` | **off** | Top-level function never called anywhere in the workspace (requires the extension's workspace-wide call index — always a no-op outside the editor, e.g. in the CLI). `init`, `onKeyEvent`, and names starting with `_` are exempt |
+| `identifier/unused-function` | **off** | Top-level function never called anywhere in the workspace — recognizes direct calls, `observeField`/`observeFieldScoped`/`callFunc` string dispatch, the Kopytko `{ prop: "handlerFn" }` events pattern, and XML `<interface><function>` declarations. `init`, `onKeyEvent`, and names starting with `_` are exempt |
 | `identifier/duplicate-function` | error | A function name is declared twice in the same file, or collides with a function already reachable via `@import`/sibling files/`source/` (excluding an intentional override of an ancestor component's function) |
 | `identifier/loop-variable-leak` | warning | A variable first assigned inside a loop body is read after the loop ends, without an intervening write — undefined if the loop never executes |
 

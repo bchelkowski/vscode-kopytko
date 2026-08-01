@@ -9,7 +9,9 @@ import { findSiblingFiles } from './analysis/patternSiblings';
 import { findTestSiblings, isTestFile, isTestRelatedFile, resolveTestedFiles } from './analysis/testUtils';
 import { getScriptPathsFromXml, parseXmlExtends, parseXmlComponentName, parseXmlInterface, parseComponentNamePosition } from './analysis/xmlParser';
 import type { ComponentDeclaration } from './analysis/duplicateComponents';
+import { collectCalledWorkwideFuncNames } from './analysis/calledFunctionNames';
 import { getAllSgNodeFields, getAllSgNodeMethods, matchesGlob } from 'kopytko-brightscript-parser';
+import type { ParseResult } from 'kopytko-brightscript-parser';
 import { TEST_FRAMEWORK_GLOBALS } from './catalog/testGlobals';
 import fsWrapper from './analysis/fsWrapper';
 
@@ -17,6 +19,13 @@ export interface ProjectContextResult {
   context: LintContext;
   brsFiles: string[];
   fileContentsCache: Map<string, string>;
+  /**
+   * ParseResults for every project .brs file, computed while building
+   * `calledWorkwideFuncNames` (only populated when identifier/unused-function is
+   * enabled). `runLint` reuses these via `lintFile`'s `preParseResult` param so
+   * enabling the rule doesn't cost a second parse of every project file.
+   */
+  parseResultCache: Map<string, ParseResult>;
 }
 
 // ── Async walk + parallel read (used by lintProjectAsync / CLI) ──
@@ -188,6 +197,16 @@ export function buildProjectContext(projectRoot: string, config: LinterConfig): 
   const xmlTextCache = new Map<string, string>();
   const brsToXmlParents = new Map<string, string[]>();
 
+  // Only needed when identifier/unused-function is enabled (it defaults to 'off' in
+  // DEFAULT_RULE_CONFIG, so this is opt-in, not the common case): that rule's CLI-mode
+  // calledWorkwideFuncNames (collectCalledWorkwideFuncNames, below) reads every .brs
+  // file's text out of fileContentsCache, including package scripts — a project function
+  // called from inside a package's own .brs code would otherwise look dead. Gated so the
+  // default (rule off) pays no extra I/O; the async builder (buildProjectContextAsync)
+  // reads package .brs text unconditionally already, so this keeps the two builders'
+  // fileContentsCache contents in sync only when it matters.
+  const readPackageBrsText = config.rules['identifier/unused-function'] !== 'off';
+
   function walkAndIndex(dir: string, collectBrs: boolean): void {
     let entries;
     try { entries = fsWrapper.readdirTyped(dir); } catch { return; }
@@ -207,6 +226,11 @@ export function buildProjectContext(projectRoot: string, config: LinterConfig): 
             fileContentsCache.set(normalized, text);
             fileFunctions.set(normalized, parseFunctionDefs(text, fullPath).map(f => f.nameLower));
             fileImports.set(normalized, parseImports(text));
+          } catch { /* skip */ }
+        } else if (readPackageBrsText) {
+          try {
+            const text = fsWrapper.readFileSync(fullPath, 'utf-8');
+            fileContentsCache.set(nodePath.normalize(fullPath), text);
           } catch { /* skip */ }
         }
       } else if (entry.name.endsWith('.xml')) {
@@ -674,6 +698,17 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     }
   }
 
+  // Only computed when the rule is enabled (it defaults to 'off', so most CLI lint runs
+  // never pay this) — a full parse + call-graph build of every project and package .brs
+  // file is a real cost (see the analogous note on parseFunctionDefs staying a regex scan
+  // in findings/lsp-architecture.md). `parseResultCache` is threaded through to `runLint`
+  // (via `lintFile`'s `preParseResult` param) so enabling the rule doesn't also cost a
+  // second parse of every project file that gets linted anyway.
+  const parseResultCache = new Map<string, ParseResult>();
+  const calledWorkwideFuncNames = config.rules['identifier/unused-function'] !== 'off'
+    ? collectCalledWorkwideFuncNames(fileContentsCache, parseResultCache)
+    : undefined;
+
   const context: LintContext = {
     get knownFuncNames() { return new Set<string>(); },
 
@@ -713,6 +748,7 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     getMtopFields,
 
     componentDeclarations,
+    calledWorkwideFuncNames,
 
     generatedPaths: config.generatedPaths,
     generatedModules: config.generatedModules,
@@ -727,6 +763,7 @@ function buildKnownFunctions(params: BuildParams): ProjectContextResult {
     }) as LintContext,
     brsFiles,
     fileContentsCache,
+    parseResultCache,
   };
 }
 

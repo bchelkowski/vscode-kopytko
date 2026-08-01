@@ -12,8 +12,10 @@ function collectAst<T>(ctx: RuleContext, parseResult: ParseResult, analysisKey: 
 
 /**
  * AST-based: detect top-level functions never called anywhere in the workspace.
- * Requires `lintContext.calledWorkwideFuncNames` to be populated by the extension
- * (via WorkspaceCallIndex). Returns [] in CLI mode where it is absent.
+ * Requires `lintContext.calledWorkwideFuncNames` — populated by the extension's
+ * WorkspaceCallIndex in editor mode, or by `collectCalledWorkwideFuncNames`
+ * (analysis/calledFunctionNames.ts) in CLI mode when this rule is enabled. Returns
+ * [] if genuinely absent (rule disabled, or a test/mock context).
  */
 export function checkDeadFunctionsAst(ctx: RuleContext): LintDiagnostic[] {
   const { filePath, config, parseResult, lintContext } = ctx;

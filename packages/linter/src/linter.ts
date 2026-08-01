@@ -18,9 +18,9 @@ export function lintProject(
     ...configOverride,
   };
 
-  const { context, brsFiles, fileContentsCache } = buildProjectContext(projectRoot, config);
+  const { context, brsFiles, fileContentsCache, parseResultCache } = buildProjectContext(projectRoot, config);
 
-  return runLint(brsFiles, fileContentsCache, context, config);
+  return runLint(brsFiles, fileContentsCache, context, config, parseResultCache);
 }
 
 /**
@@ -35,8 +35,8 @@ export async function lintProjectAsync(
     ...configOverride,
   };
 
-  const { context, brsFiles, fileContentsCache } = await buildProjectContextAsync(projectRoot, config);
+  const { context, brsFiles, fileContentsCache, parseResultCache } = await buildProjectContextAsync(projectRoot, config);
 
-  return runLint(brsFiles, fileContentsCache, context, config);
+  return runLint(brsFiles, fileContentsCache, context, config, parseResultCache);
 }
 

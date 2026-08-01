@@ -52,17 +52,20 @@ export function runLint(
   fileContentsCache: Map<string, string>,
   context: LintContext,
   config: LinterConfig,
+  parseResultCache?: Map<string, ParseResult>,
 ): LintResult {
   const allDiagnostics: LintDiagnostic[] = [];
 
   for (const file of brsFiles) {
     if (config.readOnlyPaths.length > 0 && config.readOnlyPaths.some(p => matchesGlob(file, p))) continue;
 
-    const content = fileContentsCache.get(nodePath.normalize(file));
+    const normalizedFile = nodePath.normalize(file);
+    const content = fileContentsCache.get(normalizedFile);
     if (!content) continue;
 
     const fileContext = createFileContext(context, file);
-    allDiagnostics.push(...lintFile(file, content, fileContext, config));
+    const preParseResult = parseResultCache?.get(normalizedFile);
+    allDiagnostics.push(...lintFile(file, content, fileContext, config, undefined, preParseResult));
   }
 
   allDiagnostics.push(...lintProjectWide(context, config));

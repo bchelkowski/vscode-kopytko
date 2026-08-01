@@ -16,7 +16,12 @@ export interface LintContext {
    */
   componentDeclarations?: ComponentDeclaration[];
   /** Workspace-wide union of all function names that appear as call targets in any .brs file.
-   * Undefined in CLI mode — rules must degrade gracefully when this is absent. */
+   * In CLI mode, populated by `collectCalledWorkwideFuncNames` (analysis/calledFunctionNames.ts)
+   * when `identifier/unused-function` is enabled — a deliberate mirror of the extension's
+   * WorkspaceCallIndex extraction (direct calls, observeField/observeFieldScoped/callFunc string
+   * dispatch, the Kopytko events-AA pattern, and XML interface functions; see that file's doc
+   * comment). Undefined when the rule is off (CLI) or before the extension's WorkspaceCallIndex
+   * has built (extension) — rules must degrade gracefully. */
   calledWorkwideFuncNames?: Set<string>;
   /** Functions inherited via the component `extends` chain that may be overridden without error.
    * Undefined in CLI mode or for files without a companion XML — rules skip the override exemption. */

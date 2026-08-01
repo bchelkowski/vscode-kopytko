@@ -174,7 +174,7 @@ end function`,
     id: 'identifier/unused-function',
     severity: 'hint',
     description: 'A function is declared but never called anywhere in the project.',
-    note: 'Off by default. Enable with "identifier/unused-function": "hint" in your config.',
+    note: 'Off by default. Enable with "identifier/unused-function": "hint" in your config. Recognizes direct calls, observeField/callFunc string dispatch, and Kopytko events patterns.',
   },
   {
     id: 'identifier/loop-variable-leak',
