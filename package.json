@@ -59,7 +59,7 @@
     "js-yaml": "^5.2.1",
     "kopytko-brightscript-parser": "^1.4.0",
     "kopytko-formatter": "^1.2.2",
-    "kopytko-linter": "^1.7.3",
+    "kopytko-linter": "^2.0.0",
     "kopytko-roku-device": "^1.4.0",
     "vscode-languageclient": "^10.1.0",
     "vscode-languageserver": "^10.1.0",
