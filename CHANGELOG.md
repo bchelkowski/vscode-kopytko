@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.15.1] - 2026-08-02
+
+### Fixed
+- Contain inner-method selectionRange within its declaration range
+
 ## [1.15.0] - 2026-08-01
 
 ### Fixed
