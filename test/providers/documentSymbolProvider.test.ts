@@ -265,6 +265,27 @@ describe('BrightScriptDocumentSymbolProvider', () => {
     expect(child.range.end.line).to.equal(4);
   });
 
+  it('inner method selectionRange is fully contained in range (VS Code DocumentSymbol invariant)', () => {
+    // Regression test: `range` used to start at the `function`/`sub` keyword
+    // (a descendant of the FunctionExpression), while `selectionRange` starts
+    // at the name token on the assignment target, which precedes it in
+    // source — so selectionRange fell outside range and VS Code's
+    // DocumentSymbol constructor threw "selectionRange must be contained in
+    // fullRange".
+    const doc = makeDocument([
+      `function createObj() as Object`,
+      `  this = {}`,
+      `  this.getValue = function() as Integer`,
+      `  end function`,
+      `  return this`,
+      `end function`,
+    ].join('\n'));
+    const child = provider.provideDocumentSymbols(doc)[0].children![0];
+    expect(child.range.start.line).to.be.at.most(child.selectionRange.start.line);
+    expect(child.range.start.character).to.be.at.most(child.selectionRange.start.character);
+    expect(child.range.end.line).to.be.at.least(child.selectionRange.end.line);
+  });
+
   it('inner method detail contains params and return type', () => {
     const doc = makeDocument([
       `function createObj() as Object`,
@@ -442,6 +463,22 @@ describe('BrightScriptDocumentSymbolProvider', () => {
     const child = provider.provideDocumentSymbols(doc)[0].children![0];
     expect(child.range.start.line).to.equal(2);
     expect(child.range.end.line).to.equal(4);
+  });
+
+  it('inline AA method selectionRange is fully contained in range (VS Code DocumentSymbol invariant)', () => {
+    const doc = makeDocument([
+      `function createObj() as Object`,
+      `  return {`,
+      `    getValue: function() as Integer`,
+      `      return 1`,
+      `    end function`,
+      `  }`,
+      `end function`,
+    ].join('\n'));
+    const child = provider.provideDocumentSymbols(doc)[0].children![0];
+    expect(child.range.start.line).to.be.at.most(child.selectionRange.start.line);
+    expect(child.range.start.character).to.be.at.most(child.selectionRange.start.character);
+    expect(child.range.end.line).to.be.at.least(child.selectionRange.end.line);
   });
 
   it('inline AA method detail contains params and return type', () => {

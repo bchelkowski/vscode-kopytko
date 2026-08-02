@@ -157,6 +157,23 @@ worth recording here (the full plan and per-task rationale is not preserved else
   IdentifierExpression`), which is now a pinned regression test rather than a silent gap. Two lessons
   in one: measure the actual regex before deciding it's broken, and verify a *replacement's* claimed
   improvement the same way you'd verify the original bug.
+- **A `DocumentSymbol`'s `range` must be derived from a node that structurally contains the node
+  `selectionRange` comes from — never assembled from two independently-computed token spans.** This
+  regex→CST migration broke `documentSymbolProvider.ts`'s `innerMethodSymbol()` (the `this.foo =
+  function()` / `foo: function()` "class method" pattern): `selectionRange` came from the name token
+  (`AssignmentStatement.target.memberToken` or `AAField.keyToken`), a **sibling node that precedes the
+  `FunctionExpression` in source**, while `range` was anchored to `firstToken(node.syntax)` — the
+  `FunctionExpression`'s own first token (the `function`/`sub` keyword), which comes *after* the name.
+  Old line-scanning code accidentally avoided this by always starting `range` at column 0. Result:
+  `selectionRange.start` fell before `range.start`, and VS Code's `DocumentSymbol` constructor throws
+  `Error: selectionRange must be contained in fullRange` — not a rare edge case, it fired on every file
+  using the pattern the provider exists to support. Fix: anchor `range.start` to `firstToken(parent)`
+  (the enclosing `AssignmentStatement`/`AAField` node), not `firstToken(node.syntax)`. Lesson for any
+  future `DocumentSymbol`/`SymbolInformation` construction: when the name token and the body span come
+  from different AST nodes, containment isn't automatic — it must be verified structurally (name node
+  is a descendant of the range node, or use a common ancestor), and pinned with an explicit test that
+  asserts `range` contains `selectionRange` (asserting each independently, as
+  `test/providers/documentSymbolProvider.test.ts` did, lets exactly this regression through silently).
 - **SceneGraph XML now has a real lossless CST** (`packages/brightscript-parser/src/xml/`: lexer →
   `XmlToken`/`XmlTrivia` → parser → `XmlSyntaxNode` → typed AST `XmlDocument`/`XmlElement`/
   `XmlAttribute` → `sceneGraphQueries.ts`), mirroring the BrightScript lexer/parser's own design

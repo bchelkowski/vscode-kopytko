@@ -133,7 +133,12 @@ function innerMethodSymbol(node: FunctionExpression): DocumentSymbol | undefined
   }
   if (!nameToken) return undefined;
 
-  const first = firstToken(node.syntax);
+  // `range` must start at or before `nameToken`: the name lives on a node
+  // (the assignment target / AA field) that precedes the FunctionExpression
+  // in source, so anchoring `range.start` to the FunctionExpression's own
+  // first token (the `function`/`sub` keyword) would put `selectionRange`
+  // outside `range` — VS Code's DocumentSymbol constructor rejects that.
+  const first = firstToken(parent);
   const last = lastToken(node.syntax);
   if (!first || !last) return undefined;
 
