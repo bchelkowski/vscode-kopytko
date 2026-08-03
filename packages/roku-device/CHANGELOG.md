@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [1.5.1] - 2026-08-03
+
+### Fixed
+- Disable Agent pooling to fix socket hang up on digest-auth retry
+
 ## [1.5.0] - 2026-08-01
 
 ### Added
