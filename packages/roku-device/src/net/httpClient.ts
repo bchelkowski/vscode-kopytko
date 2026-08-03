@@ -23,6 +23,9 @@ export function httpPost(
       method: 'POST',
       headers: { ...headers },
       timeout: timeoutMs,
+      // See requestWithDigestAuth below for why every request in this file
+      // disables Node's connection-pooling Agent.
+      agent: false,
     };
 
     if (body) {
@@ -63,7 +66,7 @@ export function httpGet(
   headers?: Record<string, string>,
 ): Promise<HttpGetResponse> {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, { headers, timeout: timeoutMs }, (res) => {
+    const req = http.get(url, { headers, timeout: timeoutMs, agent: false }, (res) => {
       let body = '';
       res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
       res.on('end', () => {
@@ -99,7 +102,7 @@ export function httpGetBuffer(
   headers?: Record<string, string>,
 ): Promise<HttpBufferResponse> {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, { headers, timeout: timeoutMs }, (res) => {
+    const req = http.get(url, { headers, timeout: timeoutMs, agent: false }, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => { chunks.push(chunk); });
       res.on('end', () => {
@@ -238,6 +241,20 @@ function rawRequest(
  *
  * If the first attempt is not a 401 (e.g. the endpoint doesn't require auth),
  * that response is returned as-is and no second request is sent.
+ *
+ * **`agent: false` is required, not optional.** The device's web-admin does
+ * not send `Connection: close` on the 401 challenge response, so Node's
+ * default `http.Agent` treats the socket as reusable and hands it to the
+ * authenticated retry — but the device has often already torn that socket
+ * down by then. The retry writes into a dead/closing connection and Node
+ * throws `Error: socket hang up` before ever parsing a response, even though
+ * a fresh connection for the same request succeeds immediately (confirmed
+ * live: `curl --digest` already opens a new connection per attempt, which is
+ * why it never hits this — see the two `Connection #N` lines in `curl -v`
+ * output for the same request). `insecureHTTPParser: true` does **not** fix
+ * this — it's a connection-reuse race, not an HTTP-parsing issue. Verified
+ * against a real device (Roku Ultra dev unit on a local network) 2026-08-03: identical
+ * request, `agent: false` is the only variable that changes failure→success.
  */
 async function requestWithDigestAuth(
   method: 'GET' | 'POST',
@@ -256,6 +273,7 @@ async function requestWithDigestAuth(
     path: uri,
     method,
     timeout: timeoutMs,
+    agent: false,
   };
 
   const challenge = await rawRequest(baseOptions);

@@ -283,6 +283,20 @@ Digest auth (RFC 7616), username always `rokudev`. Implemented as `InstallerClie
 it renders errors via `Shell.create('Roku.Message')` plus a legacy `<font color="red">` div the page
 explicitly preserves for old scripts. So rekey/screenshot/profiling rely entirely on pattern matching.
 
+### Connection reuse between the digest-auth challenge and retry causes `socket hang up`
+
+The device does not send `Connection: close` on the 401 challenge response, so Node's default
+`http.Agent` treats that socket as reusable and may hand it to the authenticated retry — but the
+device has frequently already torn the connection down by then, so the retry throws `Error:
+socket hang up` before a response is ever parsed. `curl --digest` doesn't hit this because it
+opens a fresh connection per attempt regardless of what the server implies about persistence.
+**Fix: every request in `httpClient.ts` passes `agent: false`**, forcing a brand-new connection
+per attempt — this, not `insecureHTTPParser`, is what resolves it (verified: `insecureHTTPParser:
+true` alone does not fix it; `agent: false` alone does). ⚠️ Live-verified against a Roku Ultra
+dev unit on a local network, 2026-08-03 — the multipart `/plugin_install` retry is where this was caught,
+but the fix applies to every function in that file since none of them benefit from pooling
+against a device that doesn't reliably support persistent connections.
+
 `CheckUpdate` returns a **static template** — both the success and failure headlines are always present,
 gated client-side by a literal `false`. Update availability is not observable from the response at all.
 
